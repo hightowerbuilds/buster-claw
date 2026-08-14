@@ -155,9 +155,10 @@ defmodule BusterClaw.Notifications.Cutup.Dtw do
     pointless; enabling it on features that did not is the intended use. Know
     which you have.
   - **Frames are the clock.** `start_ms`/`end_ms` are derived from the 10 ms hop
-    pinned in `BusterClaw.Notifications.Cutup.Types`. A template extracted at one
-    hop and a recording analysed at another cannot be compared at all, and this
-    module cannot detect that mistake.
+    pinned in `BusterClaw.Notifications.Cutup.Types` and read from there at
+    compile time. A template extracted at one hop and a recording analysed at
+    another cannot be compared at all, and this module cannot detect that
+    mistake — which is why the number is read rather than restated.
 
   ## Finding the threshold without guessing
 
@@ -190,10 +191,14 @@ defmodule BusterClaw.Notifications.Cutup.Dtw do
 
   alias BusterClaw.Notifications.Cutup.Types
 
-  # The analysis clock, pinned in `Types` and restated here rather than imported
-  # from the framing stage: the matcher must not depend on the front end, and a
-  # frame index is only convertible to a time by these two numbers.
-  @hop_ms 10.0
+  # The analysis clock, read from `Types` at COMPILE TIME rather than imported
+  # from the framing stage. The layering intent is unchanged and is why it is
+  # read from HERE: the matcher must not depend on `Signal`, and `Types` is the
+  # contract this module already depends on and holds nothing that frames audio.
+  # What is gone is the second copy of the number — restating it left `Dtw` able
+  # to disagree with the stage that produced the frames, with no error and no
+  # symptom except splice points in the wrong syllable.
+  @hop_ms Types.hop_ms()
 
   @default_limit 10
 

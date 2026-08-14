@@ -75,9 +75,10 @@ defmodule BusterClaw.Notifications.Cutup.Signal do
 
   ## The frame geometry is fixed, and it is the clock
 
-  **25 ms frames at a 10 ms hop**, pinned in `Cutup.Types` rather than passed
-  around. A template extracted at one hop and a recording analysed at another
-  cannot be compared at all, so these are not options. `frame_index_to_ms/1` is
+  **25 ms frames at a 10 ms hop**, pinned in `Cutup.Types` and read from there at
+  compile time rather than passed around. A template extracted at one hop and a
+  recording analysed at another cannot be compared at all, so these are not
+  options. `frame_index_to_ms/1` is
   the *only* thing that converts a feature index back into a splice point, which
   makes it the single most load-bearing arithmetic in the pipeline.
 
@@ -218,9 +219,12 @@ defmodule BusterClaw.Notifications.Cutup.Signal do
   alias BusterClaw.Notifications.Cutup.Types
   alias BusterClaw.Notifications.SoundStudio
 
-  # Pinned by Cutup.Types. Changing either invalidates every stored index.
-  @frame_ms 25.0
-  @hop_ms 10.0
+  # Pinned by Cutup.Types, and READ from it at compile time rather than restated:
+  # the pin used to be a convention, and a convention cannot fail a build. The
+  # attribute keeps the number a literal in the compiled frame loop, so this costs
+  # nothing per frame. Changing either invalidates every stored index.
+  @frame_ms Types.frame_ms()
+  @hop_ms Types.hop_ms()
 
   # The standard pre-emphasis coefficient. 0.95-0.97 is the usual range; 0.97 is
   # what HTK, Kaldi and every MFCC paper of the era use, and matching them means
@@ -255,11 +259,11 @@ defmodule BusterClaw.Notifications.Cutup.Signal do
   """
   @type opts :: [fft_size: pos_integer(), pre_emphasis: float()]
 
-  @doc "The analysis frame length in milliseconds. Fixed at 25.0 by `Cutup.Types`."
+  @doc "The analysis frame length in milliseconds. 25.0, read from `Cutup.Types.frame_ms/0`."
   @spec frame_ms() :: float()
   def frame_ms, do: @frame_ms
 
-  @doc "The hop between consecutive frames in milliseconds. Fixed at 10.0 by `Cutup.Types`."
+  @doc "The hop between consecutive frames in milliseconds. 10.0, read from `Cutup.Types.hop_ms/0`."
   @spec hop_ms() :: float()
   def hop_ms, do: @hop_ms
 

@@ -204,9 +204,16 @@ defmodule BusterClaw.Notifications.Cutup.Gaps do
 
   # Total, with no fallback clause, because `Index.load/1` always names one of the
   # four: it is the reader that decides, and a file whose `origin` is unparseable
-  # is already reported here as `manual` by its ruling. Worth knowing when a count
-  # looks too trustworthy — `manual` is the origin that earns 1.0, so a corrupt
-  # header flatters itself.
+  # is reported here as `aligned` by its ruling (`Index.decoded_origin/1`).
+  # Worth knowing when a count looks low on trust rather than high: a corrupt
+  # header lands in the least-trusted bucket, so `aligned` can be an overcount of
+  # real alignments and `manual` is never an overcount at all.
+  #
+  # That direction was chosen because of this module. Degrading to `manual` — the
+  # only origin that earns confidence 1.0 — let a truncated header flatter itself
+  # into the top trust tier, which is exactly the number this report exists to
+  # state honestly. Found and fixed 08-09; this comment still described the old
+  # behaviour until 08-13.
   defp origin_name(%{origin: origin}), do: Atom.to_string(origin)
 
   # ---------------------------------------------------------------------------

@@ -112,8 +112,8 @@ defmodule BusterClaw.Notifications.Cutup.Vad do
 
   ## Frame arithmetic
 
-  25 ms frames at a 10 ms hop, both pinned in `Cutup.Types` — the analysis frame
-  is the clock the whole pipeline shares. Frame `i` starts at exactly
+  25 ms frames at a 10 ms hop, both pinned in `Cutup.Types` and read from there at
+  compile time — the analysis frame is the clock the whole pipeline shares. Frame `i` starts at exactly
   `i * 10.0 ms` (the sample offset is rounded from that, never accumulated, so
   there is no drift at 22.05 kHz where the hop is 220.5 samples).
 
@@ -150,11 +150,14 @@ defmodule BusterClaw.Notifications.Cutup.Vad do
   alias BusterClaw.Notifications.Cutup.Types
   alias BusterClaw.Notifications.SoundStudio
 
-  # The analysis clock. Pinned in `Cutup.Types` and restated (not re-derived)
-  # here: a template framed at one hop and a recording framed at another cannot
-  # be compared at all.
-  @frame_ms 25.0
-  @hop_ms 10.0
+  # The analysis clock, read from `Cutup.Types` at COMPILE TIME — the same two
+  # numbers `Signal` and `Dtw` read, not a restatement of them. A template framed
+  # at one hop and a recording framed at another cannot be compared at all, and
+  # three literals agreeing by inspection is not a mechanism. Reading into an
+  # attribute keeps them literals in the per-frame arithmetic below, so nothing
+  # here calls out per frame.
+  @frame_ms Types.frame_ms()
+  @hop_ms Types.hop_ms()
 
   # Where the noise floor is read from the RMS distribution, and the reference
   # for "loud" — reported for inspection, deliberately not used in the gates.

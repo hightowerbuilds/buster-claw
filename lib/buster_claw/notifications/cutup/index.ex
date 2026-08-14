@@ -27,15 +27,19 @@ defmodule BusterClaw.Notifications.Cutup.Index do
 
   ## A source is a basename, and that is a security boundary
 
-  Every entry point runs its `source` through the same gate: no `/`, no `\\`, no
-  `..`, no null byte, nothing that `Path.basename/1` would shorten. Then the name
-  must survive `BusterClaw.AudioName.safe_name/1` unchanged (compared
-  case-insensitively, so a real `VOICE.WAV` is not refused for the extension-case
-  rewrite that sanitizer performs). An index therefore **cannot name a file
-  outside the studio's sources directory**, whether it arrived from a recognizer,
-  a hand-edited JSON file, or a CLI argument. This is checked at `build/3`,
-  `save/1`, `load/1`, `delete/1` and on the `:source` search option — not once at
-  the edge, because there is no single edge.
+  Every entry point runs its `source` through `Cutup.SourceName.safe/1`: no `/`,
+  no `\\`, no `..`, no null byte, nothing that `Path.basename/1` would shorten,
+  and the name must survive `BusterClaw.AudioName.safe_name/1` unchanged
+  (compared case-insensitively, so a real `VOICE.WAV` is not refused for the
+  extension-case rewrite that sanitizer performs). An index therefore **cannot
+  name a file outside the studio's sources directory**, whether it arrived from a
+  recognizer, a hand-edited JSON file, or a CLI argument. This is checked at
+  `build/3`, `save/1`, `load/1`, `delete/1` and on the `:source` search option —
+  not once at the edge, because there is no single edge.
+
+  `Cutup.Features` keys its cache on the same names and calls the same function.
+  That is one function now, not two identical ones — see `Cutup.SourceName` on
+  why a copy of a gate is a gate that can quietly weaken on one side.
 
   ## Normalization happens on the way IN
 
@@ -86,8 +90,8 @@ defmodule BusterClaw.Notifications.Cutup.Index do
   query they cannot use finds nothing rather than failing.
   """
 
-  alias BusterClaw.AudioName
   alias BusterClaw.Library.Artifact
+  alias BusterClaw.Notifications.Cutup.SourceName
   alias BusterClaw.Notifications.Cutup.Types
 
   @subdir Path.join(["sounds", "studio", "index"])
@@ -245,19 +249,7 @@ defmodule BusterClaw.Notifications.Cutup.Index do
 
   @doc "Source basenames that have an index, sorted. Never raises; `[]` if the directory is absent."
   @spec list() :: [source()]
-  def list do
-    case File.ls(dir()) do
-      {:ok, entries} ->
-        entries
-        |> Enum.filter(&String.ends_with?(&1, @ext))
-        |> Enum.map(&String.replace_suffix(&1, @ext, ""))
-        |> Enum.filter(&match?({:ok, _name}, safe_source(&1)))
-        |> Enum.sort_by(&String.downcase/1)
-
-      {:error, _reason} ->
-        []
-    end
-  end
+  def list, do: SourceName.list_in(dir(), @ext)
 
   @doc "Whether a source has an index."
   @spec indexed?(term()) :: boolean()
@@ -425,24 +417,12 @@ defmodule BusterClaw.Notifications.Cutup.Index do
   # The source gate. Every public entry point goes through this.
   # ---------------------------------------------------------------------------
 
-  defp safe_source(source) when is_binary(source) do
-    cond do
-      source in ["", ".", ".."] -> {:error, :invalid_source}
-      String.contains?(source, ["/", "\\", "..", <<0>>]) -> {:error, :invalid_source}
-      Path.basename(source) != source -> {:error, :invalid_source}
-      not fixpoint?(source) -> {:error, :unsafe_source}
-      true -> {:ok, source}
-    end
-  end
-
-  defp safe_source(_source), do: {:error, :invalid_source}
-
-  # Compared case-insensitively because `safe_name/1` downcases the extension it
-  # re-attaches, so a genuine `VOICE.WAV` would otherwise be refused for a
-  # difference that is not a safety difference.
-  defp fixpoint?(source) do
-    String.downcase(AudioName.safe_name(source)) == String.downcase(source)
-  end
+  # `Cutup.SourceName` owns the rules, and owns them for `Cutup.Features` too.
+  # This was a verbatim copy of that module's check until 08-13; the copies never
+  # disagreed, but nothing could have told us if they had — each store's
+  # traversal test exercised only its own copy, so a tightening applied to one
+  # would have left the other's gate weaker with the whole suite green.
+  defp safe_source(source), do: SourceName.safe(source)
 
   defp path_for(name), do: Path.join(dir(), name <> @ext)
 

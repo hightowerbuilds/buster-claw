@@ -2,7 +2,10 @@ defmodule BusterClaw.Notifications.Cutup.Types do
   @moduledoc """
   The shared data contract for the cut-up pipeline — finding words inside audio
   and splicing them back together into ramshackle sentences.
-  **This module is types and documentation only; it holds no logic.**
+  **This module is types, documentation, and the two constants that define the
+  analysis clock. It holds no logic** — `frame_ms/0` and `hop_ms/0` return
+  literals, and they live here because a contract every stage must agree on is
+  exactly what a contract module is for.
 
   The name is the art-historical one: a cut-up is text or tape sliced apart and
   reassembled out of order. That is literally what this does.
@@ -49,6 +52,24 @@ defmodule BusterClaw.Notifications.Cutup.Types do
   IS the clock, and `frame_index * hop_ms` is the only thing converting features
   back to a splice point. Changing either number invalidates every stored index.
 
+  `frame_ms/0` and `hop_ms/0` are that pin, and they are the **only** place the
+  two numbers are written down. `Signal`, `Vad` and `Dtw` each read them into
+  their own module attribute **at compile time**, so the constant is inlined
+  exactly as a literal was — no call in a per-frame loop — and a change here
+  recompiles all three rather than leaving one behind.
+
+  Until 08-13 the pin was a convention: this module was prose only, and the
+  numbers lived as independent literals in those three modules. Three literals
+  that agree by inspection are three literals that can stop agreeing, and the
+  failure is silent — nothing raises, every index simply becomes mis-timed
+  against the features it is compared to.
+
+  Reading them from *here* is not a layering violation, and the alternative
+  considered was worse: `Dtw`'s note that it must not depend on the framing
+  front end still holds, because `Types` is the contract all three already depend
+  on and it holds no code that frames anything. What is gone is only the second
+  and third copy of the number.
+
   ## Why the index is a contract and not an implementation detail
 
   A `t:index/0` does not care where its timings came from. A speech recognizer
@@ -66,6 +87,35 @@ defmodule BusterClaw.Notifications.Cutup.Types do
   portable between workspaces and a malicious index cannot name `/etc/passwd`.
   Resolution to a real path goes through the Studio's existing allowlist.
   """
+
+  # ── The analysis clock ──────────────────────────────────────────────────────
+  #
+  # The single source. Every other appearance of 25.0 or 10.0 in the pipeline is
+  # derived from these at compile time; see the moduledoc for why a convention
+  # was not enough.
+  @frame_ms 25.0
+  @hop_ms 10.0
+
+  @doc """
+  The analysis frame length in milliseconds — 25.0, the pin the whole pipeline
+  shares.
+
+  A frame is the window energy and spectrum are measured over, so a span's end is
+  `last_frame * hop_ms + frame_ms`: the frame's full extent, not its start.
+  """
+  @spec frame_ms() :: float()
+  def frame_ms, do: @frame_ms
+
+  @doc """
+  The hop between consecutive frames in milliseconds — 10.0, the pin the whole
+  pipeline shares.
+
+  This is the resolution of every timing the pipeline can produce: frame `i`
+  starts at exactly `i * hop_ms`, and no boundary is knowable to better than one
+  hop.
+  """
+  @spec hop_ms() :: float()
+  def hop_ms, do: @hop_ms
 
   @typedoc """
   One recognized word, located in its source.

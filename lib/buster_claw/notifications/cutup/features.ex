@@ -59,14 +59,15 @@ defmodule BusterClaw.Notifications.Cutup.Features do
 
   ## A source is a basename, and that is a security boundary
 
-  Every entry point runs its `source` through the same gate `Cutup.Index` uses:
-  no `/`, no `\\`, no `..`, no null byte, nothing `Path.basename/1` would shorten,
-  and the name must survive `BusterClaw.AudioName.safe_name/1` unchanged
-  (compared case-insensitively, so a real `VOICE.WAV` is not refused for that
-  sanitizer's extension-case rewrite). A cache entry therefore cannot name a file
-  outside the studio's sources directory. Resolution to a real path then goes
-  through `SoundStudio.path_for/1`, whose allowlist is membership in
-  `SoundStudio.list/0` — so raw input is never joined into a path.
+  Every entry point runs its `source` through `Cutup.SourceName.safe/1` — the
+  same *function* `Cutup.Index` calls, not the same rules re-stated: no `/`, no
+  `\\`, no `..`, no null byte, nothing `Path.basename/1` would shorten, and the
+  name must survive `BusterClaw.AudioName.safe_name/1` unchanged (compared
+  case-insensitively, so a real `VOICE.WAV` is not refused for that sanitizer's
+  extension-case rewrite). A cache entry therefore cannot name a file outside the
+  studio's sources directory. Resolution to a real path then goes through
+  `SoundStudio.path_for/1`, whose allowlist is membership in `SoundStudio.list/0`
+  — so raw input is never joined into a path.
 
   ## CMN runs over the WHOLE recording, and that is the point of caching here
 
@@ -199,10 +200,10 @@ defmodule BusterClaw.Notifications.Cutup.Features do
 
   require Logger
 
-  alias BusterClaw.AudioName
   alias BusterClaw.Library.Artifact
   alias BusterClaw.Notifications.Cutup.Mfcc
   alias BusterClaw.Notifications.Cutup.Signal
+  alias BusterClaw.Notifications.Cutup.SourceName
   alias BusterClaw.Notifications.Cutup.Types
   alias BusterClaw.Notifications.SoundStudio
 
@@ -450,19 +451,7 @@ defmodule BusterClaw.Notifications.Cutup.Features do
 
   @doc "Source basenames that have a cache file, sorted. Never raises; `[]` if the directory is absent."
   @spec list() :: [source()]
-  def list do
-    case File.ls(dir()) do
-      {:ok, entries} ->
-        entries
-        |> Enum.filter(&String.ends_with?(&1, @ext))
-        |> Enum.map(&String.replace_suffix(&1, @ext, ""))
-        |> Enum.filter(&match?({:ok, _name}, safe_source(&1)))
-        |> Enum.sort_by(&String.downcase/1)
-
-      {:error, _reason} ->
-        []
-    end
-  end
+  def list, do: SourceName.list_in(dir(), @ext)
 
   # ---------------------------------------------------------------------------
   # Miss: decode, compute, store
@@ -717,24 +706,11 @@ defmodule BusterClaw.Notifications.Cutup.Features do
   # The source gate. Every public entry point goes through this.
   # ---------------------------------------------------------------------------
 
-  defp safe_source(source) when is_binary(source) do
-    cond do
-      source in ["", ".", ".."] -> {:error, :invalid_source}
-      String.contains?(source, ["/", "\\", "..", <<0>>]) -> {:error, :invalid_source}
-      Path.basename(source) != source -> {:error, :invalid_source}
-      not fixpoint?(source) -> {:error, :unsafe_source}
-      true -> {:ok, source}
-    end
-  end
-
-  defp safe_source(_source), do: {:error, :invalid_source}
-
-  # Case-insensitive because `safe_name/1` downcases the extension it re-attaches,
-  # so a genuine `VOICE.WAV` would otherwise be refused for a difference that is
-  # not a safety difference.
-  defp fixpoint?(source) do
-    String.downcase(AudioName.safe_name(source)) == String.downcase(source)
-  end
+  # The same function `Cutup.Index` calls, not the same rules re-typed. Until
+  # 08-13 this was a verbatim copy of Index's check; the two never disagreed, and
+  # nothing in the suite would have noticed if they had — each store's traversal
+  # test exercised only its own copy.
+  defp safe_source(source), do: SourceName.safe(source)
 
   defp path_for(name), do: Path.join(dir(), name <> @ext)
 end
