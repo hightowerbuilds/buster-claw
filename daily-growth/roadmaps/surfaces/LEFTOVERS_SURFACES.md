@@ -415,6 +415,52 @@ still fit — with corrections that change how they should be executed.*
 
 ---
 
+### From walking the app 08-14 — two things only clicking could find
+
+*The first app walk in a while. It found and fixed a real bug (the image tile
+losing its in-use badge under a shader overlay, `089494e`) and turned up these
+two, which are filed rather than fixed because neither is urgent and both want a
+decision rather than a patch.*
+
+**The integrations Delete button has no confirmation.** `integrations_live.ex`
+around line 260: a plain `phx-click="delete"` with **no `data-claw-confirm`**,
+in a codebase that has that infrastructure and a test — `claw_confirm_test.exs`
+— policing exactly this pattern everywhere else. One click, no prompt, and the
+schema cascades: `integration_runs` is `on_delete: :delete_all`, so the row's
+entire history goes with it.
+
+It cost nothing on 08-14 because the row deleted was a stranded Umami
+integration with two error runs and no successful fetch, ever. A GitHub
+integration with months of snapshot history would go the same way, and the
+Library documents it produced would survive as orphans (`document_id` is
+`nilify_all`) — so the evidence would outlive the record of where it came from.
+
+**Why it is filed rather than fixed:** `claw_confirm` is click-interception
+shaped, and the honest question is not "add a prompt" but "which destructive
+controls in this app lack one." Doing it for this one button invites the same
+drift the guard exists to prevent. The cheap version of this item is to widen
+`claw_confirm_test.exs` from "no `confirm()` anywhere" to also assert that every
+`phx-click="delete"` in `lib/buster_claw_web` carries a confirm attribute — that
+turns a one-button fix into an inventory, which is this repo's own preferred
+shape.
+
+**A click that lands before LiveView attaches is silently discarded.** Observed
+twice on 08-14: a click on Delete, and one on a home sub-tab, each within a
+second of page load. The event never reaches the server — nothing in the console,
+no query, no error — and the control simply does not respond. The user's move is
+to click again, so this is invisible in practice and would never appear in a bug
+report.
+
+Filed as an observation rather than a defect because it is plain Phoenix
+behaviour and the fix is not obvious: `phx-click` before the socket connects has
+nowhere to go. Worth knowing if a first-run user ever reports "I clicked and
+nothing happened," and worth remembering that **automated walks hit this far more
+often than people do**, since a script clicks the instant the DOM is ready. If it
+is ever worth addressing, the lever is a connected-state affordance on
+destructive controls, not a retry queue.
+
+---
+
 ## The rule for this file
 
 An item earns a line only if it is **concrete** (someone could do it today
