@@ -895,6 +895,13 @@ as an explicitly-caveated agent convenience (V.9).**
 
 ## V.4 Two cheap decisive things, before anything else
 
+> **Half done: V.4b shipped, V.4a has not been attempted.** Which is the wrong
+> half — this section's whole argument is that the *spike* goes first, because
+> it is the one that can invalidate the design. V.4b was buildable by an agent
+> alone and V.4a needs a signed build and a permission dialog, so the easy half
+> got done and the decisive half did not. Stated here rather than implied by two
+> status markers.
+
 **V.4a — The `getUserMedia` spike (~1 day, the highest-risk unknown here).** Build
 a signed app that does nothing but open an input stream and print its sample rate.
 Test in **both** hosts: Chrome at `localhost:4000` (a secure context) and the
@@ -902,10 +909,14 @@ Test in **both** hosts: Chrome at `localhost:4000` (a secure context) and the
 so it overlaps V.5 deliberately. **If it fails, front-end capture is dead and the
 recorder becomes a substantially larger Rust build — better to know on day one.**
 
-**V.4b — The "what words am I missing?" report.** Named by two of the three source
-documents as the true first task, and built by neither. A read-only report over the
-existing index: which words the corpus has, with how many takes, and — against a
-target vocabulary — **which it lacks entirely.**
+**V.4b — The "what words am I missing?" report. ✅ SHIPPED** — `Cutup.Gaps`, the
+`sound_gaps` verb, 23 tests. *This section read "and built by neither" until
+08-14, while the verb table further down this same document already listed
+`sound_gaps` as "V.4b's report". The document disagreed with itself; the code
+was right.*
+
+A read-only report over the existing index: which words the corpus has, with how
+many takes, and — against a target vocabulary — **which it lacks entirely.**
 
 It is the difference between a designed passage and a guessed one: write the donor
 passage *against this*, so an hour of reading targets real gaps rather than ground
@@ -914,6 +925,39 @@ dictionary's Pane 1 (VI.1), so it is not throwaway work.
 
 **A word with one take is a quotation, not a cut-up.** That distinction is the most
 useful thing this report — and later the dictionary — can surface.
+
+### What it says today (run 08-14, the live ten-voicemail corpus)
+
+Every number this Part quotes comes from here, which is worth knowing before
+re-measuring anything by hand:
+
+| | |
+|---|---:|
+| indexed sources / unreadable | 10 / 0 |
+| distinct words | **237** |
+| total takes | 655 |
+| cuttable (≥2 takes) | **93** |
+| single-take (quotable only) | **144** |
+| origins | `aligned` 655 · everything else **0** |
+
+Three things fall out of that table and they shape the donor passage:
+
+1. **144 of 237 is where "the corpus is mostly quotations" comes from.** It is
+   measured, not estimated, and `sound_gaps` re-measures it on every call.
+2. **Every take is `aligned`** — a proportional guess capped at 0.9 confidence.
+   There is not one `manual` or `recognizer` take in the corpus, so the whole
+   vocabulary is estimates. VI.2 (correct boundaries) is what changes that, and
+   until it does, quality complaints are a boundary problem before they are a
+   recording problem.
+3. **The frequency curve is brutally top-heavy.** `to` 35, `the` 29, `you` 28,
+   `i` 27, `and` 26 — then a long tail where *93 cuttable words* means most of
+   them sit at exactly 2. Reading more of the same material buys almost nothing;
+   this is the argument for a *designed* passage stated as a number.
+
+**Write the passage against `sound_gaps target: "<words>"`.** It returns the
+target words with zero takes, normalized the same way the index is, so a word it
+does not list is one you already have — and if it also appears in `single_take`,
+you have it once, which is a quotation and not a cut.
 
 ## V.5 Permissions and packaging groundwork
 
