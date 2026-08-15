@@ -15,8 +15,17 @@ defmodule BusterClaw.Commands.AppearanceTest do
   # rather than around it, and a name-blind reach list holds that even for a
   # writer nobody has named yet. `set_background/2` is the only writer here; the
   # rest are readers.
+  # `builtin_shaders/0` joined this list 08-15, and it is the one entry that is
+  # not merely a reader for the reply shape. It backs the D1 refusal: a shader
+  # the agent wrote into `shaders/` is selectable on the Appearance PAGE and must
+  # not be selectable from a COMMAND, because authoring one needs no command at
+  # all — the workspace is writable. Reading the built-in list is how this module
+  # tells "a design that shipped with the app" from "a file something wrote".
+  #
+  # Still all readers plus `set_background/2`. Nothing here writes.
   @reach [
     {BusterClaw.Appearance, :background, 1},
+    {BusterClaw.Appearance, :builtin_shaders, 0},
     {BusterClaw.Appearance, :image_shader_options, 0},
     {BusterClaw.Appearance, :images, 0},
     {BusterClaw.Appearance, :max_images, 0},
@@ -61,6 +70,24 @@ defmodule BusterClaw.Commands.AppearanceTest do
     )
   end
 
+  # A workspace shader that reads the image, so `Appearance` accepts it as an
+  # overlay — which is what makes it a fair test of the command-layer refusal.
+  defp write_image_shader(root, name) do
+    dir = Path.join(root, "shaders")
+    File.mkdir_p!(dir)
+
+    File.write!(
+      Path.join(dir, name <> ".wgsl"),
+      """
+      @fragment
+      fn fs_main(in: VOut) -> @location(0) vec4<f32> {
+        let src = img(in.uv);
+        return vec4<f32>(mix(src.rgb, u.colA.xyz, 0.4 * has_img()), 1.0);
+      }
+      """
+    )
+  end
+
   defp surface(result, name), do: Enum.find(result.surfaces, &(&1.surface == name))
 
   # --- background_list ----------------------------------------------------
@@ -96,8 +123,12 @@ defmodule BusterClaw.Commands.AppearanceTest do
   test "background_list reports the RESOLVED mode, not the stored one", %{root: root} do
     write_custom_shader(root, "aurora")
 
-    assert {:ok, _set} =
-             Commands.call("background_set", %{"surface" => "terminal", "mode" => "aurora"})
+    # Set through `Appearance` rather than the command, because the subject here
+    # is the READ. A workspace shader is the right vehicle — it is the mode that
+    # can go stale under you — but as of 08-15 a command may not apply one, so
+    # routing this through `background_set` would be testing the refusal by
+    # accident. This is the page's path: a human clicked.
+    assert {:ok, "aurora"} = Appearance.set_background(:terminal, "aurora")
 
     assert {:ok, before} = Commands.call("background_list", %{})
     assert %{mode: "aurora", kind: "shader"} = surface(before, "terminal")
@@ -233,6 +264,55 @@ defmodule BusterClaw.Commands.AppearanceTest do
 
     assert message =~ "shaderface"
     assert Appearance.background_mode(:terminal) == "off"
+  end
+
+  # The D1 property, as an attack rather than an assertion.
+  #
+  # Authoring a shader needs NO COMMAND: the workspace is writable, so anything
+  # with file access can drop a `.wgsl` in and then ask for it by name. If
+  # `background_set` accepted it, an unattended run could put GPU code it wrote
+  # onto the operator's screen — the exact thing `Explained.Shaders` teaches is
+  # impossible. Regression found the hour these verbs landed, because that
+  # tutorial's claim went false (DMG-review-8-15).
+  test "a shader the agent wrote itself cannot be applied by command", %{root: root} do
+    write_custom_shader(root, "agentwrote")
+
+    # It IS in the catalog — the page can apply it, and should be able to.
+    assert "agentwrote" in Enum.map(Appearance.options(), & &1.key)
+
+    assert {:error, message} =
+             Commands.call("background_set", %{"surface" => "home", "mode" => "agentwrote"})
+
+    assert message =~ "workspace"
+    assert message =~ "Settings → Appearance"
+    # And the refusal is useful, not just a wall.
+    assert message =~ "smoke"
+
+    # The surface did not move.
+    assert Appearance.background_mode(:home) == "smoke"
+  end
+
+  test "an authored shader cannot ride in as an image overlay either", %{root: root} do
+    # Must be one that genuinely SAMPLES the image, or Appearance refuses it as
+    # non-reactive first and this proves nothing about the D1 property.
+    write_image_shader(root, "veiled")
+    {:ok, slot} = Appearance.put_image(fake_image(), "a.png")
+
+    assert {:error, message} =
+             Commands.call("background_set", %{
+               "surface" => "terminal",
+               "mode" => "image:#{slot}+veiled"
+             })
+
+    assert message =~ "workspace"
+    assert Appearance.background_mode(:terminal) == "off"
+  end
+
+  test "built-in designs and the operator's own images stay selectable" do
+    for design <- Appearance.builtin_shaders() do
+      assert {:ok, _} =
+               Commands.call("background_set", %{"surface" => "home", "mode" => design})
+    end
   end
 
   test "an unknown surface names the surfaces that have a background" do

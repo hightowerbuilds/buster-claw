@@ -20,7 +20,7 @@ defmodule BusterClawWeb.ExplainedPanel do
   | `Explained.Intro` | the launcher grid and Get Started |
   | `Explained.Sites` | busterclaw.lol, Notes That Float |
   | `Explained.Stub` | any feature tab whose tutorial is unwritten (none today) |
-  | `Explained.Models`, `.Shaders`, `.Phone`, `.Browser`, `.Cmd`, `.Gws`, `.Studio`, `.Ramshackle` | the eight tutorials |
+  | `Explained.Models`, `.Shaders`, `.Pockets`, `.Phone`, `.Browser`, `.Cmd`, `.Gws`, `.Studio`, `.Ramshackle` | the nine tutorials |
   | `Explained.Shared` | the leaf components tutorials are built from |
 
   The rail, the Intro grid, the parent's event whitelist (via `tab_keys/0`) and
@@ -35,6 +35,7 @@ defmodule BusterClawWeb.ExplainedPanel do
   import BusterClawWeb.Explained.Intro
   import BusterClawWeb.Explained.Models
   import BusterClawWeb.Explained.Phone
+  import BusterClawWeb.Explained.Pockets
   import BusterClawWeb.Explained.Ramshackle
   import BusterClawWeb.Explained.Shaders
   import BusterClawWeb.Explained.Sites
@@ -60,7 +61,7 @@ defmodule BusterClawWeb.ExplainedPanel do
             element it sizes to the visible box and then scrolls away with the
             content, baring the bottom of a scrolled rail. This one cannot. --%>
       <div class="ic-scanlines flex w-40 shrink-0 flex-col border-r-2 border-base-content/20 lg:w-48">
-        <%!-- The rail scrolls on its own: eleven tabs outgrow a short panel, and
+        <%!-- The rail scrolls on its own: twelve tabs outgrow a short panel, and
               a rail that scrolled with the tutorial hides the tab you want. --%>
         <div
           role="tablist"
@@ -99,6 +100,7 @@ defmodule BusterClawWeb.ExplainedPanel do
         <.ntf_panel :if={@tab == "ntf"} />
         <.models_panel :if={@tab == "models"} />
         <.shaders_panel :if={@tab == "shaders"} />
+        <.pockets_panel :if={@tab == "pockets"} />
         <.phone_panel :if={@tab == "phone"} />
         <.gws_panel :if={@tab == "gws"} />
         <.cmd_panel :if={@tab == "cmd"} />

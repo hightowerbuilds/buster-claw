@@ -1659,22 +1659,41 @@ defmodule BusterClawWeb.StatusLiveTest do
 
       assert html =~ "up to #{Appearance.max_images()} slots"
 
-      # The claim the whole tab rests on: nothing on the command surface selects a
-      # background, so an agent can propose a shader and never apply one. This is
-      # the assertion that turns that from prose into a contract — add an
-      # appearance/shader command later and this fails, as it should.
+      # The claim the whole tab rests on, and it CHANGED on 08-15 rather than
+      # dying. It used to be "nothing on the command surface selects a
+      # background"; `background_list` / `background_set` landed and this test
+      # failed, which is exactly what it was written to do.
+      #
+      # The new claim is narrower and stronger: an agent may select, but may
+      # never apply a shader IT WROTE. So this asserts the surface has not grown
+      # a third appearance-ish verb behind our backs — a shader-writing or
+      # image-uploading one would break the property the tab teaches, and would
+      # land here first.
       selectors =
-        Enum.filter(Commands.list_commands(), fn command ->
+        Commands.list_commands()
+        |> Enum.filter(fn command ->
           String.starts_with?(command.name, "shader") or
             String.starts_with?(command.name, "appearance") or
             String.starts_with?(command.name, "background")
         end)
+        |> Enum.map(& &1.name)
+        |> Enum.sort()
 
-      assert selectors == [],
-             "the Shaders tutorial says no command can select a background, but found: " <>
-               Enum.map_join(selectors, ", ", & &1.name)
+      assert selectors == ["background_list", "background_set"],
+             """
+             The appearance command surface changed. The Shaders tutorial teaches
+             that an agent may point a surface at something that already exists
+             but may never apply a shader it authored, and `Commands.Appearance`
+             enforces that by refusing any shader outside
+             `Appearance.builtin_shaders/0`.
 
-      assert html =~ "no commands on this"
+             A new verb here needs that property re-argued, and this page
+             rewritten. Found: #{Enum.join(selectors, ", ")}
+             """
+
+      # The tab says what the agent CAN do, and what it still cannot.
+      assert html =~ "background_set"
+      assert html =~ "cannot apply a shader it wrote"
 
       # The file contract, each part of it load-bearing.
       assert html =~ "fs_main"

@@ -27,13 +27,16 @@ defmodule BusterClawWeb.Explained.Registry do
   # Synced 08-09 for the Studio's five capture verbs (STUDIO_ROADMAP Part V):
   # sound_gaps / sound_devices / sound_input_level are :safe reads,
   # sound_input_level_set is :restricted, and sound_record is :restricted + gated.
+  # Recomputed 08-15 for `background_list` / `background_set` (+1 read safe,
+  # +1 mutate restricted). A drift test compares these against the live catalog,
+  # which is what caught them the hour those verbs landed.
   @command_stats %{
-    total: 203,
-    read: 84,
+    total: 205,
+    read: 85,
     trigger: 17,
-    mutate: 102,
-    safe: 87,
-    restricted: 116,
+    mutate: 103,
+    safe: 88,
+    restricted: 117,
     gated: 22
   }
 
@@ -109,6 +112,26 @@ defmodule BusterClawWeb.Explained.Registry do
       path: "/appearance",
       path_label: "Open Appearance"
     },
+    # Sits next to Shaders because that is where a reader first meets the word:
+    # the background pool is `pockets/backgrounds/`. Its `path` is the home
+    # screen rather than the tab it describes, because the Pockets tab is a home
+    # SUB-tab with no URL of its own — the built tutorial's own button fires
+    # `select_home_tab` instead, which is exact where a deep link would be a
+    # near-miss. This `body` is the honest fallback if the panel ever goes away.
+    %{
+      key: "pockets",
+      label: "Pockets",
+      eyebrow: "Your own material",
+      blurb: "Named folders of your own media — backgrounds, dock icons and faces live in them.",
+      body:
+        "A Pocket is one directory under pockets/ with a POCKET.md manifest " <>
+          "saying what it holds. The background pool, the dock icons and the " <>
+          "contact shaderfaces are each one. The manifest describes; it never " <>
+          "grants — so a role names a Pocket and never selects it, and a Pocket " <>
+          "can be pointed at a folder elsewhere on the machine only by you.",
+      path: "/",
+      path_label: "Open the home screen"
+    },
     %{
       key: "cmd",
       label: "Command List",
@@ -167,7 +190,7 @@ defmodule BusterClawWeb.Explained.Registry do
   # returns [] and the `:for` that renders them is vacuous. Left in place rather
   # than deleted — the stub is what makes adding a tab a one-line edit here, and
   # a `@features` entry with no panel must still render something true.
-  @built ~w(models shaders phone browser cmd gws studio ramshackle)
+  @built ~w(models shaders pockets phone browser cmd gws studio ramshackle)
 
   # The two outbound tabs. They are not features — neither teaches this app, and
   # both send you to a website — which is why they sit last rather than second

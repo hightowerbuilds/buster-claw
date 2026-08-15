@@ -3,12 +3,23 @@ defmodule BusterClawWeb.Explained.Shaders do
   The Shaders & Backgrounds tutorial — the one surface in Explained where the
   agent cannot press the button.
 
-  Appearance has **no commands**. There is no `appearance_*` or `shader_*` entry
-  in the catalog, and that absence is the security property this tutorial
-  teaches: an author (you, or an agent with file access to the workspace) can
-  *propose* a pattern by writing `shaders/<name>.wgsl`, but only a human click in
-  Settings → Appearance ever puts it on screen. Writing the file changes nothing
-  you can see.
+  The security property this tutorial teaches survived a change on 08-15 and is
+  now **sharper than "no commands"**. `background_list` and `background_set`
+  exist, so an agent can point a surface at a built-in design or at an image you
+  uploaded. What it still cannot do is apply a shader **it wrote**:
+  `Commands.Appearance` refuses any shader that is not in
+  `Appearance.builtin_shaders/0`, so a `shaders/<name>.wgsl` written by anything
+  with workspace access stays a *proposal* until a human clicks it in
+  Settings → Appearance.
+
+  That refusal lives in the command module rather than in `Appearance`, and
+  deliberately: the page must keep applying workspace shaders, because a human is
+  choosing. The command surface is the narrower one.
+
+  **The reason it is narrower is that authoring needs no command at all.** The
+  workspace is writable, so "no verb writes a shader" was never the containment —
+  the containment is that no verb *applies* one. That was found the hour the
+  verbs landed, by this page's own claim going false.
 
   Two things here disagreed with the code before this was written, and both are
   now taken from the implementation rather than from the older prose:
@@ -59,14 +70,16 @@ defmodule BusterClawWeb.Explained.Shaders do
           — and they draw from a single shared catalog you can add to.
         </p>
         <p class="border-l-2 border-primary pl-3">
-          <span class="font-semibold text-base-content">There are no commands on this
-            tab, on purpose.</span>
-          Every other tutorial in this rail teaches you what to ask an agent for.
-          This one cannot: nothing in the command surface selects a background. An
-          agent with file access can *write* a shader into your workspace and
-          suggest it — but putting it on your screen is a click only you can make.
-          That is the entire safety model for arbitrary GPU code, and it is why the
-          gap is deliberate rather than unfinished.
+          <span class="font-semibold text-base-content">An agent can change your
+            background. It cannot apply a shader it wrote.</span>
+          Ask for <code>background_set</code>
+          and it will point the homepage or the terminal at a built-in design, or
+          at an image you uploaded. Ask it to apply the <code>.wgsl</code>
+          it just wrote for you and it is refused, by name, every time. Anything
+          with write access to your workspace can author a shader file — so the
+          line is not who can write one, it is that <span class="italic">applying</span>
+          one is a click only you can make. That is the entire safety model for
+          arbitrary GPU code.
         </p>
       </div>
 
@@ -243,7 +256,7 @@ defmodule BusterClawWeb.Explained.Shaders do
         want="Describe a look; get a file. Then decide whether it goes on your screen."
         needs="An agent CLI signed in, and the shader-designer skill in your workspace (it ships seeded)."
         touches="Writes one file, `shaders/<name>.wgsl`, in your workspace. It touches no setting and no surface."
-        confirm="The hard stop is structural: there is no command that selects a background, so the agent cannot apply what it wrote. Selection is your click, always."
+        confirm="The hard stop is structural: `background_set` refuses any shader that did not ship with the app, so the agent cannot apply what it just wrote — it is refused by name. Applying a workspace shader is your click, always."
         result="A new row in the Appearance catalog under Shaders, once the page reads the folder again. Invalid WGSL never appears there; a file that compiles but throws leaves the surface unpainted rather than crashing the page."
       >
         <.prompt text="Read the shader-designer skill, then write me a background shader called deep-tide — slow diagonal swells, mostly dark, with the accent color only in the crests. Put it in my shaders folder and tell me what to click." />

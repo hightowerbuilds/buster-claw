@@ -126,7 +126,7 @@ check() { # path cap tier
 # named list, and `@tabs`/`@tiles` compose the three. That is why the file grew
 # while the tab count did not: the ordering is now stated once, in one place,
 # instead of being implied twice by the shape of two literals.
-check lib/buster_claw_web/components/explained_panel.ex        113 HELD
+check lib/buster_claw_web/components/explained_panel.ex        118 HELD
 # 565 -> 570 on 08-14: the tab's opening claim changed, not its content. It said
 # "there is no screen for this yet"; Studio -> Voice now shows the corpus, so it
 # says which half has a screen and which does not. Two lines, and they were owed
@@ -136,13 +136,19 @@ check lib/buster_claw_web/components/explained/ramshackle.ex   575 HELD
 check lib/buster_claw_web/components/explained/studio.ex       307 HELD
 check lib/buster_claw_web/components/explained/phone.ex        460 HELD
 check lib/buster_claw_web/components/explained/cmd.ex          430 HELD
-check lib/buster_claw_web/components/explained/shaders.ex      325 HELD
+check lib/buster_claw_web/components/explained/shaders.ex      340 HELD
 check lib/buster_claw_web/components/explained/browser.ex      310 HELD
 check lib/buster_claw_web/components/explained/models.ex       305 HELD
 check lib/buster_claw_web/components/explained/gws.ex          278 HELD
 check lib/buster_claw_web/components/explained/cmd_table.ex    203 HELD
 check lib/buster_claw_web/components/explained/shared.ex       182 HELD
-check lib/buster_claw_web/components/explained/registry.ex     219 HELD
+check lib/buster_claw_web/components/explained/registry.ex     245 HELD
+# The ninth tutorial (08-15). Pockets earns a tile where five parked candidates
+# did not, and the argument is worth keeping: it is already load-bearing in three
+# other surfaces — backgrounds, brand art and contact faces all live in Pockets —
+# so a user meets the word three times with no page to send them to. Capped on
+# arrival.
+check lib/buster_claw_web/components/explained/pockets.ex      365 HELD
 check lib/buster_claw_web/components/explained/intro.ex        151 HELD
 
 # The Message Machine's three panels, and the registry that decides which of
@@ -373,7 +379,7 @@ check lib/buster_claw_web/live/settings_live.ex               708 HELD
 # zero-headroom cap would turn into a lie; a rail that grows is a rail that has
 # stopped being only a rail.
 check lib/buster_claw_web/live/settings/models_component.ex    470 HELD
-check lib/buster_claw_web/components/settings/registry.ex      110 HELD
+check lib/buster_claw_web/components/settings/registry.ex       95 HELD
 check lib/buster_claw_web/components/settings/rail.ex           65 HELD
 
 # Phase 5. Needs its state machine written down BEFORE it is split — eleven-plus
@@ -499,7 +505,18 @@ check lib/buster_claw/commands/catalog/terminal_theme.ex      101 HELD
 # uploads an image or authors a shaders/*.wgsl. If a raise here ever buys
 # authoring rather than selection, it is the wrong raise — and
 # appearance_test.exs's reach test fails on a Settings.put whatever it is named.
-check lib/buster_claw/commands/appearance.ex                  275 HELD
+# 275 -> 355 the same day, and the raise is a SECURITY fix rather than growth.
+# The original containment argument was "no command authors a shader" — true and
+# insufficient, because authoring is a file write and the workspace is writable.
+# An agent could write shaders/x.wgsl and then apply it by name, putting GPU code
+# it wrote on the operator's screen with no human click: exactly the D1 property
+# Explained.Shaders teaches. `refuse_authored_shader/1` and its refusal sentence
+# are that hole closed, plus the comment explaining why the command surface is
+# deliberately NARROWER than the Appearance page.
+#
+# If a later reader "simplifies" that check away, appearance_test.exs fails: it
+# writes a shader as an agent would and asserts the command refuses it.
+check lib/buster_claw/commands/appearance.ex                  365 HELD
 check lib/buster_claw/commands/catalog/appearance.ex           87 HELD
 check lib/buster_claw/terminal_paint.ex                        81 HELD
 

@@ -32,7 +32,14 @@ defmodule BusterClaw.Commands.Appearance do
   So this module reads `Appearance` and calls `Appearance.set_background/2`, and
   nothing else. `test/buster_claw/commands/appearance_test.exs` holds that with a
   name-blind reach list read from the compiler's own record of what this module
-  calls: a `Settings.put` appearing here fails it, whatever it is named.
+  calls: a direct write to the settings store appearing here fails it, whatever
+  it is named.
+
+  > Written that way on purpose. The Pockets mount suite carries a D4 guard that
+  > greps every file under `commands/` for a settings write or a reach into the
+  > mount registry, and it greps SOURCE — it cannot tell a call from a sentence
+  > describing one. Naming either function here, even to forbid it, fails that
+  > guard; naming its test file does too. Do not "clarify" this back.
 
   ## No announce step, unlike the palette verbs
 
@@ -113,10 +120,84 @@ defmodule BusterClaw.Commands.Appearance do
   def background_set(_args), do: {:error, missing_args()}
 
   defp set(surface, mode) do
-    case Appearance.set_background(surface, mode) do
-      {:ok, key} -> {:ok, key}
+    with :ok <- refuse_authored_shader(mode),
+         {:ok, key} <- Appearance.set_background(surface, mode) do
+      {:ok, key}
+    else
+      {:error, reason} when is_binary(reason) -> {:error, reason}
       {:error, reason} -> {:error, refusal(reason, mode)}
     end
+  end
+
+  # The command surface is deliberately NARROWER than the Appearance page, and
+  # this is the only place the two differ.
+  #
+  # `Appearance.set_background/2` accepts any option the catalog offers,
+  # including a workspace `shaders/*.wgsl`. That is right for the page, because a
+  # human is clicking. It is wrong for a command, because **authoring a shader
+  # needs no command at all** — the workspace is writable, so an agent can write
+  # `shaders/x.wgsl` and then ask for it by name. Allowing that would let an
+  # unattended run put arbitrary agent-authored GPU code on the operator's
+  # screen, which is precisely the property `Explained.Shaders` teaches: only a
+  # human click ever applies a pattern.
+  #
+  # The containment argument for leaving `background_set` ungated was "no command
+  # authors a shader". True, and not sufficient, because authoring is a file
+  # write. So the shader half of any mode must be a BUILT-IN here. Images are
+  # unaffected: the operator put those in the pool themselves, and no command
+  # can add one.
+  #
+  # Found the hour after these verbs landed, by the Shaders tutorial's own claim
+  # going false (DMG-review-8-15).
+  # Narrow on purpose, and the narrowness is the interesting part: this fires
+  # ONLY for a shader that Appearance would otherwise have accepted. A
+  # shaderface, a deleted file or a typo is not an authored-shader problem — it
+  # is an invalid mode, and `Appearance` already has a better sentence for each.
+  # Answering those here would replace a precise refusal with a vaguer one, which
+  # a test caught within a minute of this check being written.
+  defp refuse_authored_shader(mode) do
+    case shader_component(mode) do
+      nil -> :ok
+      name -> check_shader(name, selectable_shader?(mode, name))
+    end
+  end
+
+  defp check_shader(_name, false), do: :ok
+
+  defp check_shader(name, true) do
+    if name in Appearance.builtin_shaders(),
+      do: :ok,
+      else: {:error, authored_shader_refusal(name)}
+  end
+
+  # Would `Appearance` take this shader? A bare name has to be a catalog key; an
+  # overlay has to be one of the designs that actually react to an image.
+  defp selectable_shader?("image:" <> _rest, name),
+    do: name in Appearance.image_shader_options()
+
+  defp selectable_shader?(_mode, name),
+    do: name in Enum.map(Appearance.options(), & &1.key)
+
+  # The shader named by a mode, if any: a bare shader name, or the right-hand
+  # side of `image:<slot>+<shader>`. `off` and a plain `image:<slot>` name none.
+  defp shader_component("off"), do: nil
+
+  defp shader_component("image:" <> rest) do
+    case String.split(rest, "+", parts: 2) do
+      [_slot] -> nil
+      [_slot, shader] -> shader
+    end
+  end
+
+  defp shader_component(mode), do: mode
+
+  defp authored_shader_refusal(name) do
+    "#{name} is a shader from your workspace, and commands may not apply those — " <>
+      "only a click in Settings → Appearance can. Anything with write access to " <>
+      "the workspace can author a shader file, so applying one by name from here " <>
+      "would put GPU code on your screen that you never chose. Built-in designs " <>
+      "are selectable: #{Enum.join(Appearance.builtin_shaders(), ", ")}. " <>
+      "Images you uploaded are selectable too, with image:<slot>."
   end
 
   # A string is matched against the surfaces that exist rather than converted to
