@@ -215,6 +215,28 @@ The gmail fence — the review's one security-weight finding — landed same-day
 
 ---
 
+### Two tails from the 08-15 harness-detection fix
+
+*Both found by the agent that wrote `ShellPath` and deliberately left alone,
+because each belongs to a surface it did not own. Neither blocks anything.*
+
+**`models_component.ex` calls `AgentBackend.installed/0` synchronously in an
+assign.** That is now up to two shell spawns on a cold cache — ~25–300 ms on a
+healthy machine, and a pathological profile could make it seconds, once, then
+cached for 60. It renders a settings page, so a slow profile stalls a mount. The
+fix is the one `enumerate_models/1`'s own docs already require: do it in a
+`Task` and let the picker fill in. Cheap, and worth doing before anyone meets a
+slow profile rather than after.
+
+**Nothing calls `ShellPath.refresh/0`.** The cache holds a success forever and a
+failure for 60 seconds, so a bad first read is no longer a permanent trap — but
+an operator who installs `claude` while the app is open still waits out a timer
+with no way to say "look again". A **re-check button on the harness picker** is
+the honest affordance, and it sits naturally beside the "greyed out means not
+found" paragraph that already explains why the list might be wrong.
+
+---
+
 ## The rule for this file
 
 An item earns a line only if it is **concrete** (someone could do it today

@@ -1,4 +1,17 @@
-# DMG review — 08-15-26
+# DMG review — 08-15-26 · **CLOSED 08-15**
+
+> **Archived the same day it was opened.** All three findings are fixed and the
+> three requested builds shipped. One thing is deliberately NOT closed here and
+> was moved rather than ticked: findings 1 and 2 are proven **in dev only**, and
+> the packaged re-check now lives in
+> [`QA_BACKLOG`](QA_BACKLOG.md) — "Harness detection — the one check that can
+> only pass in a packaged build". Two tails from the same fix are in
+> [`LEFTOVERS_PLATFORM`](LEFTOVERS_PLATFORM.md).
+>
+> **The sharpest thing this review produced is not in its table.** Finding 3's
+> sweep, and the security regression that B1 introduced and B2 exposed, both
+> came from following a small report further than it asked. See the closing
+> section.
 
 Findings from opening the first signed DMG of the day
 (`Buster Claw_0.1.0_x64.dmg`, 27 MB, Developer ID + hardened runtime, **not
@@ -15,8 +28,8 @@ all along in a surface nobody clicked.
 
 | # | Finding | Severity | State |
 |---|---|---|---|
-| 1 | No agent CLI is detected, so no app-wide model can be set | **HIGH** — the app looks broken on first launch | open |
-| 2 | Configuration says claude / codex / opencode are "not installed" when all three are | **HIGH** — same root cause as 1 | open |
+| 1 | No agent CLI is detected, so no app-wide model can be set | **HIGH** — the app looks broken on first launch | **FIXED** in dev (`6661021`, `0d4a920`) — *needs a packaged re-check* |
+| 2 | Configuration says claude / codex / opencode are "not installed" when all three are | **HIGH** — same root cause as 1 | **FIXED** in dev, same commits |
 | 3 | Voice tab: pressing Enter leaves the tab and returns to Chat | **MEDIUM** — breaks the surface being tested | **FIXED**, and two more like it |
 
 ---
@@ -274,3 +287,40 @@ finding:
   walk and the internal-process walk.
 - **First launch on a machine that did not build the app** — still the largest
   untested surface in the product, and no finding here touches it.
+
+
+---
+
+## What actually closed it
+
+| # | Fix |
+|---|---|
+| 1 + 2 | `BusterClaw.ShellPath` (`6661021`) resolves the **login-shell** PATH so detection uses the environment execution already used, plus the disabled-picker paragraph in the new Models component (`0d4a920`) |
+| 3 | `phx-submit` on every form with a text input (`6994407`), guarded repo-wide |
+| B1 | `background_list` / `background_set` (`09343be`), narrowed by `d2f6ffa` |
+| B2 | The Pockets tutorial (`d2f6ffa`) |
+| B3 | Configuration rail; `settings_live.ex` 936 → 643 (`0d4a920`) |
+
+### Three things worth carrying past this file
+
+**A one-line report was a three-form bug.** Finding 3 was "Enter closes the Voice
+tab". Sweeping all 57 forms found 14 with `phx-change` and no `phx-submit`, of
+which 3 had a text input — including the Appearance custom-theme editor, where
+Enter would have taken a half-built palette with it. **LiveView tests cannot see
+a native submit at all**, because `render_change/2` never involves a browser, so
+the guard reads source.
+
+**`-lc` was not the fix, and the first measurement said it was.** A zsh *login*
+shell does not source `.zshrc`. Measuring from an already-interactive shell
+showed all three CLIs resolving; replaying launchd's environment with `env -i`
+showed codex missing and claude resolving to a *different* binary than a terminal
+runs. **A measurement taken in the wrong environment is a guess wearing a
+number.**
+
+**B1 broke D1, and a tutorial caught it.** `background_set` shipped arguing "no
+command authors a shader" — true, and insufficient, because **authoring needs no
+command**: the workspace is writable. An agent could write `shaders/x.wgsl` and
+apply it by name, putting GPU code it wrote on the operator's screen with no
+human click. It surfaced because building the Pockets tab turned the Shaders
+tutorial's central claim false. Documentation held as a contract found a security
+hole that four reviewers' worth of prose reasoning had missed.

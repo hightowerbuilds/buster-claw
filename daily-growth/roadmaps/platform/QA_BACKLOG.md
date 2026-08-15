@@ -88,6 +88,23 @@ multi-day, and empty months · GitHub manual poll, good-signature webhook,
 Security feed streams live, redacts secrets, paginates at 10k rows · every settings toggle
 persists across restart · every Manual link resolves.
 
+**Harness detection — the one check that can only pass in a packaged build.**
+Added 08-15 from `DMG-review-8-15` findings 1 and 2, and it is here rather than
+closed because **the fix is proven only in dev**. `ShellPath` resolves the
+login-shell PATH so Settings stops reporting installed CLIs as missing, and its
+30 tests replay launchd's environment with `env -i` — but a replay is not the
+thing. In the signed app, confirm Settings → Configuration → Models lists the
+harnesses you actually have, and that the "greyed out means not found" paragraph
+does **not** appear when they are all present.
+
+Two specifics a dev run cannot show. The flags are `["-lic", "-lc"]`, because a
+zsh *login* shell does not source `.zshrc` — which on the dev machine is the
+only file touching PATH, so `-lc` alone left codex undetected. A machine whose
+profile is arranged differently is exactly what this needs to meet. And a
+profile that prints on login welds its banner onto the value, so the PATH is
+read from between fence markers; a shell that defeats the fence would show up as
+a harness list that is wrong rather than empty.
+
 **Studio → Voice (Ramshackle)** — added 08-14, operator's call, and it is **two walks that
 must not be collapsed into one**. They fail in different places and a pass on either says
 nothing about the other.
