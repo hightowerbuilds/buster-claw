@@ -4,6 +4,8 @@ defmodule BusterClawWeb.PhoneLiveTest do
   import Phoenix.LiveViewTest
 
   alias BusterClaw.Contacts
+  alias BusterClaw.Pockets
+  alias BusterClaw.Pockets.Faces
   alias BusterClaw.Telephony
 
   defp record!(attrs) do
@@ -325,11 +327,11 @@ defmodule BusterClawWeb.PhoneLiveTest do
       {:ok, contact} =
         Contacts.create_contact(%{name: "Dana Printshop", phone: "+15035550142"})
 
-      BusterClaw.Pockets.Faces.ensure()
+      Faces.ensure()
 
       File.write!(
         Path.join(
-          BusterClaw.Pockets.pocket_dir(BusterClaw.Pockets.Faces.pocket_name()),
+          Pockets.pocket_dir(Faces.pocket_name()),
           "ember.wgsl"
         ),
         "@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }"
@@ -350,11 +352,11 @@ defmodule BusterClawWeb.PhoneLiveTest do
     end
 
     test "the Pocket's wgsl is served as text/plain with nosniff", %{conn: conn} do
-      BusterClaw.Pockets.Faces.ensure()
+      Faces.ensure()
 
       File.write!(
         Path.join(
-          BusterClaw.Pockets.pocket_dir(BusterClaw.Pockets.Faces.pocket_name()),
+          Pockets.pocket_dir(Faces.pocket_name()),
           "ember.wgsl"
         ),
         "@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }"

@@ -89,6 +89,14 @@ defmodule BusterClaw.SentinelCategoryTest do
     # clause for still works (there is a catch-all), but this asserts the
     # catch-all is doing the job rather than raising.
     for category <- Event.categories() do
+      # `to_atom`, and it must stay `to_atom`. Swapping in `to_existing_atom`
+      # for the credo warning makes this test RAISE rather than assert: at
+      # least one whitelisted category has no atom anywhere in the compiled
+      # tree, which is exactly the case the catch-all exists for and exactly
+      # what this test is here to cover. Measured 08-14 — the swap was tried
+      # and turned this green test red. Runtime atom creation is bounded here
+      # by `Event.categories()`, a compile-time whitelist.
+      # credo:disable-for-next-line Credo.Check.Warning.UnsafeToAtom
       severity = BusterClaw.Sentinel.classify(String.to_atom(category), %{})
 
       assert severity in [:info, :notice, :warning, :critical],
