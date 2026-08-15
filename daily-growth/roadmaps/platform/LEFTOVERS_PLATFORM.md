@@ -185,14 +185,29 @@ The gmail fence — the review's one security-weight finding — landed same-day
   (~220), MIME composer (~160), body parser (~180). `Gmail.Mime` and
   `Gmail.Parser` extract with zero call-site change, leaving a ~400-line API
   module on the money-adjacent on-duty path.
-- **`integrations.ex` is under-factored, not over-featured:** the
-  error/disabled run-recording block appears five times nearly verbatim
-  (`:114, :148, :206, :398, :460`) — one in-module `record_failure` helper
-  removes ~90 lines with zero call-site change. Also worth a look:
-  `poll_all/1` polls disabled integrations too, writing an error run per row.
-- **`integrations/github.ex:478`** hand-rolls a constant-time compare;
-  `Plug.Crypto.secure_compare/2` is already in the dependency tree and is the
-  audited version of the same loop.
+- ~~**`integrations.ex` is under-factored**~~ — **DONE 08-14 (`a23c702`)**,
+  539 → 482 behind one `record_failure/3`. Breaking the guard found the
+  webhook-failure path recorded `last_status` with nothing asserting it;
+  covered now. `poll_all/1` still polls disabled integrations, writing an
+  error run per row — **that half stays open**, as a design question rather
+  than a dedup.
+- ~~**`integrations/github.ex:478` hand-rolls a constant-time compare**~~ —
+  **DONE 08-14 (`a23c702`)**, now `Plug.Crypto.secure_compare/2`.
+
+  > **The whole three-copy thread is closed, and one third of it never
+  > existed.** A 05-25 summary named three hand-rolled copies —
+  > `webhooks.ex:101`, `github.ex`, `sentry.ex`. `webhooks.ex` was deleted
+  > **2026-06-14** (`0592583`, "retire … 5 unused subsystems"), three weeks
+  > after that summary was written; `sentry.ex` went with its adapter on
+  > 08-14 (`14afd0b`). Every `secure_compare` in `lib/` is now
+  > `Plug.Crypto`'s.
+  >
+  > Recorded because the stale line cost real time twice: it was read out of
+  > a **dated summary** and repeated as a statement about the present.
+  > Summaries under `MM-DD-YY-Summary/` are a record of what was true on
+  > their date and are deliberately never edited — which is exactly what
+  > makes citing one as current fact a mistake. Check the tree, then the map;
+  > never the log.
 - **`appearance.ex`'s migration annex** — ~140 lines serving only pre-08-08
   installs — extracts to `Appearance.Migration.ensure/0` behind a
   `defdelegate`, into a file whose eventual deletion is one `rm`. Lands the
