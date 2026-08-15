@@ -54,6 +54,46 @@ defmodule BusterClaw.Telephony.CallTest do
     end)
   end
 
+  # config/runtime.exs does not run under MIX_ENV=test, so nothing else in this
+  # suite can observe it — and for a day it was wrong in a way no behavioural test
+  # could see: `voice_enabled` was read by Twilio but never written by runtime.exs,
+  # so the switch read false no matter what the operator set, and every kill-switch
+  # test passed anyway because they set the key directly.
+  #
+  # This reads the source and pairs the two sides. It is deliberately derived from
+  # the reader rather than a hardcoded list, so the third switch is covered on the
+  # day it is added and not the day someone remembers this file.
+  describe "the kill switches are reachable from the environment" do
+    test "every switch Twilio reads is one runtime.exs writes" do
+      reader = File.read!("lib/buster_claw/telephony/twilio.ex")
+      runtime = File.read!("config/runtime.exs")
+
+      switches =
+        Regex.scan(~r/get_in\(config\(\), \[:(\w+)\]\)/, reader, capture: :all_but_first)
+        |> List.flatten()
+        |> Enum.uniq()
+
+      assert "sms_enabled" in switches
+      assert "voice_enabled" in switches
+
+      for switch <- switches do
+        assert runtime =~ "#{switch}:",
+               "Twilio reads :#{switch} from the :twilio config, but config/runtime.exs " <>
+                 "never sets it — so it is false in every build and cannot be turned on."
+      end
+    end
+
+    test "the switch map is not gated on a credential that may live in the Clinch" do
+      runtime = File.read!("config/runtime.exs")
+
+      refute runtime =~
+               ~r/if System\.get_env\("TWILIO_ACCOUNT_SID"\) do\n\s+config :buster_claw, :twilio/,
+             "Credentials are read through the Clinch with env as fallback, so gating " <>
+               "the switch map on TWILIO_ACCOUNT_SID makes both switches unflippable " <>
+               "for an operator who stored their credentials properly."
+    end
+  end
+
   describe "the request we build" do
     test "rings the OPERATOR first and carries the far end in inline TwiML" do
       accept("CA_local", fn params ->

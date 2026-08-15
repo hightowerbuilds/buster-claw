@@ -114,18 +114,27 @@ if config_env() != :test do
     telephony_relay_key: telephony_relay_key,
     telephony_drain_enabled: telephony_drain_enabled
 
-  # Twilio REST creds on the Mac. SMS is fail-closed even when credentials are
-  # present: it additionally requires a Messaging Service SID and the explicit
-  # BUSTER_CLAW_SMS_ENABLED=true kill switch.
-  if System.get_env("TWILIO_ACCOUNT_SID") do
-    config :buster_claw, :twilio, %{
-      account_sid: System.get_env("TWILIO_ACCOUNT_SID"),
-      auth_token: System.get_env("TWILIO_AUTH_TOKEN"),
-      messaging_service_sid: System.get_env("TWILIO_MESSAGING_SERVICE_SID"),
-      sms_enabled:
-        System.get_env("BUSTER_CLAW_SMS_ENABLED") in ["1", "true", "TRUE", "yes", "YES"]
-    }
-  end
+  enabled? = fn var -> System.get_env(var) in ["1", "true", "TRUE", "yes", "YES"] end
+
+  # Twilio REST creds on the Mac. Both outbound capabilities are fail-closed even
+  # when credentials are present: SMS additionally requires a Messaging Service
+  # SID and BUSTER_CLAW_SMS_ENABLED=true, and calling requires
+  # BUSTER_CLAW_VOICE_ENABLED=true. Two switches, because a text and a phone call
+  # are different capabilities with different costs — and outbound SMS waits on
+  # A2P registration while outbound voice does not.
+  #
+  # NOT gated on TWILIO_ACCOUNT_SID being set, which it was until 08-15. The
+  # credentials themselves are read through the Clinch with env as fallback, so an
+  # operator who stored them in the Clinch has no TWILIO_ACCOUNT_SID in env — and
+  # this whole map went unset, which meant the kill switches read false and could
+  # never be flipped on. A switch you cannot turn on is not a safeguard.
+  config :buster_claw, :twilio, %{
+    account_sid: System.get_env("TWILIO_ACCOUNT_SID"),
+    auth_token: System.get_env("TWILIO_AUTH_TOKEN"),
+    messaging_service_sid: System.get_env("TWILIO_MESSAGING_SERVICE_SID"),
+    sms_enabled: enabled?.("BUSTER_CLAW_SMS_ENABLED"),
+    voice_enabled: enabled?.("BUSTER_CLAW_VOICE_ENABLED")
+  }
 
   sms_daily_recipient_cap =
     case Integer.parse(System.get_env("BUSTER_CLAW_SMS_DAILY_RECIPIENT_CAP") || "20") do

@@ -42,10 +42,13 @@ defmodule BusterClaw.Clinch.AppKeys do
 
   ## What stays an environment variable on purpose
 
-  `BUSTER_CLAW_SMS_ENABLED` is a kill switch, not a credential. It stays outside
-  the Clinch precisely because it should be awkward to flip — a switch you can
-  turn on from a settings screen is not the same safeguard as one that needs a
-  deliberate act outside the running app.
+  `BUSTER_CLAW_SMS_ENABLED` and `BUSTER_CLAW_VOICE_ENABLED` are kill switches, not
+  credentials. They stay outside the Clinch precisely because they should be
+  awkward to flip — a switch you can turn on from a settings screen is not the
+  same safeguard as one that needs a deliberate act outside the running app.
+
+  Two switches rather than one because a text and a phone call are different
+  capabilities: outbound SMS waits on A2P registration, outbound voice does not.
   """
 
   alias BusterClaw.Clinch

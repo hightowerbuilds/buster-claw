@@ -244,6 +244,30 @@ will return `sms_disabled` until the operator deliberately flips its kill switch
    row, Sentinel records `outbound_send`, and a send above the daily recipient
    cap is refused. Trial accounts can only send to verified recipient numbers.
 
+### Outbound calling, which is a separate switch and needs none of the above
+
+`phone_call` shipped 08-15 and is gated by its own kill switch. **It does not
+wait on A2P** — that registration is an SMS gate and touches voice in neither
+direction — so it can be turned on while the steps above are still stuck:
+
+```sh
+TWILIO_PHONE_NUMBER=+13603646763        # the number the far end sees
+OPERATOR_PHONE_NUMBER=+15551234567      # YOUR phone — this is the one that rings first
+BUSTER_CLAW_VOICE_ENABLED=false
+```
+
+Both numbers are required, and either may live in the Clinch instead. Restart
+the app after setting them, then:
+
+```sh
+./buster-claw run phone_call --json '{"to":"+15551234567"}'
+```
+
+Your own phone rings first; answering bridges you to the far end. No Supabase
+function is involved — the `<Dial>` document travels inline on the request that
+creates the call, so there is no public endpoint for this path at all. Nothing
+is deployed and nothing calls back.
+
 Primary Twilio references: [Message resource](https://www.twilio.com/docs/messaging/api/message-resource),
 [A2P 10DLC quickstart](https://www.twilio.com/docs/messaging/compliance/a2p-10dlc/quickstart),
 and [Advanced Opt-Out](https://www.twilio.com/docs/messaging/tutorials/advanced-opt-out).

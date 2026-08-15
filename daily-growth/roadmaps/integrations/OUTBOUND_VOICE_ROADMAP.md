@@ -156,6 +156,18 @@ discovers.
 **Still owed:** the cost back-fill. `cost_for/2` prices a single call leg and a
 bridge has two, so the parent/child walk is real work and was not done here.
 
+**The switch was unflippable for its first hour**, and no behavioural test could
+have seen it: `voice_enabled` was read from the `:twilio` config map that
+`config/runtime.exs` never wrote, so it was false in every build while every
+kill-switch test passed — they set the key directly. Worse, the map was wrapped
+in `if System.get_env("TWILIO_ACCOUNT_SID")`, so an operator who stored their
+credentials in the Clinch (the supported path) had **both** switches stuck off,
+SMS included. Both are fixed, and both halves are now guarded by a source-level
+test that derives the switch list from the reader rather than hardcoding it.
+
+**To turn it on:** `BUSTER_CLAW_VOICE_ENABLED=true`, plus `TWILIO_PHONE_NUMBER`
+and `OPERATOR_PHONE_NUMBER` (or their Clinch entries). See `supabase/SETUP.md`.
+
 ---
 
 ## ~~Phase 2 — The bridge TwiML, in the relay~~ ❌ DELETED — see the header
