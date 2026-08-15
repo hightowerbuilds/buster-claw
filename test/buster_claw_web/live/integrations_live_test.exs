@@ -9,7 +9,7 @@ defmodule BusterClawWeb.IntegrationsLiveTest do
     {:ok, integration} =
       Integrations.create_integration(%{
         name: "Repo Activity",
-        service_type: "sentry",
+        service_type: "github",
         config_text: ~s({"org":"hightowerbuilds"})
       })
 
@@ -19,7 +19,7 @@ defmodule BusterClawWeb.IntegrationsLiveTest do
 
     assert html =~ "Integrations"
     assert html =~ "Repo Activity"
-    assert html =~ "sentry"
+    assert html =~ "github"
     assert html =~ "Recent runs"
     assert html =~ "missing_config"
   end
@@ -106,10 +106,10 @@ defmodule BusterClawWeb.IntegrationsLiveTest do
         service_type: "github"
       })
 
-    {:ok, _sentry} =
+    {:ok, _umami} =
       Integrations.create_integration(%{
         name: "Errors",
-        service_type: "sentry"
+        service_type: "umami"
       })
 
     {:ok, view, _html} = live(conn, ~p"/integrations")

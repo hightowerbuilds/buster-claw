@@ -83,7 +83,7 @@ trusted number creates a Dispatch item, from a stranger archives only · outboun
 respects the kill switch and daily cap · empty states read as "nothing yet," not broken.
 
 **Calendar / Integrations / Security / Settings / Manual** — calendar handles all-day,
-multi-day, and empty months · GitHub/Sentry/Umami manual poll, good-signature webhook,
+multi-day, and empty months · GitHub/Umami manual poll, good-signature webhook,
 **bad-signature webhook must fail closed**, **no-configured-secret webhook must fail closed** ·
 Security feed streams live, redacts secrets, paginates at 10k rows · every settings toggle
 persists across restart · every Manual link resolves.

@@ -1,6 +1,6 @@
 defmodule BusterClaw.Integrations do
   @moduledoc """
-  Service integrations (GitHub / Sentry / Umami) that turn operational data into
+  Service integrations (GitHub / Umami) that turn operational data into
   Library documents. Both the poll path and the webhook path converge on the same
   output: a Library markdown snapshot plus an `IntegrationRun` row.
 
@@ -21,7 +21,7 @@ defmodule BusterClaw.Integrations do
 
   import Ecto.Query
 
-  alias BusterClaw.Integrations.{GitHub, Integration, IntegrationRun, Sentry, Umami}
+  alias BusterClaw.Integrations.{GitHub, Integration, IntegrationRun, Umami}
   alias BusterClaw.Library
   alias BusterClaw.LocalTime
   alias BusterClaw.Repo
@@ -300,7 +300,6 @@ defmodule BusterClaw.Integrations do
   defp document_tags(document), do: get_in(document.tags || %{}, ["items"]) || []
 
   defp adapter_for(%Integration{service_type: "umami"}), do: {:ok, Umami}
-  defp adapter_for(%Integration{service_type: "sentry"}), do: {:ok, Sentry}
   defp adapter_for(%Integration{service_type: "github"}), do: {:ok, GitHub}
 
   defp adapter_for(%Integration{service_type: service_type}),

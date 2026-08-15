@@ -1,6 +1,6 @@
 defmodule BusterClaw.Integrations.Integration do
   @moduledoc """
-  A configured GitHub / Sentry / Umami integration. `token` and `webhook_secret`
+  A configured GitHub / Umami integration. `token` and `webhook_secret`
   are encrypted at rest (`BusterClaw.Encrypted`).
 
   There is deliberately no polling-interval field: polling is on demand only (a
@@ -19,7 +19,11 @@ defmodule BusterClaw.Integrations.Integration do
   # `unknown_type` in a job configured not to block.
   @type t :: %__MODULE__{}
 
-  @service_types ~w(sentry github umami)
+  # `sentry` was removed 08-14 (ideated, never essential). A stored row with
+  # service_type "sentry" now fails this whitelist on its next validated write
+  # and polls as {:unsupported_integration, "sentry"} — deliberately visible
+  # rather than silently dropped, since nothing in the app ever seeded one.
+  @service_types ~w(github umami)
   @statuses ~w(never_run ok error disabled)
 
   schema "integrations" do
@@ -90,9 +94,6 @@ defmodule BusterClaw.Integrations.Integration do
 
   defp apply_default_base_url(changeset) do
     case {get_field(changeset, :service_type), get_field(changeset, :base_url)} do
-      {"sentry", value} when value in [nil, ""] ->
-        put_change(changeset, :base_url, "https://sentry.io/api/0")
-
       {"github", value} when value in [nil, ""] ->
         put_change(changeset, :base_url, "https://api.github.com")
 

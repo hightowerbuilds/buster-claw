@@ -60,41 +60,6 @@ defmodule BusterClawWeb.IntegrationWebhookControllerTest do
     assert document.name == "GitHub Webhook Snapshot: pull_request.opened"
   end
 
-  test "POST /integrations/:name/webhook accepts signed Sentry payloads", %{conn: conn} do
-    {:ok, _integration} =
-      Integrations.create_integration(%{
-        name: "sentry-main",
-        service_type: "sentry",
-        webhook_secret: "webhook-secret",
-        config_text: ~s({"org":"acme","project":"checkout"})
-      })
-
-    body =
-      Jason.encode!(%{
-        "action" => "issue.created",
-        "data" => %{
-          "issue" => %{
-            "title" => "New production error",
-            "level" => "error",
-            "permalink" => "https://sentry.example.com/issues/1"
-          }
-        }
-      })
-
-    conn =
-      conn
-      |> put_req_header("content-type", "application/json")
-      |> put_req_header("sentry-hook-signature", hmac("webhook-secret", body))
-      |> post(~p"/integrations/sentry-main/webhook", body)
-
-    response = json_response(conn, 202)
-    assert response["status"] == "accepted"
-    assert response["records_fetched"] == 1
-
-    assert [document] = Library.list_documents()
-    assert document.name == "Sentry Webhook Snapshot: issue.created"
-  end
-
   test "POST /integrations/:name/webhook rejects invalid signatures", %{conn: conn} do
     {:ok, _integration} =
       Integrations.create_integration(%{
