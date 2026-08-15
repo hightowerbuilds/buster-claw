@@ -173,7 +173,12 @@ check lib/buster_claw_web/components/explained/intro.ex        151 HELD
 check lib/buster_claw_web/components/phone/contact_list.ex   330 HELD
 check lib/buster_claw_web/components/phone/playback.ex       314 HELD
 check lib/buster_claw_web/components/phone/log.ex            256 HELD
-check lib/buster_claw_web/components/phone/shared.ex         176 HELD
+# 176 -> 200 on 08-15, for the second thing this app prices. The cost breakdown
+# renderer had the three voicemail components inlined as a literal; an outbound
+# call has two legs and different labels, so the parts became an ordered list and
+# gained `priced_kind?/1` — which is here rather than in `Playback` so the panel
+# that shows a Cost line and the query that fills it in cannot disagree.
+check lib/buster_claw_web/components/phone/shared.ex         200 HELD
 check lib/buster_claw_web/components/phone/registry.ex        62 HELD
 
 # The Google Workspace console: a rail, and one module per pane.

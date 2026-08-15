@@ -316,19 +316,29 @@ defmodule BusterClaw.Telephony do
     end
   end
 
-  # --- cost back-fill (VOICEMAIL_COST_ROADMAP.md) ---
+  # --- cost back-fill (VOICEMAIL_COST_ROADMAP.md, OUTBOUND_VOICE_ROADMAP.md) ---
   # Twilio prices lag, so cost is a retryable pass: fetch what's settled now, keep
   # the row unfinalized (cost_synced_at nil) until every component prices, and
-  # re-run. Only voicemails carrying a CallSid can be priced.
+  # re-run. Two kinds price: voicemails, and outbound calls (two legs, since the
+  # bridge creates a second call resource).
 
   @doc """
-  Voicemails not yet finally priced (`cost_synced_at` nil), oldest first — the
-  back-fill work list. Every drained voicemail has a `twilio_sid` (RecordingSid),
-  which is all `refresh_cost/2` needs.
+  Rows not yet finally priced (`cost_synced_at` nil), oldest first — the back-fill
+  work list.
+
+  Two kinds qualify, for two different reasons. A drained **voicemail** carries a
+  RecordingSid as its `twilio_sid`, which is all `refresh_cost/2` needs. An
+  **outbound call** carries the parent CallSid, and prices as two legs.
+
+  Inbound call rows are excluded: nothing here created them, and an inbound leg
+  frequently never prices at all — including it would fill this list with rows
+  that can never finalize and starve the ones that can.
   """
-  def unpriced_voicemails(limit \\ 25) do
+  def unpriced_events(limit \\ 25) do
     from(e in Event,
-      where: e.kind == "voicemail" and is_nil(e.cost_synced_at),
+      where:
+        is_nil(e.cost_synced_at) and not is_nil(e.twilio_sid) and
+          (e.kind == "voicemail" or (e.kind == "call" and e.direction == "outbound")),
       order_by: [asc: e.occurred_at],
       limit: ^limit
     )
@@ -376,7 +386,7 @@ defmodule BusterClaw.Telephony do
 
   def refresh_unpriced_costs(opts \\ []) do
     if Twilio.configured?() do
-      events = unpriced_voicemails()
+      events = unpriced_events()
 
       priced =
         events
@@ -398,18 +408,38 @@ defmodule BusterClaw.Telephony do
     :ok
   end
 
+  # An outbound call's `twilio_sid` is a CallSid, a voicemail's is a RecordingSid,
+  # and the two price by different routes. The kind is what tells them apart —
+  # the SIDs themselves both start "CA"/"RE" but nothing here should be reading
+  # Twilio's prefixes to decide what a row is.
+  defp cost_sids(%Event{kind: "call", twilio_sid: sid}) when is_binary(sid),
+    do: %{call_sid: sid}
+
   defp cost_sids(%Event{twilio_sid: rec}) when is_binary(rec), do: %{recording_sid: rec}
   defp cost_sids(_event), do: :no_sids
 
+  # How long a row may stay unpriced before the back-fill stops asking. Twilio
+  # settles within minutes; a week is not a deadline, it is a floor under a
+  # failure mode. `unpriced_events/1` is oldest-first with a limit, so a row that
+  # can NEVER finalize — a deleted resource, a plan that does not per-call price —
+  # sits at the head of the list forever and starves every row behind it. Giving
+  # up records what settled and says so, rather than pretending it is the total.
+  @cost_abandon_after_days 7
+
   defp apply_cost(event, cost) do
-    synced_at = if cost.final?, do: DateTime.utc_now() |> DateTime.truncate(:second)
+    abandoned? = not cost.final? and stale?(event)
+    synced_at = if cost.final? or abandoned?, do: DateTime.utc_now(:second)
 
     breakdown =
       Map.new(cost.breakdown, fn {part, micros} ->
         {to_string(part), if(micros == :pending, do: nil, else: micros)}
       end)
 
-    metadata = Map.put(event.metadata || %{}, "cost_breakdown", breakdown)
+    metadata =
+      event.metadata
+      |> Kernel.||(%{})
+      |> Map.put("cost_breakdown", breakdown)
+      |> then(&if abandoned?, do: Map.put(&1, "cost_incomplete", true), else: &1)
 
     event
     |> Event.changeset(%{
@@ -420,6 +450,11 @@ defmodule BusterClaw.Telephony do
     })
     |> Repo.update()
   end
+
+  defp stale?(%Event{occurred_at: nil}), do: false
+
+  defp stale?(%Event{occurred_at: at}),
+    do: DateTime.diff(DateTime.utc_now(), at, :day) >= @cost_abandon_after_days
 
   def get_event!(id), do: Repo.get!(Event, id) |> Repo.preload(:document)
 

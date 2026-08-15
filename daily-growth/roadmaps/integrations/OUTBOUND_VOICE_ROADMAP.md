@@ -1,8 +1,8 @@
 # Outbound voice — making the rotary dial real
 
-**Scoped 08-15-26 · Status: Phases 1, 3 and 4 SHIPPED 08-15. Phase 2 DELETED —
-it turned out not to exist. Phase 0 is the operator's and is the only thing left
-here besides the cost back-fill.**
+**Scoped 08-15-26 · Status: Phases 1, 3 and 4 SHIPPED 08-15, cost back-fill
+included. Phase 2 DELETED — it turned out not to exist. Phase 0 is the operator's
+and is the only thing left in this file.**
 
 > ### Phase 2 was deleted by the build, not skipped
 >
@@ -160,8 +160,32 @@ the operator's own number bridges them to themselves. Both are
 `:cannot_dial_own_number` / `:cannot_dial_yourself` rather than something Twilio
 discovers.
 
-**Still owed:** the cost back-fill. `cost_for/2` prices a single call leg and a
-bridge has two, so the parent/child walk is real work and was not done here.
+**The cost back-fill landed 08-15**, and the scope was right that it was real
+work rather than free. `cost_for/2` gained a `%{call_sid: _}` shape that reads
+the parent and then `Calls?ParentCallSid=`, because `<Dial>` creates a **second
+call resource** with its own price — summing the parent alone halves the bill
+*and looks settled while doing it*, which is worse than not pricing at all.
+
+Three things the voicemail path could not simply lend it:
+
+- **An empty child list is not `:pending` here.** For a transcription it means
+  the callback has not landed; for a bridge it can mean the operator never
+  answered, so `<Dial>` never ran and one leg is the whole bill. Reusing
+  `sum_component/1` would have retried those rows forever.
+- **A price does not imply the call ended.** `price` and `status` are separate
+  fields on the same resource, so `final?` requires a terminal status too. The
+  test that pins this feeds a priced, `in-progress` parent — inconsistent on
+  purpose, because Twilio's internals are not ours to assume.
+- **The work list needed a give-up.** `unpriced_events/1` (was
+  `unpriced_voicemails/1`) is oldest-first with a limit, so one row that can
+  never finalize starves every row behind it. After seven days the back-fill
+  records what settled and marks the row `cost_incomplete`, which the panel
+  shows — the difference between a number that is final and one that merely
+  stopped changing. **This fixed a latent starvation bug in the voicemail path
+  too**, which had been relying on never blocking on the inbound call leg.
+
+Inbound call rows are deliberately excluded: nothing here created them, and an
+inbound leg frequently never prices at all.
 
 **The switch was unflippable for its first hour**, and no behavioural test could
 have seen it: `voice_enabled` was read from the `:twilio` config map that

@@ -220,8 +220,11 @@ defmodule BusterClawWeb.Phone.Playback do
                   · {format_duration(@selected_event.duration_seconds)}
                 </span>
               </div>
+              <%!-- Voicemails and outbound calls, which are the two kinds the
+                    back-fill prices. An SMS row has no cost to show and an
+                    inbound call row is not something this app created. --%>
               <div
-                :if={@selected_event.kind == "voicemail"}
+                :if={priced_kind?(@selected_event)}
                 class="mt-2 flex items-center gap-2"
               >
                 <span class="ic-eyebrow !mb-0">Cost</span>

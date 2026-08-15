@@ -6,8 +6,9 @@ defmodule BusterClaw.Telephony.Twilio do
   call, settled a bit later), so cost is a retryable back-fill, not a
   capture-at-drain value.
 
-  `cost_for/2` sums the three components of a voicemail's cost from just its
-  **RecordingSid** (which every drained voicemail already has as `twilio_sid`):
+  `cost_for/2` prices two things, from the single SID each row already carries.
+
+  A **voicemail**, from its **RecordingSid** (`twilio_sid` on every drained row):
 
   - the **recording** — `Recordings/{RecordingSid}` (also yields the parent
     `call_sid`, so nothing extra needs storing),
@@ -15,9 +16,17 @@ defmodule BusterClaw.Telephony.Twilio do
   - the **transcription(s)** — `Recordings/{RecordingSid}/Transcriptions` (a list;
     prices summed).
 
+  An **outbound bridged call**, from its parent **CallSid** — and this one is two
+  billed legs, because `<Dial>` creates a *second* call resource with its own
+  price (`Calls?ParentCallSid=`). The parent alone is roughly half the bill and
+  reads as a settled number, which is the worst of both.
+
   Prices are micro-USD integers (`$0.25 = 250_000`) to avoid float drift. A
   component whose price hasn't settled is `:pending`; `final?` is true only when
   every component has settled, which is the signal to stop back-filling a row.
+  For a call it additionally requires a **terminal status** — `price` and `status`
+  are separate fields, and a priced in-flight call must not finalize at whatever
+  it has cost so far.
 
   Creds come from app env `:twilio`, set in `config/runtime.exs`. Outbound SMS
   additionally requires a Messaging Service SID and the explicit SMS kill
@@ -193,12 +202,21 @@ defmodule BusterClaw.Telephony.Twilio do
     do: {:error, {:twilio_request_failed, reason}}
 
   @doc """
-  Total voicemail cost from its RecordingSid (a map with `:recording_sid`).
+  Total cost of one priced thing, from the SIDs a row already carries.
 
-  Returns `{:ok, %{total_micros, currency, final?, breakdown}}` where `breakdown`
-  is `%{call, recording, transcription}` (each an integer micros or `:pending`),
-  or `{:error, reason}`. `total_micros` sums only the settled components, so a
-  non-`final?` result is a provisional floor, not the finished number.
+  Two shapes, because the two things bill differently:
+
+    * `%{recording_sid: _}` — a **voicemail**: the recording, its parent call leg,
+      and its transcription(s). Breakdown `%{call, recording, transcription}`.
+    * `%{call_sid: _}` — an **outbound bridged call**: `<Dial>` creates a second,
+      child call that Twilio prices as its own resource, so the parent alone
+      under-reports by roughly half. Breakdown `%{your_leg, their_leg}` — leg one
+      is the ring to the operator's own phone, leg two is the far end.
+
+  Returns `{:ok, %{total_micros, currency, final?, breakdown}}` (each breakdown
+  part an integer micros or `:pending`) or `{:error, reason}`. `total_micros` sums
+  only the settled parts, so a non-`final?` result is a provisional floor, not the
+  finished number.
   """
   def cost_for(sids, opts \\ [])
 
@@ -232,7 +250,65 @@ defmodule BusterClaw.Telephony.Twilio do
     end
   end
 
+  # Two legs, and only one of them is the call we created. Summing the parent
+  # alone is worse than not pricing at all — it looks like a settled number.
+  def cost_for(%{call_sid: call_sid}, opts) when is_binary(call_sid) do
+    with {:ok, parent} <- resource(["Calls", call_sid <> ".json"], opts),
+         {:ok, children} <- child_calls(call_sid, opts) do
+      your_leg = price_micros(parent["price"])
+      their_leg = their_leg_price(children, parent["status"])
+
+      # A call prices only after it ends, so an in-flight call is pending no
+      # matter what the legs currently say — a `completed` parent whose child is
+      # still `in-progress` would otherwise finalize at half the real cost.
+      final? =
+        terminal_status?(parent["status"]) and your_leg != :pending and their_leg != :pending
+
+      {:ok,
+       %{
+         total_micros: [your_leg, their_leg] |> Enum.map(&settled_value/1) |> Enum.sum(),
+         currency: parent["price_unit"] || currency_of(children),
+         final?: final?,
+         breakdown: %{your_leg: your_leg, their_leg: their_leg}
+       }}
+    end
+  end
+
   def cost_for(_sids, _opts), do: {:error, :missing_sids}
+
+  # The one place this differs from the voicemail path, and the reason it cannot
+  # reuse `sum_component/1`: there an empty list means "the transcription callback
+  # has not landed yet" and is `:pending`, but here it can mean the second leg
+  # **never existed**. If the operator did not pick up, `<Dial>` never ran and one
+  # leg is the whole bill. Treating that as pending would retry the row forever.
+  defp their_leg_price([], status) do
+    if terminal_status?(status), do: 0, else: :pending
+  end
+
+  defp their_leg_price(children, _status) do
+    children
+    |> Enum.map(&price_micros(&1["price"]))
+    |> sum_component()
+  end
+
+  # Twilio's own list of states a call can no longer leave. `queued`, `ringing`
+  # and `in-progress` are the ones that are not here, which is the point.
+  defp terminal_status?(status),
+    do: status in ~w(completed busy no-answer failed canceled)
+
+  defp currency_of(children), do: Enum.find_value(children, & &1["price_unit"])
+
+  # Child legs, via ParentCallSid. Twilio returns `calls: []` rather than a 404
+  # for a parent with no children, but a parent that has been deleted 404s — and
+  # that is not a reason to fail the whole price, since the row may still hold a
+  # settled parent price.
+  defp child_calls(parent_sid, opts) do
+    case resource(["Calls.json"], opts, ParentCallSid: parent_sid) do
+      {:ok, body} -> {:ok, body["calls"] || []}
+      {:error, :not_found} -> {:ok, []}
+      {:error, _} = error -> error
+    end
+  end
 
   # The call leg, via the CallSid the Recording resource reports. A recording
   # with no parent call (shouldn't happen for a voicemail) has no call cost.
@@ -243,11 +319,11 @@ defmodule BusterClaw.Telephony.Twilio do
 
   # A single price value → the resource JSON. 404 is surfaced so a row pointing at
   # a deleted resource can stop being retried by the caller.
-  defp resource(segments, opts) do
+  defp resource(segments, opts, params \\ []) do
     path = Enum.join(["/2010-04-01/Accounts", account_sid() | segments], "/")
 
     request(opts)
-    |> Req.merge(url: path)
+    |> Req.merge(url: path, params: params)
     |> Req.get()
     |> case do
       {:ok, %{status: 200, body: body}} when is_map(body) -> {:ok, body}

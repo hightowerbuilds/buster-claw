@@ -34,34 +34,62 @@ defmodule BusterClawWeb.Phone.Shared do
     """
   end
 
-  # The three components of a voicemail's cost (call leg / recording /
-  # transcription), from the back-filled `metadata["cost_breakdown"]`. Shown small
-  # under the total so the operator can see *where* the money goes — the point of
-  # the whole feature (transcription is usually the driver).
+  # Where the money went, from the back-filled `metadata["cost_breakdown"]`. Shown
+  # small under the total — the point of the whole feature (on a voicemail,
+  # transcription is usually the driver; on a call, the surprise is that there are
+  # two legs at all).
+  #
+  # One ordered list rather than a branch on `kind`, because a row only ever
+  # carries one family's keys and an unknown key should render as nothing rather
+  # than as an error. Adding a priced thing means adding a pair here.
+  @cost_parts [
+    {"call", "call"},
+    {"recording", "rec"},
+    {"transcription", "txt"},
+    {"your_leg", "you"},
+    {"their_leg", "them"}
+  ]
+
   attr :event, :map, required: true
 
   def cost_breakdown(assigns) do
     parts =
       case assigns.event.metadata do
-        %{"cost_breakdown" => %{} = b} ->
-          [{"call", b["call"]}, {"rec", b["recording"]}, {"txt", b["transcription"]}]
-          |> Enum.filter(fn {_label, micros} -> is_integer(micros) end)
+        %{"cost_breakdown" => %{} = breakdown} ->
+          for {key, label} <- @cost_parts, is_integer(breakdown[key]), do: {label, breakdown[key]}
 
         _ ->
           []
       end
 
-    assigns = assign(assigns, :parts, parts)
+    assigns = assign(assigns, parts: parts, incomplete?: incomplete_cost?(assigns.event))
 
     ~H"""
     <span
       :if={@parts != []}
       class="font-mono text-[10px] text-base-content/45"
     >
-      ({Enum.map_join(@parts, " + ", fn {label, micros} -> "#{label} #{format_cost(micros)}" end)})
+      ({Enum.map_join(@parts, " + ", fn {label, micros} -> "#{label} #{format_cost(micros)}" end)}<span :if={
+        @incomplete?
+      }>, incomplete</span>)
     </span>
     """
   end
+
+  # A row the back-fill gave up on. Saying so is the difference between a number
+  # that is final and one that merely stopped changing.
+  defp incomplete_cost?(%{metadata: %{"cost_incomplete" => true}}), do: true
+  defp incomplete_cost?(_event), do: false
+
+  @doc """
+  Whether this row is one the cost back-fill prices — see `Telephony.unpriced_events/1`.
+
+  Kept beside the renderer so the panel that shows a Cost line and the query that
+  fills it in cannot disagree about which rows have one.
+  """
+  def priced_kind?(%{kind: "voicemail"}), do: true
+  def priced_kind?(%{kind: "call", direction: "outbound"}), do: true
+  def priced_kind?(_event), do: false
 
   # --- pure display helpers ------------------------------------------------
   #
