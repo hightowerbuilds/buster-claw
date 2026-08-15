@@ -88,7 +88,7 @@ the section tables below point at it from wherever else it applies.**
 ## Where the build is
 
 1. **[The Clinch](#part-vi--integrations)** — **Phases 0–4 complete 08-10; Phase 5 is as far as an agent can take it.** Its preconditions are pinned (`18af12e`) and every remote-mode notice is guarded (`d26c4ad`). **What remains is the tunnel spike, and it needs a person with two machines** — the roadmap forbids the gateway and the panel until a real tunnel survives a WebSocket upgrade, an upload, a long Chat response and a laptop sleep.
-2. **[BusterPhone](#part-vi--integrations)** — the only paid thing.
+2. **[BusterPhone](#part-vi--integrations)** — the only paid thing. **Inbound is live and carrying real traffic** (verified in the app 08-14, not inferred); the gap is vending a number to someone who is not the operator.
 3. **[Apple](#part-vii--platform--release)** — **`G-1`–`G-3` DONE 08-10: a notarized, stapled DMG exists.** What is next is not code — an **Apple Silicon Mac**.
 4. **[Studio → Voice](#part-ii--home)** — needs a person at a microphone.
 5. **[The Dialyzer gate](#part-vii--platform--release)** — **GREEN 08-13** (`1d52cff`): exit 0, was 67 findings. The baseline is a rule now rather than a file list, so adding a file no longer breaks it.
@@ -231,7 +231,7 @@ Not surfaces. The machinery every surface sits on.
 |---|---|---|---|
 | **The Clinch — credentials** | `Clinch`, `ClinchPanels`, Tauri `clinch_*` | **ACTIVE — Phases 0–4 COMPLETE 08-10; Phase 5 guarded 08-13, now waiting on the operator's tunnel spike** | [`CLINCH`](integrations/CLINCH_ROADMAP.md) |
 | **Reaching it from a phone** | the relay, as a control channel | **PARKED 08-13 — research done, starts after the desktop app ships** | [`PHONE_ACCESS`](integrations/PHONE_ACCESS_ROADMAP.md) |
-| **Twilio / BusterPhone** | `Telephony` | **ACTIVE — the money leg** | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) |
+| **Twilio / BusterPhone** | `Telephony` | **ACTIVE — the money leg. Inbound is LIVE on the operator's number (verified in the app 08-14); what remains is vending one to somebody else** | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) |
 | The relay (Supabase) | `telephony/relay.ex` | SHIPPED — **now erases, 08-10** | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) — pre-08-10 backlog sweep · [`LEFTOVERS_PLATFORM`](platform/LEFTOVERS_PLATFORM.md) — rotated DB password |
 | Google Workspace | `Google` (16 modules) | SHIPPED | [`GOOGLE_VERIFICATION`](integrations/GOOGLE_VERIFICATION_ROADMAP.md) — restricted scopes, CASA |
 | Operational — GitHub | `Integrations` | SHIPPED | — |
@@ -245,10 +245,29 @@ Settings → Configuration, which is what makes the paid tier configurable in a
 packaged build at all — a double-clicked `.app` inherits launchd's environment,
 not your shell's.
 
-BusterPhone's remaining actions are the operator's, in order: upgrade Twilio →
-wire the Voice webhook → enter the credentials → call it. **Enter them in the app
-rather than as environment variables**, and note that doing so starts the drain
-on its next 30-second tick.
+~~BusterPhone's remaining actions are the operator's, in order: upgrade Twilio →
+wire the Voice webhook → enter the credentials → call it.~~ **All four are done,
+and this page did not know it until someone opened the app on 08-14.**
+
+**The inbound leg is live and carrying real traffic.** The Message Machine shows
+voicemails from Jul 30, Aug 08 and Aug 11 with Twilio transcripts, durations and
+**per-message cost** (\$0.0525 each, \$0.63 tracked), plus an inbound SMS. So the
+whole chain — Twilio → the Supabase relay → `Telephony.Drain` → the surface —
+works end to end on the operator's own number, which is the thing this map spent
+weeks describing as pending.
+
+**What that does and does not prove.** It proves inbound voice, inbound SMS and
+cost sync. It does **not** prove the product: outbound calling is unbuilt and the
+keypad says so on its face, and **nobody has ever been vended a number**. The
+paid tier is "we are the phone company for someone who is not you," and every
+step verified here happened on the operator's own line.
+
+> Recorded plainly because it is the second time in two days a map described
+> shipped work as pending. The status was knowable in about ninety seconds by
+> clicking the Phone tab, and nobody had. **Credentials still belong in the app
+> rather than the environment** — a double-clicked `.app` inherits launchd's
+> environment, not your shell's — and entering them starts the drain on its next
+> 30-second tick.
 
 > **Rotation works: `./buster-claw clinch rotate --confirm`.** A CLI verb rather
 > than a catalog command, because rotation is credential *management* and no agent

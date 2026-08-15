@@ -311,8 +311,15 @@ defmodule BusterClaw.Integrations do
   defp adapter_for(%Integration{service_type: service_type}),
     do: {:error, {:unsupported_integration, service_type}}
 
+  # "not implemented yet" until 08-14, which stopped being true the day an
+  # adapter was REMOVED rather than never written: the Umami row left behind by
+  # that deletion reported a promise it was never going to keep. The wording
+  # covers both causes and, more usefully, says what to do about it — this is
+  # the only message an operator ever sees for a stranded integration.
   defp error_message({:unsupported_integration, service_type}),
-    do: "Polling adapter for #{service_type} is not implemented yet."
+    do:
+      "No polling adapter for #{service_type} — it was removed, or never built. " <>
+        "Delete this integration, or change its service type."
 
   defp error_message(reason), do: inspect(reason)
 
