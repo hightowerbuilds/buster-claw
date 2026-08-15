@@ -33,6 +33,7 @@ defmodule BusterClaw.Appearance do
 
   require Logger
 
+  alias BusterClaw.Appearance.Migration
   alias BusterClaw.Library.Artifact
   alias BusterClaw.Pockets
   alias BusterClaw.Settings
@@ -594,11 +595,22 @@ defmodule BusterClaw.Appearance do
   simply answers to a pool slot now.
   """
   def ensure do
-    rewrite_renamed_dir()
+    # Order is load-bearing and the reason is in `Migration`'s moduledoc: the
+    # prefix rewrite must precede the pool migration, because `next_empty_slot/0`
+    # file-checks through a fence and an un-rewritten pointer reads as an EMPTY
+    # slot — which would land a second image on an occupied one.
+    Migration.rewrite_renamed_dir(migratable_keys(), @subdir)
 
     if Settings.get(@migrated_key) in [nil, ""] do
-      migrate_terminal_slots()
-      migrate_home_image()
+      Migration.migrate_terminal_slots(legacy_slot_keys())
+
+      # Resolved HERE, after the terminal slots have been folded in, because the
+      # homepage image takes the first slot still free once they have landed.
+      # `Migration` cannot ask for it: this module owns the slot fence, and a
+      # call back would close a dependency cycle the cycle gate refuses.
+      slot = next_empty_slot()
+      Migration.migrate_home_image(slot, slot && path_key(slot), slot && stamp_key(slot))
+
       Settings.put(@migrated_key, "1")
     end
 
@@ -611,43 +623,18 @@ defmodule BusterClaw.Appearance do
       :error
   end
 
-  # This directory has moved TWICE: `appearance/` → `backgrounds/` (a content
-  # rename) → `pockets/backgrounds/` (a pile of the operator's images is a
-  # Pocket). `Workspace.ensure/0` moves the files, and it boots before this.
-  #
-  # The stored pointers are workspace-relative and fenced to `dir()`, so any
-  # still carrying an old prefix would fail the fence and its slot would read as
-  # empty. That must happen BEFORE the pool migration: `next_empty_slot/0` trusts
-  # those pointers, and **a slot misread as empty gets a second image landed on
-  # it.** The legacy pre-pool keys are rewritten too, for an install crossing
-  # every migration in one launch.
-  #
-  # Cheap and idempotent by shape: a pointer already under `pockets/backgrounds/`
-  # matches neither old prefix and is left alone.
-  @old_prefixes ["appearance/", "backgrounds/"]
-
-  defp rewrite_renamed_dir do
-    pool_keys = Enum.map(1..@max_images, &path_key/1)
-    legacy_keys = Enum.map(1..5, &"terminal_background_#{&1}_path")
-
-    Enum.each(pool_keys ++ legacy_keys ++ ["home_background_image_path"], fn key ->
-      with rel when is_binary(rel) <- present(Settings.get(key)),
-           {:ok, rest} <- strip_old_prefix(rel) do
-        Settings.put(key, Path.join(@subdir, rest))
-      else
-        _ -> :ok
-      end
-    end)
+  # Every Settings key that can hold an image path: the pool's own, plus the
+  # legacy pre-pool keys, so an install crossing every migration in one launch
+  # is repaired in a single pass.
+  defp migratable_keys do
+    Enum.map(1..@max_images, &path_key/1) ++
+      Enum.map(1..5, &"terminal_background_#{&1}_path") ++
+      ["home_background_image_path"]
   end
 
-  defp strip_old_prefix(rel) do
-    Enum.find_value(@old_prefixes, :error, fn prefix ->
-      case rel do
-        ^prefix <> rest -> {:ok, rest}
-        _ -> nil
-      end
-    end)
-  end
+  # The five pre-pool terminal slots keep their numbers in the pool, so each
+  # carries the pool key pair it migrates into.
+  defp legacy_slot_keys, do: Enum.map(1..5, &{&1, path_key(&1), stamp_key(&1)})
 
   # Give the pool's Pocket a manifest so it appears in the Pockets tab as
   # something described rather than as an unexplained folder. Deliberately NOT
@@ -668,62 +655,6 @@ defmodule BusterClaw.Appearance do
     end
 
     :ok
-  end
-
-  # Terminal slots 1..5 keep their numbers in the pool — the mode becomes an
-  # explicit "image:<n>" pointing at whichever slot was active.
-  defp migrate_terminal_slots do
-    Enum.each(1..5, fn n ->
-      case present(Settings.get("terminal_background_#{n}_path")) do
-        nil ->
-          :ok
-
-        path ->
-          Settings.put(path_key(n), path)
-          Settings.put(stamp_key(n), Settings.get("terminal_background_#{n}_updated_at", stamp()))
-      end
-
-      Settings.delete("terminal_background_#{n}_path")
-      Settings.delete("terminal_background_#{n}_updated_at")
-    end)
-
-    active = present(Settings.get("terminal_background_active"))
-    mode = present(Settings.get("terminal_background_mode"))
-
-    # An unset mode meant "image" when a slot was active (the pre-shader
-    # behavior), so infer it rather than dropping the user's background.
-    if mode in [nil, "image"] and active,
-      do: Settings.put("terminal_background_mode", "image:#{active}")
-
-    Settings.delete("terminal_background_active")
-  end
-
-  # The homepage image had no slot of its own; it lands in the first free one.
-  defp migrate_home_image do
-    case present(Settings.get("home_background_image_path")) do
-      nil ->
-        :ok
-
-      path ->
-        case next_empty_slot() do
-          nil ->
-            Logger.warning("Appearance.ensure: pool full, homepage image not migrated")
-
-          slot ->
-            Settings.put(path_key(slot), path)
-
-            Settings.put(
-              stamp_key(slot),
-              Settings.get("home_background_image_updated_at", stamp())
-            )
-
-            if present(Settings.get("home_background_mode")) == "image",
-              do: Settings.put("home_background_mode", "image:#{slot}")
-        end
-    end
-
-    Settings.delete("home_background_image_path")
-    Settings.delete("home_background_image_updated_at")
   end
 
   # --- internals -----------------------------------------------------------

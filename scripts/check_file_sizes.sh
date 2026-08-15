@@ -239,7 +239,14 @@ check lib/buster_claw_web/components/chat_panel.ex          1040 HELD
 # operator whose theme that is. There is deliberately no editor and no delete
 # button for it — the model's `terminal_theme_reset` clears it, and this surface
 # does not own that.
-check lib/buster_claw_web/live/appearance_live.ex            1035 HELD
+# Lowered 08-14, 1035 -> 1000, banking the image-shader Phase 3 split: the
+# per-surface block moved to `components/surface_panel.ex` and the shader canvas
+# to `components/shader_canvas.ex`, so this page lost 97 lines while GAINING the
+# overlay picker. Not lowered to 972+10%: this file is a settings page for a
+# genuinely broad surface and the review named its two remaining seams (the
+# terminal-theme block, the background catalog), so leaving a little room is
+# honest rather than generous.
+check lib/buster_claw_web/live/appearance_live.ex            1000 HELD
 check lib/buster_claw_web/live/status/comms.ex               125 HELD
 # Raised 08-09, 114 -> 150, for the Studio's Mix|Voice sub-tab (STUDIO_ROADMAP
 # VI.0b). This module moved instead of `status_live.ex` — which is at its cap and
@@ -512,6 +519,18 @@ check lib/buster_claw/notifications/cutup/features.ex         760 HELD
 # `Commands.call/3`, to avoid re-audit and double rate-limiting. That comment
 # moves with them or the property is lost.
 check lib/buster_claw/commands/web.ex                         848 FROZEN
+
+# Appearance (08-14). Held out of yesterday's core section on purpose — it had
+# uncommitted image-shader work in it and a cap on a moving file is a cap
+# nobody can honour. Both landed since (`4c664cf`, then the migration split).
+#
+# `migration.ex` is the unusual one: it is capped at arrival and **is meant to
+# reach zero**. Every line in it serves installs older than 08-08, so growth
+# here means someone added a migration to a module whose whole argument is that
+# it will one day be deleted with `rm`. If that is genuinely right, the raise
+# needs to say which install it is for.
+check lib/buster_claw/appearance.ex                           780 HELD
+check lib/buster_claw/appearance/migration.ex                 170 HELD
 
 if [ "$fail" -ne 0 ]; then
   echo "FAIL: the file-size inventory does not hold."
