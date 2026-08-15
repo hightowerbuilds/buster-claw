@@ -61,6 +61,117 @@ defmodule BusterClaw.Telephony.Twilio do
   end
 
   @doc """
+  Place a bridged outbound call: ring the operator's phone, then dial `to` and
+  join the two legs.
+
+  `OUTBOUND_VOICE_ROADMAP` picked this shape over a softphone because no audio
+  passes through this machine — the operator talks on their own phone and the app
+  is a dialler. It also means outbound calling does not queue behind the
+  `getUserMedia`-in-WKWebView question that is blocking Studio → Voice.
+
+  ## Inline TwiML, and why there is no relay endpoint
+
+  The roadmap's Phase 2 was a new Supabase function serving `<Dial>` TwiML, with
+  a signature check, a `PUBLIC_URL_BASE`, and an opaque id so the endpoint could
+  not be made to dial an arbitrary number. **None of that is built, because none
+  of it is needed.** Twilio's Calls API takes a `Twiml` parameter carrying the
+  document inline, so the instruction travels with the request that creates the
+  call.
+
+  That deletes the phase and the risk together: **there is no public endpoint to
+  abuse**, and the number dialled cannot arrive from a callback because nothing
+  calls back. It is composed here, from a value this function validated.
+
+  Both legs present the app's own number: `From` is what the operator sees
+  ringing, `callerId` is what the far end sees. A callback therefore reaches the
+  answering machine rather than the operator — a property, not an oversight, and
+  the one Phase 0 exists to have chosen deliberately.
+
+  Returns `{:ok, %{call_sid, status, to}}`. Every precondition is named by
+  `voice_ready/0` rather than collapsed into a boolean, for the reason
+  `sms_ready/0` records: a second copy of the conditions drifts out of step with
+  the tagged errors.
+  """
+  def place_call(to, opts \\ []) do
+    with :ok <- voice_ready(),
+         :ok <- validate_recipient(to),
+         :ok <- refuse_self_dial(to) do
+      path = "/2010-04-01/Accounts/#{account_sid()}/Calls.json"
+
+      request(opts)
+      |> Req.merge(
+        url: path,
+        form: [
+          # Leg 1 rings the operator. Nothing dials `to` until they answer, so a
+          # failure here is a call that never happened to anyone else.
+          {"To", operator_number()},
+          {"From", phone_number()},
+          {"Twiml", bridge_twiml(to)}
+        ]
+      )
+      |> Req.post()
+      |> normalize_call_response(to)
+    end
+  end
+
+  # Deliberately minimal. Anything richer — recording, AMD, whisper — is a
+  # decision this roadmap listed as out of scope, and a TwiML document is the
+  # wrong place to acquire features quietly.
+  #
+  # `to` is E.164-validated before it reaches here and contains only `+` and
+  # digits, so escaping is belt-and-braces rather than load-bearing. It is here
+  # anyway: the day this takes a name or a SIP URI, the escaping must already
+  # exist rather than be remembered.
+  defp bridge_twiml(to) do
+    ~s(<Response><Dial callerId="#{xml_escape(phone_number())}">#{xml_escape(to)}</Dial></Response>)
+  end
+
+  defp xml_escape(value) do
+    value
+    |> to_string()
+    |> String.replace("&", "&amp;")
+    |> String.replace("<", "&lt;")
+    |> String.replace(">", "&gt;")
+    |> String.replace("\"", "&quot;")
+  end
+
+  # Dialling our own number bridges the app to its own answering machine: it
+  # bills two legs, records a voicemail from the operator to themselves, and
+  # looks exactly like a bug from the outside.
+  defp refuse_self_dial(to) do
+    cond do
+      to == phone_number() -> {:error, :cannot_dial_own_number}
+      to == operator_number() -> {:error, :cannot_dial_yourself}
+      true -> :ok
+    end
+  end
+
+  defp voice_ready do
+    cond do
+      not voice_enabled?() -> {:error, :voice_disabled}
+      not configured?() -> {:error, :not_configured}
+      not present?(phone_number()) -> {:error, :missing_phone_number}
+      not present?(operator_number()) -> {:error, :missing_operator_number}
+      true -> :ok
+    end
+  end
+
+  # `from` is reported rather than inferred later. `Telephony.our_number/0`
+  # derives the app's number from inbound history, which is empty on a machine
+  # that has placed a call but never received one — and this function knows the
+  # answer for certain, because it just used it.
+  defp normalize_call_response({:ok, %{status: status, body: body}}, to)
+       when status in 200..299 do
+    {:ok, %{call_sid: body["sid"], status: body["status"], to: to, from: phone_number()}}
+  end
+
+  defp normalize_call_response({:ok, %{status: status, body: body}}, _to),
+    do: {:error, {:twilio_status, status, body}}
+
+  defp normalize_call_response({:error, reason}, _to),
+    do: {:error, {:twilio_request_failed, reason}}
+
+  @doc """
   Total voicemail cost from its RecordingSid (a map with `:recording_sid`).
 
   Returns `{:ok, %{total_micros, currency, final?, breakdown}}` where `breakdown`
@@ -221,6 +332,14 @@ defmodule BusterClaw.Telephony.Twilio do
   defp auth_token, do: AppKeys.get("twilio_auth_token")
   defp messaging_service_sid, do: AppKeys.get("twilio_messaging_service_sid")
   defp sms_enabled?, do: get_in(config(), [:sms_enabled]) == true
+
+  # A SECOND switch, not a reuse of the first. A text and a phone call are
+  # different capabilities with different costs and different consequences, and
+  # the operator may well want one without the other — outbound SMS waits on A2P
+  # registration, outbound voice does not.
+  defp voice_enabled?, do: get_in(config(), [:voice_enabled]) == true
+  defp phone_number, do: AppKeys.get("twilio_phone_number")
+  defp operator_number, do: AppKeys.get("operator_phone_number")
   defp config, do: Application.get_env(:buster_claw, :twilio, %{})
 
   defp present?(value), do: is_binary(value) and value != ""

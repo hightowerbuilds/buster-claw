@@ -81,6 +81,30 @@ defmodule BusterClaw.Clinch.AppKeys do
       secret?: false,
       note: "Required for outbound SMS, which additionally needs the env kill switch."
     },
+    # Outbound VOICE needs both of these and outbound SMS needs neither, which is
+    # why they arrive together and late. A message is addressed by Messaging
+    # Service; a call needs an explicit `From`, and the bridge needs to know
+    # which phone to ring first.
+    %{
+      name: "twilio_phone_number",
+      label: "Twilio Phone Number",
+      env: "TWILIO_PHONE_NUMBER",
+      group: "BusterPhone",
+      secret?: false,
+      note:
+        "E.164, e.g. +13603646763. The number a call comes FROM — so a person " <>
+          "who calls it back reaches the answering machine, not you."
+    },
+    %{
+      name: "operator_phone_number",
+      label: "Your Phone Number",
+      env: "OPERATOR_PHONE_NUMBER",
+      group: "BusterPhone",
+      secret?: false,
+      note:
+        "E.164. Outbound calls ring THIS phone first, then dial the other party " <>
+          "and bridge you — so no audio ever passes through this app."
+    },
     %{
       name: "supabase_url",
       label: "Supabase URL",
@@ -157,6 +181,8 @@ defmodule BusterClaw.Clinch.AppKeys do
   defp from_env("twilio_account_sid"), do: twilio(:account_sid)
   defp from_env("twilio_auth_token"), do: twilio(:auth_token)
   defp from_env("twilio_messaging_service_sid"), do: twilio(:messaging_service_sid)
+  defp from_env("twilio_phone_number"), do: twilio(:phone_number)
+  defp from_env("operator_phone_number"), do: twilio(:operator_number)
   defp from_env("supabase_url"), do: app_env(:telephony_relay_url)
   defp from_env("supabase_service_role_key"), do: app_env(:telephony_relay_key)
   defp from_env("finnhub_api_key"), do: app_env(:finnhub_api_key)

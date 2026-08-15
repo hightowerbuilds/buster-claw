@@ -60,6 +60,41 @@ defmodule BusterClaw.Telephony do
     end
   end
 
+  @doc """
+  Place and persist one bridged outbound call, subject to the per-recipient cap.
+
+  The operator's own phone rings first and the far end is dialled only when they
+  answer, so this returns as soon as Twilio accepts the request — `placed` means
+  *the call was created*, never *somebody spoke*.
+
+  Guards, in the order they are cheapest to fail: a recipient who has opted out
+  of SMS is refused here too. **Voice has no STOP**, so there is no consent
+  signal of its own to read, and the roadmap named the choice — either the SMS
+  opt-out list covers the same human or a second one is invented. It is the same
+  human. Treating a STOP as SMS-only would mean a number that asked to be left
+  alone can still be phoned by the same app.
+  """
+  def place_call(to, opts \\ []) do
+    with {:ok, recipient} <- normalize_recipient(to) do
+      :global.trans({__MODULE__, {:call_place, recipient}}, fn ->
+        deliver_call(recipient, opts)
+      end)
+    end
+  end
+
+  @doc "Count locally-persisted outbound calls to one recipient since 00:00 UTC."
+  def called_today(recipient) do
+    start_of_day = DateTime.new!(Date.utc_today(), ~T[00:00:00], "Etc/UTC")
+
+    Event
+    |> where(
+      [event],
+      event.kind == "call" and event.direction == "outbound" and
+        event.to_number == ^recipient and event.occurred_at >= ^start_of_day
+    )
+    |> Repo.aggregate(:count)
+  end
+
   @doc "Count locally-persisted outbound SMS to one recipient since 00:00 UTC."
   def sent_today_to(recipient) do
     start_of_day = DateTime.new!(Date.utc_today(), ~T[00:00:00], "Etc/UTC")
@@ -117,6 +152,79 @@ defmodule BusterClaw.Telephony do
       value when value in ~w(STOP STOPALL UNSUBSCRIBE CANCEL END QUIT) -> :opt_out
       value when value in ~w(START UNSTOP) -> :opt_in
       _ -> :none
+    end
+  end
+
+  defp deliver_call(recipient, opts) do
+    cap = call_daily_cap(opts)
+
+    cond do
+      sms_opted_out?(recipient) ->
+        {:error, :recipient_opted_out}
+
+      called_today(recipient) >= cap ->
+        {:error, {:call_daily_cap_reached, cap}}
+
+      true ->
+        with {:ok, receipt} <- Twilio.place_call(recipient, opts) do
+          persist_outbound_call(recipient, receipt)
+        end
+    end
+  end
+
+  defp persist_outbound_call(recipient, receipt) do
+    attrs = %{
+      direction: "outbound",
+      kind: "call",
+      from_number: receipt.from || our_number(),
+      to_number: recipient,
+      twilio_sid: receipt.call_sid,
+      occurred_at: DateTime.utc_now() |> DateTime.truncate(:second),
+      # No duration and no cost yet, and both arrive the same way a voicemail's
+      # do: Twilio settles them after the call, so the existing back-fill pass
+      # picks this row up by its call_sid rather than anything new being written.
+      metadata: %{"twilio_status" => receipt.status, "leg" => "bridge"}
+    }
+
+    case record_event(attrs, observe: false) do
+      {:ok, event} ->
+        observe_call_place(recipient, receipt, true)
+        {:ok, %{id: event.id, placed: true, to: recipient, call_sid: receipt.call_sid}}
+
+      {:error, reason} ->
+        # The call is already ringing. Failing to file it locally must not read
+        # as "no call happened", so the audit entry is written either way and
+        # says which half succeeded — the same posture the SMS path takes.
+        observe_call_place(recipient, receipt, false)
+        {:error, {:call_placed_but_not_persisted, reason}}
+    end
+  end
+
+  defp observe_call_place(recipient, receipt, persisted?) do
+    BusterClaw.Sentinel.observe(
+      :outbound_send,
+      "Call placed to #{recipient}",
+      %{
+        kind: "call",
+        to: recipient,
+        twilio_sid: receipt.call_sid,
+        status: receipt.status,
+        persisted: persisted?
+      },
+      severity: :warning
+    )
+  end
+
+  # Deliberately lower than the SMS cap's 20. A repeated text is an annoyance; a
+  # repeated phone call is harassment, and it costs two legs each time.
+  defp call_daily_cap(opts) do
+    case Keyword.get(
+           opts,
+           :daily_cap,
+           Application.get_env(:buster_claw, :call_daily_recipient_cap, 5)
+         ) do
+      cap when is_integer(cap) and cap > 0 -> cap
+      _ -> 5
     end
   end
 

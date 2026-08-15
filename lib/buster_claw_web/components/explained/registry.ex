@@ -27,17 +27,18 @@ defmodule BusterClawWeb.Explained.Registry do
   # Synced 08-09 for the Studio's five capture verbs (STUDIO_ROADMAP Part V):
   # sound_gaps / sound_devices / sound_input_level are :safe reads,
   # sound_input_level_set is :restricted, and sound_record is :restricted + gated.
-  # Recomputed 08-15 for `background_list` / `background_set` (+1 read safe,
-  # +1 mutate restricted). A drift test compares these against the live catalog,
-  # which is what caught them the hour those verbs landed.
+  # Recomputed twice on 08-15: `background_list` / `background_set`, then
+  # `phone_call`. A drift test compares these against the live catalog and caught
+  # both within the hour they landed — which is the only reason this block is
+  # trustworthy at all.
   @command_stats %{
-    total: 205,
+    total: 206,
     read: 85,
     trigger: 17,
-    mutate: 103,
+    mutate: 104,
     safe: 88,
-    restricted: 117,
-    gated: 22
+    restricted: 118,
+    gated: 23
   }
 
   # Feature sub-tabs: rail + tile metadata for every non-site tab. A key in

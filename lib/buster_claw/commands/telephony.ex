@@ -51,6 +51,18 @@ defmodule BusterClaw.Commands.Telephony do
   def sms_send(%{"to" => to}) when is_binary(to), do: {:error, :missing_body}
   def sms_send(_args), do: {:error, :missing_recipient}
 
+  @doc """
+  Place a bridged outbound call: the operator's own phone rings first, and the
+  other party is dialled only once they answer.
+
+  There is exactly one argument on purpose. A call has no body, no subject and
+  no attachment — everything that would make it richer (a message to read out, a
+  recording) is a separate capability the roadmap deferred, and each would need
+  its own argument about what an agent may do unattended.
+  """
+  def phone_call(%{"to" => to}) when is_binary(to), do: Telephony.place_call(to)
+  def phone_call(_args), do: {:error, :missing_recipient}
+
   def phone_mark_heard(%{"id" => id}) do
     case Telephony.get_event(id) do
       nil ->

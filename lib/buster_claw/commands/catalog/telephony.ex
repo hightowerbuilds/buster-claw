@@ -60,6 +60,31 @@ defmodule BusterClaw.Commands.Catalog.Telephony do
           "body" => %{type: :string, required: true}
         }
       },
+      # Gated for a sharper reason than sms_send's, and the tier alone does not
+      # carry it: PolicyEngine's baseline earns a confirmation from an :agent or
+      # :mcp caller at :restricted, but an :agent_untrusted caller is stopped
+      # ONLY by `gated: true`. An unattended run triaging email it did not choose
+      # to read is exactly the caller that must never be able to dial a stranger
+      # from the operator's number.
+      #
+      # This is the line `sound_record` sits on — Catalog.Sound states the
+      # principle as "the only one that changes what the machine does when nobody
+      # is watching". A phone call is that, and it bills two legs per attempt.
+      %{
+        name: "phone_call",
+        type: :mutate,
+        tier: :restricted,
+        gated: true,
+        description:
+          "Place a bridged phone call: your own phone rings first, then the other " <>
+            "party is dialled and the two are joined — no audio passes through this " <>
+            "app. Gated, off until the voice switch is set, and capped per recipient " <>
+            "per UTC day. Needs no A2P registration; that gate is SMS-only. A call " <>
+            "cannot be unplaced.",
+        args: %{
+          "to" => %{type: :string, required: true}
+        }
+      },
       # :restricted, not :safe — this is a *policy* read, not operational data.
       # Caller ID is trivially spoofable, so handing an untrusted-provenance run the
       # allowlist hands it exactly the number to spoof to get its voicemail queued.

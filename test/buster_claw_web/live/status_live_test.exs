@@ -1680,26 +1680,45 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert html =~ "No audio touches this"
       assert html =~ "two legs, both billed"
       assert html =~ "Searches your contacts"
-      assert html =~ "a control that looks finished and is not"
+      # Case-sensitive, and the sentence now opens a paragraph rather than
+      # continuing one — the keypad copy was rewritten on 08-15 when phone_call
+      # made half of it false.
+      assert html =~ "control that looks finished and is not"
 
       # The calling cycle is explanatory, so it names no verb and offers no
       # prefill. Prefilling a composer with a request that cannot be fulfilled
       # would teach the opposite of the paragraph it sits under.
       assert html =~ "Call the print shop"
 
-      refute has_element?(
+      # The calling cycle offers Try in Chat now, because it became real. It was
+      # `try_in_chat={false}` until 08-15 for the reason the tab still states:
+      # prefilling a composer with a request the agent cannot fulfil teaches the
+      # opposite of the paragraph beside it.
+      assert has_element?(
                view,
                ~s([data-demo-try-in-chat][phx-value-text^="Call the print shop"])
              )
 
-      # Not a universal over the catalog — a review-forcing tripwire. If any of
-      # these is ever built, this test fails and the tutorial gets rewritten
-      # instead of quietly continuing to say calling does not exist.
-      for fake <- ~w(phone_call phone_dial voice_call call_place) do
-        refute html =~ fake, "the tab must not teach #{fake} — there is no outbound-call verb"
+      # The tripwire fired on 08-15 and is kept, narrowed, rather than deleted.
+      # It asserted that NO outbound-call verb existed; `phone_call` shipped, the
+      # test went red, and the tutorial was rewritten — which is exactly what it
+      # was written to force.
+      #
+      # What it guards now is the half that is still true: the verb exists and
+      # the KEYPAD BUTTON does not, so the tab teaches "ask for it" rather than
+      # "press it". Wiring the dial makes this fail and the copy owes an edit.
+      assert Commands.command_type("phone_call") == :mutate
+      assert html =~ "phone_call"
+      # Whitespace-sensitive on purpose: HEEx renders a source line break inside
+      # the sentence as a newline, so this also pins the disclosure to one line.
+      assert html =~ "keypad still has no Call button"
+
+      # And these three remain unbuilt, so the tab must not teach them.
+      for fake <- ~w(phone_dial voice_call call_place) do
+        refute html =~ fake, "the tab must not teach #{fake} — there is no such verb"
 
         assert Commands.command_type(fake) == nil,
-               "#{fake} now exists; the phone tutorial still teaches that calling is unbuilt"
+               "#{fake} now exists; the phone tutorial has not caught up"
       end
     end
 

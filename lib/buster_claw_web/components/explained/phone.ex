@@ -27,16 +27,18 @@ defmodule BusterClawWeb.Explained.Phone do
   Added 08-15 because the operator hit it live. "Let it text and call for me" is
   three questions: inbound is live, outbound SMS is built and kill-switched
   behind **Twilio paperwork** (A2P 10DLC), and outbound voice needs **no** A2P at
-  all and is simply unbuilt (`OUTBOUND_VOICE_ROADMAP.md`). A reader who takes
-  "phone registration" to cover calls waits forever for an approval that would
-  not have unblocked them.
+  all (`OUTBOUND_VOICE_ROADMAP.md`). A reader who takes "phone registration" to
+  cover calls waits forever for an approval that would not have unblocked them —
+  and on 08-15 `phone_call` shipped while the SMS registration was still stuck,
+  which is that point made as hard as it can be made.
 
   Two consequences the copy is careful about: A2P status is invisible to
   `Twilio.send_sms/3` — its three preconditions are the kill switch, credentials,
   and a Messaging Service SID — so a registration-blocked send fails from the
-  carrier side, not locally; and the calling cycle names **no command**, because
-  there is no outbound-call verb, which is also why it is the second demo on this
-  tab with `try_in_chat={false}`.
+  carrier side, not locally; and the calling cycle named **no command** until
+  08-15, when `phone_call` shipped. That claim narrowed rather than died — the
+  keypad still has no Call button, so calling is something you ask for and not
+  something you press, and the cycle now offers Try in Chat because it is real.
   """
   use BusterClawWeb, :html
   import BusterClawWeb.Explained.Shared
@@ -484,7 +486,9 @@ defmodule BusterClawWeb.Explained.Phone do
                 <td class="py-2" data-phone-voice-blocker>
                   <span class="font-semibold text-base-content">Us.</span>
                   <span class="font-semibold text-base-content">A2P does not apply to
-                    voice</span>, so there is nothing pending at Twilio to wait for.
+                    voice</span>, so there was nothing pending at Twilio — and the
+                  verb shipped 08-15 while SMS was still waiting. The keypad button
+                  is what remains.
                 </td>
               </tr>
             </tbody>
@@ -582,46 +586,57 @@ defmodule BusterClawWeb.Explained.Phone do
         </p>
         <p class="text-sm leading-relaxed text-base-content/70">
           <span class="font-semibold text-base-content">And that is why the keypad
-            says what it says.</span>
+            still says what it says.</span>
           The Phone tab has a working keypad under the line <span class="font-mono text-base-content">“Searches your contacts · outbound
-            calling isn't built”</span>. It is not an oversight and not
-          self-deprecation: a control that looks finished and is not is exactly the
-          thing this app is not allowed to ship, so the keypad discloses what it
-          actually does — it filters your contacts as you type. That sentence gets
-          deleted the day it becomes false, and not before.
+            calling isn't built”</span>. As of 08-15 that is half true and stays up
+          for exactly that reason: <code>phone_call</code>
+          exists, the <span class="italic">button</span>
+          does not. A control that looks finished and is not is the thing this app
+          is not allowed to ship, so the keypad keeps disclosing what it actually
+          does — it filters your contacts as you type. The sentence gets deleted
+          the day the dial is wired to the verb, and not before.
         </p>
       </section>
 
       <.example
         n={6}
         title="Ask it to make a call"
-        want="The one thing on this tab you cannot do — and what happens the day you can."
-        needs="Nothing, and that is the point: there is no outbound-call command to enable, configure, or register."
-        touches="Nothing. No call is placed, no money is spent, no row is written."
-        confirm="The stop is absence. A command that does not exist cannot be gated, refused, or approved — so there is nothing here to be careful with yet."
-        result="The agent tells you it has no way to place a call. The Phone tab's keypad says the same thing on its face."
+        want="Reach someone by voice without giving the app a microphone — your own phone rings first."
+        needs="Twilio credentials, your own number and the app's number configured, and the voice kill switch set. No A2P registration: that gate is SMS-only."
+        touches="Places a real phone call and files it locally. Two legs are billed. A call cannot be unplaced."
+        confirm="Gated, so an unattended run is refused outright rather than asked. A number that replied STOP to a text cannot be phoned either — voice has no STOP of its own, so it reads the same list. Capped at 5 per number per UTC day."
+        result="Your phone rings, showing the app's number. Answer it and the other party is dialled and joined. If the switch is off you get `voice_disabled` and nobody's phone rings."
       >
-        <.prompt
-          text="Call the print shop and ask whether my order is ready."
-          try_in_chat={false}
-        />
+        <.prompt text="Call the print shop and ask whether my order is ready." />
         <ol class="ic-unfold">
           <li>
-            Nothing in the command catalog dials. The Twilio client sends messages
-            and reads call, recording and transcription records so voicemails can be
-            priced — it has never asked Twilio to place a call, and no verb above
-            it does either.
+            <span class="font-semibold text-base-content">Your phone rings first,
+              and that is the whole design.</span>
+            The call is placed to <span class="italic">you</span>; the other party
+            is dialled only once you answer, and the two legs are joined. So no
+            audio ever passes through this app — there is no microphone, no
+            speaker, and nothing to grant permission to.
           </li>
           <li>
-            So the useful answer to “when?” is not <span class="italic">when Twilio
-              approves it</span>. Approval is the SMS story. This one is waiting on
-            the work described just above, which is ours to do.
+            It also means the app never had to wait for the question that is
+            holding up Studio → Voice. A softphone would need microphone access
+            inside the app's webview; a bridge needs none, so calling shipped
+            while that question is still open.
           </li>
           <li>
-            This prompt has no <span class="font-semibold text-base-content">Try in Chat</span>
-            for the same reason. Prefilling your composer with a request the agent
-            cannot fulfil would teach the opposite of this paragraph — every other
-            cycle on this tab offers it because every other cycle is real.
+            <span class="font-semibold text-base-content">Both legs show the app's
+              number.</span> Whoever you call sees it, not your mobile — so if they call back they
+            reach the answering machine rather than you. That is the product
+            working, but it is worth knowing before you use it for something where
+            a return call matters.
+          </li>
+          <li>
+            <span class="font-semibold text-base-content">
+              The keypad still has no Call button.
+            </span>
+            The command works; the dial on the Phone tab has not been wired to it
+            yet, so today this is something you ask for rather than something you
+            press.
           </li>
         </ol>
       </.example>

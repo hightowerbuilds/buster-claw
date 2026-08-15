@@ -1,8 +1,27 @@
 # Outbound voice — making the rotary dial real
 
-**Scoped 08-15-26 · Status: SCOPED, no code.** Operator asked for outgoing calls
-alongside outgoing texts; those turned out to be two different problems and this
-is the half that is ours.
+**Scoped 08-15-26 · Status: Phases 1 and 3 SHIPPED 08-15. Phase 2 DELETED — it
+turned out not to exist. Phase 0 is the operator's, Phase 4 is the keypad.**
+
+> ### Phase 2 was deleted by the build, not skipped
+>
+> It scoped a Supabase function serving `<Dial>` TwiML, with a signature check,
+> a `PUBLIC_URL_BASE`, and an opaque id so a public endpoint could not be made
+> to dial an arbitrary number. **None of it was needed.** Twilio's Calls API
+> takes a `Twiml` parameter carrying the document inline, so the instruction
+> travels with the request that creates the call.
+>
+> That removes the phase and its headline risk together: **there is no public
+> endpoint to abuse**, and the number dialled cannot arrive from a callback
+> because nothing calls back. It is composed on the Mac from a value that was
+> validated there. The "toll fraud through the public bridge endpoint" risk
+> below is therefore struck rather than mitigated.
+>
+> It also leaves the Mac-never-in-the-synchronous-path rule fully intact: the
+> Mac initiates and is never called back.
+
+Operator asked for outgoing calls alongside outgoing texts; those turned out to
+be two different problems and this is the half that is ours.
 
 Sibling of [`BUSTERPHONE`](BUSTERPHONE_ROADMAP.md), which owns the number, the
 relay, the drain and inbound. Nothing here changes any of that.
@@ -102,12 +121,14 @@ app's number or should be deferred until a second number exists.
 
 ---
 
-## Phase 1 — `Twilio.place_call/3`, the REST half
+## Phase 1 — `Twilio.place_call/3`, the REST half ✅ SHIPPED 08-15
 
 The smallest honest unit: a function that creates a call and returns a receipt.
 
-- `POST /2010-04-01/Accounts/{sid}/Calls.json` with `To`, `From`, and a `Url`
-  pointing at the relay's new bridge endpoint (plus a `StatusCallback`).
+- `POST /2010-04-01/Accounts/{sid}/Calls.json` with `To` = **the operator's own
+  phone**, `From` = the owned number, and `Twiml` carrying
+  `<Dial callerId="…">target</Dial>` inline. **No `Url`** — see the header for
+  why that deleted Phase 2.
 - Mirror `send_sms/3`'s shape exactly, including its precondition style: a
   private `voice_ready` that names *which* precondition is missing, and **no
   public boolean twin** — that module's moduledoc records why a second copy of
@@ -125,9 +146,19 @@ settles asynchronously; the existing retry posture applies unchanged.
 **Exit:** a call to the operator's own phone connects, and a row lands with a
 `call_sid` that `cost_for/2` can price.
 
+**Shipped with two refusals the scope did not think of**, both found by writing
+the tests: dialling the app's own number bridges it to its own answering machine
+(two billed legs and a voicemail from the operator to themselves), and dialling
+the operator's own number bridges them to themselves. Both are
+`:cannot_dial_own_number` / `:cannot_dial_yourself` rather than something Twilio
+discovers.
+
+**Still owed:** the cost back-fill. `cost_for/2` prices a single call leg and a
+bridge has two, so the parent/child walk is real work and was not done here.
+
 ---
 
-## Phase 2 — The bridge TwiML, in the relay
+## ~~Phase 2 — The bridge TwiML, in the relay~~ ❌ DELETED — see the header
 
 A new edge function — or a new `?event=` branch on the existing `voice/` one —
 that answers the operator's leg with `<Dial>` to the target.
@@ -150,7 +181,7 @@ are audible, and a hang-up ends both.
 
 ---
 
-## Phase 3 — The command surface, and this is where the care goes
+## Phase 3 — The command surface, and this is where the care goes ✅ SHIPPED 08-15
 
 Placing a phone call is **not** the same kind of act as changing a background.
 The house has a precedent that names the category: `sound_record` is gated
@@ -175,7 +206,16 @@ needs its own, and "no mechanism" is not an option that survives review.
 
 **Exit:** an untrusted caller is refused without a confirmation prompt existing
 at all; a trusted one is asked; the kill switch off means no call is placed by
-any caller.
+any caller. **Met**, and both halves are broken-and-verified: flipping
+`gated: false` fails the policy test, and removing the opt-out check fails the
+STOP test.
+
+**The opt-out question was answered rather than deferred.** Voice has no STOP,
+so `phone_call` reads the SMS opt-out list — the same human asked to be left
+alone, and treating a STOP as SMS-only would let the same app ring them.
+
+**The cap is 5, not the SMS 20.** A repeated text is an annoyance; a repeated
+phone call is harassment, and it bills two legs each time.
 
 ---
 
@@ -218,7 +258,7 @@ off.
 
 | Risk | Weight | Mitigation |
 |---|---|---|
-| Toll fraud through the public bridge endpoint | **High** | opaque id, never a `To=` parameter; cap; kill switch |
+| ~~Toll fraud through the public bridge endpoint~~ | — | **Gone.** Inline TwiML means there is no endpoint. |
 | Two-leg cost surprises the operator | Medium | price both legs and show it, as voicemails already do |
 | New number gets spam-flagged for outbound | Medium | Phase 0 decision; nothing technical fixes reputation |
 | Agent places a call unattended | **High** | gated, not merely restricted — the `sound_record` precedent |

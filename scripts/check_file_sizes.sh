@@ -143,7 +143,11 @@ check lib/buster_claw_web/components/explained/studio.ex       307 HELD
 # It is prose and one table, not extractable logic — splitting it would put half
 # a tutorial's argument in another module, which is the failure `ramshackle.ex`'s
 # cap comment already describes for the same reason.
-check lib/buster_claw_web/components/explained/phone.ex        660 HELD
+#
+# 660 -> 680 later the same day, when `phone_call` shipped and turned the third
+# spine's "you cannot" cycle into a worked demo. That is the cap paying for
+# something becoming true, not for more prose about the same thing.
+check lib/buster_claw_web/components/explained/phone.ex        680 HELD
 check lib/buster_claw_web/components/explained/cmd.ex          430 HELD
 check lib/buster_claw_web/components/explained/shaders.ex      340 HELD
 check lib/buster_claw_web/components/explained/browser.ex      310 HELD
