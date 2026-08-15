@@ -25,8 +25,22 @@ defmodule BusterClawWeb.CalendarComponent do
   is owned here. Initialization runs once (guarded by `:loaded`) so a host's
   unrelated re-renders — the homepage streams chat, ticks the sky — never reset
   the operator's calendar navigation.
+
+  ## What lives elsewhere
+
+  The markup is `BusterClawWeb.Calendar.Views` and the date arithmetic is
+  `BusterClaw.Calendar.Grid`. Both are `import`ed rather than aliased, so the
+  call sites here read exactly as they did when both were private to this file.
+
+  Neither is a nested `live_component`, and cannot become one: a host renders
+  this behind `:if`, which DISCARDS a live_component's assigns rather than
+  hiding them, so any state pushed down into a child would vanish on a tab
+  switch. All state, and all fourteen `handle_event` clauses, stay here.
   """
   use BusterClawWeb, :live_component
+
+  import BusterClaw.Calendar.Grid
+  import BusterClawWeb.Calendar.Views
 
   alias BusterClaw.Calendar
   alias BusterClaw.Calendar.Event
@@ -361,7 +375,7 @@ defmodule BusterClawWeb.CalendarComponent do
             today={@today}
             target={@myself}
           />
-          <.day_view :if={@view == :day} day={hd(@grid_days)} today={@today} target={@myself} />
+          <.day_view :if={@view == :day} day={hd(@grid_days)} target={@myself} />
         </section>
 
         <div
@@ -425,255 +439,23 @@ defmodule BusterClawWeb.CalendarComponent do
           </div>
         </div>
 
-        <%!-- The event form, in a modal (was pinned to the bottom of the tab).
-              Same idiom as the chat SVG viewer: backdrop button closes, the
-              panel sits above it, Escape closes via phx-window-keydown. The
-              form itself is unchanged — Repeat + Repeat until is what makes an
-              event recurring, so one simple form covers single and recurring. --%>
-        <div
-          :if={@form_open}
-          class="fixed inset-0 z-50"
-          phx-window-keydown="close_form"
-          phx-key="escape"
-          phx-target={@myself}
-        >
-          <button
-            type="button"
-            phx-click="close_form"
-            phx-target={@myself}
-            aria-label="Close event form"
-            class="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
-          >
-          </button>
-          <div class="pointer-events-none absolute inset-0 grid place-items-center overflow-y-auto p-4">
-            <div class="pointer-events-auto w-full max-w-xl border-2 border-base-content/30 bg-base-100 shadow-2xl">
-              <header class="ic-scanlines relative flex items-center justify-between border-b-2 border-base-content/20 px-5 py-3">
-                <div class="relative z-[2]">
-                  <p class="ic-eyebrow">Calendar</p>
-                  <h3 class="font-display text-lg font-black uppercase tracking-tight">
-                    {if @editing_event, do: "Edit Event", else: "Add Event"}
-                  </h3>
-                </div>
-                <button
-                  type="button"
-                  phx-click="close_form"
-                  phx-target={@myself}
-                  aria-label="Close event form"
-                  class="relative z-[2] grid size-8 place-items-center border-2 border-base-content/30 text-lg leading-none transition hover:border-primary hover:text-primary"
-                >
-                  ×
-                </button>
-              </header>
-
-              <.form
-                for={@form}
-                id="event-form"
-                phx-change="validate"
-                phx-submit="save"
-                phx-target={@myself}
-                class="grid gap-3 p-5 sm:grid-cols-2"
-              >
-                <div class="sm:col-span-2">
-                  <.input field={@form[:title]} label="Title" />
-                </div>
-                <.input field={@form[:date]} label="Date" type="date" />
-                <.input field={@form[:color]} label="Color" type="select" options={@color_options} />
-                <.input field={@form[:start_time]} label="Start" type="time" />
-                <.input field={@form[:end_time]} label="End" type="time" />
-                <.input
-                  field={@form[:frequency]}
-                  label="Repeat"
-                  type="select"
-                  options={@frequency_options}
-                />
-                <.input field={@form[:recur_until]} label="Repeat until" type="date" />
-                <div class="sm:col-span-2">
-                  <.input field={@form[:notes]} label="Notes" type="textarea" />
-                </div>
-                <div class="flex flex-wrap gap-2 sm:col-span-2">
-                  <button class="rounded-xs bg-primary px-4 py-2 font-display text-sm font-bold uppercase tracking-wide text-primary-content transition hover:opacity-85">
-                    {if @editing_event, do: "Update", else: "Add"}
-                  </button>
-                  <button
-                    type="button"
-                    class="rounded-xs border-2 border-base-content/20 px-4 py-2 font-mono text-sm transition hover:border-base-content/40"
-                    phx-click="close_form"
-                    phx-target={@myself}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    :if={@editing_event}
-                    type="button"
-                    class="rounded-xs border-2 border-error/40 px-4 py-2 font-mono text-sm text-error transition hover:border-error"
-                    phx-click="delete"
-                    phx-value-id={@editing_event.id}
-                    phx-target={@myself}
-                    data-claw-confirm={"Delete \"#{@editing_event.title}\"?"}
-                  >
-                    Delete
-                  </button>
-                </div>
-              </.form>
-            </div>
-          </div>
-        </div>
+        <.event_form_modal
+          form_open={@form_open}
+          form={@form}
+          editing_event={@editing_event}
+          color_options={@color_options}
+          frequency_options={@frequency_options}
+          myself={@myself}
+        />
       </section>
     </div>
     """
   end
 
-  # ---- View components ----
+  # ---- View rebuild ----
 
-  attr :grid_days, :list, required: true
-  attr :weekday_labels, :list, required: true
-  attr :today, Date, required: true
-  attr :target, :any, required: true
-
-  defp month_view(assigns) do
-    ~H"""
-    <div class="grid grid-cols-7 border-b border-base-content/15 text-center font-mono text-[0.625rem] font-bold uppercase tracking-wide text-base-content/45">
-      <div :for={label <- @weekday_labels} class="px-2 py-2">{label}</div>
-    </div>
-
-    <div class="grid grid-cols-7 border-l border-t border-base-content/10">
-      <.day_cell
-        :for={day <- @grid_days}
-        day={day}
-        today={@today}
-        target={@target}
-        dim_other_month={true}
-        min_height="min-h-28"
-      />
-    </div>
-    """
-  end
-
-  attr :grid_days, :list, required: true
-  attr :weekday_labels, :list, required: true
-  attr :today, Date, required: true
-  attr :target, :any, required: true
-
-  defp week_view(assigns) do
-    ~H"""
-    <div class="grid grid-cols-7 border-b border-base-content/15 text-center font-mono text-[0.625rem] font-bold uppercase tracking-wide text-base-content/45">
-      <div :for={{label, day} <- Enum.zip(@weekday_labels, @grid_days)} class="px-2 py-2">
-        <div>{label}</div>
-        <div class="mt-1 font-mono text-sm text-base-content/80">{day.date.day}</div>
-      </div>
-    </div>
-
-    <div class="grid grid-cols-7 border-l border-t border-base-content/10">
-      <.day_cell
-        :for={day <- @grid_days}
-        day={day}
-        today={@today}
-        target={@target}
-        dim_other_month={false}
-        min_height="min-h-64"
-      />
-    </div>
-    """
-  end
-
-  attr :day, :map, required: true
-  attr :today, Date, required: true
-  attr :target, :any, required: true
-
-  defp day_view(assigns) do
-    ~H"""
-    <div class="border-b border-base-content/15 px-4 py-3 text-sm">
-      <span class="font-semibold">{Elixir.Calendar.strftime(@day.date, "%A")}</span>
-      <span class="ml-2 text-base-content/60">
-        {Elixir.Calendar.strftime(@day.date, "%B %-d, %Y")}
-      </span>
-    </div>
-    <div class="p-4">
-      <ul :if={@day.events != []} class="space-y-2">
-        <li
-          :for={event <- @day.events}
-          phx-click="inspect"
-          phx-value-id={event.id}
-          phx-target={@target}
-          class={[
-            "flex cursor-pointer items-baseline gap-3 rounded-xs px-3 py-2 text-sm",
-            CalendarColors.chip(event.color)
-          ]}
-        >
-          <span :if={event.start_time} class="w-16 font-mono text-xs opacity-75">
-            {format_time(event.start_time)}<span :if={event.end_time}>–{format_time(event.end_time)}</span>
-          </span>
-          <span :if={!event.start_time} class="w-16 font-mono text-xs opacity-75">All day</span>
-          <span class="truncate font-semibold">{event.title}</span>
-          <span
-            :if={event.frequency}
-            class="ml-auto rounded-xs bg-base-100/60 px-2 py-0.5 font-mono text-[0.625rem] uppercase tracking-wide text-base-content/70"
-          >
-            {event.frequency}
-          </span>
-        </li>
-      </ul>
-      <p :if={@day.events == []} class="text-center text-sm text-base-content/60">
-        Nothing on the schedule.
-      </p>
-    </div>
-    """
-  end
-
-  attr :day, :map, required: true
-  attr :today, Date, required: true
-  attr :target, :any, required: true
-  attr :dim_other_month, :boolean, required: true
-  attr :min_height, :string, default: "min-h-28"
-
-  defp day_cell(assigns) do
-    ~H"""
-    <button
-      type="button"
-      phx-click="select_date"
-      phx-value-date={Date.to_iso8601(@day.date)}
-      phx-target={@target}
-      data-drop-date={Date.to_iso8601(@day.date)}
-      class={[
-        "relative flex flex-col items-stretch border-b border-r border-base-content/10 p-2 text-left text-xs transition hover:bg-base-content/5",
-        @min_height,
-        cell_treatment(@day, @today, @dim_other_month)
-      ]}
-    >
-      <span class={[
-        "relative z-[2] self-end font-mono font-semibold",
-        @day.date == @today && "rounded-xs bg-primary px-1.5 py-0.5 text-primary-content",
-        (@dim_other_month and not @day.in_month?) && @day.date != @today && "text-base-content/40"
-      ]}>
-        {@day.date.day}
-      </span>
-
-      <ul class="relative z-[2] mt-1 flex flex-col gap-1">
-        <li
-          :for={event <- @day.events}
-          phx-click="inspect"
-          phx-value-id={event.id}
-          phx-target={@target}
-          draggable="true"
-          data-event-id={event.id}
-          class={[
-            "flex cursor-grab items-baseline gap-1 truncate rounded-xs px-1.5 py-0.5 font-mono text-[0.625rem] active:cursor-grabbing",
-            CalendarColors.chip(event.color)
-          ]}
-          title={event.title}
-        >
-          <span :if={event.start_time} class="opacity-75">
-            {format_time(event.start_time)}
-          </span>
-          <span class="truncate">{event.title}</span>
-        </li>
-      </ul>
-    </button>
-    """
-  end
-
-  # ---- View rebuild + range helpers ----
-
+  # The one place that reads the socket to ask Grid a question and the context
+  # for the events in the answer. Everything it calls is pure.
   defp rebuild_view(socket) do
     {range_start, range_end} = view_range(socket.assigns.view, socket.assigns.anchor)
     events = Calendar.events_in_range(range_start, range_end)
@@ -684,183 +466,8 @@ defmodule BusterClawWeb.CalendarComponent do
     assign(socket, :grid_days, grid_days)
   end
 
-  defp view_range(:month, anchor) do
-    first = Date.beginning_of_month(anchor)
-    grid_start = Date.add(first, -(Date.day_of_week(first, :sunday) - 1))
-    grid_end = Date.add(grid_start, 41)
-    {grid_start, grid_end}
-  end
-
-  defp view_range(:week, anchor) do
-    start = Date.add(anchor, -(Date.day_of_week(anchor, :sunday) - 1))
-    {start, Date.add(start, 6)}
-  end
-
-  defp view_range(:day, anchor), do: {anchor, anchor}
-
-  defp build_grid_days(:month, anchor, events, range_start, range_end) do
-    month = anchor.month
-    by_date = group_by_date(events)
-
-    Enum.map(0..Date.diff(range_end, range_start), fn offset ->
-      date = Date.add(range_start, offset)
-
-      %{
-        date: date,
-        in_month?: date.month == month,
-        events: Map.get(by_date, date, [])
-      }
-    end)
-  end
-
-  defp build_grid_days(:week, _anchor, events, range_start, range_end) do
-    by_date = group_by_date(events)
-
-    Enum.map(0..Date.diff(range_end, range_start), fn offset ->
-      date = Date.add(range_start, offset)
-      %{date: date, in_month?: true, events: Map.get(by_date, date, [])}
-    end)
-  end
-
-  defp build_grid_days(:day, _anchor, events, range_start, _range_end) do
-    by_date = group_by_date(events)
-    [%{date: range_start, in_month?: true, events: Map.get(by_date, range_start, [])}]
-  end
-
-  defp group_by_date(events) do
-    events
-    |> Enum.group_by(& &1.date)
-    |> Map.new(fn {date, items} -> {date, Enum.sort_by(items, &sort_key/1)} end)
-  end
-
-  defp sort_key(%Event{start_time: nil}), do: {0, ~T[00:00:00]}
-  defp sort_key(%Event{start_time: time}), do: {1, time}
-
-  # ---- Header / labels ----
-
-  defp header_label(:month, anchor), do: Elixir.Calendar.strftime(anchor, "%B %Y")
-
-  defp header_label(:week, anchor) do
-    start = Date.add(anchor, -(Date.day_of_week(anchor, :sunday) - 1))
-    finish = Date.add(start, 6)
-
-    "#{Elixir.Calendar.strftime(start, "%b %-d")} – #{Elixir.Calendar.strftime(finish, "%b %-d, %Y")}"
-  end
-
-  defp header_label(:day, anchor),
-    do: Elixir.Calendar.strftime(anchor, "%A, %B %-d, %Y")
-
-  # Param-derived input must never mint atoms (the atom table is not GC'd), so
-  # the view name maps through explicit clauses instead of String.to_atom/1.
-  defp view_atom("month"), do: :month
-  defp view_atom("week"), do: :week
-  defp view_atom("day"), do: :day
-
-  # ---- Anchor shifts ----
-
-  defp shift_anchor(:month, anchor, delta), do: shift_month(anchor, delta)
-  defp shift_anchor(:week, anchor, delta), do: Date.add(anchor, 7 * delta)
-  defp shift_anchor(:day, anchor, delta), do: Date.add(anchor, delta)
-
-  defp shift_month(date, delta) do
-    months = date.year * 12 + date.month - 1 + delta
-    year = div(months, 12)
-    month = rem(months, 12) + 1
-    day = min(date.day, Date.days_in_month(Date.new!(year, month, 1)))
-    Date.new!(year, month, day)
-  end
-
-  # ---- Formatting / colors ----
-
-  defp format_time(%Time{} = time), do: Elixir.Calendar.strftime(time, "%H:%M")
-  defp format_time(_), do: ""
-
-  defp format_event_when(%Event{} = event) do
-    parts = [Elixir.Calendar.strftime(event.date, "%a, %b %-d, %Y")]
-
-    parts =
-      cond do
-        event.start_time && event.end_time ->
-          parts ++ ["#{format_time(event.start_time)}–#{format_time(event.end_time)}"]
-
-        event.start_time ->
-          parts ++ [format_time(event.start_time)]
-
-        true ->
-          parts ++ ["All day"]
-      end
-
-    Enum.join(parts, " · ")
-  end
-
-  # Treatment for a month/week day cell: today is a primary wash; a day with
-  # events gets a faint wash of its first event's color (chips sit on top); empty
-  # cells carry the scanline texture (chrome), dimmed when out of month.
-  defp cell_treatment(day, today, dim) do
-    cond do
-      day.date == today -> "bg-primary/10"
-      day.events != [] -> CalendarColors.cell_wash(hd(day.events).color)
-      dim and not day.in_month? -> "ic-scanlines bg-base-200/20"
-      true -> "ic-scanlines"
-    end
-  end
-
   # ---- Form helpers ----
+  # The rest of them are pure and live in Grid; this one takes a socket.
 
   defp assign_form(socket, changeset), do: assign(socket, :form, to_form(changeset))
-
-  defp default_attrs(today),
-    do: %{date: today, event_id: Ecto.UUID.generate(), color: "neutral"}
-
-  defp normalize_params(params) do
-    params
-    |> Map.update("date", nil, &parse_date/1)
-    |> Map.update("recur_until", nil, &parse_date/1)
-    |> Map.update("start_time", nil, &parse_time/1)
-    |> Map.update("end_time", nil, &parse_time/1)
-    |> Map.update("frequency", nil, &blank_to_nil/1)
-    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
-    |> Map.new()
-  end
-
-  defp ensure_event_id(params) do
-    case Map.get(params, "event_id") || Map.get(params, :event_id) do
-      value when value in [nil, ""] -> Map.put(params, "event_id", Ecto.UUID.generate())
-      _value -> params
-    end
-  end
-
-  defp parse_date(%Date{} = date), do: date
-  defp parse_date(""), do: nil
-
-  defp parse_date(value) when is_binary(value) do
-    case Date.from_iso8601(value) do
-      {:ok, date} -> date
-      _ -> value
-    end
-  end
-
-  defp parse_date(value), do: value
-
-  defp parse_time(%Time{} = time), do: time
-  defp parse_time(""), do: nil
-  defp parse_time(nil), do: nil
-
-  defp parse_time(value) when is_binary(value) do
-    case Time.from_iso8601(value <> ":00") do
-      {:ok, time} ->
-        time
-
-      _ ->
-        case Time.from_iso8601(value) do
-          {:ok, time} -> time
-          _ -> value
-        end
-    end
-  end
-
-  defp parse_time(value), do: value
-
-  defp blank_to_nil(""), do: nil
-  defp blank_to_nil(value), do: value
 end

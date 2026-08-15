@@ -342,9 +342,29 @@ check lib/buster_claw/skills.ex                               379 HELD
 # Frozen instead: capping it was always the cheaper half of that decision.
 check lib/buster_claw_web/components/home_widget.ex           699 FROZEN
 
-# Not in a phase, but the two largest surviving mixed files. Frozen so the next
-# roadmap inherits them no worse than it found them.
-check lib/buster_claw_web/live/calendar_component.ex          866 FROZEN
+# These were the two largest surviving mixed files, frozen so the next roadmap
+# would inherit them no worse than it found them.
+#
+# calendar_component.ex came off FROZEN 08-14: 866 -> 473, and the cap follows it
+# down in the same commit, which is the under-cap half of this script working as
+# intended. It was ~45% markup wrapped around ~190 lines of date arithmetic
+# wrapped around fourteen `handle_event` clauses, and both outer layers left
+# along their own seam. The markup is `components/calendar/views.ex`; the
+# arithmetic is `calendar/grid.ex`, which is in CORE and now has a test file with
+# no LiveView in it — the test you cannot write while `view_range/2` is a `defp`
+# on a component.
+#
+# The two new files are capped ON ARRIVAL at their as-written size, and neither
+# may become a nested live_component. A host renders the calendar behind `:if`,
+# which DISCARDS a live_component's assigns rather than hiding them, so any state
+# pushed down into a child would vanish on a tab switch — silently, and only on
+# the homepage. Function components and a plain module hold nothing, so there is
+# nothing to lose. Growth in views.ex therefore means new markup; growth in
+# grid.ex means a new question about dates; growth in the component itself means
+# a fifteenth event, which is exactly the decision this cap should cost.
+check lib/buster_claw_web/live/calendar_component.ex          520 HELD
+check lib/buster_claw_web/components/calendar/views.ex        310 HELD
+check lib/buster_claw/calendar/grid.ex                        221 HELD
 # Raised 08-10, 541 -> 560, for the `Messages | Contacts` sub-tab rail: the rail
 # markup, one guarded event, and the two `:if` wrappers the panels moved inside.
 # The rail is HERE rather than in a panel module for the reason `StudioPanel`
@@ -434,6 +454,64 @@ check lib/buster_claw_web/live/dock_nav_live.ex                45 HELD
 # found it. The lesson is the boring one: the gate is part of the commit, not
 # part of the review.
 check lib/buster_claw_web/chrome_hook.ex                       97 HELD
+
+# --- The core layer enters the inventory (08-13/14, CODE_REVIEW_08-13-26) ----
+#
+# Every file above this line is web. That was the whole finding: the review
+# measured 65,003 lines under `lib/buster_claw/` with NOT ONE of them capped,
+# which is precisely where the heavyweights had drifted to while the gate
+# watched the web layer. These are the files the five parallel refactors of
+# 08-13/14 actually earned a number on — capped by the commit that cut them,
+# not by a later pass that would have to re-measure by hand.
+
+# Gmail, split three ways (`2ac945d`): the API surface kept the module name,
+# the MIME composer and the response parser moved beside it. `mime.ex` is the
+# one to watch — it owns the attachment fence and the header sanitizer, so
+# growth here is either a new MIME concern (fine) or logic drifting into a
+# security boundary (not). Its moduledoc says so; this cap is what makes
+# someone read it.
+check lib/buster_claw/google/gmail.ex                         330 HELD
+check lib/buster_claw/google/gmail/mime.ex                    340 HELD
+check lib/buster_claw/google/gmail/parser.ex                  260 HELD
+
+# Integrations (`a23c702`), 539 -> 482 by collapsing five near-verbatim
+# failure-recording blocks into one recorder.
+#
+# 500, not the 460 the review proposed. 460 was written against the review's
+# estimate of where the dedup would land; the dedup landed at 482, so 460
+# would demand deleting working code today to satisfy a number nobody
+# measured. This is the honest post-cut cap with a little room, and it still
+# ratchets 60 below the 560 the review would have opened at.
+check lib/buster_claw/integrations.ex                         500 HELD
+check lib/buster_claw/integrations/github.ex                  500 HELD
+
+# The cut-up pipeline. The review read all twelve stages and found them
+# correct — one stage per module, a test file each — so these are regrowth
+# alarms, not split targets. Only the three files the 08-13 repairs touched
+# are capped; the rest are healthy and un-nagged on purpose.
+#
+# `source_name.ex` is the consolidated traversal gate (`22de168`), capped on
+# arrival with no headroom: it is a security boundary whose entire job is to
+# be small and to be the ONLY copy. If it grows, ask what got added to a path
+# check. The two stores below it shed their duplicate copies to it.
+check lib/buster_claw/notifications/cutup/source_name.ex      125 HELD
+check lib/buster_claw/notifications/cutup/index.ex            640 HELD
+check lib/buster_claw/notifications/cutup/features.ex         760 HELD
+
+# The web command surface (`1eee2f8`), 894 -> 848 by collapsing the six
+# click/fill clause bodies.
+#
+# FROZEN, not HELD, and the difference is the point: that compression was
+# real but it was not the split this file is owed. The review found four
+# domains sharing one module — co-presence primitives, flows/checks/egress/
+# secrets, bookmarks/history, and fetch/download — and named
+# `Commands.WebCopresence` + `Commands.WebFlows` as the seams. Frozen at
+# today's size so the next browser command has to either fit or take the
+# split. One trap for whoever takes it: `browser_flow`'s `tab_step/2` calls
+# the primitives as LOCAL functions deliberately, never through
+# `Commands.call/3`, to avoid re-audit and double rate-limiting. That comment
+# moves with them or the property is lost.
+check lib/buster_claw/commands/web.ex                         848 FROZEN
 
 if [ "$fail" -ne 0 ]; then
   echo "FAIL: the file-size inventory does not hold."
