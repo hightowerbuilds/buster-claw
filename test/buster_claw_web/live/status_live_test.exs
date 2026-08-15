@@ -1570,12 +1570,13 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert voicemail_rule =~ "PIN-verified"
       assert voicemail_rule =~ "Two factors"
 
-      # The five cycles.
+      # The six cycles.
       assert html =~ "Check the machine"
       assert html =~ "Reading is not hearing"
       assert html =~ "Decide who can give orders"
       assert html =~ "The message that answers itself"
       assert html =~ "Texting back"
+      assert html =~ "Ask it to make a call"
 
       # Setup is described honestly: the operator's own Twilio and relay, and no
       # store to buy a number from yet (the busterclaw.lol tab says the same).
@@ -1637,6 +1638,69 @@ defmodule BusterClawWeb.StatusLiveTest do
       end
 
       refute html =~ "Tutorial in the works"
+    end
+
+    # 08-15. The operator hit this live: their Twilio account was registered down
+    # the business path, so outbound SMS was blocked — and they asked for outbound
+    # CALLS in the same breath, which is a different problem with a different
+    # owner. The tab now has to keep the two apart, so this asserts they are not
+    # the same sentence rather than that both words appear somewhere.
+    test "the BusterPhone tab keeps the SMS blocker apart from the voice blocker",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "explained"})
+
+      html = render_click(view, "select_explained_tab", %{"tab" => "phone"})
+
+      sms_blocker = view |> element("[data-phone-sms-blocker]") |> render()
+      assert sms_blocker =~ "Paperwork"
+      assert sms_blocker =~ "A2P 10DLC"
+
+      voice_blocker = view |> element("[data-phone-voice-blocker]") |> render()
+      assert voice_blocker =~ "A2P does not apply to"
+      refute voice_blocker =~ "Paperwork"
+
+      # The claim a reader most needs and most often gets backwards.
+      assert html =~ "A2P 10DLC is an SMS gate"
+      assert html =~ "touches voice in neither direction"
+
+      # A2P status is invisible to `Twilio.send_sms/3` — its preconditions are the
+      # kill switch, credentials and a Messaging Service SID — so a
+      # registration-blocked send is not one of this app's named refusals.
+      assert html =~ "local refusal always names a local limit"
+
+      # Sole Proprietor is an identity tier, and unwinding a wrong one has an
+      # order and a price. Both halves are load-bearing for the operator.
+      assert html =~ "identity tier, not a loophole"
+      assert html =~ "registrant has a tax ID"
+      assert html =~ "Campaign is deleted first"
+      assert html =~ "Deletion is permanent and a replacement registration"
+
+      # The bridge design, and the reason the keypad still discloses.
+      assert html =~ "No audio touches this"
+      assert html =~ "two legs, both billed"
+      assert html =~ "Searches your contacts"
+      assert html =~ "a control that looks finished and is not"
+
+      # The calling cycle is explanatory, so it names no verb and offers no
+      # prefill. Prefilling a composer with a request that cannot be fulfilled
+      # would teach the opposite of the paragraph it sits under.
+      assert html =~ "Call the print shop"
+
+      refute has_element?(
+               view,
+               ~s([data-demo-try-in-chat][phx-value-text^="Call the print shop"])
+             )
+
+      # Not a universal over the catalog — a review-forcing tripwire. If any of
+      # these is ever built, this test fails and the tutorial gets rewritten
+      # instead of quietly continuing to say calling does not exist.
+      for fake <- ~w(phone_call phone_dial voice_call call_place) do
+        refute html =~ fake, "the tab must not teach #{fake} — there is no outbound-call verb"
+
+        assert Commands.command_type(fake) == nil,
+               "#{fake} now exists; the phone tutorial still teaches that calling is unbuilt"
+      end
     end
 
     test "the Shaders tab teaches the file contract and that selection is yours alone",

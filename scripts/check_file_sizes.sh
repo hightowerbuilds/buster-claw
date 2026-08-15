@@ -134,7 +134,16 @@ check lib/buster_claw_web/components/explained_panel.ex        118 HELD
 # which is exactly what it was written to do.
 check lib/buster_claw_web/components/explained/ramshackle.ex   575 HELD
 check lib/buster_claw_web/components/explained/studio.ex       307 HELD
-check lib/buster_claw_web/components/explained/phone.ex        460 HELD
+# 460 -> 660 on 08-15. The tab gained a SECOND SPINE rather than more of the
+# first: three capabilities with three unrelated blockers (inbound voice works;
+# outbound SMS is built and blocked on Twilio paperwork; outbound voice needs no
+# A2P at all and is simply unbuilt). That distinction is the most confusing thing
+# about this feature and the operator hit it in the console the same day.
+#
+# It is prose and one table, not extractable logic — splitting it would put half
+# a tutorial's argument in another module, which is the failure `ramshackle.ex`'s
+# cap comment already describes for the same reason.
+check lib/buster_claw_web/components/explained/phone.ex        660 HELD
 check lib/buster_claw_web/components/explained/cmd.ex          430 HELD
 check lib/buster_claw_web/components/explained/shaders.ex      340 HELD
 check lib/buster_claw_web/components/explained/browser.ex      310 HELD

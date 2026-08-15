@@ -21,6 +21,22 @@ defmodule BusterClawWeb.Explained.Phone do
   Twilio number and Supabase relay today — the number counter on busterclaw.lol
   is planned, not open. The tutorial says so rather than implying a Connect
   button exists.
+
+  ## The second spine: three capabilities, three unrelated blockers
+
+  Added 08-15 because the operator hit it live. "Let it text and call for me" is
+  three questions: inbound is live, outbound SMS is built and kill-switched
+  behind **Twilio paperwork** (A2P 10DLC), and outbound voice needs **no** A2P at
+  all and is simply unbuilt (`OUTBOUND_VOICE_ROADMAP.md`). A reader who takes
+  "phone registration" to cover calls waits forever for an approval that would
+  not have unblocked them.
+
+  Two consequences the copy is careful about: A2P status is invisible to
+  `Twilio.send_sms/3` — its three preconditions are the kill switch, credentials,
+  and a Messaging Service SID — so a registration-blocked send fails from the
+  carrier side, not locally; and the calling cycle names **no command**, because
+  there is no outbound-call verb, which is also why it is the second demo on this
+  tab with `try_in_chat={false}`.
   """
   use BusterClawWeb, :html
   import BusterClawWeb.Explained.Shared
@@ -408,6 +424,204 @@ defmodule BusterClawWeb.Explained.Phone do
             Those STOP/START/HELP replies are compliance traffic: they are archived,
             and they never become agent work. The agent does not get to answer a
             legal opt-out or reinterpret one as a request.
+          </li>
+        </ol>
+      </.example>
+
+      <section class="flex flex-col gap-3">
+        <h3 class="font-display text-base font-black uppercase tracking-wide">
+          Three capabilities, three different blockers
+        </h3>
+        <p class="text-sm leading-relaxed text-base-content/80">
+          “Can it text and call people for me?” sounds like one question. It is
+          three, and the three have nothing in common: one is live, one is
+          finished code waiting on a form at Twilio, and one has no form to wait
+          on because it was never built. Confusing any two of them is the most
+          expensive mistake available on this tab — it makes you wait on an
+          approval that would not unblock the thing you are waiting for.
+        </p>
+        <div class="overflow-x-auto">
+          <table class="w-full border-collapse text-left text-xs">
+            <thead>
+              <tr class="border-b-2 border-base-content/20">
+                <th class="ic-eyebrow py-2 pr-3">Capability</th>
+                <th class="ic-eyebrow py-2 pr-3">Where it stands</th>
+                <th class="ic-eyebrow py-2">What is actually in the way</th>
+              </tr>
+            </thead>
+            <tbody class="text-base-content/75">
+              <tr class="border-b border-base-content/10">
+                <td class="py-2 pr-3 font-mono font-bold text-base-content">
+                  Inbound calls and texts
+                </td>
+                <td class="py-2 pr-3">Live. Everything above this line.</td>
+                <td class="py-2">
+                  Nothing. Point your own number and relay at it and it runs.
+                </td>
+              </tr>
+              <tr class="border-b border-base-content/10">
+                <td class="py-2 pr-3 font-mono font-bold text-base-content">
+                  Outbound texts
+                </td>
+                <td class="py-2 pr-3">
+                  Built and kill-switched. <code>sms_send</code>
+                  has existed since 07-18, off unless you switch it on.
+                </td>
+                <td class="py-2" data-phone-sms-blocker>
+                  <span class="font-semibold text-base-content">Paperwork.</span>
+                  Twilio's A2P 10DLC registration, filed by you in their Console.
+                  No code here changes when it clears.
+                </td>
+              </tr>
+              <tr>
+                <td class="py-2 pr-3 font-mono font-bold text-base-content">
+                  Outbound calls
+                </td>
+                <td class="py-2 pr-3">
+                  Not built. The Twilio client creates messages and reads call
+                  records for billing; it never places a call.
+                </td>
+                <td class="py-2" data-phone-voice-blocker>
+                  <span class="font-semibold text-base-content">Us.</span>
+                  <span class="font-semibold text-base-content">A2P does not apply to
+                    voice</span>, so there is nothing pending at Twilio to wait for.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="text-sm leading-relaxed text-base-content/70">
+          <span class="font-semibold text-base-content">A2P 10DLC is an SMS gate.</span>
+          It governs application-to-person <span class="italic">messaging</span>
+          on US ten-digit numbers, and it touches voice in neither direction. Read
+          “phone registration” as covering calls and you will wait indefinitely for
+          the approval of something that was never blocked.
+        </p>
+        <p class="text-sm leading-relaxed text-base-content/70">
+          Which explains an odd thing about cycle 5: not one of those three
+          preconditions is “registered”. <code>sms_send</code>
+          checks that outbound SMS is switched on, that Twilio credentials are
+          present, and that a Messaging Service SID is set — it cannot see your
+          Brand or campaign status at all. So while registration is incomplete the
+          send is not refused here; it leaves for Twilio and the refusal comes back
+          from the carrier side, as a provider error or an undelivered message. A
+          local refusal always names a local limit. Anything else came from
+          outside.
+        </p>
+        <p class="border-l-2 border-primary pl-3 text-sm leading-relaxed text-base-content/70">
+          <span class="font-semibold text-base-content">Direct Sole Proprietor is an
+            identity tier, not a loophole.</span>
+          Twilio still classifies an individual's application traffic as A2P; being
+          one person rather than a company changes <span class="italic">which</span>
+          registration you file, never whether you file one. A US individual with no
+          EIN registers as Sole Proprietor, and the answer that routes you there is
+          “no” when the Starter Profile asks whether the registrant has a tax ID.
+          Answer it as a business and you land in Standard or Low-Volume Standard,
+          which is the wrong tier — and review does not repair a wrong identity
+          class, it just takes a long time to tell you so.
+        </p>
+        <p class="text-sm leading-relaxed text-base-content/70">
+          <span class="font-semibold text-base-content">Undoing that has an order,
+            and a price.</span>
+          Write down the current Brand Type, Brand Status and Campaign Status before
+          you touch anything; then the <span class="font-semibold text-base-content">Campaign is deleted first and the
+            Brand second</span>. Deletion is permanent and a replacement registration
+          can incur new fees, so this is not a form you can un-submit. Leave outbound
+          kill-switched for the whole reset, and leave the inbound webhook alone —
+          the path the rest of this tab describes is already proven, and a
+          registration reset has no business disturbing it. (Console specifics as
+          recorded 07-18; Twilio rearranges those screens.)
+        </p>
+      </section>
+
+      <section class="flex flex-col gap-3">
+        <h3 class="font-display text-base font-black uppercase tracking-wide">
+          Why the call will ring your phone first
+        </h3>
+        <p class="text-sm leading-relaxed text-base-content/80">
+          When outbound calling does exist, the app will not be the one talking.
+          Twilio rings <span class="italic">your</span>
+          mobile; you answer; it then dials the other party and bridges the two
+          legs. You are on your own phone the whole time and the app is a dialer,
+          not a telephone. Three things fall out of that, and they are the reason
+          it beats the obvious alternative of a softphone in this window:
+        </p>
+        <ul class="ic-unfold" style="list-style: none; padding-left: 0;">
+          <li>
+            <span class="font-mono font-bold text-base-content">No audio touches this
+              Mac</span> — no microphone, no speaker, no browser media permission. The Mac only
+            asks Twilio to start the call; if that request fails, nobody is on a
+            line to hear it fail.
+          </li>
+          <li>
+            <span class="font-mono font-bold text-base-content">It does not have to
+              queue behind the microphone question</span>
+            — a softphone would need <code>getUserMedia</code>
+            working inside the app's WebView, the same unanswered question that is
+            holding up voice in Studio. Bridging needs none of it, so calling is
+            not blocked on that spike.
+          </li>
+          <li>
+            <span class="font-mono font-bold text-base-content">Your phone ringing is
+              itself the consent</span>
+            — a call cannot happen while you are away from it. That is the deliberate
+            opposite of the cheap version, where the app dials a stranger and reads
+            them a sentence: one leg, no bridge, and a robocall generator. It is
+            deferred on purpose, not overlooked.
+          </li>
+        </ul>
+        <p class="text-sm leading-relaxed text-base-content/70">
+          The honest cost is two legs, both billed. And two questions get answered
+          before any of it is built rather than discovered afterwards: calls would
+          present <span class="italic">the app's</span>
+          number, so a call back lands on the answering machine rather than on you;
+          and opt-out has no voice equivalent to copy — STOP is a text you reply to
+          a text with. There is no such reply to a phone call, so outbound calling
+          either honours the same opt-out list as SMS or grows its own. “No
+          mechanism” is not on the list of options.
+        </p>
+        <p class="text-sm leading-relaxed text-base-content/70">
+          <span class="font-semibold text-base-content">And that is why the keypad
+            says what it says.</span>
+          The Phone tab has a working keypad under the line <span class="font-mono text-base-content">“Searches your contacts · outbound
+            calling isn't built”</span>. It is not an oversight and not
+          self-deprecation: a control that looks finished and is not is exactly the
+          thing this app is not allowed to ship, so the keypad discloses what it
+          actually does — it filters your contacts as you type. That sentence gets
+          deleted the day it becomes false, and not before.
+        </p>
+      </section>
+
+      <.example
+        n={6}
+        title="Ask it to make a call"
+        want="The one thing on this tab you cannot do — and what happens the day you can."
+        needs="Nothing, and that is the point: there is no outbound-call command to enable, configure, or register."
+        touches="Nothing. No call is placed, no money is spent, no row is written."
+        confirm="The stop is absence. A command that does not exist cannot be gated, refused, or approved — so there is nothing here to be careful with yet."
+        result="The agent tells you it has no way to place a call. The Phone tab's keypad says the same thing on its face."
+      >
+        <.prompt
+          text="Call the print shop and ask whether my order is ready."
+          try_in_chat={false}
+        />
+        <ol class="ic-unfold">
+          <li>
+            Nothing in the command catalog dials. The Twilio client sends messages
+            and reads call, recording and transcription records so voicemails can be
+            priced — it has never asked Twilio to place a call, and no verb above
+            it does either.
+          </li>
+          <li>
+            So the useful answer to “when?” is not <span class="italic">when Twilio
+              approves it</span>. Approval is the SMS story. This one is waiting on
+            the work described just above, which is ours to do.
+          </li>
+          <li>
+            This prompt has no <span class="font-semibold text-base-content">Try in Chat</span>
+            for the same reason. Prefilling your composer with a request the agent
+            cannot fulfil would teach the opposite of this paragraph — every other
+            cycle on this tab offers it because every other cycle is real.
           </li>
         </ol>
       </.example>

@@ -64,7 +64,7 @@ roadmaps/
 ├── shell/ ·················· Part I    TERMINAL_THEME · TERMINAL_PAINT
 ├── surfaces/ ··············· Parts II–III  STUDIO · IMAGE_SHADER · LEFTOVERS_SURFACES
 ├── agent-core/ ············· Part V    LEFTOVERS_AGENT_CORE
-├── integrations/ ··········· Part VI   CLINCH · BUSTERPHONE (+NUMBER_VENDING) · GOOGLE_VERIFICATION
+├── integrations/ ··········· Part VI   CLINCH · BUSTERPHONE (+NUMBER_VENDING) · OUTBOUND_VOICE · GOOGLE_VERIFICATION
 ├── platform/ ··············· Part VII  APPLE · RELEASE_GATE · TRUST_AND_SUPPORT · QA_BACKLOG · LEFTOVERS_PLATFORM
 ├── distribution/ ··········· Part VIII DISTRIBUTION · FRONT_DOOR
 └── website/ ················ Part IX   WEBSITE
@@ -232,6 +232,8 @@ Not surfaces. The machinery every surface sits on.
 | **The Clinch — credentials** | `Clinch`, `ClinchPanels`, Tauri `clinch_*` | **ACTIVE — Phases 0–4 COMPLETE 08-10; Phase 5 guarded 08-13, now waiting on the operator's tunnel spike** | [`CLINCH`](integrations/CLINCH_ROADMAP.md) |
 | **Reaching it from a phone** | the relay, as a control channel | **PARKED 08-13 — research done, starts after the desktop app ships** | [`PHONE_ACCESS`](integrations/PHONE_ACCESS_ROADMAP.md) |
 | **Twilio / BusterPhone** | `Telephony` | **ACTIVE — the money leg. Inbound is LIVE on the operator's number (verified in the app 08-14); what remains is vending one to somebody else** | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) |
+| Outgoing texts | `sms_send`, kill-switched | **BUILT, BLOCKED ON PAPERWORK** — the Twilio brand registered down the business path; the fix is Direct Sole Proprietor, and the procedure is written | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) Phase 2 |
+| Outgoing calls | — | **SCOPED 08-15** — needs no A2P at all; it is simply unbuilt. The keypad says so on its face | [`OUTBOUND_VOICE`](integrations/OUTBOUND_VOICE_ROADMAP.md) |
 | The relay (Supabase) | `telephony/relay.ex` | SHIPPED — **now erases, 08-10** | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) — pre-08-10 backlog sweep · [`LEFTOVERS_PLATFORM`](platform/LEFTOVERS_PLATFORM.md) — rotated DB password |
 | Google Workspace | `Google` (16 modules) | SHIPPED | [`GOOGLE_VERIFICATION`](integrations/GOOGLE_VERIFICATION_ROADMAP.md) — restricted scopes, CASA |
 | Operational — GitHub | `Integrations` | SHIPPED | — |
