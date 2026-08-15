@@ -639,10 +639,16 @@ defmodule BusterClawWeb.AppearanceLive do
                     field, so the params are the palette and there is no per-field
                     event to keep in step with the field list. Saved on every change
                     — the terminal restyles while the picker is still open. --%>
+              <%!-- `phx-submit` mirrors `phx-change` and is not decorative: the
+                    Name field is a text input, so Enter would submit this form
+                    NATIVELY, reload /appearance, and take the half-built palette
+                    with it. Same defect found in Studio -> Voice in the 08-15
+                    packaged build (DMG-review-8-15, finding 3). --%>
               <form
                 :if={@custom_draft}
                 id="custom-theme-editor"
                 phx-change="save_custom_theme"
+                phx-submit="save_custom_theme"
                 class="space-y-4"
               >
                 <div class="space-y-1">

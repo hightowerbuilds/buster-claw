@@ -107,7 +107,14 @@ defmodule BusterClawWeb.Studio.Voice do
         </span>
       </div>
 
-      <form phx-change="voice_search" class="shrink-0">
+      <%!-- `phx-submit` is not optional here even though nothing submits: a
+            single-input form with no submit handler is submitted NATIVELY by the
+            browser on Enter, which navigates the page, remounts the LiveView and
+            drops the operator back on the Chat tab. Found in the packaged app
+            08-15 (DMG-review-8-15, finding 3). LiveView tests drive
+            `render_change/2` and cannot produce a native submit, so the suite
+            could not have caught it. --%>
+      <form phx-change="voice_search" phx-submit="voice_search" class="shrink-0">
         <input
           type="text"
           name="query"
@@ -165,7 +172,11 @@ defmodule BusterClawWeb.Studio.Voice do
         Can it say this?
       </h3>
 
-      <form phx-change="voice_sentence" class="shrink-0">
+      <%!-- Same reason as the filter above. Enter is the natural gesture for
+            "make this", so it holds that place: today it re-grades the phrase,
+            and it is where assembly lands when V.7 gives the tab something to
+            build with. --%>
+      <form phx-change="voice_sentence" phx-submit="voice_sentence" class="shrink-0">
         <input
           type="text"
           name="sentence"

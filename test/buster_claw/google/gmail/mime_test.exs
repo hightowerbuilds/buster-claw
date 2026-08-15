@@ -4,10 +4,36 @@ defmodule BusterClaw.Google.Gmail.MimeTest do
   guards end to end through `send_message/3`; these pin them at the module that
   actually owns them, so a future move can't quietly drop one.
   """
-  use ExUnit.Case, async: true
+  # async: false, and it owns its workspace root.
+  #
+  # These tests write fixtures inside the workspace because the attachment fence
+  # refuses everything outside it — so they READ a global that several other
+  # suites (appearance, Voice) WRITE. As `async: true` reading whatever root
+  # happened to be set, this raced: one run in three failed the CRLF-stripping
+  # test, because the root moved under it between `workspace_file!/3` writing the
+  # fixture and `message_mime/1` fencing it. Measured 08-15, three consecutive
+  # full runs: 1 failure, 0, 0.
+  #
+  # Setting its own root is the fix rather than merely marking it sync: a test
+  # that depends on a mutable global should not inherit one it did not choose.
+  use ExUnit.Case, async: false
 
   alias BusterClaw.Google.Gmail.Mime
   alias BusterClaw.Library.Artifact
+
+  setup do
+    root = Path.join(System.tmp_dir!(), "bc_mime_#{System.unique_integer([:positive])}")
+    File.mkdir_p!(root)
+    prev = Application.get_env(:buster_claw, :workspace_root)
+    Application.put_env(:buster_claw, :workspace_root, root)
+
+    on_exit(fn ->
+      Application.put_env(:buster_claw, :workspace_root, prev)
+      File.rm_rf(root)
+    end)
+
+    {:ok, root: root}
+  end
 
   describe "message_mime/1 required fields" do
     test "reports the first missing field" do

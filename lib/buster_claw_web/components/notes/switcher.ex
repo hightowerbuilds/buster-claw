@@ -34,10 +34,19 @@ defmodule BusterClawWeb.Notes.Switcher do
         aria-label="Jump to a note"
         class="ic-panel flex max-h-[60vh] w-full max-w-xl flex-col overflow-hidden"
       >
+        <%!-- Enter here is the hook's: `NotesKeys` claims it to open the
+              highlighted note and calls `preventDefault()`, so this form is not
+              normally submitted at all. `phx-submit` is the floor under that.
+              A hook that has not attached yet — the window between paint and
+              the socket connecting — would leave Enter to the browser, which
+              submits natively, navigates, and drops the operator out of Notes
+              entirely. Re-running the search is a harmless thing to land on
+              instead. See DMG-review-8-15, finding 3. --%>
         <.form
           for={@form}
           id="note-switcher-form"
           phx-change="switcher_search"
+          phx-submit="switcher_search"
           phx-target={@target}
           class="border-b-2 border-base-content/20 p-2"
         >

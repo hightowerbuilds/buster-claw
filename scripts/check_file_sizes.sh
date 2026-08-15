@@ -308,7 +308,12 @@ check lib/buster_claw_web/components/studio/registry.ex       75 HELD
 # The seam if either grows: Pane 2 (takes, waveform, audition) is the missing
 # third pane and needs a route that serves a take's audio. That is a sibling
 # module and its own surface, not another section of these two.
-check lib/buster_claw_web/components/studio/voice.ex         230 HELD
+# 230 -> 240 on 08-15: both forms gained `phx-submit` after the packaged build
+# showed Enter navigating away from the tab, and the raise is almost entirely the
+# two comments explaining why an apparently decorative attribute is load-bearing
+# (DMG-review-8-15, finding 3). A later reader tidying those attributes away
+# would reintroduce the bug; form_submit_test.exs now fails if they do.
+check lib/buster_claw_web/components/studio/voice.ex         240 HELD
 check lib/buster_claw_web/live/status/voice.ex               175 HELD
 
 # The Notes vault: state in the live_component, markup in three function
