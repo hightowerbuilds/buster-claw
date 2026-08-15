@@ -28,7 +28,7 @@ defmodule BusterClawWeb.SettingsRecoveryKeyTest do
     assert is_binary(key) and byte_size(key) > 16,
            "this test is meaningless without a real key configured"
 
-    {:ok, view, html} = live(conn, ~p"/settings")
+    {:ok, view, html} = live(conn, ~p"/settings?tab=credentials")
 
     refute html =~ key,
            "the recovery key was rendered into the mount payload"
@@ -48,7 +48,7 @@ defmodule BusterClawWeb.SettingsRecoveryKeyTest do
   end
 
   test "the reveal control is present but carries no value to reveal", %{conn: conn} do
-    {:ok, _view, html} = live(conn, ~p"/settings")
+    {:ok, _view, html} = live(conn, ~p"/settings?tab=credentials")
 
     assert html =~ "data-recovery-toggle"
     assert html =~ ~s(phx-hook="RecoveryKey")
@@ -61,14 +61,14 @@ defmodule BusterClawWeb.SettingsRecoveryKeyTest do
   test "the Clinch panel lists names without values", %{conn: conn} do
     assert {:ok, _} = BusterClaw.Clinch.put({:sign_in, "acme-login"}, "Hunter2!x", note: "acme")
 
-    {:ok, _view, html} = live(conn, ~p"/settings")
+    {:ok, _view, html} = live(conn, ~p"/settings?tab=credentials")
 
     assert html =~ "acme-login"
     refute html =~ "Hunter2!x"
   end
 
   test "the management form is not a LiveView form", %{conn: conn} do
-    {:ok, _view, html} = live(conn, ~p"/settings")
+    {:ok, _view, html} = live(conn, ~p"/settings?tab=credentials")
 
     [form] = Regex.run(~r/<form[^>]*data-clinch-form.*?<\/form>/s, html)
 

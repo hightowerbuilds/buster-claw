@@ -347,8 +347,34 @@ check lib/buster_claw_web/components/notes/switcher.ex         134 HELD
 # catalog comes out to core, where the missing sound_* CLI will need it.
 check lib/buster_claw_web/live/sound_studio_component.ex     1235 FROZEN
 
-# Phase 4. Four unrelated features sharing a 406-line render/1.
-check lib/buster_claw_web/live/settings_live.ex               936 FROZEN
+# Phase 4 STARTED 08-15, so this stops being FROZEN and becomes HELD: 936 -> 643,
+# banked here at 708. It was frozen as "four unrelated features sharing a
+# render/1"; three still share one, but the page now has a rail and the first
+# feature has its own module, which is a different promise from "do not grow,
+# you owe a cut".
+#
+# The remaining cut is GOOGLE WORKSPACE, and it is named rather than left to be
+# rediscovered: 12 handle_event clauses, and the only section whose refresh
+# arrives as a `handle_info` (`:google_account_changed`), so moving it needs a
+# `send_update/2` relay rather than a straight lift. It was deliberately NOT
+# half-moved in the same pass. Profile and Credentials are small and may simply
+# stay.
+check lib/buster_claw_web/live/settings_live.ex               708 HELD
+
+# Configuration's rail, copying the registry shape for the third time —
+# `Explained.Registry` and `Studio.Registry` first. The rail, the
+# `select_settings_tab` whitelist and the dispatch all read the registry, so a
+# tab cannot exist in one and not the others; that property has already caught a
+# rail button the guard refused and a console tab that fell back silently.
+#
+# `registry.ex` gets headroom on purpose and `rail.ex` gets none — the same pair
+# of numbers, for the same reason, as `studio/registry.ex` and
+# `studio_panel.ex`. "Adding a tab is one edit in the registry" is a promise a
+# zero-headroom cap would turn into a lie; a rail that grows is a rail that has
+# stopped being only a rail.
+check lib/buster_claw_web/live/settings/models_component.ex    470 HELD
+check lib/buster_claw_web/components/settings/registry.ex      110 HELD
+check lib/buster_claw_web/components/settings/rail.ex           65 HELD
 
 # Phase 5. Needs its state machine written down BEFORE it is split — eleven-plus
 # transition sites and no diagram anywhere. Frozen so it cannot gain a twelfth.

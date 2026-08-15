@@ -1,15 +1,32 @@
 defmodule BusterClawWeb.SettingsLiveTest do
+  @moduledoc """
+  Configuration's four sections became a sub-tab rail on 08-15, so only one of
+  them is on the page at a time. Every test below that exercises a section other
+  than **Agent & models** — the tab the rail leads with — names its tab in the
+  URL: `~p"/settings?tab=credentials"`.
+
+  That param is read at mount and never written back (see
+  `BusterClawWeb.Settings.Rail` for why the rail does not patch the URL), which
+  is what makes it usable here: it is a one-token change to a mount rather than
+  a `render_click` inserted into twenty tests, and it exercises the same
+  `Registry.resolve/1` whitelist the rail click goes through.
+
+  The model and harness tests are deliberately left on bare `~p"/settings"` —
+  they pass only because Models is the default tab, which is an assertion worth
+  having spread across the file rather than stated once.
+  """
   use BusterClawWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
 
   alias BusterClaw.ModelPolicy
+  alias BusterClawWeb.Settings.Registry
 
   defp secret_key_base,
     do: Application.get_env(:buster_claw, BusterClawWeb.Endpoint)[:secret_key_base]
 
   test "GET /settings renders the recovery-key panel without exposing the key", %{conn: conn} do
-    response = conn |> get(~p"/settings") |> html_response(200)
+    response = conn |> get(~p"/settings?tab=credentials") |> html_response(200)
 
     assert response =~ "Recovery key"
     assert response =~ "Reveal key"
@@ -27,7 +44,7 @@ defmodule BusterClawWeb.SettingsLiveTest do
   #
   # The replacement assertions live in `SettingsRecoveryKeyTest`.
   test "revealing is a client-side affair — no phx-click, no server round-trip", %{conn: conn} do
-    {:ok, view, html} = live(conn, ~p"/settings")
+    {:ok, view, html} = live(conn, ~p"/settings?tab=credentials")
 
     assert html =~ ~s(phx-hook="RecoveryKey")
     assert html =~ "data-recovery-toggle"
@@ -37,6 +54,139 @@ defmodule BusterClawWeb.SettingsLiveTest do
            "the old server-side reveal event is still wired up"
 
     refute render(view) =~ secret_key_base()
+  end
+
+  describe "the Configuration sub-tab rail" do
+    # The same property the GWS console rail underneath needed on 08-08: the
+    # rail, the guard and the dispatch must agree. Two of the three are read
+    # from `Settings.Registry`; the third is the `:if` branches in
+    # `SettingsLive.render/1`, and the `ic-panel` assertion is what catches a
+    # registry key that has no branch — without it a new tab would open a blank
+    # page and this test would still pass.
+    test "every tab the rail offers opens a section", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      for key <- Registry.keys() do
+        assert has_element?(view, "#settings-config-tab-#{key}"),
+               "the rail does not render a button for #{key}"
+
+        html = render_click(view, "select_settings_tab", %{"tab" => key})
+
+        assert has_element?(view, ~s(#settings-config-tab-#{key}[aria-selected="true"])),
+               "clicking #{key} did not open it — the guard and the rail disagree"
+
+        assert html =~ "ic-panel",
+               "#{key} is in the registry but render/1 has no branch for it — the " <>
+                 "rail highlights a tab with nothing under it"
+      end
+    end
+
+    test "an unknown tab key falls back to the default rather than blanking the page",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      html = render_click(view, "select_settings_tab", %{"tab" => "../../etc"})
+
+      assert has_element?(
+               view,
+               ~s(#settings-config-tab-#{Registry.default()}[aria-selected="true"])
+             )
+
+      assert html =~ "ic-panel"
+    end
+
+    test "?tab= opens that tab, and an unknown one still lands somewhere real", %{conn: conn} do
+      {:ok, _view, html} = live(conn, ~p"/settings?tab=credentials")
+      assert html =~ "Recovery key"
+      refute html =~ "Agent harness"
+
+      {:ok, _view, html} = live(conn, ~p"/settings?tab=nope")
+      assert html =~ "Agent harness"
+    end
+
+    # `SplitLive` mounts this view with `live_render/3`, and a child mounted
+    # outside the router gets the ATOM `:not_mounted_at_router` where a params
+    # map would be. Reading `?tab=` with `params["tab"]` took the whole pane
+    # down; this is the walk that caught it.
+    test "mounts in a split pane, where there are no params at all", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/split?left=/settings&right=/calendar")
+
+      assert html =~ "Agent harness"
+    end
+
+    # Models leads because it is the only section that has to be right for the
+    # app to run at all — the 08-15 DMG review opened to a dead picker.
+    test "Models is the tab a bare /settings lands on", %{conn: conn} do
+      {:ok, _view, html} = live(conn, ~p"/settings")
+
+      assert Registry.default() == "models"
+      assert html =~ "Agent harness"
+      # Not the h2 — the rail's own button says "Google Workspace" on every tab.
+      refute html =~ "Connect the Google account"
+      refute html =~ "Recovery key"
+    end
+  end
+
+  # DMG-review-8-15 findings 1+2: the packaged app showed every harness disabled
+  # and said nothing about why. Detection was fixed in `BusterClaw.AgentBackend`;
+  # this is the sentence that is owed regardless, because "greyed out" reads as
+  # "unsupported" and the real cause is a PATH the app never saw.
+  #
+  # Both directions are asserted. The PATH is pinned rather than mocked: with
+  # `:login_shell_path` set to nil `ShellPath` falls back to the process PATH,
+  # so pointing that at an empty directory makes nothing findable, and dropping
+  # three executable stubs into it makes everything findable.
+  describe "why a harness is greyed out" do
+    @describetag :tmp_dir
+
+    setup %{tmp_dir: tmp_dir} do
+      prev_login = Application.get_env(:buster_claw, :login_shell_path, :unset)
+      prev_path = System.get_env("PATH")
+
+      Application.put_env(:buster_claw, :login_shell_path, nil)
+      System.put_env("PATH", tmp_dir)
+
+      on_exit(fn ->
+        if prev_path, do: System.put_env("PATH", prev_path)
+
+        case prev_login do
+          :unset -> Application.delete_env(:buster_claw, :login_shell_path)
+          value -> Application.put_env(:buster_claw, :login_shell_path, value)
+        end
+      end)
+
+      :ok
+    end
+
+    test "says what disabled means, and what to do about it", %{conn: conn} do
+      {:ok, _view, html} = live(conn, ~p"/settings")
+      text = String.replace(html, ~r/\s+/, " ")
+
+      # The picker really is in the state the note is explaining.
+      assert BusterClaw.AgentBackend.installed() == []
+      assert text =~ "(not installed)"
+
+      assert text =~ "Greyed out means not found, not unsupported"
+      # The diagnosis, which is the half a user cannot possibly guess.
+      assert text =~ "inherits the system PATH rather than your shell&#39;s"
+      assert text =~ "~/.local/bin"
+      # And the action.
+      assert text =~ "install it and reopen this page"
+    end
+
+    test "is silent when every harness resolves", %{conn: conn, tmp_dir: tmp_dir} do
+      for backend <- BusterClaw.ModelPolicy.backends() do
+        stub = Path.join(tmp_dir, BusterClaw.AgentBackend.executable(backend))
+        File.write!(stub, "#!/bin/sh\n")
+        File.chmod!(stub, 0o755)
+      end
+
+      {:ok, _view, html} = live(conn, ~p"/settings")
+
+      assert BusterClaw.AgentBackend.installed() == BusterClaw.ModelPolicy.backends()
+      refute html =~ "Greyed out means not found"
+      refute html =~ "(not installed)"
+    end
   end
 
   describe "the harness picker" do
@@ -237,7 +387,7 @@ defmodule BusterClawWeb.SettingsLiveTest do
     # until 08-08, so a sixth tab would have rendered a button that silently
     # fell back to Accounts. This walks every key the rail actually offers.
     test "every tab the rail offers is a tab the guard opens", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/settings")
+      {:ok, view, _html} = live(conn, ~p"/settings?tab=google")
 
       for key <- BusterClawWeb.GwsPanels.console_tab_keys() do
         assert has_element?(view, "#gws-tab-#{key}"),
@@ -251,7 +401,7 @@ defmodule BusterClawWeb.SettingsLiveTest do
     end
 
     test "an unknown tab key falls back to Accounts rather than crashing", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/settings")
+      {:ok, view, _html} = live(conn, ~p"/settings?tab=google")
 
       render_click(view, "gws_tab", %{"tab" => "../../etc"})
 
@@ -271,7 +421,7 @@ defmodule BusterClawWeb.SettingsLiveTest do
     end
 
     test "renders a row per registry entry, grouped", %{conn: conn} do
-      {:ok, _view, html} = live(conn, ~p"/settings")
+      {:ok, _view, html} = live(conn, ~p"/settings?tab=credentials")
 
       for key <- BusterClaw.Clinch.AppKeys.all() do
         assert html =~ key.label, "#{key.name} is in the registry but not on the screen"
@@ -284,7 +434,7 @@ defmodule BusterClawWeb.SettingsLiveTest do
     test "shows where each value comes from, and updates when that changes", %{conn: conn} do
       Application.put_env(:buster_claw, :finnhub_api_key, nil)
 
-      {:ok, view, html} = live(conn, ~p"/settings")
+      {:ok, view, html} = live(conn, ~p"/settings?tab=credentials")
       assert html =~ "Not set"
 
       assert {:ok, _} = BusterClaw.Clinch.put({:app_key, "finnhub_api_key"}, "stored-value")
@@ -298,7 +448,7 @@ defmodule BusterClawWeb.SettingsLiveTest do
     test "an environment-sourced key says so, and says why it matters", %{conn: conn} do
       Application.put_env(:buster_claw, :finnhub_api_key, "from-the-shell")
 
-      {:ok, _view, html} = live(conn, ~p"/settings")
+      {:ok, _view, html} = live(conn, ~p"/settings?tab=credentials")
 
       assert html =~ "Environment"
       # The diagnosis, not just the label — this is the sentence that turns
@@ -310,7 +460,7 @@ defmodule BusterClawWeb.SettingsLiveTest do
     # The load-bearing property of this whole panel design, and the one a future
     # refactor to a "normal" LiveView form would silently destroy.
     test "no credential input carries a phx- binding", %{conn: conn} do
-      {:ok, _view, html} = live(conn, ~p"/settings")
+      {:ok, _view, html} = live(conn, ~p"/settings?tab=credentials")
 
       [_ | rows] = String.split(html, "data-app-key=")
 
@@ -331,7 +481,7 @@ defmodule BusterClawWeb.SettingsLiveTest do
       assert {:ok, _} =
                BusterClaw.Clinch.put({:app_key, "twilio_auth_token"}, "super-secret-token")
 
-      {:ok, _view, html} = live(conn, ~p"/settings")
+      {:ok, _view, html} = live(conn, ~p"/settings?tab=credentials")
 
       refute html =~ "super-secret-token"
     end
@@ -363,7 +513,7 @@ defmodule BusterClawWeb.SettingsLiveTest do
     test "is absent when every credential reads", %{conn: conn} do
       assert {:ok, _} = BusterClaw.Clinch.put({:sign_in, "acme"}, "value")
 
-      {:ok, _view, html} = live(conn, ~p"/settings")
+      {:ok, _view, html} = live(conn, ~p"/settings?tab=credentials")
 
       refute html =~ "cannot be read with the current master key"
     end
@@ -378,7 +528,7 @@ defmodule BusterClawWeb.SettingsLiveTest do
         "settings-new-key-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
       )
 
-      {:ok, _view, html} = live(conn, ~p"/settings")
+      {:ok, _view, html} = live(conn, ~p"/settings?tab=credentials")
 
       # Collapse whitespace: HEEx keeps the newline+indent inside a sentence, so a
       # phrase that reads as one line in the template is not contiguous in the

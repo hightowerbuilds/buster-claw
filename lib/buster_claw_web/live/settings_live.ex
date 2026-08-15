@@ -5,6 +5,27 @@ defmodule BusterClawWeb.SettingsLive do
   Gmail/Calendar tools), **agent models**, the profile, onboarding progress, and
   the recovery key.
 
+  ## The sub-tab rail (08-15)
+
+  Those are four unrelated features, and until 08-15 they were one scroll with a
+  ~378-line `render/1`. They are now a rail:
+  `BusterClawWeb.Settings.Registry` is the data-only source the rail, the
+  `select_settings_tab` whitelist and the `:if` dispatch below all read, so a
+  tab cannot exist in one and not the others — the same shape as Explained's and
+  Studio's rails, and the fix the GWS console rail underneath needed on 08-08.
+
+  Only **Agent & models** is extracted so far, into
+  `BusterClawWeb.Settings.ModelsComponent`. Google Workspace, the profile and
+  the credentials are still inline: a rail with one moved section is a real
+  intermediate state, and a half-moved Google Workspace would not be. GWS is the
+  next cut and the awkward one — it is 12 of the remaining `handle_event`
+  clauses and the only section whose refresh arrives as a `handle_info`, so
+  moving it means reaching it with `send_update/2` the way
+  `BusterClawWeb.Status.Studio` does.
+
+  The rail does not write the URL; see `BusterClawWeb.Settings.Rail` for why.
+  `?tab=` is read at mount so a link or a test can open one directly.
+
   The model picker sits here rather than on a tab of its own — it is agent
   configuration, and its whole value is being read next to the rest of it. It
   renders `ModelPolicy.in_force/0` per surface, so an operator who set a global
@@ -19,7 +40,6 @@ defmodule BusterClawWeb.SettingsLive do
   """
   use BusterClawWeb, :live_view
 
-  alias BusterClaw.AgentBackend
   alias BusterClaw.Clinch
   alias BusterClaw.Clinch.AppKeys
   alias BusterClaw.Clinch.Rekey
@@ -27,20 +47,22 @@ defmodule BusterClawWeb.SettingsLive do
   alias BusterClaw.Google.CalendarSync
   alias BusterClaw.Google.Gmail
   alias BusterClaw.Google.GmailSync
-  alias BusterClaw.ModelPolicy
   alias BusterClaw.Recovery
   alias BusterClaw.Setup
   alias BusterClaw.SystemBrowser
   alias BusterClawWeb.ErrorFormatter
   alias BusterClawWeb.GoogleOAuth
+  alias BusterClawWeb.Settings.Registry
 
   @impl true
-  def mount(_params, _session, socket) do
+  def mount(params, _session, socket) do
     if connected?(socket), do: Google.subscribe()
 
     {:ok,
      socket
      |> assign(:page_title, "Configuration")
+     # The rail. `?tab=` is read but never written — see `Settings.Rail`.
+     |> assign(:settings_tab, Registry.resolve(tab_param(params)))
      # --- Google Workspace ---
      |> assign(:bundled_available, BusterClaw.Google.BundledClient.available?())
      |> assign(:gws_tab, :accounts)
@@ -54,14 +76,7 @@ defmodule BusterClawWeb.SettingsLive do
      |> load_accounts()
      |> assign_gmail_forms()
      |> assign_calendar_form()
-     # --- agent models ---
-     |> assign(:backend_choices, ModelPolicy.backends())
-     # A harness that is not installed is shown DISABLED rather than hidden:
-     # hiding it makes the app look like it does not support codex at all, and
-     # offering it live would fail at the moment a run was expected.
-     |> assign(:backend_installed, AgentBackend.installed())
-     |> assign(:model_note, nil)
-     |> assign_model_policy()
+     # Agent models own every assign they need — see `Settings.ModelsComponent`.
      # --- profile / onboarding / recovery ---
      |> assign(:profile_name, Setup.profile_name())
      |> assign(:profile_org, Setup.profile_org())
@@ -87,9 +102,25 @@ defmodule BusterClawWeb.SettingsLive do
   # crashing the LiveView with a FunctionClauseError.
   def handle_info(_msg, socket), do: {:noreply, socket}
 
+  # --- The sub-tab rail ---------------------------------------------------
+
+  # `SplitLive` renders this view with `live_render/3`, and a child mounted
+  # outside the router is handed the ATOM `:not_mounted_at_router` in place of a
+  # params map — `params["tab"]` on that raises. Pattern-matched rather than
+  # `Access`ed for exactly that reason.
+  defp tab_param(%{"tab" => tab}), do: tab
+  defp tab_param(_params), do: nil
+
+  # `Registry.resolve/1` is the whitelist: a forged key lands on the default
+  # rather than assigning one no branch renders, which would leave the page
+  # blank below the rail.
+  @impl true
+  def handle_event("select_settings_tab", %{"tab" => tab}, socket) do
+    {:noreply, assign(socket, :settings_tab, Registry.resolve(tab))}
+  end
+
   # --- Google Workspace events -------------------------------------------
 
-  @impl true
   def handle_event("gws_tab", %{"tab" => tab}, socket) do
     {:noreply, assign(socket, :gws_tab, gws_tab(tab))}
   end
@@ -281,36 +312,6 @@ defmodule BusterClawWeb.SettingsLive do
     end
   end
 
-  # --- Agent model events ------------------------------------------------
-
-  # The pickers: an empty selection clears back to unset/inherit, which is the
-  # shipped state — no `--model` flag reaches the CLI at all.
-  def handle_event("model_default", %{"model" => model}, socket) do
-    {:noreply, put_model(socket, :default, blank_to_nil(model))}
-  end
-
-  def handle_event("model_default_backend", %{"backend" => backend}, socket) do
-    ModelPolicy.put_backend(:default, parse_backend_choice(backend))
-    {:noreply, assign_model_policy(socket)}
-  end
-
-  def handle_event("model_backend", %{"surface" => surface, "backend" => backend}, socket) do
-    ModelPolicy.put_backend(model_target(surface), parse_backend_choice(backend))
-    {:noreply, assign_model_policy(socket)}
-  end
-
-  def handle_event("model_surface", %{"surface" => surface, "model" => model}, socket) do
-    {:noreply, put_model(socket, model_target(surface), blank_to_nil(model))}
-  end
-
-  # The escape hatch. The CLI takes aliases and models newer than our list, so a
-  # typed string goes straight to `ModelPolicy.put/2` — which validates it, and
-  # refuses blank rather than reading it as "clear" (clearing is the picker's
-  # job, and a blank that silently unset the default would be a nasty surprise).
-  def handle_event("model_custom", %{"target" => target, "model" => model}, socket) do
-    {:noreply, put_model(socket, model_target(target), String.trim(model))}
-  end
-
   # --- Profile / onboarding / recovery events ----------------------------
 
   def handle_event("save_profile", %{"name" => name, "org" => org}, socket) do
@@ -344,8 +345,15 @@ defmodule BusterClawWeb.SettingsLive do
     <Layouts.app flash={@flash} socket={@socket}>
       <section id="settings" class="space-y-6">
         <BusterClawWeb.SettingsTabs.tabs active={:configuration} />
+        <BusterClawWeb.Settings.Rail.rail active={@settings_tab} />
 
-        <section class="ic-panel space-y-4 p-6">
+        <.live_component
+          :if={@settings_tab == "models"}
+          module={BusterClawWeb.Settings.ModelsComponent}
+          id="settings-models"
+        />
+
+        <section :if={@settings_tab == "google"} class="ic-panel space-y-4 p-6">
           <h2 class="ic-eyebrow">Google Workspace</h2>
           <p class="max-w-2xl text-sm text-base-content/70">
             Connect the Google account Buster Claw works on your behalf — Gmail,
@@ -450,206 +458,7 @@ defmodule BusterClawWeb.SettingsLive do
           />
         </section>
 
-        <section class="ic-panel space-y-4 p-6">
-          <h2 class="ic-eyebrow">Agent harness &amp; models</h2>
-          <p class="max-w-2xl text-sm text-base-content/70">
-            Buster Claw drives your own agent CLI. Pick the <strong>harness</strong>
-            first — a model name only means something inside its own harness — then
-            the model within it. Left unset it passes no <code class="font-mono">--model</code>
-            flag and detects the CLI itself, exactly as it always has. Your models
-            are remembered per harness, so switching and switching back loses
-            nothing.
-          </p>
-
-          <form id="model-default-backend-form" phx-change="model_default_backend">
-            <label class="block max-w-sm">
-              <span class="ic-eyebrow">Global harness</span>
-              <select
-                name="backend"
-                aria-label="Global default harness"
-                class="select select-bordered mt-1 w-full font-mono text-xs"
-              >
-                <option value="auto" selected={is_nil(@model_default_backend)}>
-                  — auto — whichever CLI is found
-                </option>
-                <option
-                  :for={backend <- @backend_choices}
-                  value={backend}
-                  selected={@model_default_backend == backend}
-                  disabled={backend not in @backend_installed}
-                >
-                  {backend_label(backend, backend in @backend_installed)}
-                </option>
-              </select>
-            </label>
-          </form>
-
-          <div class="grid gap-4 sm:grid-cols-2">
-            <form id="model-default-form" phx-change="model_default">
-              <label class="block">
-                <span class="ic-eyebrow">
-                  Global default model · {backend_display(@model_default_backend)}
-                </span>
-                <select
-                  name="model"
-                  aria-label="Global default model"
-                  class="select select-bordered mt-1 w-full font-mono text-xs"
-                >
-                  <option value="" selected={is_nil(@model_default)}>
-                    Unset — your {backend_display(@model_default_backend)} CLI decides
-                  </option>
-                  <option
-                    :for={model <- @model_choices}
-                    value={model}
-                    selected={@model_default == model}
-                  >
-                    {model}
-                  </option>
-                  <option
-                    :if={@model_default && @model_default not in @model_choices}
-                    value={@model_default}
-                    selected
-                  >
-                    {@model_default}
-                  </option>
-                </select>
-              </label>
-              <p :if={@model_choices == []} class="pt-1 text-xs leading-5 text-base-content/60">
-                {backend_display(@model_default_backend)} cannot list its own models from here, so there is nothing to pick —
-                type the model beside this instead. A name only means something to
-                its own harness: OpenCode wants <code>provider/model</code>.
-              </p>
-            </form>
-
-            <form id="model-custom-form" phx-submit="model_custom" class="space-y-2">
-              <label class="block">
-                <span class="ic-eyebrow">Any other model</span>
-                <input
-                  type="text"
-                  name="model"
-                  value=""
-                  autocomplete="off"
-                  placeholder="claude-sonnet-4-6"
-                  class="input mt-1 w-full font-mono text-xs"
-                />
-              </label>
-              <div class="flex flex-wrap items-center gap-2">
-                <select
-                  name="target"
-                  aria-label="Where the typed model applies"
-                  class="select select-bordered select-sm min-w-0 flex-1 text-xs"
-                >
-                  <option value="default">Global default</option>
-                  <option :for={{surface, _entry} <- @model_rows} value={surface}>
-                    {surface_label(surface)}
-                  </option>
-                </select>
-                <button type="submit" class={button_outline()}>Set</button>
-              </div>
-              <p class="text-xs leading-5 text-base-content/60">
-                The CLI accepts aliases and models newer than the list above, so
-                anything non-blank is accepted here.
-              </p>
-            </form>
-          </div>
-
-          <p
-            :if={@model_note}
-            id="model-note"
-            class="rounded-sm border-2 border-primary/40 bg-primary/10 px-3 py-2 text-sm"
-          >
-            {@model_note}
-          </p>
-
-          <div class="border-t-2 border-base-content/20 pt-2">
-            <p class="ic-eyebrow py-2">In force, per surface</p>
-            <div class="divide-y divide-base-300">
-              <div
-                :for={{surface, entry} <- @model_rows}
-                class="flex flex-wrap items-start justify-between gap-4 py-4"
-              >
-                <div class="max-w-md min-w-0 space-y-1">
-                  <p class="text-sm font-semibold">{entry.description}</p>
-                  <p class="font-mono text-xs text-base-content/70">
-                    {backend_display(entry.backend)} · {model_display(entry.model)} · {source_note(
-                      entry.source
-                    )}
-                  </p>
-                  <p
-                    :if={entry.floor && entry.floor_applies}
-                    class="border-l-2 border-primary/60 pl-3 text-xs leading-5 text-base-content/60"
-                  >
-                    Floor: {entry.floor}. A cheaper model on this surface was measured
-                    inventing an answer instead of reporting a problem, so the global
-                    default cannot lower it. Naming this surface here still can.
-                  </p>
-                  <p
-                    :if={ModelPolicy.claude_only?(surface)}
-                    class="border-l-2 border-base-content/30 pl-3 text-xs leading-5 text-base-content/60"
-                  >
-                    Claude only. This surface's confinement is written in Claude's
-                    own flags, which the other harnesses reject outright — so there
-                    is no harness to choose here rather than a choice that would
-                    fail.
-                  </p>
-                </div>
-
-                <form
-                  :if={!ModelPolicy.claude_only?(surface)}
-                  id={"model-backend-#{surface}"}
-                  phx-change="model_backend"
-                  class="shrink-0"
-                >
-                  <input type="hidden" name="surface" value={surface} />
-                  <select
-                    name="backend"
-                    aria-label={"Harness for #{surface_label(surface)}"}
-                    class="select select-bordered select-sm min-w-40 font-mono text-xs"
-                  >
-                    <option value="auto" selected={entry.backend_source == :auto}>
-                      — auto —
-                    </option>
-                    <option
-                      :for={backend <- @backend_choices}
-                      value={backend}
-                      selected={entry.backend_source != :auto and entry.backend == backend}
-                      disabled={backend not in @backend_installed}
-                    >
-                      {backend_label(backend, backend in @backend_installed)}
-                    </option>
-                  </select>
-                </form>
-
-                <form id={"model-surface-#{surface}"} phx-change="model_surface" class="shrink-0">
-                  <input type="hidden" name="surface" value={surface} />
-                  <select
-                    name="model"
-                    aria-label={"Model for #{surface_label(surface)}"}
-                    class="select select-bordered select-sm min-w-56 font-mono text-xs"
-                  >
-                    <option value="" selected={entry.source != :surface}>— inherit —</option>
-                    <option
-                      :for={model <- @model_choices}
-                      value={model}
-                      selected={entry.source == :surface and entry.model == model}
-                    >
-                      {model}
-                    </option>
-                    <option
-                      :if={entry.source == :surface and entry.model not in @model_choices}
-                      value={entry.model}
-                      selected
-                    >
-                      {entry.model}
-                    </option>
-                  </select>
-                </form>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section class="ic-panel space-y-4 p-6">
+        <section :if={@settings_tab == "profile"} class="ic-panel space-y-4 p-6">
           <h2 class="ic-eyebrow">Profile</h2>
           <form phx-submit="save_profile" class="grid gap-3 sm:grid-cols-2">
             <label class="block">
@@ -686,7 +495,7 @@ defmodule BusterClawWeb.SettingsLive do
           </p>
         </section>
 
-        <section class="ic-panel space-y-4 p-6">
+        <section :if={@settings_tab == "profile"} class="ic-panel space-y-4 p-6">
           <div class="flex items-center justify-between gap-4">
             <h2 class="ic-eyebrow">Setup progress</h2>
             <span class="font-mono text-xs text-base-content/60">
@@ -710,9 +519,14 @@ defmodule BusterClawWeb.SettingsLive do
           </button>
         </section>
 
-        <BusterClawWeb.ClinchPanels.app_keys_panel app_keys={@app_keys} />
-        <BusterClawWeb.ClinchPanels.clinch_panel entries={@clinch_entries} unreadable={@unreadable} />
-        <BusterClawWeb.ClinchPanels.recovery_panel restore_path={@restore_path} />
+        <div :if={@settings_tab == "credentials"} class="space-y-6">
+          <BusterClawWeb.ClinchPanels.app_keys_panel app_keys={@app_keys} />
+          <BusterClawWeb.ClinchPanels.clinch_panel
+            entries={@clinch_entries}
+            unreadable={@unreadable}
+          />
+          <BusterClawWeb.ClinchPanels.recovery_panel restore_path={@restore_path} />
+        </div>
       </section>
     </Layouts.app>
     """
@@ -807,111 +621,6 @@ defmodule BusterClawWeb.SettingsLive do
   defp gws_tab(tab) do
     Enum.find(BusterClawWeb.GwsPanels.console_tab_keys(), :accounts, &(Atom.to_string(&1) == tab))
   end
-
-  # --- Agent model helpers -----------------------------------------------
-
-  # `in_force/0` is a map; the rows are materialized in `surface_keys/0` order
-  # so the list is stable between renders instead of following map term order.
-  defp assign_model_policy(socket) do
-    in_force = ModelPolicy.in_force()
-
-    # Models are stored per `{backend, surface}` since 08-03, so the global
-    # default shown here is the one for the harness the default surface resolves
-    # to — showing claude's default while running codex would be a lie.
-    default_backend = ModelPolicy.backend_for(:default)
-
-    socket
-    |> assign(:model_default_backend, default_backend)
-    # The offered models follow the CHOSEN harness, not claude forever. Resolved
-    # here rather than at mount for that reason: a list that never changes would
-    # have offered claude model IDs to an operator running opencode, which is the
-    # one mistake `plausible_model?/2` exists to catch.
-    |> assign(:model_choices, ModelPolicy.known_models(default_backend))
-    |> assign(:model_rows, Enum.map(ModelPolicy.surface_keys(), &{&1, Map.fetch!(in_force, &1)}))
-    |> assign(:model_default, ModelPolicy.model_for(default_backend, :default))
-  end
-
-  # "auto" is a real choice — it hands the harness back to PATH detection — so it
-  # maps to nil rather than being treated as "nothing selected".
-  defp parse_backend_choice("auto"), do: nil
-
-  defp parse_backend_choice(given),
-    do: Enum.find(ModelPolicy.backends(), &(Atom.to_string(&1) == given))
-
-  defp backend_display(nil), do: "auto"
-  defp backend_display(backend), do: Atom.to_string(backend)
-
-  defp backend_label(backend, true), do: Atom.to_string(backend)
-  defp backend_label(backend, false), do: Atom.to_string(backend) <> " (not installed)"
-
-  defp put_model(socket, target, model) do
-    case ModelPolicy.put(target, model) do
-      {:ok, in_force} ->
-        socket
-        |> assign_model_policy()
-        |> assign(:model_note, model_note(target, model, in_force))
-
-      {:error, reason} ->
-        assign(socket, :model_note, model_error(reason))
-    end
-  end
-
-  defp model_note(:default, nil, _in_force),
-    do: "Cleared. Every surface without a model of its own lets your claude CLI decide again."
-
-  defp model_note(:default, model, in_force) do
-    held = for {surface, entry} <- in_force, entry.source == :floor, do: surface_label(surface)
-
-    case Enum.sort(held) do
-      [] -> "Global default set to #{model}."
-      names -> "Global default set to #{model}. Held at the floor: #{Enum.join(names, ", ")}."
-    end
-  end
-
-  defp model_note(surface, nil, _in_force),
-    do: "#{surface_label(surface)} inherits the global default again."
-
-  defp model_note(surface, model, _in_force), do: "#{surface_label(surface)} set to #{model}."
-
-  defp model_error(:blank_model),
-    do: "Type a model name — the picker is how you clear one back to unset."
-
-  defp model_error({:unknown_surface, _surface}), do: "That is not a surface Buster Claw runs."
-  defp model_error(_reason), do: "Could not save that model."
-
-  defp model_display(nil), do: "Your claude CLI decides"
-  defp model_display(model), do: model
-
-  # Why the row resolved the way it did. `:cli` has to read as an answer, not as
-  # a blank — "nothing is set" is a real, and shipped, state.
-  defp source_note(:cli), do: "your claude CLI decides"
-  defp source_note(:default), do: "from the global default"
-  defp source_note(:surface), do: "set for this surface"
-  defp source_note(:floor), do: "held at the floor — the global default is lower"
-
-  # The short head of the surface description, for notes and labels.
-  defp surface_label(:default), do: "The global default"
-
-  defp surface_label(surface) do
-    ModelPolicy.surfaces() |> Map.fetch!(surface) |> String.split(" — ") |> List.first()
-  end
-
-  # Never `String.to_atom/1` a form value: resolve it against the known keys.
-  # An unrecognised target stays a string, and `ModelPolicy.put/2` rejects it.
-  defp model_target("default"), do: :default
-
-  defp model_target(target) when is_binary(target) do
-    Enum.find(ModelPolicy.surface_keys(), target, &(Atom.to_string(&1) == target))
-  end
-
-  defp blank_to_nil(value) when is_binary(value) do
-    case String.trim(value) do
-      "" -> nil
-      trimmed -> trimmed
-    end
-  end
-
-  defp blank_to_nil(_value), do: nil
 
   # --- shared ------------------------------------------------------------
 

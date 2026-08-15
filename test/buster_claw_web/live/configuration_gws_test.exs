@@ -47,7 +47,7 @@ defmodule BusterClawWeb.ConfigurationGwsTest do
   end
 
   test "renders empty GWS state", %{conn: conn} do
-    {:ok, _view, html} = live(conn, ~p"/settings")
+    {:ok, _view, html} = live(conn, ~p"/settings?tab=google")
 
     assert html =~ "Google Workspace"
     assert html =~ ~s(id="gws-accounts")
@@ -64,7 +64,7 @@ defmodule BusterClawWeb.ConfigurationGwsTest do
         "scopes" => "https://www.googleapis.com/auth/gmail.readonly"
       })
 
-    {:ok, view, html} = live(conn, ~p"/settings")
+    {:ok, view, html} = live(conn, ~p"/settings?tab=google")
     assert html =~ "me@example.com"
     assert html =~ "authorized"
 
@@ -125,7 +125,7 @@ defmodule BusterClawWeb.ConfigurationGwsTest do
       end
     end)
 
-    {:ok, view, _html} = live(conn, ~p"/settings")
+    {:ok, view, _html} = live(conn, ~p"/settings?tab=google")
     Req.Test.allow(BusterClaw.GoogleHTTP, self(), view.pid)
 
     # Gmail tools live behind the console's left tabs now — select each before use.
@@ -200,7 +200,7 @@ defmodule BusterClawWeb.ConfigurationGwsTest do
       })
     end)
 
-    {:ok, view, _html} = live(conn, ~p"/settings")
+    {:ok, view, _html} = live(conn, ~p"/settings?tab=google")
     Req.Test.allow(BusterClaw.GoogleHTTP, self(), view.pid)
 
     view |> element("#gws-tab-calendar") |> render_click()

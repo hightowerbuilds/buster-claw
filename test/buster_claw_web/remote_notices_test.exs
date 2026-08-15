@@ -123,7 +123,7 @@ defmodule BusterClawWeb.RemoteNoticesTest do
                "without Tauri; found #{panels}. If a panel stopped hiding, it now " <>
                "shows a form that cannot work over a tunnel."
 
-      {:ok, _view, html} = live(conn, ~p"/settings")
+      {:ok, _view, html} = live(conn, ~p"/settings?tab=credentials")
       text = String.replace(html, ~r/\s+/, " ")
 
       for {copy, why} <- [
