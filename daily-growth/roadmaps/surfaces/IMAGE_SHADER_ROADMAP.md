@@ -1,7 +1,14 @@
 # Image-reactive shaders — a pattern that reads the picture under it
 
-**Scoped 08-09-26 · Status: Phases 1 and 2 SHIPPED. Phase 0 deferred (needs a
-running app), Phase 3 next, Phase 4 is the skill.**
+**Scoped 08-09-26 · Status: Phases 1, 2 and 3 SHIPPED (Phase 3 committed 08-14,
+`4c664cf`). Phase 0 deferred (needs a running app), Phase 4 — the skill — is
+next and is the durable half.**
+
+> Phase 4 carries one correction it owes independently of this feature: the
+> shader skill documents `touch()` as *"an interaction signal"* and its example
+> adds it to the colour, but `touch()` always returns exactly **0**. Every
+> shader written from that skill carries a line its author believes does
+> something. Fix it in the same pass.
 
 > ### Two scoped decisions were wrong, and the build found both
 >

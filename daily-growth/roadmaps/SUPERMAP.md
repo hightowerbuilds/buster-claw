@@ -166,7 +166,7 @@ and zero issues in the verdict. Budget hours per release, not minutes
 | Widget → Contacts | `BusterClaw.Contacts` | SHIPPED | — |
 | Widget → Notify | `NotifyLive` | SHIPPED | [`LEFTOVERS_AGENT_CORE`](agent-core/LEFTOVERS_AGENT_CORE.md) — the chime designer |
 | Background shader | `Shaders` | SHIPPED | — |
-| Image-reactive shaders | — | **SCOPED** | [`IMAGE_SHADER`](surfaces/IMAGE_SHADER_ROADMAP.md) |
+| Image-reactive shaders | `ShaderCanvas`, `Appearance.image_shader_options/0` | SHIPPED — Phase 4 (the skill) open | [`IMAGE_SHADER`](surfaces/IMAGE_SHADER_ROADMAP.md) |
 | The home screen's primary action | `StatusLive` | SHIPPED, **says the wrong thing** | [`FRONT_DOOR`](distribution/FRONT_DOOR_ROADMAP.md) `VI-a` |
 
 **Studio → Voice is the only unbuilt surface in Home.** The binding constraint is
