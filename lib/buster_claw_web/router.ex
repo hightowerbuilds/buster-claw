@@ -281,6 +281,14 @@ defmodule BusterClawWeb.Router do
       pipe_through :browser
 
       live_dashboard "/dashboard", metrics: BusterClawWeb.Telemetry
+
+      # STUDIO_ROADMAP V.4a. Measures what getUserMedia does in THIS shell
+      # before V.5 adds the usage description and the audio-input entitlement,
+      # because both are signing-affecting and the read that prompted them
+      # found Info.plist's safety claim to be stale — see
+      # BusterClawWeb.DevMicProbeController for what wry 0.55.1 actually does.
+      # Inside `dev_routes`, so it cannot exist in a release.
+      get "/mic-probe", BusterClawWeb.DevMicProbeController, :show
     end
   end
 end
