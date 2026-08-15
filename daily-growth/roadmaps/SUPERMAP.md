@@ -259,8 +259,11 @@ works end to end on the operator's own number, which is the thing this map spent
 weeks describing as pending.
 
 **What that does and does not prove.** It proves inbound voice, inbound SMS and
-cost sync. It does **not** prove the product: outbound calling is unbuilt and the
-keypad says so on its face, and **nobody has ever been vended a number**. The
+cost sync. It does **not** prove the product: **nobody has ever been vended a
+number**. (Outbound calling was unbuilt when this was written; `phone_call` and
+the keypad's Call button both shipped 08-15 — see `OUTBOUND_VOICE_ROADMAP.md`.
+Outbound *SMS* is still blocked on A2P, which is a different registration and a
+different problem.) The
 paid tier is "we are the phone company for someone who is not you," and every
 step verified here happened on the operator's own line.
 

@@ -36,9 +36,10 @@ defmodule BusterClawWeb.Explained.Phone do
   `Twilio.send_sms/3` — its three preconditions are the kill switch, credentials,
   and a Messaging Service SID — so a registration-blocked send fails from the
   carrier side, not locally; and the calling cycle named **no command** until
-  08-15, when `phone_call` shipped. That claim narrowed rather than died — the
-  keypad still has no Call button, so calling is something you ask for and not
-  something you press, and the cycle now offers Try in Chat because it is real.
+  08-15, when `phone_call` shipped and the keypad was wired to it hours later.
+  The G-37 disclosure narrowed twice in one day rather than dying: it no longer
+  says calling is unbuilt, it says whether the voice switch is on and names the
+  variable that turns it on.
   """
   use BusterClawWeb, :html
   import BusterClawWeb.Explained.Shared
@@ -585,16 +586,22 @@ defmodule BusterClawWeb.Explained.Phone do
           mechanism” is not on the list of options.
         </p>
         <p class="text-sm leading-relaxed text-base-content/70">
-          <span class="font-semibold text-base-content">And that is why the keypad
-            still says what it says.</span>
-          The Phone tab has a working keypad under the line <span class="font-mono text-base-content">“Searches your contacts · outbound
-            calling isn't built”</span>. As of 08-15 that is half true and stays up
-          for exactly that reason: <code>phone_call</code>
-          exists, the <span class="italic">button</span>
-          does not. A control that looks finished and is not is the thing this app
-          is not allowed to ship, so the keypad keeps disclosing what it actually
-          does — it filters your contacts as you type. The sentence gets deleted
-          the day the dial is wired to the verb, and not before.
+          <span class="font-semibold text-base-content">
+            And that is why the keypad still says something.
+          </span>
+          It used to read
+          <span class="font-mono text-base-content">
+            “outbound calling isn't built”
+          </span>
+          , which stopped being true on 08-15. It now says whether calling is
+          switched on, and when it is off it names the setting that turns it on
+          rather than leaving you to guess.
+          <span class="font-semibold text-base-content">
+            A control that looks finished and is not
+          </span>
+          is the thing this app is not allowed to ship — and a disabled button
+          whose reason hides in a tooltip is the same failure wearing a hat. The
+          line goes away only if the reason does.
         </p>
       </section>
 
@@ -632,11 +639,12 @@ defmodule BusterClawWeb.Explained.Phone do
           </li>
           <li>
             <span class="font-semibold text-base-content">
-              The keypad still has no Call button.
+              The keypad has a Call button now.
             </span>
-            The command works; the dial on the Phone tab has not been wired to it
-            yet, so today this is something you ask for rather than something you
-            press.
+            It is disabled until the voice switch is on, and it asks once before
+            the first ring — showing the number, the caller ID it presents, and
+            that your own phone rings first. Pressing it runs <code>phone_call</code>, so the button and the sentence above reach
+            the same verb, the same cap and the same refusals.
           </li>
         </ol>
       </.example>

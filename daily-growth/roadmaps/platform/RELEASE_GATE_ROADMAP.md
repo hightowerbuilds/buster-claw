@@ -48,6 +48,12 @@ A stranger judges maturity by the weakest surface they click.
       that outbound calling isn't built, and the inert Text/Call buttons carry an
       `aria-label`, not just a hover `title`. *The rule this sets for the next unfinished
       surface: hiding and labelling are both acceptable; shipping it unmarked is not.*
+      **Re-read 08-15, still closed, and the label changed rather than went away.**
+      `phone_call` and then the keypad's Call button both shipped that day, so
+      "outbound calling isn't built" became false. The line now says whether calling is
+      switched on and names the variable that turns it on — a disabled control with its
+      reason in a `title` is the same G-37 failure, so the disclosure survives its own
+      feature.
 - [x] **G-38. CLOSED BY DELETION 08-08.** *Decide what to do about Trading in the dock
       while its safety remediation is open (**R9**).* Decided in the strongest available
       way: the surface is gone. Nothing to label, nothing to gate, no unsafe path for a

@@ -144,10 +144,12 @@ check lib/buster_claw_web/components/explained/studio.ex       307 HELD
 # a tutorial's argument in another module, which is the failure `ramshackle.ex`'s
 # cap comment already describes for the same reason.
 #
-# 660 -> 680 later the same day, when `phone_call` shipped and turned the third
-# spine's "you cannot" cycle into a worked demo. That is the cap paying for
-# something becoming true, not for more prose about the same thing.
-check lib/buster_claw_web/components/explained/phone.ex        680 HELD
+# 660 -> 690 later the same day, in two steps: `phone_call` shipped and turned
+# the third spine's "you cannot" cycle into a worked demo, then the keypad button
+# shipped and the G-37 disclosure paragraph had to explain a sentence that had
+# been deleted rather than just assert a new one. That is the cap paying for
+# things becoming true, not for more prose about the same thing.
+check lib/buster_claw_web/components/explained/phone.ex        690 HELD
 check lib/buster_claw_web/components/explained/cmd.ex          430 HELD
 check lib/buster_claw_web/components/explained/shaders.ex      340 HELD
 check lib/buster_claw_web/components/explained/browser.ex      310 HELD
@@ -462,7 +464,19 @@ check lib/buster_claw/calendar/grid.ex                        221 HELD
 # records — each panel brings its own `.ic-panel`, which on the homepage is
 # translucent, so nesting one inside another doubles the blur. The tab LIST is
 # not here at all; it is `Phone.Registry`, which is the point of the change.
-check lib/buster_claw_web/live/phone_component.ex             560 HELD
+#
+# Raised 08-15, 560 -> 590, for the Call button. This is what is LEFT after the
+# extraction the cap forced and should have had anyway: three `handle_event`
+# clauses, which cannot be imported. The flow behind them is `Phone.CallFlow` and
+# the markup is `Phone.CallAction`, both capped below.
+check lib/buster_claw_web/live/phone_component.ex             590 HELD
+
+# Outbound calling's two halves, capped on arrival (OUTBOUND_VOICE Phase 4). Two
+# files rather than one because a confirmation flow and the words it renders fail
+# differently: the flow is wrong when it lets a call through, the copy is wrong
+# when it names no fix.
+check lib/buster_claw_web/live/phone/call_flow.ex             105 HELD
+check lib/buster_claw_web/components/phone/call_action.ex     190 HELD
 
 # Pockets (POCKETS_ROADMAP, 08-08/09). Capped ON ARRIVAL rather than after they
 # sprawl — every file above this line was added to the inventory late, once it

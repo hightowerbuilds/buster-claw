@@ -48,6 +48,7 @@ defmodule BusterClawWeb.PhoneComponent do
   alias BusterClaw.Pockets.Faces
   alias BusterClaw.Telephony
   alias BusterClaw.Telephony.Event
+  alias BusterClawWeb.Phone.CallFlow
   alias BusterClawWeb.Phone.ContactList
   alias BusterClawWeb.Phone.Log, as: PhoneLog
   alias BusterClawWeb.Phone.Playback
@@ -108,6 +109,8 @@ defmodule BusterClawWeb.PhoneComponent do
     |> assign(:thread_messages, [])
     |> assign(:dialed_number, "")
     |> assign(:dial_match, nil)
+    |> CallFlow.reset()
+    |> CallFlow.load_readiness()
     |> assign(:selected_contact, nil)
     |> assign(:adding_contact, false)
     |> assign(:contact_error, nil)
@@ -182,6 +185,25 @@ defmodule BusterClawWeb.PhoneComponent do
 
   def handle_event("dial_clear", _params, socket) do
     {:noreply, assign_dial(socket, "")}
+  end
+
+  # Three lines of dispatch; the flow itself is `CallFlow`, which shares nothing
+  # with this component's log, filter and contact handling.
+  def handle_event("call_prompt", %{"number" => number}, socket) do
+    {:noreply, CallFlow.prompt(socket, number)}
+  end
+
+  def handle_event("call_cancel", _params, socket) do
+    {:noreply, CallFlow.cancel(socket)}
+  end
+
+  def handle_event("call_confirm", _params, socket) do
+    case CallFlow.confirm(socket) do
+      # The outbound row exists now, so the log has to be re-read here rather
+      # than waiting for a broadcast this component does not send itself.
+      {:placed, socket} -> {:noreply, load_data(socket)}
+      {:refused, socket} -> {:noreply, socket}
+    end
   end
 
   # Manual "refresh costs" — back-fill Twilio prices now rather than waiting for
@@ -347,6 +369,10 @@ defmodule BusterClawWeb.PhoneComponent do
       dialed_number: dialed_number,
       dial_match: closest_contact(socket.assigns.contacts, dialed_number)
     )
+    # Editing the number abandons the pending call rather than re-pointing it. A
+    # confirmation that survives a digit being typed is a confirmation for a
+    # number the operator is no longer looking at.
+    |> CallFlow.reset()
   end
 
   defp select_contact_number(socket, %{phone: phone}) when is_binary(phone) do
@@ -519,6 +545,11 @@ defmodule BusterClawWeb.PhoneComponent do
             keypad_keys={@keypad_keys}
             dialed_number={@dialed_number}
             dial_match={@dial_match}
+            voice_ready={@voice_ready}
+            caller_id={@caller_id}
+            pending_call={@pending_call}
+            call_error={@call_error}
+            call_notice={@call_notice}
             selected_event={@selected_event}
             selected_thread={@selected_thread}
             selected_contact={@selected_contact}

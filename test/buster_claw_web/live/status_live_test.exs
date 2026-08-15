@@ -1679,11 +1679,13 @@ defmodule BusterClawWeb.StatusLiveTest do
       # The bridge design, and the reason the keypad still discloses.
       assert html =~ "No audio touches this"
       assert html =~ "two legs, both billed"
-      assert html =~ "Searches your contacts"
-      # Case-sensitive, and the sentence now opens a paragraph rather than
-      # continuing one — the keypad copy was rewritten on 08-15 when phone_call
-      # made half of it false.
-      assert html =~ "control that looks finished and is not"
+      # The tab quotes the disclosure it replaced, so it has to keep saying what
+      # the old line said AND that it stopped being true — a tutorial that simply
+      # dropped the sentence would leave a reader who saw it yesterday with no
+      # account of where it went.
+      assert html =~ "outbound calling isn&#39;t built"
+      assert html =~ "stopped being true on 08-15"
+      assert html =~ "A control that looks finished and is not"
 
       # The calling cycle is explanatory, so it names no verb and offers no
       # prefill. Prefilling a composer with a request that cannot be fulfilled
@@ -1699,19 +1701,19 @@ defmodule BusterClawWeb.StatusLiveTest do
                ~s([data-demo-try-in-chat][phx-value-text^="Call the print shop"])
              )
 
-      # The tripwire fired on 08-15 and is kept, narrowed, rather than deleted.
-      # It asserted that NO outbound-call verb existed; `phone_call` shipped, the
-      # test went red, and the tutorial was rewritten — which is exactly what it
-      # was written to force.
+      # This tripwire has now fired TWICE in one day and been narrowed twice,
+      # which is the argument for writing it this way. It first asserted that no
+      # outbound-call verb existed; `phone_call` shipped and it went red. It then
+      # asserted the keypad had no Call button; the button shipped hours later and
+      # it went red again. Both times the copy was wrong and the test said so.
       #
-      # What it guards now is the half that is still true: the verb exists and
-      # the KEYPAD BUTTON does not, so the tab teaches "ask for it" rather than
-      # "press it". Wiring the dial makes this fail and the copy owes an edit.
+      # What it guards now is the claim that replaced them: the button and the
+      # verb are the SAME path. A tab teaching that pressing is safer than asking
+      # — or that they have different limits — would be teaching a fiction.
       assert Commands.command_type("phone_call") == :mutate
       assert html =~ "phone_call"
-      # Whitespace-sensitive on purpose: HEEx renders a source line break inside
-      # the sentence as a newline, so this also pins the disclosure to one line.
-      assert html =~ "keypad still has no Call button"
+      assert html =~ "keypad has a Call button now"
+      assert html =~ "the same verb, the same cap and the same refusals"
 
       # And these three remain unbuilt, so the tab must not teach them.
       for fake <- ~w(phone_dial voice_call call_place) do

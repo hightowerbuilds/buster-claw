@@ -7,10 +7,17 @@ defmodule BusterClawWeb.Phone.Playback do
   import BusterClawWeb.Phone.Shared
 
   alias BusterClaw.Telephony
+  alias BusterClawWeb.Phone.CallAction
+
   attr :target, :any, required: true
   attr :keypad_keys, :list, required: true
   attr :dialed_number, :string, required: true
   attr :dial_match, :any, default: nil
+  attr :voice_ready, :any, required: true
+  attr :caller_id, :string, default: nil
+  attr :pending_call, :any, default: nil
+  attr :call_error, :string, default: nil
+  attr :call_notice, :string, default: nil
   attr :selected_event, :any, default: nil
   attr :selected_thread, :any, default: nil
   attr :selected_contact, :any, default: nil
@@ -90,17 +97,21 @@ defmodule BusterClawWeb.Phone.Playback do
               </button>
             </div>
 
-            <%!-- This keypad looks like a dialer and is not one: `dial_key` only
-                  appends a digit and re-runs `closest_contact/2`. The container's
-                  aria-label has always said so, but a sighted user had no way to
-                  know, which is the gap this line closes. Delete it when outbound
-                  calling actually exists. --%>
-            <p
-              id="phone-keypad-purpose"
-              class="mt-2 px-2 font-mono text-[10px] uppercase tracking-wide text-base-content/40"
-            >
-              Searches your contacts · outbound calling isn't built
-            </p>
+            <%!-- The keypad is a dialer now — `phone_call` shipped 08-15 — but it
+                  is still also a contact search, and it is still off until the
+                  operator sets the voice switch. `CallAction` owns both halves of
+                  that disclosure and the button itself; see its moduledoc for why
+                  the G-37 line narrowed rather than went away. --%>
+            <CallAction.call_action
+              target={@target}
+              dialed_number={@dialed_number}
+              selected_contact={@selected_contact}
+              voice_ready={@voice_ready}
+              caller_id={@caller_id}
+              pending_call={@pending_call}
+              call_error={@call_error}
+              call_notice={@call_notice}
+            />
 
             <button
               :if={@dial_match && (!@selected_contact || @selected_contact.id != @dial_match.id)}
@@ -134,13 +145,25 @@ defmodule BusterClawWeb.Phone.Playback do
               >
                 <.icon name="hero-chat-bubble-left-right" class="size-3.5" /> Text
               </button>
+              <%!-- Text is still inert and Call no longer is, which is the whole
+                    A2P story in two buttons: outbound SMS waits on a registration
+                    at Twilio, outbound voice never needed one. --%>
               <button
                 id="phone-contact-call"
                 type="button"
-                disabled
-                aria-disabled="true"
-                class="flex h-8 cursor-not-allowed items-center justify-center gap-2 border-2 border-base-content/15 bg-base-100/30 font-mono text-[11px] font-bold uppercase text-base-content/40"
-                title="Outbound calling is not enabled yet"
+                disabled={@voice_ready != :ok}
+                aria-disabled={to_string(@voice_ready != :ok)}
+                phx-click={@voice_ready == :ok && "call_prompt"}
+                phx-target={@target}
+                phx-value-number={@selected_contact.phone}
+                class={[
+                  "flex h-8 items-center justify-center gap-2 border-2 font-mono text-[11px] font-bold uppercase transition",
+                  if(@voice_ready == :ok,
+                    do: "border-accent bg-accent/15 text-base-content hover:bg-accent/30",
+                    else:
+                      "cursor-not-allowed border-base-content/15 bg-base-100/30 text-base-content/40"
+                  )
+                ]}
               >
                 <.icon name="hero-phone" class="size-3.5" /> Call
               </button>

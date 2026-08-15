@@ -26,6 +26,34 @@ defmodule BusterClawWeb.PhoneLiveTest do
     view
   end
 
+  @ours "+18445550100"
+  @operator "+15033412655"
+
+  # Voice is off in test, which is the state most of this file asserts against.
+  # Turning it on has to happen BEFORE `live/2` — readiness is read at mount, so
+  # a switch flipped afterwards describes a tab nobody is looking at.
+  defp enable_voice(_context) do
+    previous = Application.get_env(:buster_claw, :twilio)
+
+    Application.put_env(:buster_claw, :twilio, %{
+      account_sid: "AC_test",
+      auth_token: "tok",
+      phone_number: @ours,
+      operator_number: @operator,
+      voice_enabled: true
+    })
+
+    on_exit(fn -> Application.put_env(:buster_claw, :twilio, previous) end)
+  end
+
+  defp dial(view, digits) do
+    for key <- String.graphemes(digits) do
+      view |> element("#phone-dial-key-#{key}") |> render_click()
+    end
+
+    view
+  end
+
   test "renders the empty machine", %{conn: conn} do
     {:ok, _view, html} = live(conn, "/phone")
 
@@ -152,19 +180,51 @@ defmodule BusterClawWeb.PhoneLiveTest do
     refute has_element?(view, "#phone-message-detail")
   end
 
-  # The keypad looks like a dialer and isn't one. That was disclosed only in the
-  # container's aria-label, so a sighted user had no way to know — the exact
-  # "decorative control that reads as finished" case LAUNCH_ROADMAP G-37 names.
-  # Gating it behind Labs was declined, so honest labelling in place is the
-  # standing obligation and this test is what keeps it.
-  test "the keypad says on screen that it only searches contacts", %{conn: conn} do
+  # LAUNCH_ROADMAP G-37 closed by *labelling in place*: the keypad had to say on
+  # screen what it did, because gating it behind Labs was declined. On 08-15 the
+  # obligation narrowed rather than lifted — the keypad dials now, but calling is
+  # off until the operator sets the voice switch, so the line has to say WHY and
+  # name the fix. A disabled control whose reason lives in a `title` is the same
+  # G-37 failure wearing a different hat.
+  test "the keypad says on screen why calling is off, and names the fix", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/phone")
 
     assert has_element?(view, "#phone-keypad-purpose", "Searches your contacts")
-    assert has_element?(view, "#phone-keypad-purpose", "outbound calling isn't built")
+    assert has_element?(view, "#phone-keypad-purpose", "calling off")
+    assert has_element?(view, "#phone-keypad-purpose", "BUSTER_CLAW_VOICE_ENABLED")
 
     # Not just the accessible name: the disclosure has to survive as visible text.
     refute view |> element("#phone-keypad-purpose") |> render() =~ "sr-only"
+
+    # And the claim it replaced must not survive anywhere — it became false the
+    # hour `phone_call` shipped, and a stale disclosure is worse than none.
+    refute render(view) =~ "outbound calling isn't built"
+  end
+
+  # The other half of the same obligation, and the half a disclosure line cannot
+  # carry on its own: the button has to actually be inert. A live control beside
+  # a paragraph explaining why it will fail is worse than either alone.
+  test "with the switch off the Call button is disabled and carries no click",
+       %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/phone")
+    dial(view, "5035550142")
+
+    assert has_element?(view, "#phone-dial-call[disabled]")
+
+    # Not merely styled as disabled: there is no event to send. A `disabled`
+    # attribute is a browser courtesy, and this component is reachable over a
+    # socket by anything that can speak to it.
+    refute has_element?(view, "#phone-dial-call[phx-click]")
+
+    # So the switch is re-read in the handler too, and the event refuses on its
+    # own — sent straight down the socket, past the button that isn't there.
+    html =
+      view
+      |> with_target("#phone-root")
+      |> render_click("call_prompt", %{"number" => "+15035550142"})
+
+    assert html =~ "BUSTER_CLAW_VOICE_ENABLED"
+    refute has_element?(view, "#phone-call-confirm")
   end
 
   test "keypad searches contacts by number and supports correction", %{conn: conn} do
@@ -208,6 +268,10 @@ defmodule BusterClawWeb.PhoneLiveTest do
     assert has_element?(view, "#phone-dialed-number", "(503) 555-0142")
     assert has_element?(view, "#phone-contact-actions")
     assert has_element?(view, "#phone-contact-text[disabled]")
+    # Call is disabled here for a *different* reason than Text: the voice switch
+    # is off in test, not because the feature is unbuilt. That is the whole A2P
+    # story in two buttons — texting waits on a registration at Twilio, calling
+    # never needed one.
     assert has_element?(view, "#phone-contact-call[disabled]")
     refute has_element?(view, "#phone-dial-match")
 
@@ -388,6 +452,105 @@ defmodule BusterClawWeb.PhoneLiveTest do
       assert card =~ "data-seed"
       refute card =~ "data-shader-source"
       assert card =~ "Generative"
+    end
+  end
+
+  # OUTBOUND_VOICE Phase 4. What these can prove without a network is more than it
+  # looks: every refusal below is raised by `Telephony`/`Twilio`, not by the
+  # component, so a passing refusal is itself proof that the button is wired to
+  # the real path. The accepted case belongs to `telephony/call_test.exs`, which
+  # can stub Twilio; here it would place an actual call.
+  describe "the Call button" do
+    setup :enable_voice
+
+    test "is live once the switch is on, and says what pressing it does", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/phone")
+      dial(view, "5035550142")
+
+      assert has_element?(view, "#phone-dial-call:not([disabled])")
+      assert has_element?(view, "#phone-keypad-purpose", "Call rings your phone first")
+      refute has_element?(view, "#phone-keypad-purpose", "calling off")
+    end
+
+    test "confirms before the first ring, naming all three surprising facts",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/phone")
+      dial(view, "5035550142")
+
+      confirm = view |> element("#phone-dial-call") |> render_click()
+
+      # Who is dialled, that YOUR phone rings first, and what they will see.
+      assert confirm =~ "(503) 555-0142"
+      assert confirm =~ "Your own phone rings first"
+      assert confirm =~ "(844) 555-0100"
+
+      # And nothing has happened yet.
+      assert Telephony.list_events() == []
+
+      view |> element("#phone-call-cancel") |> render_click()
+      refute has_element?(view, "#phone-call-confirm")
+    end
+
+    test "editing the number abandons the pending call", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/phone")
+      dial(view, "5035550142")
+      view |> element("#phone-dial-call") |> render_click()
+
+      assert has_element?(view, "#phone-call-confirm")
+
+      view |> element("#phone-dial-backspace") |> render_click()
+
+      # A confirmation that survives a digit being typed is a confirmation for a
+      # number the operator is no longer looking at.
+      refute has_element?(view, "#phone-call-confirm")
+    end
+
+    test "refuses our own number, in words rather than a tag", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/phone")
+      dial(view, "8445550100")
+
+      view |> element("#phone-dial-call") |> render_click()
+      html = view |> element("#phone-call-confirm-place") |> render_click()
+
+      assert html =~ "this app&#39;s own number"
+      refute has_element?(view, "#phone-call-confirm")
+      assert Telephony.list_events() == []
+    end
+
+    test "a number that replied STOP cannot be called from the keypad either",
+         %{conn: conn} do
+      record!(%{
+        kind: "sms",
+        direction: "inbound",
+        from_number: "+15035550142",
+        to_number: @ours,
+        body: "STOP"
+      })
+
+      {:ok, view, _html} = live(conn, "/phone")
+      dial(view, "5035550142")
+
+      view |> element("#phone-dial-call") |> render_click()
+      html = view |> element("#phone-call-confirm-place") |> render_click()
+
+      # The opt-out list is the SMS one on purpose — voice has no STOP, and it is
+      # the same human. A button that ignored it would be the loophole.
+      assert html =~ "replied STOP"
+    end
+
+    test "a selected contact's Call button dials their stored number", %{conn: conn} do
+      {:ok, contact} = Contacts.create_contact(%{name: "Dana Printshop", phone: "+15035550142"})
+
+      {:ok, view, _html} = live(conn, "/phone")
+      dial(view, "503")
+      view |> element("#phone-dial-match") |> render_click()
+
+      assert has_element?(view, "#phone-contact-call:not([disabled])")
+      confirm = view |> element("#phone-contact-call") |> render_click()
+
+      # The stored E.164 number, not the national digits on the display.
+      assert confirm =~ "(503) 555-0142"
+      assert contact.phone == "+15035550142"
     end
   end
 end

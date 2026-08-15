@@ -146,7 +146,21 @@ defmodule BusterClaw.Telephony.Twilio do
     end
   end
 
-  defp voice_ready do
+  @doc """
+  `:ok` when a call could be placed right now, or the tagged reason it could not.
+
+  Public because the Phone tab's Call button needs the reason, not a boolean —
+  the whole point of the disabled state is to say *which* precondition is
+  missing. It is the same function `place_call/2` guards with rather than a
+  second copy: this module's moduledoc records what happens when a public
+  predicate is written beside the tagged errors, and a UI reading a different
+  copy is exactly how a button ends up enabled for a call that cannot be placed.
+
+  It answers only "would the preconditions pass" — not whether *this* recipient
+  is dialable. Self-dial, opt-out and the daily cap are per-recipient and stay
+  where they can see one.
+  """
+  def voice_ready do
     cond do
       not voice_enabled?() -> {:error, :voice_disabled}
       not configured?() -> {:error, :not_configured}
@@ -155,6 +169,13 @@ defmodule BusterClaw.Telephony.Twilio do
       true -> :ok
     end
   end
+
+  @doc """
+  The number the far end sees, for a UI that must state it before the first ring.
+
+  `nil` when unset, which is one of the reasons `voice_ready/0` refuses.
+  """
+  def caller_id, do: phone_number()
 
   # `from` is reported rather than inferred later. `Telephony.our_number/0`
   # derives the app's number from inbound history, which is empty on a machine

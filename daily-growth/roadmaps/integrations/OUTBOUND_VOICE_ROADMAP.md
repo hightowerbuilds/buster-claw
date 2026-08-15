@@ -1,7 +1,8 @@
 # Outbound voice — making the rotary dial real
 
-**Scoped 08-15-26 · Status: Phases 1 and 3 SHIPPED 08-15. Phase 2 DELETED — it
-turned out not to exist. Phase 0 is the operator's, Phase 4 is the keypad.**
+**Scoped 08-15-26 · Status: Phases 1, 3 and 4 SHIPPED 08-15. Phase 2 DELETED —
+it turned out not to exist. Phase 0 is the operator's and is the only thing left
+here besides the cost back-fill.**
 
 > ### Phase 2 was deleted by the build, not skipped
 >
@@ -41,11 +42,13 @@ So the two halves of "let my phone make calls and texts" have opposite shapes:
 | Outgoing **texts** | Twilio A2P registration (paperwork) | the operator, in Console |
 | Outgoing **calls** | nothing at Twilio — **it is unbuilt** | us |
 
-`sms_send` has existed since 07-18, kill-switched, waiting on approval. There is
-**no outbound call path at all**: `Telephony.Twilio` creates messages and reads
-call/recording/transcription resources, and never POSTs to `Calls`. The keypad
-on `/phone` says so on its face — *"Searches your contacts · outbound calling
-isn't built"* — which is the honest placeholder this roadmap exists to retire.
+`sms_send` has existed since 07-18, kill-switched, waiting on approval. *As
+scoped,* there was **no outbound call path at all**: `Telephony.Twilio` created
+messages and read call/recording/transcription resources, and never POSTed to
+`Calls`. The keypad on `/phone` said so on its face — *"Searches your contacts ·
+outbound calling isn't built"* — which is the honest placeholder this roadmap
+existed to retire. **Both halves are gone as of 08-15**; the table above is the
+scoping snapshot, not the state of the tree.
 
 ---
 
@@ -130,9 +133,13 @@ The smallest honest unit: a function that creates a call and returns a receipt.
   `<Dial callerId="…">target</Dial>` inline. **No `Url`** — see the header for
   why that deleted Phase 2.
 - Mirror `send_sms/3`'s shape exactly, including its precondition style: a
-  private `voice_ready` that names *which* precondition is missing, and **no
-  public boolean twin** — that module's moduledoc records why a second copy of
-  the conditions drifts out of step with the tagged errors.
+  `voice_ready` that names *which* precondition is missing, and **no public
+  boolean twin** — that module's moduledoc records why a second copy of the
+  conditions drifts out of step with the tagged errors.
+  **Amended by Phase 4:** `voice_ready/0` is public. The rule it was protecting
+  was never "keep it private", it was "one copy of the conditions" — and the Call
+  button needs the *reason*, not a boolean. Exporting the same function is the
+  rule kept; a `voice_ready?/0` beside it would have been the rule broken.
 - Preconditions: Twilio configured, the owned number present, and an explicit
   **`voice_enabled` kill switch, separate from `sms_enabled`**. Two capabilities,
   two switches; a text is not a phone call.
@@ -231,7 +238,7 @@ phone call is harassment, and it bills two legs each time.
 
 ---
 
-## Phase 4 — The keypad stops lying
+## Phase 4 — The keypad stops lying ✅ SHIPPED 08-15
 
 `components/phone/playback.ex` renders a working keypad under the line
 *"Searches your contacts · outbound calling isn't built."* That sentence exists
@@ -249,9 +256,30 @@ thing this phase deletes.
 - Live legs appear in the Message Machine beside voicemails, since
   `telephony_events` already carries `direction`.
 
-**Exit:** the G-37 disclosure line is deleted because it has become false, and a
-test asserts the Call button is disabled with a stated reason when the switch is
-off.
+**Exit:** met, with one correction to the scope. **The disclosure line was not
+deleted** — it was rewritten. "Outbound calling isn't built" became false, but
+"calling is off, here is the variable that turns it on" is *more* true than
+saying nothing, and a disabled button next to no explanation is the same G-37
+failure as an inert one. The line goes away only when the reason does.
+
+Shipped as three files rather than more of `PhoneComponent`, which the size gate
+forced and which was right anyway: `Phone.CallAction` is the button, the confirm
+step and the only copy of the refusal wording; `Phone.CallFlow` is the two-step
+flow as socket transitions; the component keeps three lines of dispatch, because
+`handle_event/3` clauses cannot be imported.
+
+**Two guards were missing until they were broken.** The first pass asserted the
+Call button's *enabled* behaviour and never its disabled one — flipping
+`disabled` to a constant `false` passed every test. The second is sharper: an
+absent `phx-click` is not a guard, because the component is reachable over its
+socket by anything that can speak to it. `call_prompt` re-reads the switch in the
+handler, and the test sends the event past the button to prove it.
+
+**Still not built, deliberately:** live legs in the Message Machine. The outbound
+row lands the moment the call is created — that is what the reload after a
+successful placement is for — but it carries `queued`, and nothing updates it as
+the legs connect. Making that live needs the status callback this design does not
+have, which is the same trade that deleted Phase 2.
 
 ---
 
