@@ -184,9 +184,18 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
     #   secret, nothing is written, and nothing is applied — the three verbs that
     #   CHANGE what the operator sees (terminal_theme_select / _paint / _reset)
     #   are :restricted and deliberately absent from this list.
+    #
+    #   background_list (added 08-15, DMG review B1) — the read half of the
+    #   background surface. It reports the option keys and labels the operator's
+    #   own Settings → Appearance page already renders, which mode each of the
+    #   two surfaces resolves to, and the served `/appearance/image/<slot>` URLs
+    #   the webview already fetches. Nothing is written and nothing is applied;
+    #   `background_set`, which changes what the operator is looking at, is
+    #   :restricted and deliberately absent from this list.
     @safe_tier ~w(
       activity_report
       agent_run_status
+      background_list
       bookmark_export
       bookmark_list
       browser_check_list

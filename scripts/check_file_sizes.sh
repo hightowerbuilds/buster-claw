@@ -458,6 +458,23 @@ check lib/buster_claw/pockets/faces.ex                        164 HELD
 # terminal it is running in. Capped on arrival, no headroom.
 check lib/buster_claw/commands/terminal_theme.ex              246 HELD
 check lib/buster_claw/commands/catalog/terminal_theme.ex      101 HELD
+
+# Backgrounds on the command surface (B1, 08-15). Capped on arrival, no headroom.
+#
+# `appearance.ex` is comment-heavy on purpose and that is what the number buys:
+# the one-verb argument (Appearance is written against its @surfaces table, so a
+# per-surface verb pair would re-introduce per-surface code at the one layer that
+# had none), and the refusal table that turns every atom set_background/2 can
+# return into a sentence with the fix in it.
+#
+# The containment claim lives in the catalog moduledoc and is worth restating
+# here, because it is what makes an ungated mutate verb defensible: these verbs
+# SELECT from Appearance.options/0 and nothing more. No command at any tier
+# uploads an image or authors a shaders/*.wgsl. If a raise here ever buys
+# authoring rather than selection, it is the wrong raise — and
+# appearance_test.exs's reach test fails on a Settings.put whatever it is named.
+check lib/buster_claw/commands/appearance.ex                  275 HELD
+check lib/buster_claw/commands/catalog/appearance.ex           87 HELD
 check lib/buster_claw/terminal_paint.ex                        81 HELD
 
 # Brand Pockets (POCKETS_ROADMAP Part XI, 08-09) — the dock icons and the

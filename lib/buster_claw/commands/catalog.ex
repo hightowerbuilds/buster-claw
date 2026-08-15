@@ -14,6 +14,7 @@ defmodule BusterClaw.Commands.Catalog do
   """
 
   alias BusterClaw.Commands.Catalog.{
+    Appearance,
     Finance,
     Google,
     GoogleContacts,
@@ -44,5 +45,6 @@ defmodule BusterClaw.Commands.Catalog do
         Sound.entries() ++
         Pocket.entries() ++
         TerminalTheme.entries() ++
+        Appearance.entries() ++
         Orchestration.entries()
 end
