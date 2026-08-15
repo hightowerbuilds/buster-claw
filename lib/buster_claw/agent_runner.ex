@@ -170,8 +170,13 @@ defmodule BusterClaw.AgentRunner do
     end
   end
 
+  # `ShellPath` first — a packaged app's own PATH is launchd's and finds none of
+  # these. `@canonical_claude` stays as the last resort rather than being
+  # retired: it is the one install location we know by name, and it answers
+  # without running a shell at all.
   defp claude_path do
-    System.find_executable("claude") || (File.exists?(@canonical_claude) && @canonical_claude) ||
+    BusterClaw.ShellPath.find_executable("claude") ||
+      (File.exists?(@canonical_claude) && @canonical_claude) ||
       nil
   end
 

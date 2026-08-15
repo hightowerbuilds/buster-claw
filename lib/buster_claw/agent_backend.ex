@@ -200,7 +200,12 @@ defmodule BusterClaw.AgentBackend do
   """
   def available?(backend) do
     case executable(backend) do
-      name when is_binary(name) -> System.find_executable(name) != nil
+      # `ShellPath`, not `System.find_executable/1`: a packaged app inherits
+      # launchd's PATH, which contains none of the directories a developer tool
+      # is installed into, so this answered "no harness installed" on a machine
+      # carrying all three (DMG-review-8-15, findings 1 and 2). It falls back to
+      # the process PATH, so dev and CI are unchanged.
+      name when is_binary(name) -> BusterClaw.ShellPath.find_executable(name) != nil
       _ -> false
     end
   end
