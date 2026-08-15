@@ -101,7 +101,6 @@ defmodule BusterClaw.Integrations.Snapshot do
   defp list(items), do: Enum.map(items, &"- #{&1}")
 
   defp service_label("github"), do: "GitHub"
-  defp service_label("umami"), do: "Umami"
   defp service_label(service), do: String.capitalize(to_string(service || "Integration"))
 
   defp slug(value) do

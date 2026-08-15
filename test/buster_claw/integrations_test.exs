@@ -64,16 +64,16 @@ defmodule BusterClaw.IntegrationsTest do
     assert {:ok, _integration} =
              Integrations.create_integration(%{
                name: "analytics",
-               service_type: "umami",
-               base_url: "https://umami.example.com",
-               config_text: ~s({"website_id":"site-id"})
+               service_type: "github",
+               base_url: "https://github.example.com",
+               config_text: ~s({"owner":"acme","repo":"analytics"})
              })
 
     assert {:error, changeset} =
              Integrations.create_integration(%{
                name: "analytics",
-               service_type: "umami",
-               base_url: "https://umami.example.com"
+               service_type: "github",
+               base_url: "https://github.example.com"
              })
 
     assert %{name: [_]} = errors_on(changeset)

@@ -16,7 +16,7 @@ The agent doesn't call a chat API. It works a **queue**.
 
 Trusted inbound requests land in a durable SQLite **Dispatch queue** — today that means mail from a sender on your trusted-senders list, or anything you (or an agent) enqueue by hand. Buster Claw projects that queue into workspace markdown the agent already reads (`Dispatch.md`). The agent pulls an item, does the work, and writes the result back through the `./buster-claw` CLI. The desktop UI gives you the command surface, the audit feed, and the results.
 
-(Integration webhooks do *not* enqueue work — a verified GitHub or Sentry event becomes a Library snapshot, not an agent task.)
+(Integration webhooks do *not* enqueue work — a verified GitHub event becomes a Library snapshot, not an agent task.)
 
 That indirection is the whole design. It means work survives a crash, an agent can be replaced mid-shift, and nothing the agent does is invisible to you.
 
@@ -25,7 +25,7 @@ That indirection is the whole design. It means work survives a crash, an agent c
 - **One command surface.** 203 commands across documents, browser, Google Workspace, integrations, finance, phone, notes, memory, skills, and orchestration — reachable from the CLI and an HTTP API, with per-caller trust tiers and an audit trail covering everything that changes state.
 - **A real browser the agent can drive.** Not a headless scraper: the agent reads and acts inside **the tab you're actually looking at**, logged-in session and all (`browser_read`, `browser_click`, `browser_fill`), plus SSRF-guarded fetch for everything else.
 - **Google Workspace.** One-click connect, then sync and act on Gmail, Calendar, Drive, Docs, and Contacts.
-- **Integrations.** GitHub, Sentry, and Umami — polled on demand (by you or the agent; there is no background poller) or webhook-triggered, with signature verification that fails closed.
+- **Integrations.** GitHub — polled on demand (by you or the agent; there is no background poller) or webhook-triggered, with signature verification that fails closed.
 - **In-app terminal.** A real PTY where you run Claude Code, Codex, OpenCode, or anything else. Your shell survives tab switches.
 - **Unattended shifts.** Go `on-duty` and a supervised Elixir janitor works the queue without you — with a kill switch (a `STOP` file), a crash-loop brake, and a hard budget cap that stops the shift rather than burning tokens.
 - **BusterPhone**. An answering machine and SMS relay for your agent. Voice greets callers, records, transcribes, and files the message; signed inbound SMS is archived and trusted-number texts enter `sms-triage`. Gated outbound SMS uses a Twilio Messaging Service with an explicit kill switch and per-recipient daily cap. Voice is live; SMS activation still requires the operator's Messaging Service and A2P 10DLC campaign. Outbound calling is not built and the dialpad remains decorative. See `daily-growth/roadmaps/integrations/BUSTERPHONE_ROADMAP.md`.

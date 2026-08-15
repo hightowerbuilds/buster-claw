@@ -4,9 +4,12 @@ defmodule BusterClawWeb.IntegrationsLive do
   alias BusterClaw.Integrations
   alias BusterClaw.Integrations.Integration
 
+  # One option today. Kept as a list because the picker, the whitelist in
+  # `Integration` and `Integrations.adapter_for/1` are three lists that must
+  # agree — the rail-and-guard shape this repo has been bitten by three times —
+  # and collapsing this one to a constant would hide the next disagreement.
   @service_options [
-    {"GitHub", "github"},
-    {"Umami", "umami"}
+    {"GitHub", "github"}
   ]
 
   @impl true
@@ -329,10 +332,6 @@ defmodule BusterClawWeb.IntegrationsLive do
 
   defp count_poll_result({:ok, _run}, {ok_count, error_count}), do: {ok_count + 1, error_count}
   defp count_poll_result({:error, _run}, {ok_count, error_count}), do: {ok_count, error_count + 1}
-
-  defp config_placeholder("umami"),
-    do:
-      ~s({"website_id":"site-id","timezone":"America/Los_Angeles","period":"24h","dedupe_poll_snapshots":false,"dedupe_window_days":30})
 
   defp config_placeholder(_service),
     do:

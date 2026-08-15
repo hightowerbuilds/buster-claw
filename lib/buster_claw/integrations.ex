@@ -1,8 +1,15 @@
 defmodule BusterClaw.Integrations do
   @moduledoc """
-  Service integrations (GitHub / Umami) that turn operational data into
-  Library documents. Both the poll path and the webhook path converge on the same
-  output: a Library markdown snapshot plus an `IntegrationRun` row.
+  Service integrations that turn operational data into Library documents. Both
+  the poll path and the webhook path converge on the same output: a Library
+  markdown snapshot plus an `IntegrationRun` row.
+
+  **GitHub is the only adapter.** Sentry and Umami were removed 08-14 as
+  ideated-but-inessential. The `Service` behaviour, the `Snapshot` renderer and
+  the service-type whitelist are deliberately kept rather than collapsed into
+  GitHub: they are what make the second adapter cheap, and they cost one
+  indirection. If a year passes with GitHub still alone, that is the moment to
+  reconsider — not now, on the day two adapters were deleted.
 
   ## Two things this does NOT do
 
@@ -21,7 +28,7 @@ defmodule BusterClaw.Integrations do
 
   import Ecto.Query
 
-  alias BusterClaw.Integrations.{GitHub, Integration, IntegrationRun, Umami}
+  alias BusterClaw.Integrations.{GitHub, Integration, IntegrationRun}
   alias BusterClaw.Library
   alias BusterClaw.LocalTime
   alias BusterClaw.Repo
@@ -299,7 +306,6 @@ defmodule BusterClaw.Integrations do
 
   defp document_tags(document), do: get_in(document.tags || %{}, ["items"]) || []
 
-  defp adapter_for(%Integration{service_type: "umami"}), do: {:ok, Umami}
   defp adapter_for(%Integration{service_type: "github"}), do: {:ok, GitHub}
 
   defp adapter_for(%Integration{service_type: service_type}),

@@ -33,10 +33,10 @@ defmodule BusterClawWeb.IntegrationsLiveTest do
       |> form("#integration-form", %{
         integration: %{
           name: "Traffic",
-          service_type: "umami",
-          base_url: "https://umami.example.com",
+          service_type: "github",
+          base_url: "https://github.example.com",
           token: "secret",
-          config_text: ~s({"website_id":"site-id"}),
+          config_text: ~s({"owner":"acme","repo":"traffic"}),
           enabled: "true"
         }
       })
@@ -45,8 +45,8 @@ defmodule BusterClawWeb.IntegrationsLiveTest do
     assert html =~ "Integration saved."
     assert html =~ "Traffic"
     [integration] = Integrations.list_integrations()
-    assert integration.service_type == "umami"
-    assert integration.config == %{"website_id" => "site-id"}
+    assert integration.service_type == "github"
+    assert integration.config == %{"owner" => "acme", "repo" => "traffic"}
 
     html =
       view
@@ -60,10 +60,10 @@ defmodule BusterClawWeb.IntegrationsLiveTest do
       |> form("#integration-form", %{
         integration: %{
           name: "Traffic Prod",
-          service_type: "umami",
-          base_url: "https://umami.example.com",
+          service_type: "github",
+          base_url: "https://github.example.com",
           token: "secret",
-          config_text: ~s({"website_id":"prod-site"}),
+          config_text: ~s({"owner":"acme","repo":"traffic-prod"}),
           enabled: "true"
         }
       })
@@ -106,10 +106,10 @@ defmodule BusterClawWeb.IntegrationsLiveTest do
         service_type: "github"
       })
 
-    {:ok, _umami} =
+    {:ok, _second} =
       Integrations.create_integration(%{
         name: "Errors",
-        service_type: "umami"
+        service_type: "github"
       })
 
     {:ok, view, _html} = live(conn, ~p"/integrations")

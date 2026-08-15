@@ -1,7 +1,7 @@
 defmodule BusterClaw.Integrations.Integration do
   @moduledoc """
-  A configured GitHub / Umami integration. `token` and `webhook_secret`
-  are encrypted at rest (`BusterClaw.Encrypted`).
+  A configured service integration — GitHub is the only kind today. `token` and
+  `webhook_secret` are encrypted at rest (`BusterClaw.Encrypted`).
 
   There is deliberately no polling-interval field: polling is on demand only (a
   human clicks Poll, or an agent runs `integration_poll`), so a stored interval
@@ -19,11 +19,13 @@ defmodule BusterClaw.Integrations.Integration do
   # `unknown_type` in a job configured not to block.
   @type t :: %__MODULE__{}
 
-  # `sentry` was removed 08-14 (ideated, never essential). A stored row with
-  # service_type "sentry" now fails this whitelist on its next validated write
-  # and polls as {:unsupported_integration, "sentry"} — deliberately visible
-  # rather than silently dropped, since nothing in the app ever seeded one.
-  @service_types ~w(github umami)
+  # `sentry` and `umami` were both removed 08-14 (ideated, never essential).
+  # A stored row with either service_type now fails this whitelist on its next
+  # validated write and polls as {:unsupported_integration, type} — deliberately
+  # visible rather than silently dropped, since nothing in the app ever seeded
+  # one. This stays a list rather than becoming `== "github"`: it is the shape
+  # that makes the next adapter one line.
+  @service_types ~w(github)
   @statuses ~w(never_run ok error disabled)
 
   schema "integrations" do

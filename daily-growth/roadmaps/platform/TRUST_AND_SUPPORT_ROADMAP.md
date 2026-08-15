@@ -21,7 +21,7 @@ are safety, not presentation, and a bug does not care whether it was briefed.**
 | Refusals are actionable | `sentinel/pending.ex` — its own moduledoc says *"Approve/deny actions are Phase 2."* It is an in-memory stub |
 | There is an emergency brake | **Zero** occurrences of `STOP` or `kill_switch` anywhere in `lib/buster_claw_web/`. The brake is a file on disk you learn about from a markdown doc |
 | Security is visible | `settings_tabs.ex` — last of seven |
-| We can see failures | No telemetry, no crash reporting. The only Sentry code is the *integration* that reads the user's own project |
+| We can see failures | No telemetry, no crash reporting, and as of 08-14 no Sentry code at all — the integration that read the user's own project was removed |
 | We can support a stranger | The only diagnostic path is a stderr log in Application Support |
 
 The subsystem behind the first three is `Sentinel`, whose audit spine shipped
