@@ -54,7 +54,7 @@ defmodule BusterClaw.Appearance do
   @subdir "pockets/backgrounds"
   @image_basename "background"
 
-  @builtin_shaders ~w(smoke waves mandel weather)
+  @builtin_shaders ~w(smoke waves mandel weather veil)
 
   # Bundled shaders that react to the selected background image. The Elixir half
   # of a pair whose JS half is `IMAGE_REACTIVE_BUILTINS` in
@@ -68,9 +68,6 @@ defmodule BusterClaw.Appearance do
   # draw the image nowhere. Workspace shaders need no such list — they are an
   # `fs_main` body alone, so `Shaders.samples_image?/1` is exact.
   #
-  # `veil` is bundled and tested but deliberately NOT in @builtin_shaders yet:
-  # it cannot be offered until a surface can feed it an image
-  # (roadmaps/surfaces/IMAGE_SHADER_ROADMAP.md Phase 3).
   @builtin_image_shaders ~w(veil)
 
   @default_colors ["#0e0e0e", "#ff4d1c", "#f4f1ea"]
@@ -79,7 +76,8 @@ defmodule BusterClaw.Appearance do
     "smoke" => "Smoke",
     "waves" => "Waves",
     "mandel" => "Mandelbrot",
-    "weather" => "Weather"
+    "weather" => "Weather",
+    "veil" => "Veil"
   }
 
   # The two surfaces that carry a background. Everything below is written against
@@ -147,6 +145,27 @@ defmodule BusterClaw.Appearance do
 
   @doc "Bundled shader designs that react to the selected background image."
   def builtin_image_shaders, do: @builtin_image_shaders
+
+  @doc """
+  Every shader that may be laid over an image, sorted — the bundled ones plus any
+  workspace shader whose source samples the image.
+
+  This is the overlay picker's list, and it is derived on every read rather than
+  cached: writing a `shaders/*.wgsl` that calls `img()` should make it appear
+  without a restart, exactly as writing any shader makes it appear in the
+  background picker.
+  """
+  def image_shader_options do
+    (@builtin_image_shaders ++ Enum.filter(custom_shaders(), &Shaders.samples_image?/1))
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
+
+  @doc """
+  Display label for a shader design. The same mapping the catalog rows use, so
+  the overlay picker cannot end up calling a design something else.
+  """
+  def shader_label(name), do: Map.get(@shader_labels, name, humanize(name))
 
   @doc """
   True when shader `name` composites the selected background image — a bundled

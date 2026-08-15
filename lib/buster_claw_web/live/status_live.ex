@@ -781,20 +781,7 @@ defmodule BusterClawWeb.StatusLive do
           aria-hidden="true"
         >
         </div>
-        <div
-          :if={@home_bg.mode not in ["image", "off"]}
-          id={"home-shader-#{@home_bg.mode}-#{:erlang.phash2({@home_bg.custom, @home_bg.colors})}"}
-          phx-hook="SmokeBackground"
-          phx-update="ignore"
-          data-shader={@home_bg.mode}
-          data-shader-source={@home_bg.source_url}
-          data-custom={to_string(@home_bg.custom)}
-          data-colors={Enum.join(@home_bg.colors, ",")}
-          class="ic-home-bg"
-          aria-hidden="true"
-        >
-          <canvas data-smoke-canvas></canvas>
-        </div>
+        <BusterClawWeb.ShaderCanvas.shader_canvas bg={@home_bg} prefix="home" class="ic-home-bg" />
         <div class="relative z-10 flex min-h-0 flex-1 flex-col space-y-8">
           <div class="flex items-stretch gap-4 border-b-2 border-base-content/20 pb-5">
             <div class="shrink-0 space-y-4">

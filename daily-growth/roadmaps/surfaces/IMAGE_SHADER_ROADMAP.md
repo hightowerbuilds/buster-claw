@@ -463,16 +463,48 @@ react, and accepting it silently is the exact failure this mode exists to preven
 **Not yet reachable from the UI**, by construction: every consumer keys on `kind`,
 and none of them knows `:image_shader` until Phase 3.
 
-### Phase 3 — The two surfaces and the preview
+### Phase 3 — The two surfaces and the preview — **SHIPPED**
 
-Homepage (`home_widget.ex`), terminal (`terminal_live.ex`), and the Appearance
-preview. The picker offers the combined mode only for shaders that sample.
+`veil` joined `@builtin_shaders`, the surfaces render it, and Settings →
+Appearance grew a **Shader overlay** picker that appears exactly when a surface
+is showing an image.
 
-**Two cautions carried forward:**
-- `home_widget.ex` is **FROZEN at 699** in the size gate — the new mode cannot
-  land in it. It needs a component, or the phase owes a cut in the same commit.
-- `appearance_live.ex` is **HELD at 1035** with its next cut already named. A new
-  picker mode will cross it.
+**The size caps forced the right refactor.** Both homepage files were at their
+caps (`status_live.ex` 942/942, `appearance_live.ex` 1032/1035) and the change
+needed one new attribute in each. But the background div was **copied into three
+surfaces** — homepage, terminal, split — and the copies had already drifted: the
+homepage keyed `data-shader` off `bg.mode` while the other two used `bg.shader`.
+Extracting `BusterClawWeb.ShaderCanvas` removed the duplication and paid for the
+attribute: status_live 942 → **929**, appearance_live 1032 → **972** (via
+`BusterClawWeb.SurfacePanel`, the cut that file's own cap comment had named).
+The gate did its job — it refused a copy-paste and got a decomposition.
+
+**The remount key is the subtle part.** `phx-update="ignore"` means LiveView
+never patches inside the canvas div, so a *changed* background can only take
+effect by remounting the hook — which is what the hashed id does. The image url
+had to go into that key: swapping which picture an image-reactive shader samples
+changes nothing else about the background, so without it the hook keeps the old
+image bound and the change looks ignored. `shader_canvas_test.exs` holds each
+field of the key separately.
+
+**The preview samples the same image the surface does.** `ShaderPreview` gained
+the same image load, because the chat-skins lesson applies exactly: the one
+screen you open *in order to* see the effect must not be the one screen that
+cannot show it.
+
+Two decisions worth keeping:
+
+- **The overlay picker never carries a slot.** It sends only the surface and the
+  shader; the slot comes from what the surface is already showing. A picker that
+  posted a slot could repoint a surface at a different image while appearing to
+  set an overlay. Tested.
+- **`terminal_background_source/2` returns `"shader"` for `:image_shader`.** The
+  host must stay transparent — painting the same image behind the canvas would
+  put an *unveiled* copy under a veiled one, visible only where the shader is
+  thinnest.
+
+Phase 0's four questions are now answerable through the real UI rather than a
+spike, which is why the spike was deleted unrun.
 
 ### Phase 4 — The skill
 

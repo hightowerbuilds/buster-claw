@@ -35,6 +35,20 @@ export async function fetchShaderSource(url) {
   }
 }
 
+// Fetch + decode a background image for an image-reactive shader to sample.
+// Returns an ImageBitmap, or null on any network/HTTP/decode failure so the
+// caller can fall back to the shader's own has_img() degradation — the same
+// posture as fetchShaderSource above.
+export async function loadImage(url) {
+  try {
+    const res = await fetch(url, {cache: "no-store"})
+    if (!res.ok) return null
+    return await createImageBitmap(await res.blob())
+  } catch (_e) {
+    return null
+  }
+}
+
 // `shader` selects a bundled built-in by name; `source` (optional) is a raw WGSL
 // fs_main body for a custom pattern — the bundled prelude is prepended and the
 // result compiled live, so a custom shader needs no rebuild. A bad `source`
@@ -85,7 +99,7 @@ export async function createSmoke(
   // Content texture — the shader samples it, but for the background it is never
   // written (kept tiny). RENDER_ATTACHMENT is kept because
   // copyExternalImageToTexture (unused here) would require it.
-  const contentTex = device.createTexture({
+  let contentTex = device.createTexture({
     size: [contentWidth, contentHeight],
     format: "rgba8unorm",
     usage:
@@ -94,14 +108,20 @@ export async function createSmoke(
       GPUTextureUsage.RENDER_ATTACHMENT,
   })
   const sampler = device.createSampler({magFilter: "linear", minFilter: "linear"})
-  const bind = device.createBindGroup({
-    layout: pipeline.getBindGroupLayout(0),
-    entries: [
-      {binding: 0, resource: {buffer: ubuf}},
-      {binding: 1, resource: sampler},
-      {binding: 2, resource: contentTex.createView()},
-    ],
-  })
+  // `let`, because setImage replaces the texture (and therefore the bind group)
+  // when a real image arrives at its own dimensions.
+  let bind = null
+  const rebuildBind = () => {
+    bind = device.createBindGroup({
+      layout: pipeline.getBindGroupLayout(0),
+      entries: [
+        {binding: 0, resource: {buffer: ubuf}},
+        {binding: 1, resource: sampler},
+        {binding: 2, resource: contentTex.createView()},
+      ],
+    })
+  }
+  rebuildBind()
 
   // Set the moment the GPU device is lost. The hook watches `lost` (the promise)
   // to tear the canvas down, but that cleanup is async — frames can still fire in
@@ -153,6 +173,48 @@ export async function createSmoke(
         // Device lost mid-frame (before device.lost resolved): mark it so the
         // loop stops instead of throwing every frame until teardown catches up.
         deviceLost = true
+      }
+    },
+
+    // Bind an image (an ImageBitmap) for an image-reactive shader to sample.
+    // Replaces the placeholder texture with one at the image's OWN dimensions,
+    // uploads once, and rebuilds the bind group to point at it.
+    //
+    // Sized to the image rather than the canvas on purpose: the canvas resizes
+    // constantly (window drags, split panes) and the image does not, so this
+    // stays a one-shot cost at selection time instead of per-resize work. The
+    // shader does the fitting, from `imgSize`/`imgRect` — which is also what
+    // lets two panes share one picture.
+    //
+    // Returns {width, height} for the caller to pack into `imgSize`, or null if
+    // the upload could not happen. IMAGE_SHADER_ROADMAP Phase 0 exists to prove
+    // this call works against a texture created as above.
+    setImage(source) {
+      if (deviceLost || !source) return null
+      const width = source.width
+      const height = source.height
+      if (!width || !height) return null
+      try {
+        contentTex.destroy()
+        contentTex = device.createTexture({
+          size: [width, height],
+          format: "rgba8unorm",
+          usage:
+            GPUTextureUsage.TEXTURE_BINDING |
+            GPUTextureUsage.COPY_DST |
+            GPUTextureUsage.RENDER_ATTACHMENT,
+        })
+        device.queue.copyExternalImageToTexture(
+          {source},
+          {texture: contentTex},
+          [width, height]
+        )
+        rebuildBind()
+        return {width, height}
+      } catch (_e) {
+        // A failed upload must not take the background down with it — the
+        // shader degrades through has_img() instead.
+        return null
       }
     },
 

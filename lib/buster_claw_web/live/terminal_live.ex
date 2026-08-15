@@ -69,20 +69,11 @@ defmodule BusterClawWeb.TerminalLive do
               one shader across the shared container (see SplitLive), so an embedded
               pane stays transparent and lets that show through. Keyed by shader
               name so switching designs remounts the hook. --%>
-        <div
-          :if={@terminal_bg.kind == :shader and not @embedded?}
-          id={"terminal-shader-#{@terminal_bg.shader}-#{:erlang.phash2({@terminal_bg.custom, @terminal_bg.colors})}"}
-          phx-hook="SmokeBackground"
-          phx-update="ignore"
-          data-shader={@terminal_bg.shader}
-          data-shader-source={@terminal_bg.source_url}
-          data-custom={to_string(@terminal_bg.custom)}
-          data-colors={Enum.join(@terminal_bg.colors, ",")}
-          class="ic-shader-fill"
-          aria-hidden="true"
-        >
-          <canvas data-smoke-canvas></canvas>
-        </div>
+        <BusterClawWeb.ShaderCanvas.shader_canvas
+          bg={@terminal_bg}
+          prefix="terminal"
+          render?={not @embedded?}
+        />
         <div
           id={@toolbar_id}
           data-terminal-toolbar
@@ -349,6 +340,12 @@ defmodule BusterClawWeb.TerminalLive do
   # image→shader change flips the host from painting to transparent.
   defp terminal_background_source(%{kind: :image}, _embedded?), do: "host"
   defp terminal_background_source(%{kind: :shader}, _embedded?), do: "shader"
+
+  # An image-reactive shader draws the picture ITSELF, out of the content
+  # texture. The host must stay transparent — painting the same image behind the
+  # canvas would put an unveiled copy under a veiled one, and only the edges
+  # where the shader is thinnest would show the difference.
+  defp terminal_background_source(%{kind: :image_shader}, _embedded?), do: "shader"
   defp terminal_background_source(_bg, _embedded?), do: "none"
 
   defp terminal_session_key(params, session) do

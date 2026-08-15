@@ -671,4 +671,94 @@ defmodule BusterClawWeb.AppearanceLiveTest do
       assert ChatSkin.get() == ChatSkin.default()
     end
   end
+
+  # --- the shader overlay (IMAGE_SHADER_ROADMAP Phase 3) --------------------
+
+  describe "the shader overlay picker" do
+    test "appears only once a surface is showing an image", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/appearance")
+      # Home defaults to the smoke shader, so there is nothing to overlay onto.
+      refute has_element?(view, "#home-overlay")
+
+      slot = add_image()
+      {:ok, _} = Appearance.set_background(:home, "image:#{slot}")
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      assert has_element?(view, "#home-overlay")
+      # ...and only for the surface that is showing one.
+      refute has_element?(view, "#terminal-overlay")
+    end
+
+    test "choosing one puts the shader over the image", %{conn: conn} do
+      slot = add_image()
+      {:ok, _} = Appearance.set_background(:home, "image:#{slot}")
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      view
+      |> element("#surface-home form[phx-change='set_overlay']")
+      |> render_change(%{"surface" => "home", "shader" => "veil"})
+
+      assert %{kind: :image_shader, shader: "veil", slot: ^slot} = Appearance.background(:home)
+    end
+
+    test "choosing None takes it off again without losing the image", %{conn: conn} do
+      slot = add_image()
+      {:ok, _} = Appearance.set_background(:home, "image:#{slot}+veil")
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      view
+      |> element("#surface-home form[phx-change='set_overlay']")
+      |> render_change(%{"surface" => "home", "shader" => ""})
+
+      # Back to the plain image, still the SAME slot — removing an overlay must
+      # not also clear which picture the surface was showing.
+      assert %{kind: :image, slot: ^slot} = Appearance.background(:home)
+    end
+
+    test "the slot comes from the surface, not the form", %{conn: conn} do
+      # The picker never carries a slot, so a crafted change cannot repoint a
+      # surface at a different image while pretending to set an overlay.
+      slot = add_image()
+      other = add_image()
+      {:ok, _} = Appearance.set_background(:home, "image:#{slot}")
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      view
+      |> element("#surface-home form[phx-change='set_overlay']")
+      |> render_change(%{"surface" => "home", "shader" => "veil", "slot" => to_string(other)})
+
+      assert %{slot: ^slot} = Appearance.background(:home)
+    end
+
+    test "a shader that ignores the image is refused with a reason", %{conn: conn, root: root} do
+      write_custom_shader(root, "plain")
+      slot = add_image()
+      {:ok, _} = Appearance.set_background(:home, "image:#{slot}")
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      html =
+        view
+        |> element("#surface-home form[phx-change='set_overlay']")
+        |> render_change(%{"surface" => "home", "shader" => "plain"})
+
+      assert html =~ "ignores the image"
+      # ...and the surface is left exactly as it was.
+      assert %{kind: :image, slot: ^slot} = Appearance.background(:home)
+    end
+
+    test "the preview samples the same image the surface does", %{conn: conn} do
+      # The lesson from the chat-skins preview: the one screen you open in order
+      # to see the effect must not be the one screen that cannot show it.
+      slot = add_image()
+      {:ok, _} = Appearance.set_background(:home, "image:#{slot}+veil")
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      url = Appearance.image_url(slot)
+
+      assert has_element?(
+               view,
+               ~s|#surface-home [phx-hook="ShaderPreview"][data-image-url="#{url}"]|
+             )
+    end
+  end
 end

@@ -179,6 +179,27 @@ defmodule BusterClawWeb.AppearanceLive do
     end
   end
 
+  # Lay an image-reactive shader over the image a surface is already showing, or
+  # take it off again ("" -> back to the plain image). The slot comes from what
+  # the surface is showing rather than the form, so the picker cannot be used to
+  # point a surface at a different image by accident.
+  def handle_event("set_overlay", %{"surface" => surface, "shader" => shader}, socket) do
+    with s when not is_nil(s) <- surface_param(surface),
+         %{slot: slot} when is_integer(slot) <- socket.assigns.backgrounds[s] do
+      key = if shader == "", do: "image:#{slot}", else: "image:#{slot}+#{shader}"
+
+      case Appearance.set_background(s, key) do
+        {:ok, _} ->
+          {:noreply, assign_backgrounds(socket)}
+
+        {:error, reason} ->
+          {:noreply, put_flash(socket, :error, overlay_error(reason))}
+      end
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
   def handle_event(
         "set_colors",
         %{"surface" => surface, "c1" => c1, "c2" => c2, "c3" => c3},
@@ -366,10 +387,11 @@ defmodule BusterClawWeb.AppearanceLive do
           </div>
 
           <div class="space-y-6">
-            <.surface_target
+            <BusterClawWeb.SurfacePanel.surface_target
               :for={surface <- @surfaces}
               surface={surface}
               bg={@backgrounds[surface]}
+              overlays={@overlays}
             />
           </div>
         </div>
@@ -765,93 +787,6 @@ defmodule BusterClawWeb.AppearanceLive do
   defp custom_error_text(:invalid_name), do: "Give the theme a name (up to 40 characters)."
   defp custom_error_text(:invalid_colors), do: "That is not a valid #rrggbb colour."
 
-  # A surface's panel: what it's running now, live, plus its palette.
-  attr :surface, :atom, required: true
-  attr :bg, :map, required: true
-
-  defp surface_target(assigns) do
-    ~H"""
-    <section
-      id={"surface-#{@surface}"}
-      aria-label={"#{Appearance.surface_label(@surface)} background"}
-      class="ic-panel flex flex-col overflow-hidden"
-    >
-      <div class="ic-panel-h">
-        <span>{Appearance.surface_label(@surface)}</span>
-        <span class="font-sans text-xs normal-case tracking-normal text-base-content/55">
-          {current_label(@bg)}
-        </span>
-      </div>
-
-      <%!-- aspect-video keeps the shape honest on a narrow window; the max-height
-            caps how much vertical room a target eats on a wide one. --%>
-      <div class="relative aspect-video max-h-40 w-full overflow-hidden bg-base-200">
-        <%= cond do %>
-          <% @bg.kind == :shader -> %>
-            <div
-              id={"#{@surface}-surface-preview-#{@bg.shader}-#{@bg.custom}"}
-              phx-hook="ShaderPreview"
-              phx-update="ignore"
-              data-shader={@bg.shader}
-              data-shader-source={@bg.source_url}
-              data-custom={to_string(@bg.custom)}
-              data-color-prefix={"#{@surface}-color-"}
-              class="absolute inset-0"
-              aria-label={"#{@bg.shader} shader preview"}
-            >
-              <canvas class="block h-full w-full"></canvas>
-            </div>
-          <% @bg.kind == :image -> %>
-            <div
-              class="absolute inset-0 bg-cover bg-center"
-              style={"background-image:url('#{@bg.image_url}')"}
-            >
-            </div>
-          <% true -> %>
-            <div class="grid h-full place-items-center text-sm text-base-content/40">
-              <span class="flex items-center gap-2">
-                <.icon name="hero-no-symbol" class="size-4" /> No background
-              </span>
-            </div>
-        <% end %>
-      </div>
-
-      <div :if={@bg.kind == :shader} class="space-y-3 border-t-2 border-base-content/15 p-4">
-        <label class="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold">
-          <input
-            type="checkbox"
-            checked={@bg.custom}
-            phx-click="toggle_custom"
-            phx-value-surface={@surface}
-            class="size-4 accent-primary"
-          /> Use custom colors
-        </label>
-
-        <form :if={@bg.custom} phx-change="set_colors" class="flex flex-wrap gap-4">
-          <input type="hidden" name="surface" value={@surface} />
-          <label :for={{hex, i} <- Enum.with_index(@bg.colors)} class="flex items-center gap-2">
-            <input
-              type="color"
-              id={"#{@surface}-color-#{i + 1}"}
-              name={"c#{i + 1}"}
-              value={hex}
-              phx-debounce="250"
-              class="size-9 cursor-pointer rounded border-2 border-base-content/20 bg-transparent p-0.5"
-            />
-            <span class="text-xs text-base-content/60">
-              {Enum.at(~w(Base Accent Highlight), i)}
-            </span>
-          </label>
-        </form>
-
-        <p :if={!@bg.custom} class="text-sm text-base-content/50">
-          Using the design's built-in colors.
-        </p>
-      </div>
-    </section>
-    """
-  end
-
   # A non-image option (off, or a shader). No thumbnail: the only honest preview
   # of a shader is the shader itself, and that runs live in the surface panels
   # beside it. The row is the whole control — name, in-use marks, and the two
@@ -988,8 +923,17 @@ defmodule BusterClawWeb.AppearanceLive do
     |> assign(:backgrounds, backgrounds)
     |> assign(:shader_options, shader_options)
     |> assign(:image_options, image_options)
+    # Recomputed with the rest rather than only at mount: writing a workspace
+    # shader that samples the image should make it offerable without a restart.
+    |> assign(:overlays, Appearance.image_shader_options())
     |> assign(:pool_full, Appearance.pool_full?())
   end
+
+  defp overlay_error(:not_image_reactive),
+    do: "That design ignores the image — pick one that reads it, or None."
+
+  defp overlay_error(:empty_slot), do: "That image slot is empty."
+  defp overlay_error(_reason), do: "That overlay could not be applied."
 
   defp surface_param(value) when is_binary(value), do: Map.get(@surface_params, value)
   defp surface_param(_value), do: nil
@@ -1016,10 +960,6 @@ defmodule BusterClawWeb.AppearanceLive do
 
   defp short_label(:home), do: "Home"
   defp short_label(:terminal), do: "Term"
-
-  defp current_label(%{kind: :none}), do: "Off"
-  defp current_label(%{kind: :image, slot: slot}), do: "Image #{slot}"
-  defp current_label(%{kind: :shader, shader: shader}), do: shader
 
   defp upload_error_to_string(:too_large), do: "That image is larger than 8 MB."
   defp upload_error_to_string(:too_many_files), do: "Choose a single image."

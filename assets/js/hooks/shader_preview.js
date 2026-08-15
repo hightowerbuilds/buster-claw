@@ -2,7 +2,7 @@
 // The container is keyed by shader + custom (so switching either remounts it),
 // and while custom is on it reads the color <input> values every frame — so
 // dragging a picker updates the preview instantly, no server round-trip.
-import {createSmoke, SmokeGpuError, fetchShaderSource} from "../smoke/smoke.js"
+import {createSmoke, SmokeGpuError, fetchShaderSource, loadImage} from "../smoke/smoke.js"
 import {packUniforms, NEUTRAL_EXPRESSION} from "../smoke/params.js"
 import {SHADER_PALETTES, colorsForUniform} from "../smoke/palettes.js"
 
@@ -16,6 +16,11 @@ export const ShaderPreview = {
     // Which color <input>s to read live while custom is on. The homepage and the
     // terminal sections each have their own trio, keyed by this id prefix.
     this.colorPrefix = this.el.getAttribute("data-color-prefix") || "home-color-"
+    // The background image, when previewing an image-reactive shader. The
+    // preview must sample the SAME picture the surface does, or the one screen
+    // you open in order to see the effect is the one screen that cannot show it.
+    this.imageUrl = this.el.getAttribute("data-image-url") || null
+    this.image = null
     this.destroyed_ = false
     this.raf = null
     this.expr = {...NEUTRAL_EXPRESSION}
@@ -56,6 +61,15 @@ export const ShaderPreview = {
       if (this.raf != null) cancelAnimationFrame(this.raf)
       this.raf = null
     })
+    if (this.imageUrl) {
+      const bitmap = await loadImage(this.imageUrl)
+      if (this.destroyed_) return
+      if (bitmap && this.smoke) {
+        this.image = this.smoke.setImage(bitmap)
+        bitmap.close?.()
+      }
+    }
+
     this.raf = requestAnimationFrame(this.frame)
   },
 
@@ -81,6 +95,14 @@ export const ShaderPreview = {
         post: PREVIEW_POST,
         motion: 1,
         colors: this.readColors(),
+        image: this.image && {
+          width: this.image.width,
+          height: this.image.height,
+          // The preview is its own little viewport — it is not a slice of the
+          // page, so it cover-fits against itself.
+          viewportWidth: this.canvas.width,
+          viewportHeight: this.canvas.height,
+        },
       },
       this.uniforms
     )

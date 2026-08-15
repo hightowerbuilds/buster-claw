@@ -147,20 +147,7 @@ defmodule BusterClawWeb.SplitLive do
               is a shader and at least one pane is a terminal — the panes go
               transparent (below) and reveal this shared canvas, so a terminal/
               terminal split reads as one continuous field. --%>
-        <div
-          :if={@split_bg.kind == :shader}
-          id={"split-shader-#{@split_bg.shader}-#{:erlang.phash2({@split_bg.custom, @split_bg.colors})}"}
-          phx-hook="SmokeBackground"
-          phx-update="ignore"
-          data-shader={@split_bg.shader}
-          data-shader-source={@split_bg.source_url}
-          data-custom={to_string(@split_bg.custom)}
-          data-colors={Enum.join(@split_bg.colors, ",")}
-          class="ic-shader-fill"
-          aria-hidden="true"
-        >
-          <canvas data-smoke-canvas></canvas>
-        </div>
+        <BusterClawWeb.ShaderCanvas.shader_canvas bg={@split_bg} prefix="split" />
         <.pane
           side="left"
           class="bc-split-left"

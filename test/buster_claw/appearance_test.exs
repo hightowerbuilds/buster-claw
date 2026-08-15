@@ -5,6 +5,7 @@ defmodule BusterClaw.AppearanceTest do
 
   alias BusterClaw.Appearance
   alias BusterClaw.Settings
+  alias BusterClaw.Shaders
 
   setup do
     root = Path.join(System.tmp_dir!(), "bc_appearance_#{System.unique_integer([:positive])}")
@@ -547,13 +548,33 @@ defmodule BusterClaw.AppearanceTest do
     end
 
     test "a bundled image-reactive shader is accepted without a workspace file" do
-      # veil ships in the JS bundle, so there is no shaders/veil.wgsl to read.
-      # It is still not in @builtin_shaders yet (Phase 3), so it must NOT be
-      # selectable — this pins the halfway state rather than leaving it to chance.
+      # veil ships in the JS bundle, so there is no shaders/veil.wgsl to read —
+      # Shaders.samples_image?/1 alone would say no. It resolves through
+      # @builtin_image_shaders instead, which is the whole reason that list
+      # exists.
       {:ok, 1} = Appearance.put_image(fake_image(), "a.png")
       assert "veil" in Appearance.builtin_image_shaders()
       assert Appearance.samples_image?("veil")
-      assert {:error, :invalid_mode} = Appearance.set_background(:home, "image:1+veil")
+      refute Shaders.samples_image?("veil")
+
+      assert {:ok, "image:1+veil"} = Appearance.set_background(:home, "image:1+veil")
+
+      assert %{kind: :image_shader, shader: "veil", source_url: nil, custom_shader: false} =
+               Appearance.background(:home)
+    end
+
+    test "the overlay picker offers bundled and workspace image shaders, not plain ones",
+         %{root: root} do
+      write_image_shader(root, "veiled")
+      write_custom_shader(root, "plain")
+
+      options = Appearance.image_shader_options()
+
+      assert "veil" in options
+      assert "veiled" in options
+      refute "plain" in options
+      # Sorted, so the picker's order does not depend on directory listing order.
+      assert options == Enum.sort(options)
     end
 
     test "degrades when the slot empties", %{root: root} do

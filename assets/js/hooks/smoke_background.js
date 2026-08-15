@@ -3,7 +3,7 @@
 // old Humo surface loop, minus everything that made the smoke a reading
 // surface). If WebGPU is unavailable the canvas simply stays blank; the chat
 // over it is unaffected.
-import {createSmoke, SmokeGpuError, fetchShaderSource} from "../smoke/smoke.js"
+import {createSmoke, SmokeGpuError, fetchShaderSource, loadImage} from "../smoke/smoke.js"
 import {packUniforms, NEUTRAL_EXPRESSION} from "../smoke/params.js"
 import {SHADER_PALETTES, colorsForUniform} from "../smoke/palettes.js"
 import {skyAmounts, localDayFrac} from "../smoke/sky.js"
@@ -29,6 +29,11 @@ export const SmokeBackground = {
   mounted() {
     this.canvas = this.el.querySelector("[data-smoke-canvas]")
     this.shader = this.el.getAttribute("data-shader") || "smoke"
+    // The background image an image-reactive shader samples, when the surface's
+    // mode is `image:<slot>+<shader>`. Absent for a plain pattern, and the
+    // shader's has_img() degrades it to a design in that case.
+    this.imageUrl = this.el.getAttribute("data-image-url") || null
+    this.image = null
     this.raf = null
     this.smoke = null
     this.destroyed_ = false
@@ -62,6 +67,12 @@ export const SmokeBackground = {
     this.lensScratch = {x: 0, y: 0, radius: 0, strength: 0}
     this.exprScratch = {...NEUTRAL_EXPRESSION}
     this.chatEl = null
+    // Image-slot scratch, mutated in place like the rest. `viewRect` is filled
+    // by fitCanvas (which already measures) rather than by the frame loop — a
+    // getBoundingClientRect per frame forces layout 60 times a second.
+    this.imageScratch = {width: 0, height: 0, viewportWidth: 0, viewportHeight: 0}
+    this.rectScratch = {x: 0, y: 0, width: 1, height: 1}
+    this.viewRect = null
 
     this.onVisibility = () => {
       if (!document.hidden && this.smoke && this.raf == null) {
@@ -116,6 +127,24 @@ export const SmokeBackground = {
       this.raf = null
     })
 
+    // Bind the background image, if this shader has one to sample. Deliberately
+    // NOT awaited before the first frame: the shader degrades through has_img()
+    // meanwhile, so the background starts drifting immediately and the picture
+    // arrives when it arrives, rather than the canvas staying blank on a slow
+    // decode. A failure here leaves it in that degraded state permanently, which
+    // is a design rather than a hole.
+    if (this.imageUrl) {
+      const bitmap = await loadImage(this.imageUrl)
+      if (this.destroyed_) return
+      if (bitmap && this.smoke) {
+        this.image = this.smoke.setImage(bitmap)
+        if (!this.image) this.el.setAttribute("data-image", "unavailable:upload-failed")
+        bitmap.close?.()
+      } else if (!bitmap) {
+        this.el.setAttribute("data-image", "unavailable:fetch-failed")
+      }
+    }
+
     this.raf = requestAnimationFrame(this.frame)
   },
 
@@ -168,6 +197,27 @@ export const SmokeBackground = {
       expression.paletteAmt = this.skyAmts.wind
     }
 
+    // The image slots. `this.image` is set by the Phase 0 spike today and by the
+    // Appearance mode in Phase 3; with neither, packUniforms writes the no-image
+    // default and the shader's has_img() returns 0.
+    let image = null
+    let imageRect = null
+    if (this.image && this.viewRect) {
+      const r = this.viewRect
+      image = this.imageScratch
+      image.width = this.image.width
+      image.height = this.image.height
+      image.viewportWidth = r.vw
+      image.viewportHeight = r.vh
+      // Where this canvas sits in the viewport, so img_uv cover-fits against the
+      // VIEWPORT and adjacent panes reveal adjacent slices of one picture.
+      imageRect = this.rectScratch
+      imageRect.x = r.left / r.vw
+      imageRect.y = r.top / r.vh
+      imageRect.width = r.width / r.vw
+      imageRect.height = r.height / r.vh
+    }
+
     packUniforms(
       {
         width: this.canvas.width,
@@ -181,6 +231,8 @@ export const SmokeBackground = {
         post: this.post,
         motion: this.reduceMotion ? 0.3 : 1,
         colors: this.colors,
+        image,
+        imageRect,
       },
       this.uniforms
     )
@@ -191,6 +243,19 @@ export const SmokeBackground = {
 
   fitCanvas() {
     const rect = this.el.getBoundingClientRect()
+    // Cached for the uniform packing (see frame). Measured here because this is
+    // already the one place that measures, and it is ResizeObserver-driven.
+    // Known gap: a scroll moves the canvas within the viewport without firing
+    // this. Fine for a full-bleed background; Phase 3 revisits it if a surface
+    // ever scrolls one.
+    this.viewRect = {
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+      vw: window.innerWidth || rect.width || 1,
+      vh: window.innerHeight || rect.height || 1,
+    }
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
     // Per-pixel-heavy shaders render below full retina and capped, since they're
     // ambient backgrounds behind a blurred panel. Mandelbrot (iteration loop)
