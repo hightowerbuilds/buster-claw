@@ -127,7 +127,12 @@ check() { # path cap tier
 # while the tab count did not: the ordering is now stated once, in one place,
 # instead of being implied twice by the shape of two literals.
 check lib/buster_claw_web/components/explained_panel.ex        113 HELD
-check lib/buster_claw_web/components/explained/ramshackle.ex   565 HELD
+# 565 -> 570 on 08-14: the tab's opening claim changed, not its content. It said
+# "there is no screen for this yet"; Studio -> Voice now shows the corpus, so it
+# says which half has a screen and which does not. Two lines, and they were owed
+# — a lockstep test in status_live_test.exs failed the moment Voice was built,
+# which is exactly what it was written to do.
+check lib/buster_claw_web/components/explained/ramshackle.ex   575 HELD
 check lib/buster_claw_web/components/explained/studio.ex       307 HELD
 check lib/buster_claw_web/components/explained/phone.ex        460 HELD
 check lib/buster_claw_web/components/explained/cmd.ex          430 HELD
@@ -196,7 +201,17 @@ check lib/buster_claw_web/components/gws/calendar_sync.ex    101 HELD
 # dispatch swap was net ZERO: the frozen component's ten assign lines moved from
 # a `.live_component` call to a `.studio_panel` one. If a later reader finds rail
 # markup or tab logic in this file, this raise was wrong.
-check lib/buster_claw_web/live/status_live.ex                942 HELD
+# Raised 08-14, 942 -> 955, for the Voice sub-tab (STUDIO_ROADMAP VI.1). The
+# same shape as every raise above it, and the same test: what landed HERE is
+# only what provably cannot live anywhere else. Three `handle_event` clauses
+# that each delegate in full to `Status.Voice`, one alias, one mount assign, and
+# six attrs on the panel call. The corpus read, the filtering, the sentence
+# grading and every pane of markup are in the two modules created for them.
+#
+# Note what did NOT land here: the lazy corpus load. `select_studio_tab` already
+# routes through `Status.Studio`, so the "arriving at Voice reads the corpus"
+# rule lives there and this file's tab clause is unchanged.
+check lib/buster_claw_web/live/status_live.ex                955 HELD
 check lib/buster_claw_web/live/status/chat.ex                685 HELD
 
 # Added 08-09 when the chat skins pushed this past 1,000 lines. It has never been
@@ -274,8 +289,27 @@ check lib/buster_claw_web/live/status/weather.ex              97 HELD
 # a sub-tab — or splitting Voice into recording and dictionary, which the roadmap
 # expects — is ONE edit in the registry; a zero-headroom cap would quietly make it
 # two.
-check lib/buster_claw_web/components/studio_panel.ex         142 HELD
+# Raised 08-14, 142 -> 170, when Voice stopped being a placeholder and became
+# VI.1's Ramshackle surface. This is the raise the note above says to question,
+# so it says what it bought: an `alias`, a six-attr block, and a 12-line
+# dispatch that renders `Studio.Voice.voice/1` and nothing else. The SURFACE is
+# 220 lines in `components/studio/voice.ex` and its state is 166 in
+# `live/status/voice.ex`, both created for it. If a later reader finds pane
+# markup, filtering, or corpus reads in this file, this raise was wrong and the
+# cut is owed.
+check lib/buster_claw_web/components/studio_panel.ex         170 HELD
 check lib/buster_claw_web/components/studio/registry.ex       75 HELD
+
+# Voice, the Ramshackle surface (VI.1), capped on arrival. `voice.ex` is the two
+# panes; `status/voice.ex` is their state, in `StatusLive` for the reason every
+# home panel's is — the panel renders behind `:if` and a half-typed sentence
+# must survive a glance at Chat.
+#
+# The seam if either grows: Pane 2 (takes, waveform, audition) is the missing
+# third pane and needs a route that serves a take's audio. That is a sibling
+# module and its own surface, not another section of these two.
+check lib/buster_claw_web/components/studio/voice.ex         230 HELD
+check lib/buster_claw_web/live/status/voice.ex               175 HELD
 
 # The Notes vault: state in the live_component, markup in three function
 # components. Split at ~810 lines during the Home Activity + Notes roadmap's

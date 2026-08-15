@@ -44,21 +44,18 @@ defmodule BusterClawWeb.Studio.Registry do
     %{
       key: "voice",
       label: "Voice",
-      blurb: "Voice training and ramshackle audio creation.",
-      eyebrow: "Nothing here yet",
-      body:
-        "Voice training and ramshackle audio creation land on this tab: taking " <>
-          "recordings straight into the workspace, and a dictionary of what was " <>
-          "captured to browse, audition, and correct. Neither is built — this is " <>
-          "the frame they land in, shipped first so the tab that holds them is " <>
-          "not also the thing being debugged."
+      blurb: "Ramshackle: your library of words, and what it can say."
     }
   ]
 
   # Sub-tabs whose surface exists. Anything else renders the placeholder, which
   # is what makes adding a tab a one-line edit above rather than a rail button
   # that leads nowhere.
-  @built ~w(mix)
+  # `voice` joined 08-14 with VI.1's vocabulary and sentence-check panes. Its
+  # placeholder copy went with it: a built tab writes its own, and leaving the
+  # old `eyebrow`/`body` here would have left the tab's honest "nothing here
+  # yet" text sitting in the registry to be rendered again by mistake.
+  @built ~w(mix voice)
 
   @doc "The sub-tabs, in rail order."
   def tabs, do: @tabs

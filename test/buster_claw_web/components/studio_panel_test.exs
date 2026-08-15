@@ -95,13 +95,21 @@ defmodule BusterClawWeb.StudioPanelTest do
   end
 
   describe "the two tabs" do
-    test "Voice renders the honest placeholder and no studio", %{conn: conn} do
+    # Was "Voice renders the honest placeholder" until 08-14, when VI.1's
+    # vocabulary and sentence-check panes replaced it. The two refutations are
+    # the half worth keeping: whatever Voice becomes, it must not drag the
+    # frozen studio along with it.
+    test "Voice renders the Ramshackle surface and no studio", %{conn: conn} do
       {view, _html} = open_studio(conn)
       html = select_sub_tab(view, "voice")
 
-      voice = Enum.find(Registry.placeholders(), &(&1.key == "voice"))
-      assert html =~ voice.body
-      assert html =~ "Not built yet"
+      assert has_element?(view, "#studio-voice")
+      assert html =~ "Vocabulary"
+      assert html =~ "Can it say this?"
+
+      # Recording is still unbuilt, and the tab says so rather than offering a
+      # control that would do nothing — the standard the placeholder held.
+      assert html =~ "Recording is not built yet"
 
       # The frozen component is gone, not merely hidden.
       refute has_element?(view, "#studio-panel")
@@ -143,15 +151,24 @@ defmodule BusterClawWeb.StudioPanelTest do
 
       # Every tab is either built (it has a dispatch) or a placeholder — never
       # both, and never neither.
+      #
+      # **This list emptied on 08-14** when Voice was built, and an empty list
+      # would make the `eyebrow`/`body` check below vacuously green — the
+      # "a collection empties and its guard goes quiet" seam the doc-drift comb
+      # named. So the emptiness is asserted directly: if a third sub-tab arrives
+      # as a placeholder, this line fails and the copy check starts meaning
+      # something again in the same commit.
       placeholders = Enum.map(Registry.placeholders(), & &1.key)
-      assert placeholders == ["voice"]
+      assert placeholders == []
 
       for %{key: key} = tab <- Registry.tabs() do
         assert is_binary(tab.label) and tab.label != ""
         assert is_binary(tab.blurb) and tab.blurb != ""
 
         if key in placeholders do
-          # A placeholder needs the copy its page renders.
+          # A placeholder needs the copy its page renders. Currently unreachable
+          # by the assertion above, and deliberately kept: it is the contract a
+          # new placeholder must satisfy on the day one appears.
           assert is_binary(tab.eyebrow) and is_binary(tab.body)
         end
       end
@@ -189,7 +206,7 @@ defmodule BusterClawWeb.StudioPanelTest do
         |> Regex.scan(File.read!(panel))
         |> Enum.map(fn [_, key] -> key end)
 
-      assert literals == ["mix"]
+      assert literals == ["mix", "voice"]
 
       for key <- literals do
         assert key in StudioPanel.tab_keys(),

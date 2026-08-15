@@ -39,6 +39,7 @@ defmodule BusterClawWeb.StudioPanel do
   use BusterClawWeb, :html
 
   alias BusterClawWeb.Studio.Registry
+  alias BusterClawWeb.Studio.Voice
 
   @doc "Sub-tab keys, in rail order — the parent's `select_studio_tab` whitelist."
   def tab_keys, do: Enum.map(Registry.tabs(), & &1.key)
@@ -56,6 +57,16 @@ defmodule BusterClawWeb.StudioPanel do
   attr :studio_undo, :list, required: true
   attr :studio_redo, :list, required: true
   attr :studio_collapsed, :list, required: true
+
+  # Voice's, prepared by `Status.Voice`. `rows` and `check` are derived rather
+  # than stored: the LiveView computes them from the loaded report so this panel
+  # stays presentation-only and does no filtering of its own.
+  attr :voice_report, :any, required: true
+  attr :voice_error, :any, required: true
+  attr :voice_query, :string, required: true
+  attr :voice_sentence, :string, required: true
+  attr :voice_rows, :list, required: true
+  attr :voice_check, :list, required: true
 
   def studio_panel(assigns) do
     assigns = assign(assigns, tabs: Registry.tabs(), placeholders: Registry.placeholders())
@@ -101,6 +112,19 @@ defmodule BusterClawWeb.StudioPanel do
           studio_undo={@studio_undo}
           studio_redo={@studio_redo}
           studio_collapsed={@studio_collapsed}
+        />
+      </div>
+
+      <%!-- Voice: Ramshackle. Its assigns are StatusLive's for the same reason
+            Mix's are — see `Status.Voice`. --%>
+      <div :if={@tab == "voice"} data-studio-tab="voice" class="flex min-h-0 flex-1 flex-col">
+        <Voice.voice
+          report={@voice_report}
+          error={@voice_error}
+          query={@voice_query}
+          sentence={@voice_sentence}
+          rows={@voice_rows}
+          check={@voice_check}
         />
       </div>
 

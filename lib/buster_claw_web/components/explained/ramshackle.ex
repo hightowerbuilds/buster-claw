@@ -6,11 +6,18 @@ defmodule BusterClawWeb.Explained.Ramshackle do
   ## Why this tab exists at all
 
   Every other tutorial in this rail describes a surface you can point at. This
-  one describes a feature with **no surface**: the Studio tab's `Voice` sub-tab
-  is a placeholder (`Studio.Registry`'s `@built` is `~w(mix)`), and the whole
-  cut-up engine is reachable only through the command surface. That is not a gap
-  this page papers over — it is the first thing it says, because a tutorial that
-  implies a screen exists sends the reader looking for it.
+  one describes a feature that is **mostly** still command-only, and the split
+  moved on 08-14: Studio → Voice used to be a placeholder and now shows the
+  corpus — the vocabulary and the sentence check (`STUDIO_ROADMAP` VI.1) — while
+  recording, aligning, matching and splicing remain verbs.
+
+  So the page's opening claim changed from *"there is no screen for this yet"* to
+  which half has one. That is not cosmetic: a tutorial that implies a screen
+  exists sends the reader looking for it, and one that denies a screen that now
+  exists sends them to the command line for something they could have clicked.
+  A lockstep test in `status_live_test.exs` fails if `Voice` returns to being a
+  placeholder, which is the same guard that caught this copy the day the tab was
+  built.
 
   ## The facts here are taken from the implementation
 
@@ -71,15 +78,15 @@ defmodule BusterClawWeb.Explained.Ramshackle do
           — that part is engineering, and most of this page is about it.
         </p>
         <p class="border-l-2 border-primary pl-3">
-          <span class="font-semibold text-base-content">There is no screen for this yet.</span>
-          Studio → Voice is an honest placeholder, and it says so. The engine below
-          is real, tested and complete, and every bit of it is reachable
-          <span class="italic">only</span>
-          through commands — which means through your agent, or through <code>./buster-claw</code>. The Voice tab is being built to hold two things
-          that sit either side of this page: <span class="italic">capturing</span>
-          new audio, and <span class="italic">browsing and correcting</span>
-          the word dictionary the cut-up reads. The splicing explained here stays
-          where it is — on the command surface.
+          <span class="font-semibold text-base-content">Half of this has a screen now.</span>
+          Studio → Voice shows your library of words — every one the corpus holds,
+          how many takes of it exist, and whether a phrase you type can be cut
+          from them. What it cannot do yet is <span class="italic">record</span>,
+          and it says so on its face. Everything below — the aligning, the
+          matching, the splicing — is still reachable <span class="italic">only</span>
+          through commands, which means through your agent or through <code>./buster-claw</code>. That is the honest division today: the Voice
+          tab is where you look at the corpus, and this page is how the engine
+          that fills it works.
         </p>
       </div>
 

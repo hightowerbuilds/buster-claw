@@ -1816,14 +1816,24 @@ defmodule BusterClawWeb.StatusLiveTest do
                "tutorial names #{cmd}, which is not in the command catalog"
       end
 
-      # The claim the whole tab opens with, turned into a contract: Studio -> Voice
-      # is a placeholder, so this tutorial is the only place the engine is
-      # explained. BUILD that tab and this fails — which is the reminder to come
-      # back here and stop saying "there is no screen for this yet".
-      assert "voice" in Enum.map(BusterClawWeb.Studio.Registry.placeholders(), & &1.key),
-             "Studio -> Voice is now built, but the Voice tutorial still says it is not"
+      # The claim the tab opens with, still a contract — the claim just changed.
+      #
+      # It used to assert Voice was a placeholder, so that BUILDING that tab
+      # would fail here and force this copy to be rewritten. It did exactly that
+      # on 08-14: VI.1's vocabulary and sentence-check panes landed and this test
+      # went red with "the Voice tutorial still says it is not". Worth keeping as
+      # evidence that a lockstep assertion on someone else's module earns its
+      # keep.
+      #
+      # The new claim is narrower and so is the guard: Voice exists and shows the
+      # corpus, but it cannot RECORD, which is what keeps the engine on the
+      # command surface and this page worth reading.
+      refute "voice" in Enum.map(BusterClawWeb.Studio.Registry.placeholders(), & &1.key),
+             "Voice is a placeholder again — this tutorial now overclaims what that tab does"
 
-      assert html =~ "no screen for this yet"
+      refute html =~ "no screen for this yet"
+      assert html =~ "Half of this has a screen now"
+      assert html =~ "cannot do yet"
 
       # sound_sentence writes a SOURCE and nothing else. The tutorial promises
       # that twice, so assert the verb has not quietly grown a routing side

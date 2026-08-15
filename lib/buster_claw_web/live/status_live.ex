@@ -23,6 +23,7 @@ defmodule BusterClawWeb.StatusLive do
   alias BusterClaw.TrustedSenders
   alias BusterClaw.Weather
   alias BusterClawWeb.Status.ChatAttachments
+  alias BusterClawWeb.Status.Voice
 
   # How many files may sit in the composer at once. The per-file byte cap is the
   # store's (`Attachments.limits/0`) and is read at mount rather than restated
@@ -108,6 +109,7 @@ defmodule BusterClawWeb.StatusLive do
      # Which Studio sub-tab is showing (Mix | Voice) — owned here for the same
      # reason as the arranger state below it. See `Status.Studio`.
      |> assign_studio_tab()
+     |> Voice.assign_voice()
      # Transport for the Studio's music library. nil until the dock player
      # announces — it renders a library with no transport rather than guessing.
      |> assign(:music_player, nil)
@@ -282,6 +284,18 @@ defmodule BusterClawWeb.StatusLive do
   def handle_event("select_studio_tab", %{"tab" => tab}, socket) do
     {:noreply, select_studio_tab(socket, tab)}
   end
+
+  # Voice (Ramshackle). Every clause delegates in full to `Status.Voice`; the
+  # corpus read is lazy, so opening the tab is what loads it and switching away
+  # and back does not re-read ten files.
+  def handle_event("voice_search", %{"query" => query}, socket),
+    do: {:noreply, Voice.put_query(socket, query)}
+
+  def handle_event("voice_sentence", %{"sentence" => text}, socket),
+    do: {:noreply, Voice.put_sentence(socket, text)}
+
+  def handle_event("voice_refresh", _params, socket),
+    do: {:noreply, Voice.load_report(socket)}
 
   # The Studio's selection is owned HERE, not by the component: home tabs render
   # behind `:if`, which removes the DOM and discards the live_component with it,
@@ -907,6 +921,12 @@ defmodule BusterClawWeb.StatusLive do
                 studio_undo={@studio_undo}
                 studio_redo={@studio_redo}
                 studio_collapsed={@studio_collapsed}
+                voice_report={@voice_report}
+                voice_error={@voice_error}
+                voice_query={@voice_query}
+                voice_sentence={@voice_sentence}
+                voice_rows={Voice.vocabulary(assigns, @voice_query)}
+                voice_check={Voice.sentence_check(assigns, @voice_sentence)}
               />
             </div>
 

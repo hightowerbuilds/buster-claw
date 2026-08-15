@@ -26,6 +26,7 @@ defmodule BusterClawWeb.Status.Studio do
   import Phoenix.LiveView
 
   alias BusterClaw.Notifications.StudioMix
+  alias BusterClawWeb.Status.Voice
   alias BusterClawWeb.StudioPanel
 
   # ---------------------------------------------------------------------------
@@ -48,11 +49,19 @@ defmodule BusterClawWeb.Status.Studio do
   """
   def select_studio_tab(socket, tab) do
     if tab in StudioPanel.tab_keys() do
-      assign(socket, :studio_tab, tab)
+      socket |> assign(:studio_tab, tab) |> arriving_at(tab)
     else
       socket
     end
   end
+
+  # Voice reads the corpus from disk, so it loads when the tab is opened rather
+  # than at mount — a homepage that never visits Voice should not pay for ten
+  # file reads. `ensure_report/1` is idempotent, so switching away and back is
+  # free. Dispatching on the key here rather than in `StatusLive` keeps the
+  # LiveView's clause one line, which is the point of this module.
+  defp arriving_at(socket, "voice"), do: Voice.ensure_report(socket)
+  defp arriving_at(socket, _tab), do: socket
 
   # ---------------------------------------------------------------------------
   # Arranger history
