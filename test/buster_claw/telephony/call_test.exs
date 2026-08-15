@@ -118,6 +118,33 @@ defmodule BusterClaw.Telephony.CallTest do
       assert result.call_sid == "CA_local"
     end
 
+    test "the far end sees the app's number, and the operator's never leaves" do
+      accept("CA_id", fn params ->
+        assert params["From"] == @ours
+        assert params["Twiml"] =~ ~s(callerId="#{@ours}")
+
+        # OUTBOUND_VOICE Phase 0, made enforceable rather than left as a property
+        # of how the code happens to read today. The operator's own number is the
+        # leg we ring and nothing else — one occurrence in the whole request. If
+        # it ever reached `From` or `callerId`, calling a stranger would hand
+        # them the operator's mobile, and a call back would ring it directly
+        # instead of landing on the answering machine.
+        occurrences =
+          params
+          |> Map.values()
+          |> Enum.count(&String.contains?(to_string(&1), @operator))
+
+        assert occurrences == 1, "the operator's number must appear only as `To`"
+      end)
+
+      assert {:ok, _} = Telephony.place_call("+15035550123", opts())
+
+      # And the row the Phone tab renders says the same thing, so the operator
+      # never sees their own mobile listed as the origin of a call they placed.
+      assert [event] = Telephony.list_events() |> Enum.filter(&(&1.kind == "call"))
+      assert event.from_number == @ours
+    end
+
     test "files the call locally and audits it as an outbound send" do
       accept()
       assert {:ok, _} = Telephony.place_call("+15035550123", opts())
@@ -167,6 +194,17 @@ defmodule BusterClaw.Telephony.CallTest do
       # the operator to themselves, and something that looks exactly like a bug.
       assert {:error, :cannot_dial_own_number} = Telephony.place_call(@ours, opts())
       assert {:error, :cannot_dial_yourself} = Telephony.place_call(@operator, opts())
+    end
+
+    test "an emergency number is not a number this can dial" do
+      # Not a special case — a consequence of E.164 normalization, which accepts
+      # 10 digits, 11 starting with 1, or +8..15. Pinned because loosening that
+      # rule for some other reason would silently make 911 reachable from an
+      # agent-facing verb, and the failure mode there is a dispatched squad car.
+      for short <- ~w(911 112 999 411 #{"*"}67) do
+        assert {:error, :invalid_recipient} = Telephony.place_call(short, opts()),
+               "#{short} must not be dialable"
+      end
     end
 
     test "a number that replied STOP to a text cannot be phoned either" do

@@ -1,8 +1,8 @@
 # Outbound voice — making the rotary dial real
 
-**Scoped 08-15-26 · Status: Phases 1, 3 and 4 SHIPPED 08-15, cost back-fill
-included. Phase 2 DELETED — it turned out not to exist. Phase 0 is the operator's
-and is the only thing left in this file.**
+**Scoped 08-15-26 · Status: COMPLETE 08-15. Phases 1, 3 and 4 shipped with the
+cost back-fill; Phase 2 was deleted by the build; Phase 0 decided by the
+operator. Nothing here is open.**
 
 > ### Phase 2 was deleted by the build, not skipped
 >
@@ -104,23 +104,43 @@ Not scoped here beyond naming the dependency, so nobody rediscovers it as
 
 ---
 
-## Phase 0 — Decide the identity of a call *(do this first, it is not code)*
+## Phase 0 — The identity of a call ✅ DECIDED 08-15 (operator)
 
-Before any of this, one question has to be answered because every phase below
-inherits it: **when Buster Claw calls someone, who is calling?**
+> **Outbound calls present the app's number, +1 (360) 364-6763.** Not deferred,
+> not conditional on a second number existing. The person being called sees the
+> agent's line, and that is the product rather than a compromise with it.
 
-The `From` must be the owned number, +1 (360) 364-6763. That means the person
-being called sees the app's number, not the operator's. Two consequences worth
-deciding up front rather than discovering:
+The question every other phase inherited: **when Buster Claw calls someone, who is
+calling?** Three consequences follow, and they are consequences of the decision
+rather than arguments against it.
 
-- **A callback goes to the answering machine**, not to the operator. That may be
-  exactly right — it is the product — but it must be a decision.
-- **Blocked or spam-filtered** is a real outcome for a new number placing
-  outbound calls. There is no A2P equivalent to fix reputation for voice; there
-  is only behaviour over time.
+**A callback reaches the answering machine, not the operator.** This is the half
+worth internalising before using it for something where a return call matters. It
+is also sharper than it first sounds: that callback is an *inbound* call from a
+number that is almost certainly **not on the trusted list**, so it is recorded,
+transcribed and archived — and never becomes agent work. Call the print shop, and
+their call back is a voicemail you have to go and listen to. The trust gate does
+not know you dialled them first, and deliberately so: "we called them" is not
+consent for them to drive the queue.
 
-**Exit:** the operator states, in this file, whether outbound calls present the
-app's number or should be deferred until a second number exists.
+**Reputation is behavioural, and there is no paperwork that fixes it.** A new
+number placing outbound calls can be spam-flagged, and unlike SMS there is no A2P
+equivalent to register your way out of it. The only lever is how the number is
+used over time — which is an argument for the per-recipient cap of 5 being low
+rather than generous.
+
+**The operator's own number never leaves the machine.** It is `To` on leg one and
+appears nowhere else — not as `From`, not as `callerId`. That is now a test rather
+than a property of how the code happens to be written today: the request asserts
+the operator's number occurs **exactly once**, so wiring it into caller ID fails
+the suite instead of quietly handing a stranger the operator's mobile.
+
+**Not decided, and not needed:** a second number. The one-number design is what
+makes a callback land on the answering machine, which is the behaviour above. If
+a second number is ever bought it reopens this, not the phases below it.
+
+**Exit:** met — stated here by the operator, and pinned by
+`test/buster_claw/telephony/call_test.exs`.
 
 ---
 

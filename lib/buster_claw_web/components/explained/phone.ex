@@ -485,11 +485,11 @@ defmodule BusterClawWeb.Explained.Phone do
                   records for billing; it never places a call.
                 </td>
                 <td class="py-2" data-phone-voice-blocker>
-                  <span class="font-semibold text-base-content">Us.</span>
+                  <span class="font-semibold text-base-content">Nobody, now.</span>
                   <span class="font-semibold text-base-content">A2P does not apply to
-                    voice</span>, so there was nothing pending at Twilio — and the
-                  verb shipped 08-15 while SMS was still waiting. The keypad button
-                  is what remains.
+                    voice</span>, so there was never anything pending at Twilio — the
+                  verb and the keypad button both shipped 08-15 while SMS was still
+                  waiting on its registration.
                 </td>
               </tr>
             </tbody>
@@ -501,6 +501,17 @@ defmodule BusterClawWeb.Explained.Phone do
           on US ten-digit numbers, and it touches voice in neither direction. Read
           “phone registration” as covering calls and you will wait indefinitely for
           the approval of something that was never blocked.
+        </p>
+        <p class="text-sm leading-relaxed text-base-content/70">
+          <span class="font-semibold text-base-content">
+            You do not need a business to have a phone.
+          </span>
+          Twilio sells numbers to individuals, and outbound calling needs no
+          registration of any kind — only an <span class="font-semibold text-base-content">upgraded account</span>,
+          because a trial account can dial only numbers you have verified in the
+          console. Even the SMS side does not strictly require a company: the Sole
+          Proprietor tier exists for exactly this, on a personal tax ID. It is a
+          registration you complete, not a business you form.
         </p>
         <p class="text-sm leading-relaxed text-base-content/70">
           Which explains an odd thing about cycle 5: not one of those three
@@ -634,8 +645,17 @@ defmodule BusterClawWeb.Explained.Phone do
             <span class="font-semibold text-base-content">Both legs show the app's
               number.</span> Whoever you call sees it, not your mobile — so if they call back they
             reach the answering machine rather than you. That is the product
-            working, but it is worth knowing before you use it for something where
-            a return call matters.
+            working, and it is a decision rather than a default.
+          </li>
+          <li>
+            <span class="font-semibold text-base-content">
+              Which means a call back is a voicemail you have to go and read.
+            </span>
+            Their number is almost certainly not on your trusted list, so the
+            message is recorded, transcribed and archived — and never becomes
+            agent work. The trust gate does not know you dialled them first, on
+            purpose: <span class="italic">we called them</span>
+            is not their consent to drive your queue.
           </li>
           <li>
             <span class="font-semibold text-base-content">

@@ -149,7 +149,13 @@ check lib/buster_claw_web/components/explained/studio.ex       307 HELD
 # shipped and the G-37 disclosure paragraph had to explain a sentence that had
 # been deleted rather than just assert a new one. That is the cap paying for
 # things becoming true, not for more prose about the same thing.
-check lib/buster_claw_web/components/explained/phone.ex        690 HELD
+#
+# 690 -> 710 when Phase 0 was decided: the caller-ID choice has a consequence
+# the tab had not stated (a call back is an UNTRUSTED inbound, so it is archived
+# and never queued), and the operator asked the question the A2P section had left
+# implied — whether any of this needs a business. It does not, and a tutorial
+# that leaves a reader believing otherwise costs them the feature.
+check lib/buster_claw_web/components/explained/phone.ex        710 HELD
 check lib/buster_claw_web/components/explained/cmd.ex          430 HELD
 check lib/buster_claw_web/components/explained/shaders.ex      340 HELD
 check lib/buster_claw_web/components/explained/browser.ex      310 HELD

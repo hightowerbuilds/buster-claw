@@ -94,9 +94,12 @@ repo even though it runs on Supabase.
    - URL → `https://<PROJECT_REF>.supabase.co/functions/v1/voice`
    - method → **HTTP POST**
 5. Add an **emergency address** to the number. Twilio warns about a $75 charge
-   per emergency call without one. The app has no outbound calling at all, so
-   nothing can dial 911 today — but it's free to add and becomes a real
-   liability the moment outbound lands.
+   per emergency call without one. Outbound calling landed 08-15, but **an
+   emergency number is unreachable by construction**: `phone_call` normalizes to
+   E.164 and rejects anything that is not 10 digits, 11 starting with `1`, or a
+   `+` followed by 8–15 — so `911` is refused as an invalid recipient before any
+   request is built. The address is still free and still worth adding; it is a
+   backstop, not the guard.
 6. Voice needs no A2P registration. Texting does; follow the Phase 2 activation
    checklist below before turning on outbound sends.
 
@@ -263,8 +266,10 @@ the app after setting them, then:
 ./buster-claw run phone_call --json '{"to":"+15551234567"}'
 ```
 
-Your own phone rings first; answering bridges you to the far end. No Supabase
-function is involved — the `<Dial>` document travels inline on the request that
+Your own phone rings first; answering bridges you to the far end. **A trial
+Twilio account can only dial numbers verified in the console**, so an upgraded
+(funded) account is the real prerequisite — not a business entity, and not any
+registration. No Supabase function is involved — the `<Dial>` document travels inline on the request that
 creates the call, so there is no public endpoint for this path at all. Nothing
 is deployed and nothing calls back.
 
