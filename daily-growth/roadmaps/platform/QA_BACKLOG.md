@@ -88,6 +88,35 @@ multi-day, and empty months · GitHub manual poll, good-signature webhook,
 Security feed streams live, redacts secrets, paginates at 10k rows · every settings toggle
 persists across restart · every Manual link resolves.
 
+**Studio → Voice (Ramshackle)** — added 08-14, operator's call, and it is **two walks that
+must not be collapsed into one**. They fail in different places and a pass on either says
+nothing about the other.
+
+*The user's process* — open Voice, read the corpus counts, and check they match
+`sound_gaps` run from the CLI on the same machine. Filter the vocabulary and confirm a word
+you can see in the list is findable by a fragment of itself. Type a phrase mixing all three
+verdicts and confirm the chips agree with what the corpus holds — **a single-take word must
+read "quote only," never as cuttable**, because that distinction is the entire point of the
+surface and it is the one a demo would quietly get wrong. Then leave the tab for Chat and come
+back: **a half-typed sentence must survive the trip**, which is the `:if` state-lifetime rule
+the whole surface was shaped around.
+
+*The internal process* — the edits the engine makes that the UI never shows. Index a source,
+correct a boundary by hand in the JSON, and confirm the corrected timing is what a later
+`sound_sentence` cuts on. Confirm `origin` survives a round trip and that a damaged one
+degrades to `aligned` rather than `manual` — the trust ceiling only holds if that degradation
+is real in a packaged build, and it is asserted nowhere outside unit tests. Confirm a splice
+written by `sound_assemble` lands in `sounds/studio/` and appears in Mix's source list without
+a restart.
+
+**In the packaged app specifically**, two things dev cannot answer: the corpus lives under the
+configured DataZone rather than the workspace, so confirm Voice reads the *real* one and not
+an empty dev path; and confirm the counts are non-zero, since **zero sources and a broken read
+render almost identically** — the tab says "no indexed sources yet" for both.
+
+**Recording is out of scope for this pass** and the tab says so on its face. When V.6–V.8
+land, the level meter and the donor session get their own lines here.
+
 ### V.3 — The agent loop
 
 `on-duty` → claimed → work → `dispatch reply` → `done` end to end · the STOP file halts an
