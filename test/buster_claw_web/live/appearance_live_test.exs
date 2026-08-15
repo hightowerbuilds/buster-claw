@@ -701,6 +701,36 @@ defmodule BusterClawWeb.AppearanceLiveTest do
       assert %{kind: :image_shader, shader: "veil", slot: ^slot} = Appearance.background(:home)
     end
 
+    # The bug this guards was found by opening the app, not by reading: adding an
+    # overlay made the image tile stop saying it was in use, so the grid claimed
+    # nothing was selected while the surface panel read "Image N + veil". The
+    # unit test on catalog_key/1 cannot see this — only rendering the grid can.
+    test "the image tile still reads as in use once an overlay is added", %{conn: conn} do
+      slot = add_image()
+      {:ok, _} = Appearance.set_background(:terminal, "image:#{slot}")
+      {:ok, view, html} = live(conn, "/appearance")
+
+      # Scoped to THIS tile via data-bg-option, not a substring over the page:
+      # every tile carries a "Term" assign button, so `html =~ "Term"` would
+      # pass with no badge rendered anywhere.
+      badge = ~s([data-bg-option="image:#{slot}"] [data-assigned])
+
+      assert has_element?(view, badge),
+             "expected the plain image tile to badge before the overlay"
+
+      assert html =~ "data-assigned"
+
+      view
+      |> element("#surface-terminal form[phx-change='set_overlay']")
+      |> render_change(%{"surface" => "terminal", "shader" => "veil"})
+
+      assert %{kind: :image_shader, slot: ^slot} = Appearance.background(:terminal)
+
+      assert has_element?(view, badge),
+             "the image tile lost its in-use badge once an overlay was applied — " <>
+               "assigned_to/2 is matching on option_key/1 again instead of catalog_key/1"
+    end
+
     test "choosing None takes it off again without losing the image", %{conn: conn} do
       slot = add_image()
       {:ok, _} = Appearance.set_background(:home, "image:#{slot}+veil")

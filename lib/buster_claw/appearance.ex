@@ -371,13 +371,37 @@ defmodule BusterClaw.Appearance do
   def background_mode(surface), do: option_key(background(surface))
 
   @doc """
-  The catalog option key a resolved background corresponds to — the inverse of
-  `set_background/2`, used to mark which tiles are currently in use.
+  The stored mode string for a resolved background — the inverse of
+  `set_background/2`.
+
+  This is what round-trips through `Settings`, so it carries the whole mode
+  including any shader overlay. **It is not the tile matcher** — use
+  `catalog_key/1` for that. The two were the same function until the overlay
+  mode existed, and this docstring claimed the tile-matching job right up until
+  a fourth clause quietly stopped doing it.
   """
   def option_key(%{kind: :none}), do: "off"
   def option_key(%{kind: :shader, shader: name}), do: name
   def option_key(%{kind: :image, slot: slot}), do: "image:#{slot}"
   def option_key(%{kind: :image_shader, slot: slot, shader: name}), do: "image:#{slot}+#{name}"
+
+  @doc """
+  The catalog option a background came from — `option_key/1` with any shader
+  overlay stripped — so a tile can tell whether a surface is using it.
+
+  An overlay is a modifier applied *to* a catalog option, not an option of its
+  own: a terminal running `image:5+veil` is using image 5, and its tile has to
+  say so. Matching on `option_key/1` instead meant an image with an overlay
+  matched no tile at all, so the grid showed nothing in use while the surface
+  panel said "Image 5 + veil" (found by walking the app, 08-14).
+
+  Only the image tile badges. The overlay shader has a tile of its own now that
+  `veil` is a built-in, but that tile means "run this shader as the background",
+  which is a different thing from "veil the image" — two tiles claiming one
+  surface would be worse than none.
+  """
+  def catalog_key(%{kind: :image_shader, slot: slot}), do: "image:#{slot}"
+  def catalog_key(background), do: option_key(background)
 
   # Resolve the stored mode against what actually exists right now. Anything
   # stale (a removed shader file, a cleared image slot, an unparseable value)

@@ -526,11 +526,38 @@ defmodule BusterClaw.AppearanceTest do
 
       {:ok, key} = Appearance.set_background(:terminal, "image:2+veiled")
       assert key == "image:2+veiled"
-      # option_key/1 is the stated inverse of set_background/2 and the picker
-      # marks the in-use tile with it; a combined mode that round-tripped to
-      # "image:2" would highlight the plain image tile instead.
+      # option_key/1 is the stated inverse of set_background/2, so it carries
+      # the whole mode including the overlay.
+      #
+      # This comment used to add "and the picker marks the in-use tile with it",
+      # and that second job is what broke: no tile has the key "image:2+veiled",
+      # so the grid marked NOTHING while the surface panel read "Image 2 +
+      # veiled". Found by walking the app 08-14. Tile matching is
+      # `catalog_key/1` — asserted below.
       assert Appearance.option_key(Appearance.background(:terminal)) == key
       assert Appearance.background_mode(:terminal) == key
+    end
+
+    test "catalog_key strips the overlay, so the IMAGE tile still reads as in use",
+         %{root: root} do
+      write_image_shader(root, "veiled")
+      {:ok, 2} = seed_two_slots()
+
+      {:ok, _key} = Appearance.set_background(:terminal, "image:2+veiled")
+
+      # The catalog mints "image:2" for that tile (never "image:2+veiled"), so
+      # this is the comparison AppearanceLive.assigned_to/2 makes. An overlay is
+      # a modifier applied TO an option, not an option of its own.
+      assert Appearance.catalog_key(Appearance.background(:terminal)) == "image:2"
+
+      tile_keys = Enum.map(Appearance.options(), & &1.key)
+      assert "image:2" in tile_keys
+      refute "image:2+veiled" in tile_keys
+
+      # Without an overlay the two agree — catalog_key only ever removes.
+      {:ok, _} = Appearance.set_background(:terminal, "image:2")
+      background = Appearance.background(:terminal)
+      assert Appearance.catalog_key(background) == Appearance.option_key(background)
     end
 
     test "a shader that ignores the image is refused, and said so", %{root: root} do

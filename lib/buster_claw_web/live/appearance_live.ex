@@ -817,6 +817,7 @@ defmodule BusterClawWeb.AppearanceLive do
 
       <span
         :if={@assigned != []}
+        data-assigned={assigned_badge(@assigned)}
         class="rounded bg-primary px-1.5 py-0.5 text-[0.625rem] font-bold uppercase tracking-wide text-primary-content"
       >
         {assigned_badge(@assigned)}
@@ -862,6 +863,7 @@ defmodule BusterClawWeb.AppearanceLive do
 
         <span
           :if={@assigned != []}
+          data-assigned={assigned_badge(@assigned)}
           class="absolute left-1.5 top-1.5 rounded bg-primary px-1.5 py-0.5 text-[0.625rem] font-bold uppercase tracking-wide text-primary-content"
         >
           {assigned_badge(@assigned)}
@@ -950,9 +952,13 @@ defmodule BusterClawWeb.AppearanceLive do
   defp parse_slot(_value), do: nil
 
   # Which surfaces currently run this option, so the tile can badge itself.
+  #
+  # `catalog_key/1`, not `option_key/1`: an image carrying a shader overlay
+  # stores as `image:5+veil` and would match no tile, so the grid went blank
+  # while the surface panel still said "Image 5 + veil".
   defp assigned_to(backgrounds, opt) do
     Enum.filter(Appearance.surfaces(), fn surface ->
-      Appearance.option_key(backgrounds[surface]) == opt.key
+      Appearance.catalog_key(backgrounds[surface]) == opt.key
     end)
   end
 
