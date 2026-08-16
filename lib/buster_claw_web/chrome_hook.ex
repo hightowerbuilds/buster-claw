@@ -47,6 +47,7 @@ defmodule BusterClawWeb.ChromeHook do
   import Phoenix.Component, only: [assign: 3]
   import Phoenix.LiveView, only: [attach_hook: 4, connected?: 1]
 
+  alias BusterClaw.Pockets.AppIcon
   alias BusterClaw.Pockets.Brand
   alias BusterClaw.TerminalPaint
 
@@ -55,6 +56,7 @@ defmodule BusterClawWeb.ChromeHook do
 
     if connected?(socket) do
       Phoenix.PubSub.subscribe(BusterClaw.PubSub, Brand.topic())
+      Phoenix.PubSub.subscribe(BusterClaw.PubSub, AppIcon.topic())
       # The only route a socket-less writer has to a terminal. See
       # `BusterClaw.TerminalPaint`: the selected theme is client-side, so a
       # command cannot change it by writing a Setting.
@@ -69,6 +71,7 @@ defmodule BusterClawWeb.ChromeHook do
       socket
       |> assign_brand()
       |> attach_hook(:brand_art, :handle_info, &handle_brand/2)
+      |> push_app_icon()
 
     {:cont, socket}
   end
@@ -78,12 +81,29 @@ defmodule BusterClawWeb.ChromeHook do
 
   defp handle_brand(:brand_art_changed, socket), do: {:halt, assign_brand(socket)}
 
+  defp handle_brand(:app_icon_changed, socket), do: {:halt, push_app_icon(socket)}
+
   # Wear this theme now. `palette` is installed under `key` first when present.
   defp handle_brand({:terminal_theme_apply, key, palette}, socket) do
     {:halt, Phoenix.LiveView.push_event(socket, "bc-term-apply", %{key: key, palette: palette})}
   end
 
   defp handle_brand(_message, socket), do: {:cont, socket}
+
+  # Pushed on MOUNT as well as on change, and that is the half most easily left
+  # out: an operator who applied an icon last session must see it at launch, not
+  # after they next open the Pockets tab. The bridge no-ops outside the desktop
+  # app, so a plain browser pays a `push_event` and nothing else.
+  #
+  # `nil` is a real instruction here — it tells the Dock to go back to the icon
+  # baked into the bundle — so it is sent rather than skipped.
+  defp push_app_icon(socket) do
+    if connected?(socket) do
+      Phoenix.LiveView.push_event(socket, "bc:app-icon", %{path: AppIcon.current_path()})
+    else
+      socket
+    end
+  end
 
   # Both surfaces are assigned HERE rather than each view fetching its own,
   # because this hook `:halt`s the message — a nested view's own `handle_info`

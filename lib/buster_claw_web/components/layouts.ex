@@ -221,6 +221,7 @@ defmodule BusterClawWeb.Layouts do
         <%!-- Invisible bridge: speaks assistant replies via the Tauri `speak`
              command when the server pushes "bc:speak" (gated on the Voice toggle). --%>
         <div id="voice-bridge" phx-hook="VoiceBridge" phx-update="ignore" hidden></div>
+        <div id="app-icon-bridge" phx-hook="AppIconBridge" phx-update="ignore" hidden></div>
       </header>
 
       <main class={[

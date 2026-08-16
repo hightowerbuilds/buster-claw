@@ -517,7 +517,15 @@ check lib/buster_claw/pocket.ex                               138 HELD
 # registry can return into a sentence. A reason rendered as `inspect/1` is a
 # reason nobody acts on, and that mapping has to sit with the events that produce
 # it. If a later reader finds control markup in this file, this raise was wrong.
-check lib/buster_claw_web/components/pockets_panel.ex         467 HELD
+# 467 -> 500 on 08-15 for the Dock icon (APP_ICON): two events, the status read,
+# and the component call. The markup is `pockets/app_icon_slot.ex`, a sibling of
+# `brand_slots.ex` for the same reason that one exists — and because this slot is
+# the only one with a verb, so it does not belong in a list of six that follow
+# their folder.
+check lib/buster_claw_web/components/pockets_panel.ex         510 HELD
+check lib/buster_claw_web/components/pockets/app_icon_slot.ex 105 HELD
+check lib/buster_claw/pockets/app_icon.ex                     210 HELD
+check desktop/tauri/src/app_icon.rs                           215 HELD
 check lib/buster_claw_web/components/pockets/pocket_controls.ex  174 HELD
 # Raised 08-10, 97 -> 108, for one `.wgsl` entry in the content-type table and
 # the six lines saying why `text/plain` is the safe answer for it (nosniff is
@@ -615,7 +623,12 @@ check lib/buster_claw_web/live/dock_nav_live.ex                45 HELD
 # compile but not this gate, so it shipped the tree red and a parallel agent
 # found it. The lesson is the boring one: the gate is part of the commit, not
 # part of the review.
-check lib/buster_claw_web/chrome_hook.ex                       97 HELD
+# 97 -> 125 on 08-15: the Dock icon push (APP_ICON Phase 3). This hook is where
+# it belongs and nowhere else — it already subscribes on behalf of every
+# LiveView, and an icon that only updated on the page you happened to be on is
+# the fault this module was extracted to prevent. Most of the growth is the
+# comment on why the push fires at MOUNT as well as on change.
+check lib/buster_claw_web/chrome_hook.ex                      125 HELD
 
 # --- The core layer enters the inventory (08-13/14, CODE_REVIEW_08-13-26) ----
 #

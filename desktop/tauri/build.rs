@@ -8,6 +8,7 @@ fn main() {
     // speak/stop_speaking on 07-21). tests/acl_lockstep.rs enforces the lockstep.
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
+            "app_icon_set",
             "speak",
             "stop_speaking",
             "terminal_open",

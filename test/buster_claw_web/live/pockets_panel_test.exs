@@ -240,4 +240,82 @@ defmodule BusterClawWeb.PocketsPanelTest do
       refute html =~ "Mount…"
     end
   end
+
+  # The Dock icon (APP_ICON_ROADMAP Phase 0, option 2). The property is the gap
+  # between a folder and an icon: an agent can write into a Pocket with no
+  # command at all, so a slot that followed its folder would hand an unattended
+  # run the app's identity in the OS chrome. These walk that gap through the UI,
+  # because the module test cannot see whether the button is actually there.
+  describe "the Dock icon slot" do
+    alias BusterClaw.Pockets.AppIcon
+
+    defp drop_icon(name \\ "claw.png", bytes \\ "icon-bytes") do
+      dir = Pockets.pocket_dir("app-icon")
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, name), bytes)
+    end
+
+    test "an empty Pocket offers no button at all", %{conn: conn} do
+      {view, _html} = open_tab(conn)
+
+      assert has_element?(view, "#pockets-app-icon")
+      assert has_element?(view, "#app-icon-status", "Drop one image into this Pocket")
+      refute has_element?(view, "#app-icon-apply")
+      refute has_element?(view, "#app-icon-revoke")
+    end
+
+    test "a file dropped in offers the button and changes nothing yet", %{conn: conn} do
+      {view, _html} = open_tab(conn)
+      drop_icon()
+      {view, _html} = open_tab(conn)
+
+      assert has_element?(view, "#app-icon-apply")
+      assert AppIcon.current_path() == nil, "the file alone must not reach the Dock"
+    end
+
+    test "applying is what changes the Dock, and it can be taken back", %{conn: conn} do
+      drop_icon()
+      {view, _html} = open_tab(conn)
+
+      view |> element("#app-icon-apply") |> render_click()
+
+      refute AppIcon.current_path() == nil
+      assert has_element?(view, "#app-icon-revoke")
+      assert has_element?(view, "#app-icon-status", "Your icon is on the Dock")
+
+      # Exactly one verb per state. "Use this icon" next to an icon already in
+      # use is the kind of control that reads as unfinished.
+      refute has_element?(view, "#app-icon-apply")
+
+      view |> element("#app-icon-revoke") |> render_click()
+
+      assert AppIcon.current_path() == nil
+      assert has_element?(view, "#app-icon-apply")
+    end
+
+    test "a replaced file explains itself rather than looking broken", %{conn: conn} do
+      drop_icon()
+      {view, _html} = open_tab(conn)
+      view |> element("#app-icon-apply") |> render_click()
+
+      # The agent swaps the bytes under the operator's choice.
+      drop_icon("claw.png", "different-bytes")
+      {view, _html} = open_tab(conn)
+
+      assert AppIcon.current_path() == nil
+      assert has_element?(view, "#app-icon-status", "The file changed since you applied it")
+      # Named plainly, because the operator has to know who could have done it.
+      assert has_element?(view, "#app-icon-status", "including the agent")
+      assert has_element?(view, "#app-icon-apply")
+    end
+
+    test "two images apply nothing and say how many", %{conn: conn} do
+      drop_icon("one.png")
+      drop_icon("two.png")
+      {view, _html} = open_tab(conn)
+
+      assert has_element?(view, "#app-icon-status", "2 images are in this Pocket")
+      refute has_element?(view, "#app-icon-apply")
+    end
+  end
 end

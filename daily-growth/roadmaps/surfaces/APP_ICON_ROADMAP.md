@@ -1,7 +1,19 @@
 # The app icon — the one piece of chrome that isn't ours
 
-**Scoped 08-15-26 · Status: UNBUILT. Phase 0 is an operator decision and gates
-everything below it.**
+**Scoped 08-15-26 · Status: BUILT 08-15, Phases 0–4. One thing is unverified and
+it is the one that matters — see below.**
+
+> ### The native half has never run
+>
+> Every layer is tested except the one that talks to macOS. `app_icon_set` has
+> unit tests for its path validation, but **nothing has watched a Dock icon
+> change** — there is no Dock in `mix test` and none in a browser, so this needs a
+> packaged walk. Filed in `QA_BACKLOG` beside the other two.
+>
+> Specifically unproven: that `setApplicationIconImage:` on Tauri's sync-command
+> thread is in fact the main thread, that `NSImage initWithContentsOfFile:` reads
+> what the operator dropped in, and that `nil` restores the bundle icon rather
+> than clearing the tile.
 
 Operator asked whether the icon macOS shows in the Dock could be a Pocket, so a
 user can change what they see there while using the app they downloaded.
@@ -101,13 +113,28 @@ Three ways to answer, and none is obviously right:
 3. **Human-only, no automatic follow at all.** Safest, and least like the rest of
    Brand.
 
-**Exit:** the operator states which, in this file. Option 2 is the recommendation
-— it matches the call already made for shaders on the same day, and it costs one
-extra file rather than a new mechanism.
+**DECIDED 08-15: option 2.** A file in the Pocket is not an icon. The operator
+applies it, and only then does the Dock change.
+
+**Implemented the way the shader gate was decided the same day: by content
+hash.** A bare "selected" flag would name a file, and a name is forgeable — an
+agent that can write the Pocket could replace the bytes under a selection the
+operator made of something else. So applying records a SHA-256 of the image, and
+the icon is set only while the file still matches. Replace the file and the Dock
+falls back to the bundle icon until the operator applies it again.
+
+That is a deliberate echo, not a coincidence: this is the same question as
+`AGENT_APPLIED_SHADERS` — *may an agent put something the operator has never
+looked at in front of them?* — and it deserved the same answer rather than a
+second, weaker mechanism invented for it.
+
+**What it costs:** an agent can still swap the file. It just cannot make anyone
+look at the result. The failure mode is the Dock reverting to the shipped icon,
+which is visible and recoverable, rather than an icon the operator never chose.
 
 ---
 
-## Phase 1 — The native call
+## Phase 1 — The native call ✅ BUILT 08-15 (unverified — see header)
 
 One Rust command, one AppKit message.
 
@@ -135,7 +162,7 @@ running packaged app, and invoking it with `None` puts the original back.
 
 ---
 
-## Phase 2 — The slot
+## Phase 2 — The slot ✅ SHIPPED 08-15
 
 - A seventh `@slots` entry: `role: "app_icon"`, `pocket: "app-icon"`,
   `label: "Buster Claw"`, and **no `default`** — see below.
@@ -152,7 +179,7 @@ clears exactly like the six that exist, with no special-casing in the panel.
 
 ---
 
-## Phase 3 — The bridge
+## Phase 3 — The bridge ✅ SHIPPED 08-15
 
 - An always-mounted `AppIcon` hook in the layout, modelled on `VoiceBridge`:
   capture `invoke` on mount, `handleEvent("bc:app-icon", …)`, no-op when
@@ -169,7 +196,7 @@ the Dock shows it without the operator touching anything.
 
 ---
 
-## Phase 4 — The error state, which has no text to fall back on
+## Phase 4 — The error state, which has no text to fall back on ✅ SHIPPED 08-15 — differently
 
 `Brand`'s over-full rule is deliberate and documented: two or more images renders
 **the text label**, because that looks different from both correct states, and
@@ -188,8 +215,17 @@ The proposal is **revert to the bundle icon and badge the tile**, via
 have. It preserves the principle (the failure is visible where the feature is)
 using the only text channel a Dock tile has.
 
-**Exit:** a Pocket holding two images shows the shipped icon with a badge, and the
-Pockets panel explains it in words, as it already does for the other slots.
+**Exit:** met by the words alone — **no badge was built.** `NSDockTile.badgeLabel`
+was the proposal, and the build did not need it: the Pockets panel already has to
+explain a *fourth* state this roadmap did not anticipate — `:replaced`, where the
+operator applied an icon and the file changed afterwards — and once that sentence
+exists, the over-full state is one more sentence in the same place. A badge would
+put half the explanation somewhere the other half cannot go.
+
+`:replaced` is the state worth naming. It looks exactly like a bug from outside:
+the custom icon is gone, the file is still on disk, nothing was clicked. The panel
+says what happened, **who could have done it** ("including the agent"), and what
+to do. That sentence is the feature's honesty, and it is asserted by a test.
 
 ---
 

@@ -142,7 +142,7 @@ and zero issues in the verdict. Budget hours per release, not minutes
 | Dock strip (chips, sticky player) | `DockLive`, `MusicPlayerLive` | SHIPPED | — |
 | First-run onboarding | `SetupLive` `/setup` | SHIPPED | [`FRONT_DOOR`](distribution/FRONT_DOOR_ROADMAP.md) — the wizard is one of four surfaces that must agree |
 | Appearance — skins, text size, backgrounds | `AppearanceLive` `/appearance` | SHIPPED | — |
-| **The macOS Dock icon** | — | **SCOPED 08-15, UNBUILT** — the *running* tile is changeable (`applicationIconImage`); the bundle icon is sealed by the signature and is closed, not deferred. Phase 0 is an operator call | [`APP_ICON`](surfaces/APP_ICON_ROADMAP.md) |
+| **The macOS Dock icon** | `Pockets.AppIcon`, `app_icon_set` | **BUILT 08-15** — drop an image in `pockets/app-icon/` and apply it; keyed to the file's bytes, so replacing it reverts to the shipped icon. The bundle icon stays sealed by the signature. **The native half is unwalked** — see [`QA_BACKLOG`](platform/QA_BACKLOG.md) | [`APP_ICON`](surfaces/APP_ICON_ROADMAP.md) |
 | Terminal themes | `TerminalTheme` | SHIPPED · operator walk open | [`TERMINAL_THEME`](shell/TERMINAL_THEME_ROADMAP.md), gate `G-40` |
 | Terminal paint — the agent recolours itself | — | **SCOPED** | [`TERMINAL_PAINT`](shell/TERMINAL_PAINT_ROADMAP.md) |
 

@@ -74,7 +74,14 @@ defmodule BusterClawWeb.PocketMountUITest do
       html = create(view, "Has Spaces")
 
       assert html =~ "lowercase letters, digits or hyphens"
-      assert Pockets.list() == []
+
+      # Narrowed 08-15: this was `Pockets.list() == []`, which is a universal
+      # over the whole catalog standing in for a claim about ONE name. Opening
+      # the tab now creates the Dock icon's Pocket on demand, and the universal
+      # failed for a reason that has nothing to do with what this test is about.
+      # The precise claim is that the refused name was not created.
+      refute "Has Spaces" in Enum.map(Pockets.list(), & &1.name)
+      refute "has-spaces" in Enum.map(Pockets.list(), & &1.name)
     end
   end
 

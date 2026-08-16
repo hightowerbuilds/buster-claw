@@ -33,6 +33,7 @@
     "allow-browser-wait-active",
     "allow-browser-extract-active",
     "allow-browser-render-page",
+    "allow-app-icon-set",
     "allow-speak",
     "allow-stop-speaking",
     "allow-clinch-put",

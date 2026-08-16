@@ -42,6 +42,7 @@ defmodule BusterClawWeb.PocketsPanel do
 
   alias BusterClaw.Markdown
   alias BusterClaw.Pockets
+  alias BusterClaw.Pockets.AppIcon
   alias BusterClaw.Pockets.Brand
   alias BusterClaw.Pockets.Operator
 
@@ -164,6 +165,18 @@ defmodule BusterClawWeb.PocketsPanel do
     {:noreply, socket |> assign(:write_error, nil) |> reload()}
   end
 
+  # The one place a Dock icon is ever chosen. There is no command for it at any
+  # tier — see `Pockets.AppIcon`, and Phase 0 of the roadmap for why.
+  def handle_event("apply_app_icon", _params, socket) do
+    AppIcon.apply_icon()
+    {:noreply, reload(socket)}
+  end
+
+  def handle_event("revoke_app_icon", _params, socket) do
+    AppIcon.revoke()
+    {:noreply, reload(socket)}
+  end
+
   def handle_event("clear_brand", %{"role" => role}, socket) do
     Brand.clear(role)
     {:noreply, reload(socket)}
@@ -229,15 +242,32 @@ defmodule BusterClawWeb.PocketsPanel do
   # install.
   defp reload(socket) do
     Pockets.ensure()
+    # On demand, per the workspace registry: the Pocket is created when the
+    # operator opens the surface that owns it, never at install. Idempotent, and
+    # it never overwrites a manifest they have edited.
+    AppIcon.ensure()
 
+    # The Dock icon's Pocket is rendered by its own section above, so it is not
+    # also a row here. Filtered rather than left out of `ensure` — the folder has
+    # to exist for the operator to drop an image into, and creating it on open is
+    # what makes "drop one image in" an instruction they can follow. Without this
+    # the list would show it twice and the empty state could never render.
     rows =
-      Enum.map(Pockets.list_with_errors(), fn
+      Pockets.list_with_errors()
+      |> Enum.reject(&(pocket_name(&1) == AppIcon.pocket()))
+      |> Enum.map(fn
         {:ok, pocket} -> row(pocket)
         {:error, name, reason} -> %{name: name, pocket: nil, error: reason, files: [], thumbs: []}
       end)
 
-    socket |> assign(:rows, rows) |> assign(:brand, Brand.overview())
+    socket
+    |> assign(:rows, rows)
+    |> assign(:brand, Brand.overview())
+    |> assign(:app_icon, AppIcon.status())
   end
+
+  defp pocket_name({:ok, %{name: name}}), do: name
+  defp pocket_name({:error, name, _reason}), do: name
 
   defp row(pocket) do
     files = Pockets.contents(pocket)
@@ -296,6 +326,11 @@ defmodule BusterClawWeb.PocketsPanel do
       </header>
 
       <div class="min-h-0 flex-1 overflow-y-auto">
+        <BusterClawWeb.Pockets.AppIconSlot.app_icon_slot
+          :if={is_nil(@open_row)}
+          status={@app_icon}
+          target={@myself}
+        />
         <BusterClawWeb.Pockets.BrandSlots.brand_slots
           :if={is_nil(@open_row)}
           slots={@brand}

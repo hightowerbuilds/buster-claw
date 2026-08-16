@@ -290,6 +290,30 @@ surface itself; what they taught is recorded here.
 
 ---
 
+### The Dock icon has never been seen to change — **packaged walk owed**
+
+`APP_ICON_ROADMAP` shipped 08-15 with every layer tested except the one that
+talks to macOS. `app_icon_set` has unit tests for path validation; **nothing has
+watched a Dock tile change**, because there is no Dock in `mix test` and none in
+a browser.
+
+Three things are unproven, and the first is the one that would fail silently:
+
+1. **That a Tauri sync command runs on the main thread.** `setApplicationIconImage:`
+   is a plain AppKit UI mutation with no completion handler, so it must. The
+   neighbouring `browser/ffi.rs` documents the *opposite* contract for its own
+   calls, which is exactly what would talk someone into "fixing" this into an
+   async command and breaking it.
+2. That `NSImage initWithContentsOfFile:` reads what the operator dropped in.
+3. That passing `nil` restores the bundle icon rather than clearing the tile.
+
+**The walk:** drop a PNG into `pockets/app-icon/`, open Settings → Pockets, press
+*Use this icon*, and look at the Dock. Then edit the file and confirm the shipped
+icon returns. Then quit and confirm Finder still shows the original — that last
+step is what proves the code signature was never touched.
+
+---
+
 
 ---
 

@@ -12,6 +12,7 @@ use rand::distributions::Alphanumeric;
 use rand::Rng;
 use tauri::{Manager, RunEvent};
 
+mod app_icon;
 mod browser;
 mod clinch;
 mod terminal;
@@ -475,6 +476,7 @@ fn main() {
             browser::browser_find,
             browser::browser_find_count,
             browser::browser_set_content_blocking,
+            app_icon::app_icon_set,
             voice::speak,
             voice::stop_speaking,
             clinch::clinch_put,
