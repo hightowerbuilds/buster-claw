@@ -1,13 +1,17 @@
 # 08-15-26 — Six guards were green and guarding nothing
 
-Three arcs in one day: a signed DMG that produced four findings in ten minutes,
-BusterPhone learning to place a call start to finish, and the model finally being
-told the truth about what it can do.
+Four arcs in one day: a signed DMG that produced four findings in ten minutes,
+BusterPhone learning to place a call start to finish, the model finally being
+told the truth about what it can do, and the macOS Dock icon becoming a Pocket.
 
 The through-line only became visible near the end. **Six separate times today, a
 guard or a switch was green while protecting nothing** — and every one was found
 by deliberately breaking it, never by reading it. Two of the six were mine, and
 one was in a contract I wrote for four agents to build against.
+
+The seventh guard is the counterweight, and it closed the day: the ACL lockstep
+test caught a missing capability on the first run, exactly as its roadmap had
+predicted in writing before any code existed.
 
 | Shipped | Commit |
 |---|---|
@@ -26,7 +30,7 @@ one was in a contract I wrote for four agents to build against.
 | Phase 0: outbound calls present the app's number | `775f9e5` |
 | **The model may apply a shader you have looked at once** | `655f7f7` |
 | INTRODUCTION.md stopped lying to the model about backgrounds | `ea169ea`, `1a630ec` |
-| The macOS Dock icon, scoped | `6b94a44` |
+| **The macOS Dock icon is a Pocket** | `6b94a44`, `c0cd5fc`, `701723c` |
 
 ---
 
@@ -261,6 +265,61 @@ applies there — is now its own test, broken two ways.
 
 ---
 
+## The Dock icon, and the guard that worked
+
+The last build of the day, and the counterweight to the table above: **one guard
+fired exactly as its roadmap predicted it would.**
+
+Two icons wear that name and only one is touchable. The **bundle** icon is sealed
+by `_CodeSignature/CodeResources` — writing it invalidates the Developer ID
+signature, the hardened runtime and the notarization ticket at once, so it is
+closed, not deferred. The **running Dock tile** is
+`NSApplication.applicationIconImage`: set at runtime, reverts on quit, touches no
+file. That is exactly what was asked for — your art while you use the app, the
+app you downloaded in Finder.
+
+Phase 0 was the operator's, and they picked the middle option: a file in the
+Pocket is not an icon; a human applies it. **Implemented by content hash, which
+is the same answer the shader question got four hours earlier** — deliberately,
+because it is the same question. A "selected" flag names a file, and names are
+forgeable: anything that can write the Pocket could swap the bytes under a choice
+made about something else.
+
+**The ACL lockstep test caught the missing capability on the first `cargo test`.**
+The roadmap had written, before any code existed, that this would be the first
+new Tauri command since that guard was added and would therefore be a live check
+of whether it works. It works. After a day of guards that did not, that is worth
+recording with the same weight as the ones that failed.
+
+Two things the build changed about its own scope:
+
+**The proposed Dock badge was not built, and the reason is better than the
+proposal.** A fourth state appeared that the scope had not imagined —
+*applied, then the file changed* — and it looks exactly like a bug from outside:
+the custom icon is gone, the file is still on disk, nothing was clicked. The
+panel has to explain that in words regardless, and once that sentence exists the
+over-full case is one more sentence beside it. A badge would have split the
+explanation across two places, one of which cannot hold sentences. The copy names
+who could have replaced the file — *"including the agent"* — and a test asserts
+that phrase.
+
+**It shipped without an upload button and the operator hit it in the first
+minute.** The Pocket was fillable only from Finder, which is not how anything
+else in that panel works. Fixed by making the file picker a shared component
+rather than a second copy: its four failure states now render once, and that
+file's own comment records what happened the last time they were missing — a
+*refused* file looked identical to a file nobody had chosen, so the upload read
+as doing nothing.
+
+> **And one overstatement of my own, corrected.** I filed the verification walk
+> as needing a packaged DMG. It does not: `./scripts/dev.sh` opens the real Tauri
+> window, and a Tauri app in dev has a real Dock tile. Only the Finder step —
+> quit, confirm the installed icon is untouched — needs the signed bundle. **A
+> check described as "needs a DMG" gets deferred; this one is two minutes**, and
+> it is the one that would catch the threading assumption being wrong.
+
+---
+
 ## Where this leaves the build
 
 The review is **closed and archived**, with one thing deliberately moved rather
@@ -281,9 +340,10 @@ gate that was never ours.
 `TWILIO_PHONE_NUMBER`, `OPERATOR_PHONE_NUMBER` and `BUSTER_CLAW_VOICE_ENABLED`,
 restart, press the button.
 
-**Scoped, not built:** the macOS Dock icon as a Pocket. Two icons wear that name
-and only the *running* tile is touchable — the bundle icon is sealed by the code
-signature, and that is the property that makes the DMG worth signing.
+**Built, and unwalked in one specific place:** the macOS Dock icon. Every layer
+is tested except the one that talks to macOS — there is no Dock in `mix test` and
+none in a browser. The walk is two minutes in `./scripts/dev.sh` and is filed in
+`QA_BACKLOG` with the three things it would prove.
 
 **Owed:** the mode grammar is now parsed in three places, two of them written an
 hour apart by agents who could not see each other, and they already differ. Filed
@@ -292,5 +352,5 @@ visible from the gate.
 
 Still nobody has opened this app on a machine that did not build it.
 
-**Gates at close:** precommit exit 0 — 4,048 tests, credo clean, 2 accepted
-cycles, file-size inventory holds, bun and Rust suites green.
+**Gates at close:** precommit exit 0 — 4,066 tests, credo clean, 2 accepted
+cycles, file-size inventory holds, 322 bun and 46 Rust tests green.

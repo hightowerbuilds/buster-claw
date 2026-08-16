@@ -307,10 +307,27 @@ Three things are unproven, and the first is the one that would fail silently:
 2. That `NSImage initWithContentsOfFile:` reads what the operator dropped in.
 3. That passing `nil` restores the bundle icon rather than clearing the tile.
 
-**The walk:** drop a PNG into `pockets/app-icon/`, open Settings → Pockets, press
-*Use this icon*, and look at the Dock. Then edit the file and confirm the shipped
-icon returns. Then quit and confirm Finder still shows the original — that last
-step is what proves the code signature was never touched.
+**Most of this needs no DMG, and the first version of this entry said otherwise.**
+`./scripts/dev.sh` opens the real Tauri window, and a Tauri app in dev has a real
+Dock tile — which exercises the AppKit call, the main-thread question and the
+whole gap between a file and an icon. Two minutes, not a build.
+
+**The dev walk:** press *Add art* in Settings → Pockets and pick a PNG; the Dock
+should change as you watch. Then edit that file on disk and confirm the shipped
+icon comes back. If the sync-command-on-main-thread assumption is wrong, the icon
+simply will not change and you will know immediately.
+
+**What genuinely needs the packaged build**, and only this:
+
+- **The Finder step.** Quit and confirm Finder still shows the original icon —
+  that is what proves the bundle was never written and the signature is intact.
+  In dev there is no signed bundle to prove anything about.
+- **The ACL path.** A command missing from the capability list dies packaged and
+  can work in dev. `acl_lockstep.rs` already caught the omission once here, so
+  this is belt-and-braces rather than the real check.
+
+Recorded because the overstatement is the expensive part: a check described as
+"needs a DMG" gets deferred, and this one is two minutes.
 
 ---
 
