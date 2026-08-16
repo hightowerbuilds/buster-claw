@@ -1,13 +1,17 @@
-# 08-15-26 — Six guards were green and guarding nothing
+# 08-15-26 — Eight guards were green and guarding nothing
 
-Four arcs in one day: a signed DMG that produced four findings in ten minutes,
+Five arcs in one day: a signed DMG that produced four findings in ten minutes,
 BusterPhone learning to place a call start to finish, the model finally being
-told the truth about what it can do, and the macOS Dock icon becoming a Pocket.
+told the truth about what it can do, the macOS Dock icon becoming a Pocket, and
+the corner widget becoming a background surface — a five-phase roadmap scoped and
+finished in one sitting.
 
-The through-line only became visible near the end. **Six separate times today, a
-guard or a switch was green while protecting nothing** — and every one was found
-by deliberately breaking it, never by reading it. Two of the six were mine, and
-one was in a contract I wrote for four agents to build against.
+The through-line only became visible near the end, and then it kept happening.
+**Eight separate times today, a guard or a switch was green while protecting
+nothing** — every one found by deliberately breaking it, never by reading it.
+**Four of the eight were mine**, and one was in a contract I wrote for four
+agents to build against. The last two were written *in the same hour* as the
+section of this summary describing the failure mode.
 
 The seventh guard is the counterweight, and it closed the day: the ACL lockstep
 test caught a missing capability on the first run, exactly as its roadmap had
@@ -31,6 +35,9 @@ predicted in writing before any code existed.
 | **The model may apply a shader you have looked at once** | `655f7f7` |
 | INTRODUCTION.md stopped lying to the model about backgrounds | `ea169ea`, `1a630ec` |
 | **The macOS Dock icon is a Pocket** | `6b94a44`, `c0cd5fc`, `701723c` |
+| **The corner widget is a background surface** | `f9e6994`, `d34e20d`, `c643efa`, `38bb9a8`, `b900d57` |
+| The model's briefing audited against the catalog | `4fedb3d` |
+| The 08-13 code review archived, nothing floating | `131448a` |
 
 ---
 
@@ -213,7 +220,7 @@ for refusing something.
 
 ---
 
-## Agent-applied shaders — and the six guards
+## Agent-applied shaders — and where the count started
 
 The operator then asked for the nebula shader on the homepage, got refused, and
 said: *"we want you to be able to do that yourself."* A parallel session had
@@ -253,11 +260,20 @@ rule from 08-14, and it held again. What they found:
 | 4 | The cost path's terminal-status check | a pending child already covered every case the test exercised — pure scenery |
 | 5 | My INTRODUCTION.md guard, v1 | asserted the verb appeared in the document, which the **generated table** makes true; it passed with the whole prose section deleted |
 | 6 | My per-built-in loop, v2 of the same guard | `veil` and `weather` occur elsewhere in the section, so it passed with two of the five deleted |
+| 7 | My command-family guard for `INTRODUCTION.md` | asserted the verb appeared in the **document**; the generated catalog at the end makes that true, so it passed with the whole prose section deleted |
+| 8 | My "the Shaders tab names every surface" guard | asserted against the **page**; the corner widget's own tab button says "Time & Place", so the page satisfied it on the tutorial's behalf |
 
-Five and six are the ones worth sitting with: **I wrote both of them, in the same
-hour, while writing about this exact failure mode.** The fix in each case was to
-assert something derived from code (`Appearance.builtin_shaders/0`, rendered) and
-scoped to the half a human wrote.
+Five through eight are the ones worth sitting with: **I wrote all four, and the
+last two after writing the paragraph above about the first two.** Knowing the
+failure mode by name did not stop me producing it twice more the same evening.
+
+The shape is always the same, and it is not carelessness — it is that **the
+cheapest true assertion and the correct one look identical in a diff**. "Does
+this string appear?" is true for reasons that have nothing to do with what you
+meant. The fixes were the same each time: derive the expectation from code
+(`Appearance.builtin_shaders/0`, `Appearance.surfaces/0`) and scope it to the
+half a human wrote (`String.split` on the generated boundary, `element/2` on the
+section id).
 
 There is a seventh that never shipped: nothing proved the four agents' layers
 *meet*. Each tested its own half. The handoff — operator clicks here, model
@@ -320,6 +336,86 @@ as doing nothing.
 
 ---
 
+## The corner widget, scoped and finished in one sitting
+
+The last arc, and the one that shows what a map is worth. The widget's Time &
+Place card already rendered a shader — `daycycle`, hardcoded — it just rendered
+one nobody could change. Making it selectable looked like deleting an attribute.
+Writing the map first turned up two things that would have made it an afternoon
+of confusion instead:
+
+**`home_widget.ex` was 699 lines and FROZEN** — the gate tier meaning *no
+headroom by definition*. So Phase 0 was a decomposition standing in front of a
+small feature, and it was done **on its own with no feature attached**: a split
+and a behaviour change in one commit is how you lose track of which broke what.
+699 → 135, three panels as siblings. The extracted text was diffed against the
+original line ranges and is byte-identical apart from `defp` → `def`.
+
+**`u.lens` already had two owners** — `data-daylight` feeds it a clock fraction
+for `daycycle`; the `weather` shader overwrites it with real sky. They coexisted
+only because the widget never selected weather and nothing else selected
+daycycle. Both assumptions die the moment the shader is a choice, so the flag had
+to become a property of the **shader** rather than the mount. Otherwise picking
+daycycle on the homepage gives a sun frozen at midnight, with nothing reporting
+it.
+
+Three findings the build added to the map:
+
+1. **The card never `:if`s its tabs.** It renders all three and hides two with a
+   class, so the Time & Place canvas is mounted and animating whichever tab you
+   are looking at. That is the opposite of `PhoneComponent`, whose moduledoc says
+   it `:if`s *precisely* so `phx-update="ignore"` canvases are torn down instead
+   of animating unseen. Two surfaces, same app, opposite answers.
+2. **One list was doing two jobs.** `@builtin_shaders` answered both "is this
+   bundled in the JS?" and "is this offered?" — the same set right up until a
+   default has to be renderable *without* being selectable, which is what the
+   operator's D2 asked for. Without splitting them, the card renders blank with
+   no error anywhere.
+3. **The density bug was the label, not the buttons.** Flex children do not
+   shrink below their content, so a long option name pushed the buttons out of
+   the row instead of ellipsing — invisible with two surfaces, reachable with
+   three.
+
+`default` became a mode on every surface as a side effect: it is the only way
+back to a sky nothing can select by name, and **the first honest undo any surface
+has had.** Before it, "put it back how it was" meant knowing what it was.
+
+> **The model needed no code at all**, which is the map's best moment.
+> `background_set` reached the new surface because `fetch_surface/1` validates
+> against `Appearance.surfaces/0` — a claim `Catalog.Appearance` had been making
+> since before a third surface existed. But testing the model's path found a bug
+> the operator's path could not: `default` was reserved in `Appearance`, and the
+> command layer runs its own gate **in front**, so an unapproved
+> `shaders/default.wgsl` made the one undo every surface has *refuse*.
+> **Reserving a word in one layer does not reserve it in the layer above.**
+
+---
+
+## The briefing the model reads, audited against the catalog
+
+Prompted by the widget adding a third surface to a document that said two — and
+then done properly, by grouping all 206 commands by family and diffing against
+the prose rather than reading it.
+
+**Twelve families the briefing never mentioned. Seventy-three commands.** The
+largest was `sound_*` at 29, which includes `sound_record` — the one verb in this
+app that opens the microphone. A model with a generated table and no orientation
+either does not reach for a capability or misuses it, and "opens the microphone"
+is the wrong one to leave to inference.
+
+Two guards, because these fail differently. One asserts every command **family**
+is named in the half a human wrote, so a thirteenth turns the briefing red. It
+catches absence and provably cannot catch a **denial** — `phone_*` was named
+throughout while a bullet said outbound calling did not exist — so a second ties
+the phone claim to `phone_call` being in the catalog.
+
+Also archived: the 08-13 whole-codebase review, once its content was verified to
+live in the four leftovers maps. Sweeping every relative link under
+`daily-growth` afterwards found **two more I had broken that morning** archiving
+the DMG review. Nothing checks for that, and archiving is when it happens.
+
+---
+
 ## Where this leaves the build
 
 The review is **closed and archived**, with one thing deliberately moved rather
@@ -348,9 +444,11 @@ none in a browser. The walk is two minutes in `./scripts/dev.sh` and is filed in
 **Owed:** the mode grammar is now parsed in three places, two of them written an
 hour apart by agents who could not see each other, and they already differ. Filed
 in `LEFTOVERS_SURFACES` with both cap raises naming it inline, so the debt is
-visible from the gate.
+visible from the gate. `appearance_live.ex` is at 1,064 lines against a cap
+raised three times today, which makes that extraction the most overdue thing in
+the repo.
 
 Still nobody has opened this app on a machine that did not build it.
 
-**Gates at close:** precommit exit 0 — 4,066 tests, credo clean, 2 accepted
+**Gates at close:** precommit exit 0 — 4,083 tests, credo clean, 2 accepted
 cycles, file-size inventory holds, 322 bun and 46 Rust tests green.
