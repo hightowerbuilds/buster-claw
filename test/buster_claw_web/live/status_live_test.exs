@@ -483,6 +483,48 @@ defmodule BusterClawWeb.StatusLiveTest do
       end
     end
 
+    # The three tabs became three modules on 08-15 (WIDGET_BACKGROUND Phase 0),
+    # and this is what makes that a move rather than a hope. The rail test above
+    # already renders every panel — a broken extraction would raise inside
+    # `render_click` — but it does so incidentally, while asserting something
+    # else. This says out loud that each tab draws ITS OWN panel, so a dispatch
+    # wired to the wrong sibling fails here instead of looking fine.
+    test "each widget tab renders its own panel", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      panels = %{
+        "place" => "#place-daycycle",
+        "contacts" => "#home-comms-panel",
+        "notify" => "#home-notify-panel"
+      }
+
+      # All three are ALWAYS in the DOM — the widget hides the other two with a
+      # class rather than `:if`-ing them away. That is the opposite of what
+      # `PhoneComponent` does, and deliberately so there: its moduledoc records
+      # that `:if` tears down `phx-update="ignore"` shader canvases instead of
+      # letting them animate unseen. The widget's Time & Place canvas therefore
+      # runs whichever tab is showing (WIDGET_BACKGROUND Part I).
+      for {_tab, selector} <- panels do
+        assert has_element?(view, selector), "#{selector} is not rendered at all"
+      end
+
+      # So the claim worth asserting is not "is it rendered" — that is vacuously
+      # true — but WHICH ONE is inside the hidden wrapper. Only the wrapper
+      # carries `hidden`, so a dispatch wired to the wrong sibling shows up here
+      # as the wrong panel being the visible one.
+      for {tab, selector} <- panels do
+        render_click(view, "select_widget_tab", %{"tab" => tab})
+
+        refute has_element?(view, "div.hidden #{selector}"),
+               "selecting #{tab} left #{selector} hidden"
+
+        for {other, other_selector} <- panels, other != tab do
+          assert has_element?(view, "div.hidden #{other_selector}"),
+                 "selecting #{tab} left #{other}'s panel visible too"
+        end
+      end
+    end
+
     test "default to Time & Place and switch to Contacts (Calendar/Get Started have moved)",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")

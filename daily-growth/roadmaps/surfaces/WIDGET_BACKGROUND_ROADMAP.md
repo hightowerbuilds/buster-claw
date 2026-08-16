@@ -85,6 +85,26 @@ Every other part of this feature is small. This one is a decomposition, and
 pretending otherwise is how the cap gets raised "just this once" — which the gate
 header says undid two previous decompositions.
 
+### I.4b — All three panels are always in the DOM, and the canvas never stops
+
+Found while doing Phase 0, and it changes what Phase 2 has to measure.
+
+The card does **not** `:if` its tabs. It renders all three and hides two with a
+`hidden` class, so **the Time & Place canvas is mounted and animating whichever
+tab you are looking at** — including Contacts and Notify, where it is invisible.
+
+That is the opposite of the call `PhoneComponent` made, and that module's
+moduledoc says why it went the other way: its panels are `:if`-ed *"rather than
+hidden, so their `phx-update="ignore"` shader canvases are torn down and
+remounted on a tab switch instead of animating unseen."* Two surfaces in the same
+app, opposite answers, and the widget has the one that keeps drawing.
+
+Nothing here is broken today — it is one small canvas. But Phase 2's risk about
+canvas count is worse than scoped: the widget's is not "a third canvas when the
+widget is showing", it is a third canvas **always**. If that measurement goes
+badly, switching the wrappers to `:if` is the cheaper fix than dropping the
+feature, and it brings the widget in line with the phone.
+
 ### I.5 — One table drives every surface, and a third entry ripples
 
 `Appearance.@surfaces` is a map of `:home` and `:terminal`, each with a mode key,
@@ -251,6 +271,20 @@ a card.
 `explained_panel.ex` is cited for — with the three panels as siblings, and the
 gate re-tiered from `FROZEN` to `HELD` in the same commit that earns it.
 
+**✅ DONE 08-15, on its own with no feature attached.** 699 -> 135 lines, three
+siblings under `BusterClawWeb.Widget`. The cut was clean because the panels
+shared no helpers — all five private helpers belonged to Notify — so the only
+edits beyond moving lines were `defp` -> `def` and one call site in
+`NotifyLive`, which renders the fired-notification modal.
+
+**Verified as a move, not a rewrite:** the extracted text was diffed against the
+original line ranges and is byte-identical apart from that rename, and the suite
+was unchanged and green at the same count. A test was added for the thing a
+decomposition can silently break — that each tab shows ITS OWN panel — and it was
+broken two ways: wiring the dispatch to the wrong sibling (caught by LiveView's
+duplicate-id check before the assertion even ran) and inverting one wrapper's
+visibility.
+
 ### Phase 1 — The third surface
 
 One entry in `Appearance.@surfaces`: `:widget`, keys
@@ -281,9 +315,12 @@ Two things to get right, both already documented in that module:
 
 - **Fold every new field into the remount key**, or the setting silently stops
   applying until a reload.
-- The widget's canvas is small and there may be **three canvases on the homepage
-  at once** (homepage background, widget, and any timer canvas). Each is a WebGPU
-  device. Phase 2 should measure that rather than assume it.
+- The widget's canvas is small, and per
+  [I.4b](#i4b--all-three-panels-are-always-in-the-dom-and-the-canvas-never-stops)
+  it is live on **every** homepage render rather than only when Time & Place is
+  showing. With the homepage background and any timer canvas that is three
+  WebGPU devices at rest. Measure it; the cheap fix if it is bad is `:if` on the
+  panel wrappers, which is what `PhoneComponent` already does.
 
 **Exit:** the widget shows the operator's choice, and picking `daycycle` on the
 homepage moves the sun.

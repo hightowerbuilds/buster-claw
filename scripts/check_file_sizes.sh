@@ -453,7 +453,20 @@ check lib/buster_claw/skills.ex                               379 HELD
 
 # Phase 1's fourth file, deliberately not split (15 small functions, reads fine).
 # Frozen instead: capping it was always the cheaper half of that decision.
-check lib/buster_claw_web/components/home_widget.ex           699 FROZEN
+# FROZEN 699 -> HELD 130, decomposed 08-15 (WIDGET_BACKGROUND Phase 0). Three
+# tabs shared this file because they share a *card* — a fact about layout, not
+# about what any of them does. None touched another's helpers, so the cut was
+# clean. What is left is a rail, a dispatch and the tab registry.
+#
+# Split with NO feature attached, on purpose: the roadmap that needed the room
+# makes the Time & Place shader selectable, and a decomposition in the same
+# commit as a behaviour change loses track of which one broke something.
+check lib/buster_claw_web/components/home_widget.ex           148 HELD
+# The three panels, capped at their as-written size — this was a move, not a
+# rewrite, so there is no post-split target to leave headroom against.
+check lib/buster_claw_web/components/widget/place_panel.ex    205 HELD
+check lib/buster_claw_web/components/widget/comms_panel.ex    175 HELD
+check lib/buster_claw_web/components/widget/notify_panel.ex   275 HELD
 
 # These were the two largest surviving mixed files, frozen so the next roadmap
 # would inherit them no worse than it found them.

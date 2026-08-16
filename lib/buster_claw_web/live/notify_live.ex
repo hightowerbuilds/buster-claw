@@ -75,7 +75,7 @@ defmodule BusterClawWeb.NotifyLive do
     ~H"""
     <div id="notify-root" phx-hook="NotifySound">
       {if @fired_queue != [],
-        do: BusterClawWeb.HomeWidget.notify_modal(%{notification: hd(@fired_queue)})}
+        do: BusterClawWeb.Widget.NotifyPanel.notify_modal(%{notification: hd(@fired_queue)})}
     </div>
     """
   end
