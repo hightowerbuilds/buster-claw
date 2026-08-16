@@ -330,6 +330,13 @@ even though `Appearance` would accept it from a human click. Selecting one of th
 operator's own designs and running WGSL the model just wrote are different acts,
 and only the second was ever the danger.
 
+**And the *author* half is itself under review.** `background_set` refuses every
+non-built-in shader, whoever wrote it — including ones the operator wrote by
+hand — because a command cannot tell one from the other. Relaxing that to
+"anything the operator has clicked once" is scoped and decided in
+[`AGENT_APPLIED_SHADERS_ROADMAP`](AGENT_APPLIED_SHADERS_ROADMAP.md) (Phase 0
+decided 08-15, unbuilt). Until it ships, the sentence below stands.
+
 What remains true as scoped:
 
 - The model already authors `shaders/*.wgsl` — "operator- and agent-editable,
