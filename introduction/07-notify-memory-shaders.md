@@ -33,7 +33,8 @@ silently approving your own.
 ## Shader patterns (homepage and terminal)
 
 Backgrounds are live WebGPU **shader patterns**, chosen in Settings →
-Appearance. There is **one** catalog and **two** surfaces that can point at it —
+Appearance **or by you, with `background_set`**. There is **one** catalog and
+**two** surfaces that can point at it —
 the homepage and the terminal — and the same pattern may back both at once. The
 shipped patterns are **smoke, waves, mandel,
 and weather**, all sharing one uniform/binding contract (value-noise/
@@ -53,11 +54,52 @@ the name must be lowercase letters/digits/hyphens, and reads are size-capped
 (64 KB). The browser compile-checks the WGSL and falls back gracefully on
 error, so a broken shader degrades rather than blanking the homepage.
 
-It renders **only when the user selects it** — you can propose a pattern, and
-can never force one onto their screen. That's the whole safety story: WGSL
-runs in the WebGPU sandbox with no memory or IO escape, and selection stays
-the user's. Before authoring one, **read the `shader-designer` skill**
-(`skills/shader-designer.md`) — it's the playbook for the prelude contract,
-the palette system, and the shape of an `fs_main`. Write a roster line into
-`shaders/README.md` when you add one, so the next run knows what's there.
+**But you cannot apply a shader you just wrote.** `background_set` refuses it,
+even though the operator can select that exact file by clicking. Authoring and
+applying are two acts and only you can do the first one in a single breath —
+this workspace is writable, so "no command writes a shader" would mean nothing
+if the command that *applies* one accepted your own. Write the file, tell them
+its name, and let them select it once. After that it is theirs and you can
+point either surface at it.
+
+That is the whole safety story, and it is a reach limit rather than a
+permission check: WGSL runs in the WebGPU sandbox with no memory or IO escape,
+and the set of backgrounds you can select is exactly the set the operator
+already put on their own machine. Before authoring one, **read the
+`shader-designer` skill** (`skills/shader-designer.md`) — it's the playbook for
+the prelude contract, the palette system, and the shape of an `fs_main`. Write
+a roster line into `shaders/README.md` when you add one, so the next run knows
+what's there.
+
+## Changing a background yourself
+
+Two verbs, and they are the only appearance commands that exist — there is no
+upload verb, no delete verb, and no palette verb.
+
+`background_list` reports every option both surfaces can show and what each is
+showing right now. Read it first: it is the only place the valid keys come
+from, and it marks empty image slots as `filled: false` so you do not offer the
+operator a slot with nothing in it.
+
+`background_set` takes a `surface` — `terminal` or `home` — and a `mode`:
+
+| `mode` | Effect |
+|---|---|
+| `off` | no background on that surface |
+| a shader name from `background_list` | that pattern |
+| `image:<slot>` | an image the operator uploaded |
+| `image:<slot>+<shader>` | that image with an image-reactive shader over it |
+
+```sh
+./buster-claw run background_set --json '{"surface":"home","mode":"image:2+veil"}'
+```
+
+It applies **live** — every open terminal and the homepage re-render at once,
+no reload and no click — and it is undone by one more call. Only the shaders
+named in `background_list`'s `image_shaders` may go on the right of a `+`; any
+other one is refused, and the refusal names the ones that would work.
+
+**This changes what the operator is looking at without asking, so say what you
+are doing and why.** If what you want is not in `background_list`, the answer is
+to ask them for it, not to work around it.
 

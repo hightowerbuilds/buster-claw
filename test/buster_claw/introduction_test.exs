@@ -1,6 +1,7 @@
 defmodule BusterClaw.IntroductionTest do
   use ExUnit.Case, async: false
 
+  alias BusterClaw.Commands
   alias BusterClaw.Introduction
 
   setup do
@@ -29,6 +30,48 @@ defmodule BusterClaw.IntroductionTest do
     assert md =~ "Restricted (require confirmation)"
     assert md =~ "`document_list`"
     assert md =~ "`document_save`"
+  end
+
+  # The introduction went stale for a day on exactly this: it said backgrounds
+  # were "chosen in Settings → Appearance" and that the model "can never force
+  # one onto their screen", while `background_set` had shipped and did precisely
+  # that. The command list below the prose is generated from the catalog, so the
+  # verb was already listed — and the prose contradicting it is worse than a
+  # missing entry, because prose is what the model believes.
+  test "the model is told about every appearance verb the catalog gives it" do
+    md = Introduction.markdown()
+
+    verbs =
+      Commands.list_commands()
+      |> Enum.map(& &1.name)
+      |> Enum.filter(&String.starts_with?(&1, "background_"))
+
+    assert verbs != [], "no background verbs — did they move? this guard is now vacuous"
+
+    # Asserted against the PROSE, not the whole document. The generated command
+    # surface at the end lists every verb in the catalog, so `md =~ verb` is
+    # true no matter what the prose says — which made the first version of this
+    # guard pass with the section deleted. Split it off and test the half a
+    # human wrote.
+    [prose, _generated] = String.split(md, "These are the commands you can run", parts: 2)
+
+    for verb <- verbs do
+      assert prose =~ verb,
+             "the prose never names #{verb}; a generated table below it is not the same thing"
+    end
+
+    # And the prose has to agree with them, not merely coexist. Both halves:
+    # it CAN point a surface at a background...
+    assert md =~ "Changing a background yourself"
+    assert md =~ "terminal" and md =~ "home"
+
+    # ...and it CANNOT apply one it wrote itself, which is the refusal it will
+    # otherwise hit and read as a bug.
+    assert md =~ "cannot apply a shader you just wrote"
+
+    # The claim that was wrong must not come back in any form.
+    refute md =~ "can never force one onto their screen"
+    refute md =~ "only when the user selects it"
   end
 
   test "routes web work by consequence, not by convenience" do
