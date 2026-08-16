@@ -353,17 +353,26 @@ defmodule BusterClaw.Commands.Appearance do
       "shader file that has been deleted stops being one. " <> available_keys_sentence()
   end
 
-  defp refusal(reason, _mode) when is_atom(reason) do
-    "That background was refused: #{String.replace(Atom.to_string(reason), "_", " ")}. " <>
-      "Call background_list for the options that exist right now."
-  end
-
-  defp refusal(reason, _mode) when is_binary(reason), do: reason
-
-  defp refusal(_reason, _mode) do
-    "That background was refused, and the reason did not survive being reported. " <>
-      "Call background_list and set one of the keys it reports as filled."
-  end
+  # No fallback clause, and that is checked rather than assumed.
+  #
+  # `Appearance.set_background/2` returns exactly `:empty_slot`, `:invalid_mode`
+  # or `:not_image_reactive` — the three above — and a binary reason never
+  # arrives here at all, because `set/2` catches those in its own clause first.
+  # Three defensive clauses used to sit here (an atom fallback, a binary
+  # passthrough, a catch-all); Dialyzer proved all three unreachable on 08-16 and
+  # they were the only thing keeping the gate red.
+  #
+  # **Widening `set_background/2`'s error set means adding a clause here, and
+  # nothing will tell you.** Measured 08-16 rather than assumed: a fourth reason
+  # was introduced on `appearance.ex:617` and *neither* gate caught it — Dialyzer
+  # stayed at exit 0, and all 28 tests in `commands/appearance_test.exs` passed,
+  # while `refusal/2` would have raised `FunctionClauseError` at runtime.
+  #
+  # That is the price of the deletion, stated plainly because it was paid
+  # knowingly: three clauses that could never run cost a red gate everyone
+  # learns to ignore, which is worse than one that can only run after a change
+  # nobody has made. `appearance_test.exs:237` ("every refusal Appearance can
+  # return") is where the guard belongs if that trade stops looking right.
 
   defp unknown_surface(name) do
     "There is no surface called \"#{name}\". The surfaces that carry a background are: " <>

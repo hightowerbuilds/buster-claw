@@ -166,7 +166,12 @@ check lib/buster_claw_web/components/explained/models.ex       305 HELD
 check lib/buster_claw_web/components/explained/gws.ex          278 HELD
 check lib/buster_claw_web/components/explained/cmd_table.ex    203 HELD
 check lib/buster_claw_web/components/explained/shared.ex       182 HELD
-check lib/buster_claw_web/components/explained/registry.ex     245 HELD
+# 245 -> 252 on 08-16: the `@command_stats` block gained a comment naming the
+# five verbs that moved every number in it (the contribution surface). The stats
+# themselves are a hand-maintained mirror of the live catalog, and a drift test
+# compares the two — the comment is what makes the next recompute reviewable
+# rather than a diff of seven integers.
+check lib/buster_claw_web/components/explained/registry.ex     252 HELD
 # The ninth tutorial (08-15). Pockets earns a tile where five parked candidates
 # did not, and the argument is worth keeping: it is already load-bearing in three
 # other surfaces — backgrounds, brand art and contact faces all live in Pockets —
@@ -249,7 +254,32 @@ check lib/buster_claw_web/components/gws/calendar_sync.ex    101 HELD
 # 955 -> 970: the widget surface's assign, subscription and one `handle_info`
 # (WIDGET_BACKGROUND Phase 2). Its own topic and its own assign — the homepage's
 # background and the corner card's are two surfaces that share a page, not one.
-check lib/buster_claw_web/live/status_live.ex                970 HELD
+# 970 -> 977 on 08-16 for the Contribute sub-tab (STUDIO_ROADMAP V.6-V.8), and
+# this raise was BUDGETED before the feature was written rather than discovered
+# after. It bought twelve lines and no logic: an `alias`, one `assign_contribute`
+# in the mount pipe, one `attr` pass-through, and two `handle_event` clauses that
+# delegate whole.
+#
+# Two shaping decisions kept it to twelve, both worth preserving. Contribute's
+# state is ONE map assign rather than the six scalars Voice threads through, so
+# the panel takes one `attr` instead of eight. And its six sub-actions share a
+# single `handle_event("contribute", %{"do" => action})` clause that delegates to
+# `Status.Contribute.handle/3`, rather than six near-identical clauses here —
+# this file is at its cap for a reason, and spending the last of it on
+# punctuation would be the wrong trade.
+#
+# The surface is 251 lines and its state 233, both in modules created for it. The
+# standing test applies: if device enumeration, PCM handling or bank logic ever
+# appears in THIS file, the raise was wrong and the cut is owed.
+# 977 -> 995 on 08-16 for the Voice Library's own navigation: three delegating
+# `handle_event` clauses (section, word selection, build preview) and the five
+# assigns the panel needs. Still no logic — every clause is one line into
+# `Status.Voice`. If a later reader finds a `case` or a domain call in one of
+# them, this raise was wrong.
+# 995 -> 1005: three more delegating clauses for take curation (prefer, unprefer,
+# delete) and the notice assign they write. Still one line each into
+# `Status.Voice`; the standing test applies.
+check lib/buster_claw_web/live/status_live.ex               1005 HELD
 check lib/buster_claw_web/live/status/chat.ex                685 HELD
 
 # Added 08-09 when the chat skins pushed this past 1,000 lines. It has never been
@@ -348,8 +378,23 @@ check lib/buster_claw_web/live/status/weather.ex              97 HELD
 # `live/status/voice.ex`, both created for it. If a later reader finds pane
 # markup, filtering, or corpus reads in this file, this raise was wrong and the
 # cut is owed.
-check lib/buster_claw_web/components/studio_panel.ex         170 HELD
-check lib/buster_claw_web/components/studio/registry.ex       75 HELD
+# Raised 08-16, 170 -> 185 and 75 -> 85, for the THIRD sub-tab: Contribute, the
+# recorder (STUDIO_ROADMAP V.6-V.8). This is the split the note above predicted
+# in as many words — "or splitting Voice into recording and dictionary, which the
+# roadmap expects" — so it is the raise that note was written to permit, and it
+# bought exactly what was forecast: one `@tabs` entry plus one word in `@built`
+# in the registry, and one `alias` + one `attr` + a 6-line dispatch in the panel.
+#
+# The registry's share is mostly PROSE, not tabs: its moduledoc now records that
+# the one-edit promise held when tested. If a later reader is tempted to reclaim
+# that, note the tab data itself is 15 lines of the 79.
+#
+# The same test still applies: if pane markup, device enumeration or PCM handling
+# ever appears in `studio_panel.ex`, this raise was wrong. The surface is 251
+# lines in `components/studio/contribute.ex` and its state 233 in
+# `live/status/contribute.ex`, both created for it.
+check lib/buster_claw_web/components/studio_panel.ex         195 HELD
+check lib/buster_claw_web/components/studio/registry.ex       85 HELD
 
 # Voice, the Ramshackle surface (VI.1), capped on arrival. `voice.ex` is the two
 # panes; `status/voice.ex` is their state, in `StatusLive` for the reason every
@@ -364,8 +409,68 @@ check lib/buster_claw_web/components/studio/registry.ex       75 HELD
 # two comments explaining why an apparently decorative attribute is load-bearing
 # (DMG-review-8-15, finding 3). A later reader tidying those attributes away
 # would reintroduce the bug; form_submit_test.exs now fails if they do.
-check lib/buster_claw_web/components/studio/voice.ex         240 HELD
-check lib/buster_claw_web/live/status/voice.ex               175 HELD
+# `studio/voice.ex` was DELETED 08-16: the Voice Library's Words and Sentence
+# panes are what it became, so leaving it would have left a module nothing
+# renders. Its cap is replaced by the Library's, split by SECTION rather than
+# by layer — `voice_library.ex` is the sidebar and the dispatch, each pane is
+# its own file, which is why none of them is large.
+#
+# `words.ex` and `sentence.ex` carry `data-play` / `data-source` / `data-start`
+# / `data-end` / `data-version`. That is `voice_audition.js`'s contract for
+# playing a slice of a file; renaming one breaks audition with the suite green.
+check lib/buster_claw_web/components/studio/voice_library.ex 190 HELD
+# 180 -> 225 on 08-16 for take curation: each take now carries a play button, a
+# "use this one" toggle and a delete, plus the line explaining what happens when
+# nothing is marked. That is three controls per row where there was one link.
+#
+# The toggle is a TOGGLE and not a radio group deliberately — clicking the chosen
+# take again clears the choice and hands selection back to `Cutup.Select`, which
+# a radio has no way to express. If a later reader "fixes" it into a radio, that
+# is the behaviour they are removing.
+check lib/buster_claw_web/components/studio/words.ex         225 HELD
+# 170 -> 185: the per-word chips became BUTTONS with two destinations —
+# `chip_event/1` sends a word that exists to Words and a word that does not to
+# the recorder, because a recording is the only thing that changes a `missing`.
+# The raise is mostly the tooltips, which now say where a chip GOES: two
+# destinations from chips differing only by colour would otherwise surprise.
+check lib/buster_claw_web/components/studio/sentence.ex      185 HELD
+# 175 -> 182 -> 320 on 08-16. The big raise is the Voice Library's merge, and it
+# is the one entry here that should be questioned first if this area grows again.
+#
+# What it bought: `load_report/1` scoped to the active bank, plus the three
+# things the Library added that are STATE rather than markup — the section
+# switch, the selected word and its takes (VI.1's pane 2), and the sentence
+# preview with its version counter. Each is small; together they are ~120 lines.
+#
+# Why they are here rather than in a fourth module: they are one surface's
+# state, and every one of them must outlive the `:if` that discards the panel on
+# a home-tab switch. A separate module would have to be threaded through
+# `StatusLive` anyway, and `StatusLive` is the file with no room.
+#
+# `status/recorder.ex` is the deliberate exception — it is the microphone half,
+# shares nothing with this but the bank, and stayed separate for that reason.
+# 320 -> 400 on 08-16 for take curation — select/prefer/unprefer/delete and the
+# sentences that report what a deletion actually removed. This file is now the
+# one to question first in this area: it is the Library's whole non-hardware
+# state, and the seam if it grows again is the TAKE half (selection, preference,
+# deletion) splitting from the CORPUS half (report, query, phrase, preview).
+check lib/buster_claw_web/live/status/voice.ex               400 HELD
+
+# The recorder — the Library's Record section (V.6-V.8). Its meter subtree is
+# `phx-update="ignore"` and its interior belongs to `voice_recorder.js`: the
+# device readout, the meter, the peak hold and the button label are painted by
+# the hook, so markup that looks unused here may be the hook's contract.
+# `data-role` attributes ARE that contract.
+#
+# `status/recorder.ex` is the microphone half of the Library's state and stayed
+# separate from `status/voice.ex` on purpose: they share nothing but the bank.
+# Its 250 -> 265 raise was the two error tables becoming MAPS with a default
+# rather than a clause per atom — longer, and the length is the point, since a
+# clause set covering every error its callee returns makes the catch-all
+# unreachable (a Dialyzer `pattern_match_cov` finding) and deleting the
+# catch-all to satisfy it makes the function partial.
+check lib/buster_claw_web/components/studio/recorder.ex      280 HELD
+check lib/buster_claw_web/live/status/recorder.ex            265 HELD
 
 # The Notes vault: state in the live_component, markup in three function
 # components. Split at ~810 lines during the Home Activity + Notes roadmap's
@@ -710,7 +815,36 @@ check lib/buster_claw/integrations/github.ex                  500 HELD
 # be small and to be the ONLY copy. If it grows, ask what got added to a path
 # check. The two stores below it shed their duplicate copies to it.
 check lib/buster_claw/notifications/cutup/source_name.ex      125 HELD
-check lib/buster_claw/notifications/cutup/index.ex            640 HELD
+# Raised 08-16, 640 -> 655, for the `bank` field (STUDIO_ROADMAP V.0). Small and
+# worth naming, because it is a field on a CONTRACT rather than a feature: an
+# index now records whose voice it holds, which is what stops a cut-up splicing
+# two speakers together. The added lines are `build/3`'s strict validation, the
+# encode/decode pair, and `within_bank/2` on the search path.
+#
+# The rule that keeps this cheap lives in `Cutup.Bank`: a bank is METADATA, not
+# a directory, so nothing here moved, and `Bank.of/1` is deliberately pure —
+# putting a roster lookup in it would drop an Ecto query into this file's load
+# path, which broke 46 tests the one time it was tried.
+check lib/buster_claw/notifications/cutup/index.ex            655 HELD
+# `bank.ex` capped on arrival. Two thirds of it is moduledoc, and deliberately:
+# the rule it enforces (banks never merge; a bank is a voice-and-channel, not a
+# folder) was derived three independent ways in STUDIO_ROADMAP V.0 and is the
+# kind of constraint a later reader deletes as over-engineering unless the
+# argument travels with the code. `of/1` alone carries 25 lines explaining why it
+# must never read the roster.
+#
+# If it grows, ask whether a MEASUREMENT crept in. This module holds the roster
+# and the pointer and nothing else — "how many takes has this bank?" belongs to
+# `Cutup.Gaps`, because a registry that depends on the corpus it partitions is
+# the coupling this split exists to avoid.
+check lib/buster_claw/notifications/cutup/bank.ex             330 HELD
+# `takes.ex` capped on arrival. Like `bank.ex` above it, much of it is the
+# argument rather than the code: why a preference is a POINTER and not a bump to
+# `confidence` (it would make the origin field lie, and origin is what the
+# corpus's trust rests on), and the three-row table for what a deletion takes
+# with it. The audio-retention row was UNCOVERED until `takes_test.exs` existed —
+# breaking it failed nothing — so that test is load-bearing, not decoration.
+check lib/buster_claw/notifications/cutup/takes.ex            320 HELD
 check lib/buster_claw/notifications/cutup/features.ex         760 HELD
 
 # The web command surface (`1eee2f8`), 894 -> 848 by collapsing the six

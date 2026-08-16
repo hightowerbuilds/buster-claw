@@ -23,6 +23,7 @@ defmodule BusterClawWeb.StatusLive do
   alias BusterClaw.TrustedSenders
   alias BusterClaw.Weather
   alias BusterClawWeb.Status.ChatAttachments
+  alias BusterClawWeb.Status.Recorder
   alias BusterClawWeb.Status.Voice
 
   # How many files may sit in the composer at once. The per-file byte cap is the
@@ -112,6 +113,7 @@ defmodule BusterClawWeb.StatusLive do
      # reason as the arranger state below it. See `Status.Studio`.
      |> assign_studio_tab()
      |> Voice.assign_voice()
+     |> Recorder.assign_recorder()
      # Transport for the Studio's music library. nil until the dock player
      # announces — it renders a library with no transport rather than guessing.
      |> assign(:music_player, nil)
@@ -298,6 +300,42 @@ defmodule BusterClawWeb.StatusLive do
 
   def handle_event("voice_refresh", _params, socket),
     do: {:noreply, Voice.load_report(socket)}
+
+  # The Voice Library's own navigation, and the recorder inside it. ONE clause
+  # for the recorder's six sub-actions rather than six clauses: they share a
+  # shape, `Status.Recorder` owns the dispatch, and this file is at its cap for a
+  # reason. The take arrives separately because it carries audio.
+  def handle_event("voice_section", %{"section" => section}, socket),
+    do: {:noreply, Voice.put_section(socket, section)}
+
+  def handle_event("voice_select", %{"word" => word}, socket),
+    do: {:noreply, Voice.select_word(socket, word)}
+
+  def handle_event("voice_preview", _params, socket),
+    do: {:noreply, Voice.build_preview(socket)}
+
+  def handle_event("voice_prefer", %{"source" => source, "start" => start}, socket),
+    do: {:noreply, Voice.prefer_take(socket, source, start)}
+
+  def handle_event("voice_unprefer", _params, socket),
+    do: {:noreply, Voice.unprefer_take(socket)}
+
+  def handle_event("voice_delete", %{"source" => source, "start" => start}, socket),
+    do: {:noreply, Voice.delete_take(socket, source, start)}
+
+  # A sentence chip leads somewhere: a word that exists opens in Words, a word
+  # that does not arms the recorder for it.
+  def handle_event("voice_open_word", %{"word" => word}, socket),
+    do: {:noreply, Voice.open_word(socket, word)}
+
+  def handle_event("voice_record_word", %{"word" => word}, socket),
+    do: {:noreply, socket |> Recorder.put_word(word) |> Voice.put_section("record")}
+
+  def handle_event("contribute", %{"do" => action} = params, socket),
+    do: {:noreply, Recorder.handle(action, params, socket)}
+
+  def handle_event("contribute_take", params, socket),
+    do: {:noreply, Recorder.save_take(socket, params)}
 
   # The Studio's selection is owned HERE, not by the component: home tabs render
   # behind `:if`, which removes the DOM and discards the live_component with it,
@@ -937,6 +975,13 @@ defmodule BusterClawWeb.StatusLive do
                 voice_sentence={@voice_sentence}
                 voice_rows={Voice.vocabulary(assigns, @voice_query)}
                 voice_check={Voice.sentence_check(assigns, @voice_sentence)}
+                voice_section={@voice_section}
+                voice_selected={@voice_selected}
+                voice_takes={@voice_takes}
+                voice_preview={@voice_preview}
+                voice_preview_error={@voice_preview_error}
+                voice_notice={@voice_notice}
+                recorder={@recorder}
               />
             </div>
 

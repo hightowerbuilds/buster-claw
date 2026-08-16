@@ -29,6 +29,7 @@ command, outbound send, and untrusted fetch is recorded on the Security
 | Documents & artifacts | `document_save`, `document_list` | Documents & the Library |
 | The operator's notebook | `note_read`, `note_search`, `note_save` | The Notes commands |
 | Chimes, editing, the cut-up | `sound_*` | Sound |
+| Whose voice the corpus holds | `voice_bank_*` | Sound |
 | Named folders of their media | `pocket_*` | Pockets |
 | What's behind the surfaces | `background_list`, `background_set` | Shader patterns |
 | Terminal colours | `terminal_theme_*` | What you can see and cannot drive |

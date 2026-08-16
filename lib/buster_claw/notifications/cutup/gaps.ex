@@ -55,6 +55,7 @@ defmodule BusterClaw.Notifications.Cutup.Gaps do
   belongs), which is a real fault rather than an empty shelf.
   """
 
+  alias BusterClaw.Notifications.Cutup.Bank
   alias BusterClaw.Notifications.Cutup.Index
   alias BusterClaw.Notifications.Cutup.Types
 
@@ -66,8 +67,18 @@ defmodule BusterClaw.Notifications.Cutup.Gaps do
   `:limit` caps `by_take_count` **after** sorting, so it keeps the most-covered
   words; anything that is not a positive integer is ignored rather than refused,
   matching `Index.search/2`. `:target` adds the `missing` key.
+
+  `:bank` narrows the report to one voice (`Cutup.Bank`). **Absent means every
+  bank**, which is the right default for "what does this machine have?" and the
+  wrong one for "what can this voice say?" — the dictionary always passes one,
+  because a coverage number pooled across speakers describes a corpus nobody can
+  actually splice from.
   """
-  @type opts :: [limit: pos_integer(), target: [String.t()] | String.t()]
+  @type opts :: [
+          limit: pos_integer(),
+          target: [String.t()] | String.t(),
+          bank: String.t()
+        ]
 
   @typedoc """
   Vocabulary coverage of the indexed corpus.
@@ -116,7 +127,11 @@ defmodule BusterClaw.Notifications.Cutup.Gaps do
   def report(opts) when is_list(opts) do
     with {:ok, target} <- target(Keyword.get(opts, :target)),
          {:ok, sources} <- sources() do
-      {:ok, sources |> load() |> summarize(limit(opts), target)}
+      {:ok,
+       sources
+       |> load()
+       |> within_bank(Keyword.get(opts, :bank))
+       |> summarize(limit(opts), target)}
     end
   end
 
@@ -153,6 +168,60 @@ defmodule BusterClaw.Notifications.Cutup.Gaps do
 
     {loaded, length(sources)}
   end
+
+  @doc """
+  Whether any index on disk names this bank.
+
+  Lives here rather than on `Cutup.Bank` because it is a **measurement over
+  indexes**, and `Bank` is a registry that deliberately does not know what an
+  index looks like. Putting it there produced a `Bank` → `Index` → `Bank` compile
+  cycle, which `check_cycles.sh` refused — see `Bank.delete/2`, whose second
+  argument this answers.
+
+  Read fresh, never cached, for the same reason `report/1` is: a stale count
+  would let a bank be deleted while takes still point at it, and the failure is
+  silent — the takes keep working and the roster simply stops describing them.
+
+  Answers `false` for an unreadable corpus. That is the safe direction only
+  because `delete/2` is the sole caller and its failure mode is refusing a
+  deletion rather than allowing one; a caller wanting the opposite bias must ask
+  a different question.
+  """
+  @spec bank_in_use?(term()) :: boolean()
+  def bank_in_use?(bank) when is_binary(bank) do
+    Enum.any?(Index.list(), fn source ->
+      case Index.load(source) do
+        {:ok, index} -> Bank.of(index) == bank
+        {:error, _reason} -> false
+      end
+    end)
+  end
+
+  def bank_in_use?(_bank), do: false
+
+  # Narrow the loaded corpus to one bank.
+  #
+  # `summarize/3` derives `unreadable_sources` as `attempted - length(indexes)`,
+  # so `attempted` must come down by exactly the number this filter removed or
+  # every *other* bank's indexes would be reported as unreadable. The arithmetic
+  # is written out rather than folded, because the wrong version of it is a
+  # plausible-looking report that quietly accuses the corpus of corruption.
+  #
+  # What survives narrowing is the genuinely unreadable count, which stays
+  # corpus-wide on purpose: a file that could not be parsed has no bank to be
+  # filtered by, and dropping it would hide a corrupt index the moment the
+  # operator selected a voice — the one time they most need to see it.
+  @spec within_bank({[Types.index()], non_neg_integer()}, term()) ::
+          {[Types.index()], non_neg_integer()}
+  defp within_bank({indexes, attempted}, nil), do: {indexes, attempted}
+
+  defp within_bank({indexes, attempted}, bank) when is_binary(bank) do
+    kept = Enum.filter(indexes, &(Bank.of(&1) == bank))
+    {kept, attempted - (length(indexes) - length(kept))}
+  end
+
+  defp within_bank({indexes, attempted}, _bank),
+    do: {[], attempted - length(indexes)}
 
   # ---------------------------------------------------------------------------
   # Counting

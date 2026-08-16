@@ -432,6 +432,56 @@ defmodule BusterClaw.Commands.Catalog.Sound do
           "name" => %{type: :string, required: false},
           "device" => %{type: :string, required: false}
         }
+      },
+      %{
+        name: "voice_bank_list",
+        type: :read,
+        tier: :safe,
+        description:
+          "Every voice bank, and which one is active. A bank is a voice-and-channel — one speaker through one microphone — and banks NEVER merge, because a cut-up spliced across two speakers sounds broken and nothing downstream repairs it. The active bank is the one the dictionary reports and the one a new recording joins. voicemail is the default bank and holds the original ten-voicemail corpus; it cannot be deleted.",
+        args: %{}
+      },
+      %{
+        name: "voice_bank_create",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Add a voice bank. name is lowercased and spaces become hyphens, so 'Aunt Mary' becomes aunt-mary; anything that still would not match a-z0-9 and hyphens, 1 to 32 characters, is refused rather than mangled. label is what the operator reads and defaults to the name. Creating a bank writes no file and touches no audio — an empty bank is a valid thing, and is what 'about to record someone new' looks like before the first take.",
+        args: %{
+          "name" => %{type: :string, required: true},
+          "label" => %{type: :string, required: false}
+        }
+      },
+      %{
+        name: "voice_bank_select",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Point the dictionary and the recorder at a bank. This is the single switch deciding whose voice a new take joins and which vocabulary the dictionary reports, which is why it is restricted rather than safe: selection is a mutation here. Refuses an unknown bank rather than creating one.",
+        args: %{"name" => %{type: :string, required: true}}
+      },
+      %{
+        name: "voice_bank_delete",
+        type: :mutate,
+        tier: :restricted,
+        gated: true,
+        description:
+          "Remove a voice bank from the roster. REFUSES a bank that any index still names, returning bank_in_use — re-attribute or delete those indexes first, because takes belonging to a bank the roster cannot describe are exactly the unpartitioned pile banks exist to prevent. The default bank voicemail can never be removed. Gated because it is irreversible from the agent's side: the roster entry is gone, and while the takes keep their attribution and the bank can be re-created by name, nothing here restores the label the operator chose.",
+        args: %{"name" => %{type: :string, required: true}}
+      },
+      %{
+        name: "sound_record_save",
+        type: :mutate,
+        tier: :restricted,
+        gated: true,
+        description:
+          "Store audio captured IN THE APP as a new studio source. Takes pcm — base64 Float32 little-endian samples in -1.0 to 1.0 — plus sample_rate, the rate the device actually ran at. Nothing is resampled: the native rate is archived, because downsampling is lossy and the masters are the only way back. Pass word to index the take as one manual entry of that word in the active bank, spanning the whole clip; the clip IS the word, so no alignment runs and none is needed. This is the only path in the app producing manual takes — every one of the 655 takes in the voicemail corpus is aligned, a proportional guess capped at 0.9 confidence. REFUSES three things at the door rather than storing them: a clipped take (the waveform's top is already flat on arrival and no downstream gain recovers it — sound_normalize is peak-based and will happily scale a clipped take to full scale and call it done), digital silence (silent_take, usually a muted device), and a name collision (name_taken — a recording is unrepeatable, so a collision is refused rather than auto-suffixed into a file nobody chose the name of). Gated for the same reason sound_record is: it is the write half of opening a microphone.",
+        args: %{
+          "pcm" => %{type: :string, required: true},
+          "sample_rate" => %{type: :integer, required: true},
+          "word" => %{type: :string, required: false},
+          "name" => %{type: :string, required: false}
+        }
       }
     ]
 end

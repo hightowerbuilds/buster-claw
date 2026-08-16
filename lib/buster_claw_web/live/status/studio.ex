@@ -26,6 +26,7 @@ defmodule BusterClawWeb.Status.Studio do
   import Phoenix.LiveView
 
   alias BusterClaw.Notifications.StudioMix
+  alias BusterClawWeb.Status.Recorder
   alias BusterClawWeb.Status.Voice
   alias BusterClawWeb.StudioPanel
 
@@ -60,7 +61,11 @@ defmodule BusterClawWeb.Status.Studio do
   # file reads. `ensure_report/1` is idempotent, so switching away and back is
   # free. Dispatching on the key here rather than in `StatusLive` keeps the
   # LiveView's clause one line, which is the point of this module.
-  defp arriving_at(socket, "voice"), do: Voice.ensure_report(socket)
+  # The Voice Library needs both halves: the corpus for its word list, and the
+  # device list for its recorder. Both are lazy and idempotent.
+  defp arriving_at(socket, "voice"),
+    do: socket |> Voice.ensure_report() |> Recorder.ensure_loaded()
+
   defp arriving_at(socket, _tab), do: socket
 
   # ---------------------------------------------------------------------------

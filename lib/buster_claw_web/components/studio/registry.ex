@@ -16,17 +16,25 @@ defmodule BusterClawWeb.Studio.Registry do
   exists in `BusterClawWeb.StudioPanel`. A new rail button is therefore never a
   dead one.
 
-  ## The Voice tab currently holds two different activities
+  ## Voice split into two tabs on 08-16, and merged back the same day
 
-  `Voice` is voice training and ramshackle audio creation, and that is really
-  *two* things: **recording** (STUDIO_ROADMAP V.6–V.8) and **browsing,
-  auditioning and correcting a dictionary** of what was captured (VI.1–VI.3).
-  The roadmap says as much, and they may well want to be two tabs rather than
-  one. They share a tab today because neither is built.
+  This module used to predict a split — recording (STUDIO_ROADMAP V.6–V.8) away
+  from browsing a dictionary (VI.1–VI.3) — and promised it would cost one edit
+  here. When the recorder was built, the split happened and the promise held
+  exactly: one `@tabs` entry, one word in `@built`.
 
-  **Splitting them later is one edit here** — which is the whole reason for
-  copying Explained's data-only registry rather than hand-rolling a rail in the
-  panel.
+  **Then the operator looked at it and merged them back**, and that is the more
+  useful half of the story. Two rail buttons described the *implementation*
+  (a dictionary module and a recorder module) rather than the **activity**, which
+  is one thing: working on your voice. Browsing words, hearing them, building a
+  sentence and recording a missing word are steps of a single loop, and a rail
+  that makes you leave the tab to close that loop is a rail in the way.
+
+  So `Voice Library` is one tab with a **sidebar** — the loop is navigated
+  inside it, not above it. The registry cost of merging back was the same one
+  entry, in the other direction, which is the actual thing worth recording: a
+  data-only registry made the reorganisation reversible, and the reversal is
+  what proved it rather than the split.
   """
 
   # The sub-tabs, in rail order.
@@ -43,8 +51,8 @@ defmodule BusterClawWeb.Studio.Registry do
     },
     %{
       key: "voice",
-      label: "Voice",
-      blurb: "Ramshackle: your library of words, and what it can say."
+      label: "Voice Library",
+      blurb: "Ramshackle: your words, the sentences they make, and the mic that adds more."
     }
   ]
 

@@ -31,14 +31,18 @@ defmodule BusterClawWeb.Explained.Registry do
   # `phone_call`. A drift test compares these against the live catalog and caught
   # both within the hour they landed — which is the only reason this block is
   # trustworthy at all.
+  # Recomputed 08-16 for the contribution surface (STUDIO_ROADMAP V.0 and V.6-V.8):
+  # `sound_record_save` (:restricted + gated, the recorder's write half) and the
+  # four `voice_bank_*` verbs — `list` is a :safe read, `create` and `select` are
+  # :restricted, `delete` is :restricted + gated.
   @command_stats %{
-    total: 206,
-    read: 85,
+    total: 211,
+    read: 86,
     trigger: 17,
-    mutate: 104,
-    safe: 88,
-    restricted: 118,
-    gated: 23
+    mutate: 108,
+    safe: 89,
+    restricted: 122,
+    gated: 25
   }
 
   # Feature sub-tabs: rail + tile metadata for every non-site tab. A key in

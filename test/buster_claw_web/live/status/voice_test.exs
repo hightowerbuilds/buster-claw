@@ -1,7 +1,12 @@
 defmodule BusterClawWeb.Status.VoiceTest do
   # async: false — points the global :workspace_root at a tmp dir, and writes
   # index files there. Same pattern as Cutup.GapsTest, which these read through.
-  use ExUnit.Case, async: false
+  #
+  # DataCase rather than plain ExUnit as of 08-16: `load_report/1` is now scoped
+  # to the ACTIVE bank, and the active bank is a `Settings` row. That is a real
+  # dependency rather than test scaffolding — the dictionary answers "what can
+  # this voice say?", and it cannot know which voice without reading the pointer.
+  use BusterClaw.DataCase, async: false
 
   alias BusterClaw.Notifications.Cutup.Index
   alias BusterClawWeb.Status.Voice

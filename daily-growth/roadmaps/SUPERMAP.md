@@ -64,7 +64,7 @@ roadmaps/
 ├── shell/ ·················· Part I    TERMINAL_THEME · TERMINAL_PAINT
 ├── surfaces/ ··············· Parts II–III  STUDIO · IMAGE_SHADER · APP_ICON · AGENT_APPLIED_SHADERS · WIDGET_BACKGROUND · LEFTOVERS_SURFACES
 ├── agent-core/ ············· Part V    LEFTOVERS_AGENT_CORE
-├── integrations/ ··········· Part VI   CLINCH · BUSTERPHONE (+NUMBER_VENDING) · OUTBOUND_VOICE · GOOGLE_VERIFICATION
+├── integrations/ ··········· Part VI   CLINCH · BUSTERPHONE (+NUMBER_VENDING) · OUTBOUND_VOICE · SMS_DISCLOSURE · PHONE_ACCESS · GOOGLE_VERIFICATION
 ├── platform/ ··············· Part VII  APPLE · RELEASE_GATE · TRUST_AND_SUPPORT · QA_BACKLOG · LEFTOVERS_PLATFORM
 ├── distribution/ ··········· Part VIII DISTRIBUTION · FRONT_DOOR
 └── website/ ················ Part IX   WEBSITE
@@ -90,8 +90,8 @@ the section tables below point at it from wherever else it applies.**
 1. **[The Clinch](#part-vi--integrations)** — **Phases 0–4 complete 08-10; Phase 5 is as far as an agent can take it.** Its preconditions are pinned (`18af12e`) and every remote-mode notice is guarded (`d26c4ad`). **What remains is the tunnel spike, and it needs a person with two machines** — the roadmap forbids the gateway and the panel until a real tunnel survives a WebSocket upgrade, an upload, a long Chat response and a laptop sleep.
 2. **[BusterPhone](#part-vi--integrations)** — the only paid thing. **Inbound is live and carrying real traffic** (verified in the app 08-14, not inferred); the gap is vending a number to someone who is not the operator.
 3. **[Apple](#part-vii--platform--release)** — **`G-1`–`G-3` DONE 08-10: a notarized, stapled DMG exists.** What is next is not code — an **Apple Silicon Mac**.
-4. **[Studio → Voice](#part-ii--home)** — needs a person at a microphone.
-5. **[The Dialyzer gate](#part-vii--platform--release)** — **GREEN 08-13** (`1d52cff`): exit 0, was 67 findings. The baseline is a rule now rather than a file list, so adding a file no longer breaks it.
+4. **[Studio → Voice Library](#part-ii--home)** — built 08-16; **needs a person at a microphone.** Everything except capture is done and tested: banks, audition, sentence preview, and both recording paths. What has never run is V.4a — `getUserMedia` in a packaged build — and until someone clicks that dialog the recorder is honest rather than working.
+5. **[The Dialyzer gate](#part-vii--platform--release)** — **GREEN, exit 0, verified 08-16.** The baseline is a rule rather than a file list (`1d52cff`) and that fix has held; the three unreachable `refusal/2` clauses that 08-15 added were deleted 08-16 rather than baselined. Part VII records what the deletion cost.
 6. **The whole-codebase review (08-13)** — **ARCHIVED 08-15**, [`CODE_REVIEW_08-13-26.html`](../archive/CODE_REVIEW_08-13-26.html): every part with its argument, every large file diagnosed feature-sized vs overloaded, 21 ranked findings. **The top four landed same-day** — the gmail attachment fence (`1728e64`), both `chat.ex` contract bugs (`20a36a9`), the dead Trading hooks plus a both-directions hook guard (`577085e`). Everything else is **filed, not floating**: by section into the LEFTOVERS maps — [agent-core](agent-core/LEFTOVERS_AGENT_CORE.md), [platform](platform/LEFTOVERS_PLATFORM.md), [surfaces](surfaces/LEFTOVERS_SURFACES.md), and the shell's first, [`LEFTOVERS_SHELL`](shell/LEFTOVERS_SHELL.md), created for it. The review's two structural conclusions: the size gate covers no core/JS/Rust file (its §12 has the 19-file proposed inventory), and `commands/sound.ex` at 2,514 is the one file where the 08-08 "commands/ is correct" ruling no longer holds.
 
 Two of those wait on the operator rather than an agent: the `getUserMedia` spike
@@ -160,7 +160,7 @@ and zero issues in the verdict. Budget hours per release, not minutes
 | Calendar | `CalendarComponent` | SHIPPED | — |
 | Phone | `PhoneComponent`, `Phone.CallAction` | SHIPPED — **the keypad dials as of 08-15**, gated and confirmed once before the first ring | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) |
 | **Studio → Mix** | `SoundStudioComponent` | SHIPPED | [`LEFTOVERS_AGENT_CORE`](agent-core/LEFTOVERS_AGENT_CORE.md) — `commands/sound.ex` is owed a split |
-| **Studio → Voice** | `Studio.Registry` | **PLACEHOLDER** | [`STUDIO`](surfaces/STUDIO_ROADMAP.md) Parts V–VI |
+| **Studio → Voice Library** | `Studio.VoiceLibrary`, `Status.Voice`, `Status.Recorder` | **BUILT 08-16 — one tab, sidebar over Words / Sentence / Record.** Voice banks (V.0), audition (VI.1 pane 2), sentence build-and-play through the same `Cutup.Sentence` an agent uses, and a recorder for a word *or* a whole sentence. **The microphone is unproven** — V.4a has never run, so the capability gate reports what the browser found rather than claiming | [`STUDIO`](surfaces/STUDIO_ROADMAP.md) Parts V–VI |
 | Explained | `ExplainedPanel` | SHIPPED | [`LEFTOVERS_SURFACES`](surfaces/LEFTOVERS_SURFACES.md) — two errands, five tiles |
 | Activity | `ActivityComponent` | SHIPPED | — |
 | Widget → Time & Place | `status/weather.ex` | SHIPPED | — |
@@ -172,10 +172,23 @@ and zero issues in the verdict. Budget hours per release, not minutes
 | Image-reactive shaders | `ShaderCanvas`, `Appearance.image_shader_options/0` | SHIPPED — Phase 4 (the skill) open | [`IMAGE_SHADER`](surfaces/IMAGE_SHADER_ROADMAP.md) |
 | The home screen's primary action | `StatusLive` | SHIPPED, **says the wrong thing** | [`FRONT_DOOR`](distribution/FRONT_DOOR_ROADMAP.md) `VI-a` |
 
-**Studio → Voice is the only unbuilt surface in Home.** The binding constraint is
-measured: **144 of 237 words are single-take**, none ever hand-corrected. Both
-halves — recording and the dictionary to browse and correct — share one tab
-because neither is built; splitting them later is one edit in `Studio.Registry`.
+**Every surface in Home renders something real, and Studio → Voice Library is
+now the whole loop rather than half of it**: browse the words, hear a take,
+build a sentence, hear that, record what was missing. The binding constraint is
+still measured — **144 of 237 words are single-take**, none ever hand-corrected —
+and the recorder is what changes it.
+
+**Two things it can do that nothing else in the app could.** A word recorded on
+its own is the corpus's first `:manual` origin at confidence 1.0 (all 655
+existing takes are `:aligned`, a proportional guess capped at 0.9). A whole
+sentence recorded in one take is V.8's donor session in miniature — far faster
+per word, and every interior boundary an estimate, which the surface says.
+
+**What is unproven is the microphone itself.** V.4a has never been run, so the
+capability gate reports what the browser actually answered rather than claiming
+either way; in Chrome and `cargo tauri dev` it may work today, and a packaged
+build will name what stopped it. `Entitlements.plist` is deliberately untouched
+— see the note under Part VII on what granting it costs the embedded browser.
 
 ---
 
@@ -235,7 +248,8 @@ Not surfaces. The machinery every surface sits on.
 | **The Clinch — credentials** | `Clinch`, `ClinchPanels`, Tauri `clinch_*` | **ACTIVE — Phases 0–4 COMPLETE 08-10; Phase 5 guarded 08-13, now waiting on the operator's tunnel spike** | [`CLINCH`](integrations/CLINCH_ROADMAP.md) |
 | **Reaching it from a phone** | the relay, as a control channel | **PARKED 08-13 — research done, starts after the desktop app ships** | [`PHONE_ACCESS`](integrations/PHONE_ACCESS_ROADMAP.md) |
 | **Twilio / BusterPhone** | `Telephony` | **ACTIVE — the money leg. Inbound LIVE (verified in the app 08-14) and outbound CALLING shipped 08-15, so the only thing this phone cannot do is send a text. What remains is vending a number to somebody else** | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) |
-| Outgoing texts | `sms_send`, kill-switched | **BUILT, BLOCKED ON PAPERWORK** — the Twilio brand registered down the business path; the fix is Direct Sole Proprietor, and the procedure is written | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) Phase 2 |
+| Outgoing texts | `sms_send`, kill-switched | **BUILT, BLOCKED ON PAPERWORK — and the paperwork changed 08-15.** 10DLC was abandoned mid-flight (campaign deleted before its $15 vetting fee, local number released); the live path is **toll-free verification**, `HH0fb442c8…` IN_REVIEW, free, 3–5 business days. Nothing in the code changed | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) Phase 2 · [`SMS_DISCLOSURE`](integrations/SMS_DISCLOSURE_ROADMAP.md) |
+| **The SMS consent story** | `Explained.Phone` | **SCOPED 08-15, no code.** The Phone tab still names A2P 10DLC as the blocker, which went false the night the path changed — a correctness bug, not staleness. The disclosure toll-free verification requires is publicly fetchable on the website and the operator wants it in the app | [`SMS_DISCLOSURE`](integrations/SMS_DISCLOSURE_ROADMAP.md) |
 | Outgoing calls | `phone_call`, `Phone.CallAction` | **SHIPPED 08-15, roadmap COMPLETE** — needed no A2P at all. A bridge: your own phone rings first, so no audio touches the Mac. Gated, capped at 5/recipient/day, off until `BUSTER_CLAW_VOICE_ENABLED` | [`OUTBOUND_VOICE`](integrations/OUTBOUND_VOICE_ROADMAP.md) |
 | The relay (Supabase) | `telephony/relay.ex` | SHIPPED — **now erases, 08-10** | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) — pre-08-10 backlog sweep · [`LEFTOVERS_PLATFORM`](platform/LEFTOVERS_PLATFORM.md) — rotated DB password |
 | Google Workspace | `Google` (16 modules) | SHIPPED | [`GOOGLE_VERIFICATION`](integrations/GOOGLE_VERIFICATION_ROADMAP.md) — restricted scopes, CASA |
@@ -298,14 +312,33 @@ step verified here happened on the operator's own line.
 | **Apple — sign, notarize, staple** | CI, `scripts/codesign_release.sh` | **`G-1`–`G-3` DONE 08-10 (x86_64). `G-4` blocked on an arm64 Mac** | [`APPLE`](platform/APPLE_ROADMAP.md) |
 | **The release gate** | — | **ACTIVE** | [`RELEASE_GATE`](platform/RELEASE_GATE_ROADMAP.md) |
 | **Trust claims & support** | `Sentinel`, — | **ACTIVE** | [`TRUST_AND_SUPPORT`](platform/TRUST_AND_SUPPORT_ROADMAP.md) |
-| CI gates | `scripts/check_*.sh` | SHIPPED, **one red** | — |
+| CI gates | `scripts/check_*.sh` | SHIPPED, **all green** — Dialyzer included, 08-16 (below) | — |
 | Code health | — | SHIPPED | [`LEFTOVERS_PLATFORM`](platform/LEFTOVERS_PLATFORM.md) — hotspots, guards, no DOM harness |
 | QA debt (blocks nothing) | — | OPEN | [`QA_BACKLOG`](platform/QA_BACKLOG.md) |
 
-**🔴 The Dialyzer gate is red on `main`** — exits 2 with 56 findings; 44 are
-accepted-class noise, **12 can be real defects**. There are no PRs here, so it
-blocks nothing: a gate everyone believes is running, isn't. **It has no map and
-should get one.**
+**🟢 The Dialyzer gate is green — exit 0, `Total errors: 298, Skipped: 298`,
+measured 08-16.** It was red that morning with 3, and this row said 56; the build
+list said green. All three numbers were true once, which is why the fix was to
+*run it* rather than pick a line to believe.
+
+- **08-13 (`1d52cff`) really did take it to exit 0**, by making the baseline a
+  *rule* rather than a list of 76 files. That fix held throughout — every one of
+  the 298 skips is the rule doing its job.
+- **What broke it was 08-15's appearance work**: three `refusal/2` fallback
+  clauses in `commands/appearance.ex` that `Appearance.set_background/2` could
+  never reach, since it returns exactly
+  `:empty_slot | :invalid_mode | :not_image_reactive` — and `set/2` catches
+  binary reasons in its own clause first. **Deleted 08-16** (operator call);
+  the gate went green with no baseline entry added.
+
+> **One thing the deletion cost, measured rather than assumed.** A fourth error
+> reason was introduced on `appearance.ex:617` as a probe, and **neither gate
+> caught it** — Dialyzer stayed at exit 0 and all 28 `commands/appearance_test.exs`
+> tests passed, while `refusal/2` would have raised `FunctionClauseError` at
+> runtime. The trade was taken knowingly: three clauses that can never run are not
+> worth a red gate everyone learns to ignore. The comment at the deletion site
+> records it, and `appearance_test.exs:237` is where a guard goes if that stops
+> looking right.
 
 ---
 

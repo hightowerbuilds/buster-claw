@@ -95,26 +95,43 @@ defmodule BusterClawWeb.StudioPanelTest do
   end
 
   describe "the two tabs" do
-    # Was "Voice renders the honest placeholder" until 08-14, when VI.1's
-    # vocabulary and sentence-check panes replaced it. The two refutations are
-    # the half worth keeping: whatever Voice becomes, it must not drag the
-    # frozen studio along with it.
-    test "Voice renders the Ramshackle surface and no studio", %{conn: conn} do
+    # Was "Voice renders the honest placeholder" until 08-14, then the Ramshackle
+    # panes, and since 08-16 the Voice Library — a sidebar over three sections.
+    # The two refutations are the half that has survived all three: whatever
+    # Voice becomes, it must not drag the frozen studio along with it.
+    test "Voice renders the Library, opening on Words, and no studio", %{conn: conn} do
       {view, _html} = open_studio(conn)
       html = select_sub_tab(view, "voice")
 
       assert has_element?(view, "#studio-voice")
-      assert html =~ "Vocabulary"
-      assert html =~ "Can it say this?"
 
-      # Recording is still unbuilt, and the tab says so rather than offering a
-      # control that would do nothing — the standard the placeholder held.
-      assert html =~ "Recording is not built yet"
+      # The sidebar is the tab's own navigation — one activity, three steps.
+      for key <- ~w(words sentence record) do
+        assert has_element?(view, "[phx-click='voice_section'][phx-value-section='#{key}']"),
+               "the Library sidebar has no #{key} section"
+      end
+
+      # It opens on Words, which is the only section rendered until one is picked.
+      assert html =~ "Vocabulary"
+      refute html =~ "Can it say this?"
 
       # The frozen component is gone, not merely hidden.
       refute has_element?(view, "#studio-panel")
       # And nothing pretends to work: no source list, no transport controls.
       refute html =~ "Pick something on the left"
+    end
+
+    test "the Library's sections are alternatives, not layers", %{conn: conn} do
+      {view, _html} = open_studio(conn)
+      select_sub_tab(view, "voice")
+
+      html = render_click(element(view, "[phx-value-section='sentence']"))
+      assert html =~ "Can it say this?"
+      refute html =~ "Vocabulary"
+
+      html = render_click(element(view, "[phx-value-section='record']"))
+      assert has_element?(view, "#studio-recorder")
+      refute html =~ "Can it say this?"
     end
 
     test "Mix renders the existing studio, unchanged, with its assigns", %{conn: conn} do
@@ -158,6 +175,12 @@ defmodule BusterClawWeb.StudioPanelTest do
       # named. So the emptiness is asserted directly: if a third sub-tab arrives
       # as a placeholder, this line fails and the copy check starts meaning
       # something again in the same commit.
+      #
+      # A third sub-tab arrived on 08-16 (Contribute, the recorder) and was
+      # merged back into Voice the same day as the Voice Library's Record
+      # section — so this is still `[]`, and the vacuous-guard risk below is
+      # unchanged rather than resolved. Worth stating, because "the list is
+      # still empty" reads like nothing happened, and twice today it did.
       placeholders = Enum.map(Registry.placeholders(), & &1.key)
       assert placeholders == []
 

@@ -132,7 +132,7 @@ defmodule BusterClaw.Commands.Sound do
   alias BusterClaw.Notifications.Cutup.Dtw
   alias BusterClaw.Notifications.Cutup.Features
   alias BusterClaw.Notifications.Cutup.Index
-  alias BusterClaw.Notifications.Cutup.Select
+  alias BusterClaw.Notifications.Cutup.Sentence
   alias BusterClaw.Notifications.Cutup.Signal
   alias BusterClaw.Notifications.Cutup.Transcripts
   alias BusterClaw.Notifications.Cutup.Vad
@@ -766,13 +766,34 @@ defmodule BusterClaw.Commands.Sound do
     }
   end
 
+  # Every index lookup on this surface is scoped to ONE VOICE BANK, defaulting
+  # to the active one. Without this the cut-up verbs would search across banks
+  # and `sound_sentence` would splice a phrase from two speakers — the single
+  # outcome `Cutup.Bank` exists to prevent, and one nothing downstream repairs.
+  #
+  # Defaulting rather than requiring keeps every pre-bank caller working: all
+  # existing indexes belong to the default bank, so an agent that has never
+  # heard of banks sees exactly what it saw before.
   defp index_opts(args) do
     [
       source: blank_to_nil(Map.get(args, "source")),
+      bank: sentence_bank(args),
       min_confidence: number(Map.get(args, "min_confidence")),
       limit: positive_integer(Map.get(args, "limit"), nil)
     ]
     |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+  end
+
+  # An explicit `bank` argument wins; otherwise the active bank. A blank string
+  # means "every bank" and has to be asked for deliberately, because a corpus-wide
+  # search is the right answer to "does this word exist anywhere?" and the wrong
+  # one to everything else here.
+  defp sentence_bank(args) do
+    case Map.get(args, "bank") do
+      "" -> nil
+      bank when is_binary(bank) -> bank
+      _other -> BusterClaw.Notifications.Cutup.Bank.active()
+    end
   end
 
   # --- writing an index ------------------------------------------------------
@@ -1762,87 +1783,40 @@ defmodule BusterClaw.Commands.Sound do
     warm? = boolean(Map.get(args, "warm"), false)
     opts = assemble_opts(args)
 
-    with {:ok, tokens} <- phrase_tokens(phrase),
-         {:ok, target} <- stored_name(name),
+    with {:ok, target} <- stored_name(name),
          {:ok, path, replaced?} <- studio_target(target, overwrite?),
          {:ok, weights} <- sentence_weights(args),
-         {:ok, slots, missing} <-
-           sentence_slots(tokens, sentence_index_opts(args), allow_missing?),
-         features = sentence_features(slots, warm?),
-         {:ok, plan} <- Select.explain(candidates(slots), [features: features.table] ++ weights),
-         {:ok, clip} <- Assemble.build(plan.cuts, opts),
-         :ok <- write_source(clip, path) do
+         # The splice itself lives in `Cutup.Sentence`, so this command and the
+         # Voice Library surface build sentences through ONE implementation —
+         # two builders would have drifted on padding, fades and take choice,
+         # which are precisely the things that decide whether it sounds right.
+         {:ok, built} <-
+           Sentence.build(phrase,
+             bank: sentence_bank(args),
+             allow_missing: allow_missing?,
+             warm: warm?,
+             index: sentence_index_opts(args),
+             weights: weights,
+             assemble: opts
+           ),
+         :ok <- write_source(built.clip, path) do
       # Three groups rather than ten positional arguments: what was written,
       # what was asked for, and what the search made of it.
-      written = %{name: target, path: path, clip: clip, replaced: replaced?, options: opts}
-      asked = %{phrase: phrase, slots: slots, missing: missing}
+      written = %{name: target, path: path, clip: built.clip, replaced: replaced?, options: opts}
+      asked = %{phrase: phrase, slots: built.slots, missing: built.missing}
 
-      {:ok, sentence_result(written, asked, plan, features)}
+      {:ok, sentence_result(written, asked, built.plan, built.features)}
     end
   end
 
   def sound_sentence(%{"phrase" => phrase}) when is_binary(phrase), do: {:error, :missing_name}
   def sound_sentence(_args), do: {:error, :missing_phrase}
 
-  # `Index.normalize_word/1` and nothing else, so the tokens asked for are in the
-  # exact form the corpus is stored under. The original text is carried alongside
-  # so a missing word is reported the way it was typed.
-  defp phrase_tokens(phrase) do
-    tokens =
-      phrase
-      |> String.split(~r/\s+/u, trim: true)
-      |> Enum.map(fn text -> %{text: text, word: Index.normalize_word(text)} end)
-      |> Enum.reject(&(&1.word == ""))
-
-    if tokens == [], do: {:error, :empty_phrase}, else: {:ok, tokens}
-  end
-
   defp sentence_index_opts(args), do: Keyword.put_new(index_opts(args), :limit, @default_takes)
 
   # Missing words are FATAL by default and the error names them. The alternative
   # — building the sentence out of whatever happened to exist — is the one
   # failure mode of this feature that nobody notices until they listen.
-  defp sentence_slots(tokens, opts, allow_missing?) do
-    {found, missing} =
-      tokens
-      |> Enum.map(fn token -> Map.put(token, :hits, Index.search(token.word, opts)) end)
-      |> Enum.split_with(&(&1.hits != []))
-
-    # Naming the words comes first even when NOTHING was found: "you have no take
-    # of zebra" is actionable and ":no_takes" is not. The bare refusal is left
-    # for the caller who already said they would accept a partial sentence and
-    # would otherwise get an empty one.
-    cond do
-      missing != [] and not allow_missing? ->
-        {:error, {:words_not_found, Enum.map(missing, & &1.text)}}
-
-      found == [] ->
-        {:error, :no_takes}
-
-      true ->
-        {:ok, found, missing}
-    end
-  end
-
-  # `Index.search/2` returns best-confidence-first and that order is carried
-  # straight into the lattice: `Select` resolves an exact tie toward the
-  # earlier-listed candidate, so the best-confidence take wins a tie by
-  # construction rather than by accident.
-  defp candidates(slots) do
-    Enum.map(slots, fn slot ->
-      Enum.map(slot.hits, fn hit ->
-        frame0 = frame_at(hit.word.start_ms)
-
-        %{
-          source: hit.source,
-          word: hit.word,
-          frame0: frame0,
-          frame1: max(frame_at(hit.word.end_ms) - 1, frame0)
-        }
-      end)
-    end)
-  end
-
   # **This never blocks on a cold corpus unless asked.** A source with no cached
   # features costs ~109 s to analyse, so by default only the already-cached ones
   # are handed over; `Select` imputes the acoustic terms for the rest from the
@@ -1851,33 +1825,6 @@ defmodule BusterClaw.Commands.Sound do
   #
   # The features handed over are the whole recording's, already CMN'd by
   # `Features` — which is why nothing on this path enables `Dtw`'s own `:cmn`.
-  defp sentence_features(slots, warm?) do
-    sources =
-      slots |> Enum.flat_map(fn slot -> Enum.map(slot.hits, & &1.source) end) |> Enum.uniq()
-
-    cold = Enum.reject(sources, &Features.cached?/1)
-    wanted = if warm?, do: sources, else: sources -- cold
-
-    if warm? and cold != [], do: Features.warm(cold)
-
-    table =
-      Enum.reduce(wanted, %{}, fn source, acc ->
-        case Features.for_source(source) do
-          {:ok, [_ | _] = seq} -> Map.put(acc, source, seq)
-          _other -> acc
-        end
-      end)
-
-    %{
-      table: table,
-      warm: warm?,
-      sources: Enum.sort(sources),
-      with_features: table |> Map.keys() |> Enum.sort(),
-      without_features: Enum.sort(sources -- Map.keys(table)),
-      analysed: if(warm?, do: Enum.sort(cold), else: [])
-    }
-  end
-
   # Spelled out rather than converted, like `weight/1` above: a wire caller must
   # never be able to name an atom this module did not choose. `Select` refuses a
   # negative weight itself; this refuses a key it does not recognise, so a typo'd
@@ -1942,7 +1889,10 @@ defmodule BusterClaw.Commands.Sound do
       phrase: asked.phrase,
       # First field after the file itself, and a list of words rather than a
       # count: this is the failure that must never be read past.
-      missing: Enum.map(asked.missing, & &1.text),
+      # Already the words as TYPED — `Cutup.Sentence` maps them on the way out,
+      # so a missing word is reported the way the caller wrote it rather than
+      # normalized. Was `Enum.map(&1.text)` here until the splice moved.
+      missing: asked.missing,
       words: words,
       sources: drawn_from(plan.cuts),
       duration_ms: SoundStudio.duration_ms(written.clip),
@@ -1984,7 +1934,7 @@ defmodule BusterClaw.Commands.Sound do
     [
       if(missing != [],
         do:
-          "#{length(missing)} word(s) are NOT in this sentence because the index has no take of them: #{Enum.map_join(missing, ", ", & &1.text)}. Say so before playing it — the audio is a different sentence from the one that was asked for. sound_index_words says what IS available, and sound_find is how a word that exists in the audio gets into the index.",
+          "#{length(missing)} word(s) are NOT in this sentence because the index has no take of them: #{Enum.join(missing, ", ")}. Say so before playing it — the audio is a different sentence from the one that was asked for. sound_index_words says what IS available, and sound_find is how a word that exists in the audio gets into the index.",
         else: "Every word of the phrase was found and used."
       ),
       if(plan.candidates == plan.slots,

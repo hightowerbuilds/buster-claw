@@ -18,7 +18,8 @@ defmodule BusterClawWeb.StudioPanel do
   |---|---|
   | `Studio.Registry` | the sub-tabs, labels and blurbs — **add a tab here** |
   | `SoundStudioComponent` | Mix, rendered unchanged (see below) |
-  | `placeholder/1`, below | any sub-tab whose surface is unwritten — Voice today |
+  | `Studio.VoiceLibrary` | Voice Library — sidebar + words/sentence/record |
+  | `placeholder/1`, below | a sub-tab whose surface is unwritten — **none today** |
 
   The rail, the parent's event whitelist (via `tab_keys/0`) and the dispatch
   below all read from `Studio.Registry`, so a tab cannot exist in one of them
@@ -39,7 +40,7 @@ defmodule BusterClawWeb.StudioPanel do
   use BusterClawWeb, :html
 
   alias BusterClawWeb.Studio.Registry
-  alias BusterClawWeb.Studio.Voice
+  alias BusterClawWeb.Studio.VoiceLibrary
 
   @doc "Sub-tab keys, in rail order — the parent's `select_studio_tab` whitelist."
   def tab_keys, do: Enum.map(Registry.tabs(), & &1.key)
@@ -67,6 +68,19 @@ defmodule BusterClawWeb.StudioPanel do
   attr :voice_sentence, :string, required: true
   attr :voice_rows, :list, required: true
   attr :voice_check, :list, required: true
+
+  attr :voice_section, :string, required: true
+  attr :voice_selected, :any, required: true
+  attr :voice_takes, :list, required: true
+  attr :voice_preview, :any, required: true
+  attr :voice_preview_error, :any, required: true
+  attr :voice_notice, :any, required: true
+
+  # The recorder's whole state, as ONE assign. Deliberately unlike Voice's
+  # scalars above: this is one cohesive thing (a bank, a device, a word, a
+  # pending notice), and `status_live.ex` is at its cap for a reason worth not
+  # spending on six more attr threads. See `Status.Recorder`.
+  attr :recorder, :map, required: true
 
   def studio_panel(assigns) do
     assigns = assign(assigns, tabs: Registry.tabs(), placeholders: Registry.placeholders())
@@ -115,16 +129,23 @@ defmodule BusterClawWeb.StudioPanel do
         />
       </div>
 
-      <%!-- Voice: Ramshackle. Its assigns are StatusLive's for the same reason
-            Mix's are — see `Status.Voice`. --%>
+      <%!-- Voice Library: browse, build, record. Its assigns are StatusLive's
+            for the same reason Mix's are — see `Status.Voice`. --%>
       <div :if={@tab == "voice"} data-studio-tab="voice" class="flex min-h-0 flex-1 flex-col">
-        <Voice.voice
+        <VoiceLibrary.library
           report={@voice_report}
           error={@voice_error}
           query={@voice_query}
           sentence={@voice_sentence}
           rows={@voice_rows}
           check={@voice_check}
+          section={@voice_section}
+          selected={@voice_selected}
+          takes={@voice_takes}
+          preview={@voice_preview}
+          preview_error={@voice_preview_error}
+          notice={@voice_notice}
+          recorder={@recorder}
         />
       </div>
 

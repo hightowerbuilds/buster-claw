@@ -280,6 +280,7 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
       terminal_command_list
       terminal_tab_open
       terminal_theme_list
+      voice_bank_list
       web_search
     )
 
@@ -302,6 +303,17 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
     # `sound_record` and `sound_input_level_set` are NOT here, by design: the
     # first is `:restricted` AND `gated` (see `sound_capture_test.exs` for why
     # `:restricted` alone would not have been enough), the second `:restricted`.
+    # `voice_bank_list` reviewed and added 08-16 with the contribution surface
+    # (STUDIO_ROADMAP Part V). It reads the roster — bank names and labels — plus
+    # which one is active. The question worth asking, since a bank label is often
+    # a PERSON'S NAME: does naming the voices in the corpus leak more than the
+    # tier already allows? No. `sound_gaps` and `sound_index_list` are both
+    # already `:safe` and return the actual WORDS spoken in those recordings, so
+    # a caller that can read the vocabulary can already read far more than the
+    # label above it. Its three write siblings — `voice_bank_create`,
+    # `voice_bank_select`, `voice_bank_delete` — are all `:restricted`, and
+    # `delete` is `gated` on top.
+    #
     # (Note lives out here because ~w() has no comment syntax; putting it inside
     # the sigil turns every word into a command name, which this very test
     # caught.)

@@ -47,8 +47,12 @@ defmodule BusterClawWeb.Status.Voice do
   """
   import Phoenix.Component
 
+  alias BusterClaw.Notifications.Cutup.Bank
   alias BusterClaw.Notifications.Cutup.Gaps
   alias BusterClaw.Notifications.Cutup.Index
+  alias BusterClaw.Notifications.Cutup.Sentence
+  alias BusterClaw.Notifications.Cutup.Takes
+  alias BusterClaw.Notifications.SoundStudio
 
   @doc """
   Mount defaults. Nothing is read from disk here — the corpus load waits until
@@ -61,7 +65,217 @@ defmodule BusterClawWeb.Status.Voice do
     |> assign(:voice_error, nil)
     |> assign(:voice_query, "")
     |> assign(:voice_sentence, "")
+    |> assign(:voice_section, "words")
+    |> assign(:voice_selected, nil)
+    |> assign(:voice_takes, [])
+    |> assign(:voice_preview, nil)
+    |> assign(:voice_preview_error, nil)
+    |> assign(:voice_notice, nil)
   end
+
+  @doc """
+  Switch the Library's main pane. Refuses a section the sidebar never offered.
+
+  Same posture as `Status.Studio.select_studio_tab/2`: a forged value is a no-op
+  rather than a crash, and the whitelist is one literal so the sidebar and this
+  cannot disagree.
+  """
+  @sections ~w(words sentence record)
+
+  def sections, do: @sections
+
+  def put_section(socket, section) when section in @sections,
+    do: assign(socket, :voice_section, section)
+
+  def put_section(socket, _section), do: socket
+
+  @doc """
+  Select a word and load its takes, so the main pane can list and play them.
+
+  This is VI.1's **Pane 2** — the one the roadmap listed as missing because it
+  "needs a route serving a take's audio". That route turned out to exist:
+  `/studio/file/:name` already serves any studio source with byte ranges, so a
+  take is a slice of a file the browser can already fetch. What was missing was
+  never the route; it was somebody checking.
+
+  Takes are read from the ACTIVE bank only. A take of the same word in another
+  voice is not an alternative — it is a different instrument.
+  """
+  def select_word(socket, word) when is_binary(word) do
+    socket
+    |> assign(:voice_selected, word)
+    |> assign(:voice_takes, Takes.list(Bank.active(), word))
+  end
+
+  def select_word(socket, _word), do: socket
+
+  @doc """
+  Jump from a sentence chip to the word it grades: Words, filtered to that word,
+  with its takes open.
+
+  The filter is set as well as the selection, and that is the point rather than a
+  side effect. A vocabulary of 237 words is a long list; highlighting a row
+  somewhere inside it is not "sent to the word", it is "sent to the list". The
+  filter box shows what it was set to, so the narrowing is visible state the
+  operator can clear, not a hidden mode they have to escape.
+  """
+  def open_word(socket, word) when is_binary(word) do
+    socket
+    |> put_section("words")
+    |> assign(:voice_query, word)
+    |> select_word(word)
+  end
+
+  def open_word(socket, _word), do: socket
+
+  @doc """
+  Choose which take of the selected word gets spliced, or clear the choice.
+
+  A preference is a pointer applied at selection time, not a score written onto
+  the take — `Cutup.Takes` has the argument, and the short version is that
+  editing `confidence` to express a preference makes the origin field lie.
+  """
+  def prefer_take(socket, source, start_ms) do
+    with word when is_binary(word) <- socket.assigns.voice_selected,
+         {start_ms, _rest} <- Float.parse(to_string(start_ms)),
+         {:ok, _ref} <- Takes.prefer(Bank.active(), word, source, start_ms) do
+      refresh_takes(socket, word)
+    else
+      _other -> socket
+    end
+  end
+
+  def unprefer_take(socket) do
+    case socket.assigns.voice_selected do
+      word when is_binary(word) ->
+        Takes.unprefer(Bank.active(), word)
+        refresh_takes(socket, word)
+
+      _none ->
+        socket
+    end
+  end
+
+  @doc """
+  Delete one take of the selected word.
+
+  What goes with it depends on what is left in the source — see
+  `Cutup.Takes.delete/2`. The corpus report is reloaded because a word can leave
+  the vocabulary entirely this way, and the Words list must not keep offering it.
+  """
+  def delete_take(socket, source, start_ms) do
+    with word when is_binary(word) <- socket.assigns.voice_selected,
+         {start_ms, _rest} <- Float.parse(to_string(start_ms)),
+         {:ok, removed} <- Takes.delete(source, start_ms) do
+      socket
+      |> assign(:voice_notice, {:ok, deleted_message(source, removed)})
+      |> refresh_takes(word)
+      |> load_report()
+    else
+      {:error, reason} -> assign(socket, :voice_notice, {:error, delete_error(reason)})
+      _other -> socket
+    end
+  end
+
+  # The selection survives a delete, and empties only when its last take does —
+  # otherwise removing one of four takes would close the list the operator is
+  # working in.
+  defp refresh_takes(socket, word) do
+    case Takes.list(Bank.active(), word) do
+      [] -> socket |> assign(:voice_selected, nil) |> assign(:voice_takes, [])
+      takes -> assign(socket, :voice_takes, takes)
+    end
+  end
+
+  defp deleted_message(source, %{audio: true}),
+    do: "Deleted that take, and #{source} with it — it held nothing else."
+
+  defp deleted_message(source, %{index: true}),
+    do: "Deleted that take. #{source} has no words left, but the recording stays in the Studio."
+
+  defp deleted_message(_source, _removed), do: "Deleted that take."
+
+  defp delete_error(:no_such_take), do: "That take is already gone."
+  defp delete_error(reason), do: "That take could not be deleted: #{inspect(reason)}."
+
+  @doc """
+  Forget the selected word, its takes, and any built preview.
+
+  Called when the bank changes. Without it, switching voice leaves the previous
+  voice's takes on screen and playable — which is the one confusion the whole
+  partition exists to prevent, arriving through the back door of stale state.
+  The built preview goes too: it was spliced from a voice that is no longer
+  selected, so playing it would misattribute a sentence.
+  """
+  def clear_selection(socket) do
+    socket
+    |> assign(:voice_selected, nil)
+    |> assign(:voice_takes, [])
+    |> assign(:voice_preview, nil)
+    |> assign(:voice_preview_error, nil)
+    |> assign(:voice_notice, nil)
+  end
+
+  @doc """
+  Build the current phrase into a playable file, or say why it cannot be built.
+
+  Goes through `Cutup.Sentence`, the same code `sound_sentence` uses, so what the
+  operator hears is what an agent would produce — see that module on why a second
+  builder in the web layer would have drifted on exactly the details that decide
+  whether a splice sounds right.
+
+  The preview is written under a **fixed name** and overwritten every time. A
+  sentence preview is scratch: it is not a take, it is not part of the corpus,
+  and accumulating `preview-1.wav … preview-40.wav` in the studio's source list
+  would turn a working surface into a junk drawer within an afternoon.
+  """
+  @preview_name "voice-preview.wav"
+
+  def build_preview(socket) do
+    phrase = socket.assigns.voice_sentence
+
+    case Sentence.build(phrase, bank: Bank.active(), assemble: []) do
+      {:ok, built} ->
+        path = Path.join(SoundStudio.dir(), @preview_name)
+        File.mkdir_p(SoundStudio.dir())
+
+        case SoundStudio.write(built.clip, path) do
+          :ok ->
+            socket
+            |> assign(:voice_preview, %{
+              name: @preview_name,
+              phrase: phrase,
+              version: version(socket)
+            })
+            |> assign(:voice_preview_error, nil)
+
+          {:error, reason} ->
+            preview_error(socket, reason)
+        end
+
+      {:error, reason} ->
+        preview_error(socket, reason)
+    end
+  end
+
+  # NOT `:voice_error` — that assign means "the corpus could not be read" and the
+  # surface renders it as such. A phrase that cannot be built is a different
+  # thing entirely (usually a missing word, which is actionable), and routing it
+  # through the corpus error would tell the operator their library is broken.
+  # A monotonic counter, not a timestamp: the preview file keeps ONE name and is
+  # overwritten on every build, so the client needs something that changes to
+  # know its cached copy is stale. Without it the audition hook replays the
+  # previous sentence from the same URL — real audio of a real phrase, and
+  # therefore convincing.
+  defp version(socket) do
+    case socket.assigns.voice_preview do
+      %{version: n} when is_integer(n) -> n + 1
+      _none -> 1
+    end
+  end
+
+  defp preview_error(socket, reason),
+    do: socket |> assign(:voice_preview, nil) |> assign(:voice_preview_error, reason)
 
   @doc """
   Load the corpus report unless it is already in hand.
@@ -72,9 +286,20 @@ defmodule BusterClawWeb.Status.Voice do
   def ensure_report(%{assigns: %{voice_report: %{}}} = socket), do: socket
   def ensure_report(socket), do: load_report(socket)
 
-  @doc "Re-read the corpus from disk, discarding what was cached."
+  @doc """
+  Re-read the corpus from disk, discarding what was cached.
+
+  **Scoped to the active bank**, which is what makes the dictionary answer *"what
+  can this voice say?"* rather than *"what is on this machine?"* — the second is
+  not a question anyone can act on, because a phrase can only be spliced from one
+  voice (`Cutup.Bank`). A word another bank has thirty takes of is still missing
+  here, and saying so is the point.
+
+  `Status.Contribute` calls this whenever the bank changes or a take lands, so
+  the two tabs never disagree about whose corpus is on screen.
+  """
   def load_report(socket) do
-    case Gaps.report([]) do
+    case Gaps.report(bank: Bank.active()) do
       {:ok, report} ->
         socket
         |> assign(:voice_report, report)

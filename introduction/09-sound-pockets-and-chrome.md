@@ -24,6 +24,26 @@ spliced into sentences nobody said. No model, no network. It is command-only and
 its verbs are in the catalog below; the Explained tab's Ramshackle page is the
 long version if the operator asks how it works.
 
+**The corpus is divided into voice banks, and `voice_bank_*` is how you read and
+switch them.** A bank is *one person through one microphone* — not a folder. The
+rule is that **banks never merge**, and it is not fussiness: a phrase spliced
+from two speakers sounds broken, and nothing downstream repairs it, because the
+matcher chooses takes by timbre and will happily rank a stranger's voice as the
+best fit for a word. `voice_bank_list` is safe and tells you which bank is
+active; `voice_bank_select` switches it, which changes both what the dictionary
+reports and whose voice a new recording joins.
+
+So before you answer *"can it say this?"*, know **which voice you are asking
+about** — a word the active bank has never said is missing even when another
+bank says it thirty times. `sound_gaps` reports the active bank, not the machine.
+
+`sound_record_save` is the in-app recorder's write half and is **gated** for the
+same reason `sound_record` is. Note what it produces that nothing else does:
+takes with origin `manual` at confidence 1.0, because the operator recorded a
+known word deliberately and the clip *is* the word. Every one of the 655 takes
+in the original voicemail corpus is `aligned` — a proportional guess capped at
+0.9 — so a recorded take is the only kind the aligner cannot second-guess.
+
 ## Pockets: folders that know what they are for
 
 A **Pocket** is one directory under `pockets/` with a `POCKET.md` manifest

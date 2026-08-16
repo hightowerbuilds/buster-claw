@@ -91,6 +91,7 @@ defmodule BusterClaw.Notifications.Cutup.Index do
   """
 
   alias BusterClaw.Library.Artifact
+  alias BusterClaw.Notifications.Cutup.Bank
   alias BusterClaw.Notifications.Cutup.SourceName
   alias BusterClaw.Notifications.Cutup.Types
 
@@ -109,6 +110,7 @@ defmodule BusterClaw.Notifications.Cutup.Index do
   @typedoc "How `build/3` labels and stamps the index it constructs."
   @type build_opts :: [
           origin: :manual | :aligned | :recognizer | :imported,
+          bank: String.t(),
           language: String.t() | nil,
           indexed_at: DateTime.t() | nil
         ]
@@ -122,6 +124,7 @@ defmodule BusterClaw.Notifications.Cutup.Index do
   """
   @type search_opts :: [
           source: String.t(),
+          bank: String.t(),
           min_confidence: number(),
           limit: pos_integer()
         ]
@@ -131,6 +134,7 @@ defmodule BusterClaw.Notifications.Cutup.Index do
           :invalid_source
           | :unsafe_source
           | :invalid_origin
+          | :unknown_bank
           | :invalid_index
           | :not_found
           | :invalid
@@ -173,12 +177,14 @@ defmodule BusterClaw.Notifications.Cutup.Index do
 
   def build(source, words, opts) when is_list(words) and is_list(opts) do
     with {:ok, name} <- safe_source(source),
-         {:ok, origin} <- origin(Keyword.get(opts, :origin, :manual)) do
+         {:ok, origin} <- origin(Keyword.get(opts, :origin, :manual)),
+         {:ok, bank} <- bank(Keyword.get(opts, :bank)) do
       {:ok,
        %{
          source: name,
          words: normalize_words(words),
          origin: origin,
+         bank: bank,
          language: language(Keyword.get(opts, :language)),
          indexed_at: stamp(Keyword.get(opts, :indexed_at, :now))
        }}
@@ -350,12 +356,27 @@ defmodule BusterClaw.Notifications.Cutup.Index do
 
   # Load every index in scope. A `:source` that is unreadable or unsafe narrows
   # to nothing, which is the same answer as "that source has no index".
+  #
+  # `:bank` narrows further, and is what keeps a cut-up inside one voice. It is
+  # applied AFTER loading rather than by filename, because a bank is metadata
+  # inside the file (see `Cutup.Bank`) — there is nothing in the path to filter on.
   defp indexes(opts) do
     case Keyword.get(opts, :source) do
       nil -> Enum.flat_map(list(), &loaded/1)
       source -> loaded(source)
     end
+    |> within_bank(Keyword.get(opts, :bank))
   end
+
+  # No `:bank` means every bank, which is right for a corpus-wide question
+  # ("does this word exist anywhere?") and wrong for assembly. Callers that
+  # splice must pass one; `Cutup.Assemble`'s own docs carry that requirement.
+  defp within_bank(indexes, nil), do: indexes
+
+  defp within_bank(indexes, bank) when is_binary(bank),
+    do: Enum.filter(indexes, &(Bank.of(&1) == bank))
+
+  defp within_bank(_indexes, _bank), do: []
 
   defp loaded(source) do
     case load(source) do
@@ -490,6 +511,25 @@ defmodule BusterClaw.Notifications.Cutup.Index do
 
   defp origin(_value), do: {:error, :invalid_origin}
 
+  # STRICT here, tolerant in `from_map/2` — the asymmetry is the point.
+  #
+  # A caller naming a bank is making a claim about whose voice this is, and a
+  # typo that silently fell back to the default would file a contributor's takes
+  # into the voicemail corpus. That is not a cosmetic mistake: `Cutup.Dtw` ranks
+  # by timbre, so the mis-filed takes would then be offered as the best match for
+  # words in a *different* voice, which is exactly the artefact `Cutup.Bank`
+  # exists to prevent — and it would be invisible until somebody heard it.
+  #
+  # A file on disk gets the opposite treatment, because a hand-edited index whose
+  # bank was deleted last week should still open.
+  defp bank(nil), do: {:ok, Bank.default()}
+
+  defp bank(value) when is_binary(value) do
+    if Bank.known?(value), do: {:ok, value}, else: {:error, :unknown_bank}
+  end
+
+  defp bank(_value), do: {:error, :unknown_bank}
+
   defp language(value) when is_binary(value), do: value
   defp language(_value), do: nil
 
@@ -506,6 +546,7 @@ defmodule BusterClaw.Notifications.Cutup.Index do
       "version" => 1,
       "source" => name,
       "origin" => index |> Map.get(:origin) |> encodable_origin(),
+      "bank" => Bank.of(index),
       "language" => index |> Map.get(:language) |> language(),
       "indexed_at" => index |> Map.get(:indexed_at) |> encodable_time(),
       "words" =>
@@ -564,6 +605,7 @@ defmodule BusterClaw.Notifications.Cutup.Index do
        source: name,
        words: normalize_words(words),
        origin: decoded_origin(map),
+       bank: Bank.of(map),
        language: language(Map.get(map, "language")),
        indexed_at: decoded_time(Map.get(map, "indexed_at"))
      }}

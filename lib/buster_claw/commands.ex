@@ -573,6 +573,14 @@ defmodule BusterClaw.Commands do
   defdelegate sound_input_level_set(args), to: BusterClaw.Commands.SoundCapture
   # Gated: the microphone is the one input an unattended run must not open alone
   defdelegate sound_record(args), to: BusterClaw.Commands.SoundCapture
+  # The in-app recorder's write half, and the voice banks that keep one
+  # contributor's takes from being spliced into another's (STUDIO_ROADMAP V.0:
+  # banks never merge, and a bank is a voice-and-channel, not a folder).
+  defdelegate sound_record_save(args), to: BusterClaw.Commands.SoundCapture
+  defdelegate voice_bank_list(args \\ %{}), to: BusterClaw.Commands.SoundCapture
+  defdelegate voice_bank_create(args), to: BusterClaw.Commands.SoundCapture
+  defdelegate voice_bank_select(args), to: BusterClaw.Commands.SoundCapture
+  defdelegate voice_bank_delete(args), to: BusterClaw.Commands.SoundCapture
   # Pockets — the operator's own folders of media, READ ONLY. There is no verb
   # here that records, changes or removes a mount, at any tier: mounting is an
   # operator act in the UI, and the absence is the enforcement (POCKETS_ROADMAP

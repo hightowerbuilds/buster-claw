@@ -154,11 +154,19 @@ defmodule BusterClaw.Notifications.Cutup.Types do
   - `:recognizer` — machine transcription, where a recogniser genuinely produced
     the timings. Approximate; see the padding note on `t:cut/0`.
   - `:imported` — carried in from an external tool.
+
+  `bank` records **whose voice, through which microphone** — the partition
+  `STUDIO_ROADMAP` V.0 requires, since a cut-up spliced across two speakers
+  sounds broken and nothing downstream can repair it. It is never `nil`:
+  `Cutup.Bank.of/1` reads an absent or unknown value as `Cutup.Bank.default/0`,
+  on the way *out* of storage, because these files are hand-editable by design.
+  See `Cutup.Bank` for why a bank is a field here rather than a directory.
   """
   @type index :: %{
           source: String.t(),
           words: [word()],
           origin: :manual | :aligned | :recognizer | :imported,
+          bank: String.t(),
           language: String.t() | nil,
           indexed_at: DateTime.t() | nil
         }
