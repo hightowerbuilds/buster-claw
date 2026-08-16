@@ -25,12 +25,12 @@ defmodule BusterClawWeb.Status.Studio do
   import Phoenix.Component
   import Phoenix.LiveView
 
-  alias BusterClaw.Notifications.SoundStudio
   alias BusterClaw.Notifications.Studio.Render
   alias BusterClaw.Notifications.StudioMix
   alias BusterClawWeb.SoundStudioComponent
   alias BusterClawWeb.Status.Recorder
   alias BusterClawWeb.Status.Voice
+  alias BusterClawWeb.Studio.Preview
   alias BusterClawWeb.StudioPanel
 
   # ---------------------------------------------------------------------------
@@ -182,9 +182,8 @@ defmodule BusterClawWeb.Status.Studio do
   def preview_clip(socket) do
     with clip when is_map(clip) <- selected_clip(socket),
          {:ok, audio} <- Render.preview(clip, &SoundStudioComponent.resolve_source/1),
-         :ok <- File.mkdir_p(SoundStudio.dir()),
-         :ok <- SoundStudio.write(audio, Path.join(SoundStudio.dir(), @preview_name)) do
-      assign(socket, :studio_preview, %{name: @preview_name, version: next_version(socket)})
+         {:ok, preview} <- Preview.write(audio, @preview_name, socket.assigns[:studio_preview]) do
+      assign(socket, :studio_preview, preview)
     else
       _other -> assign(socket, :studio_preview, nil)
     end
@@ -194,13 +193,6 @@ defmodule BusterClawWeb.Status.Studio do
   # chain must retire it, or "Hear it" plays the version before the edit — real
   # audio of a real chain, which is the convincing way to be wrong.
   defp expire_preview(socket), do: assign(socket, :studio_preview, nil)
-
-  defp next_version(socket) do
-    case socket.assigns[:studio_preview] do
-      %{version: n} when is_integer(n) -> n + 1
-      _none -> 1
-    end
-  end
 
   @doc """
   The selected clip's map, from a socket OR from bare assigns.

@@ -892,6 +892,16 @@ check lib/buster_claw/notifications/cutup/bank.ex             330 HELD
 # with it. The audio-retention row was UNCOVERED until `takes_test.exs` existed —
 # breaking it failed nothing — so that test is load-bearing, not decoration.
 check lib/buster_claw/notifications/cutup/takes.ex            320 HELD
+# `capture/take.ex` — the recorder's server half. Capped 08-16 during the quality
+# pass, which found it was the ONE module added that day with no cap: every
+# sibling got one on arrival and this was missed, which is exactly the drift the
+# inventory exists to make visible.
+#
+# Roughly half is the moduledoc's table of what one word versus a whole sentence
+# produces (`:manual` at 1.0 vs `:aligned` capped below it). If it grows, ask
+# whether DECODING and STORING have drifted apart — `decode/2` is pure and
+# testable without a workspace, `store/3` writes files; that is the seam.
+check lib/buster_claw/notifications/capture/take.ex           420 HELD
 check lib/buster_claw/notifications/cutup/features.ex         760 HELD
 
 # The web command surface (`1eee2f8`), 894 -> 848 by collapsing the six

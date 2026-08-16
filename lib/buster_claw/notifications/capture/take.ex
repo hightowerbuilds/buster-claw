@@ -117,22 +117,20 @@ defmodule BusterClaw.Notifications.Capture.Take do
 
   def decode(_pcm, _sample_rate), do: {:error, :invalid_pcm}
 
-  @doc """
-  Build the index that makes a recorded take findable.
-
-  One word or a whole sentence — the branch and its reasoning are in the
-  moduledoc, and the short version is that a single word's boundary is the file
-  (a measurement) while a sentence's interior boundaries are `Cutup.Align`
-  dividing the text over the speech it found (a guess, and labelled as one).
-
-  `bank` is validated by `Index.build/3`, which refuses a name that is not on the
-  roster. That refusal is the point: filing a contributor's take into the wrong
-  voice is the failure `Cutup.Bank` exists to prevent, and a typo is how it would
-  actually happen.
-  """
-  @spec index_for(String.t(), String.t(), t()) ::
-          {:ok, BusterClaw.Notifications.Cutup.Types.index()} | {:error, term()}
-  def index_for(source, text, %{duration_ms: duration_ms, clip: clip}) when is_binary(text) do
+  # Build the index that makes a recorded take findable.
+  #
+  # One word or a whole sentence — the branch and its reasoning are in the
+  # moduledoc, and the short version is that a single word's boundary is the file
+  # (a measurement) while a sentence's interior boundaries are `Cutup.Align`
+  # dividing the text over the speech it found (a guess, and labelled as one).
+  #
+  # `bank` is validated by `Index.build/3`, which refuses a name that is not on
+  # the roster. That refusal is the point: filing a contributor's take into the
+  # wrong voice is the failure `Cutup.Bank` exists to prevent.
+  #
+  # PRIVATE since 08-16. It was public with no caller outside this module — a
+  # shipped API nobody asked for. `store/3` is the whole surface.
+  defp index_for(source, text, %{duration_ms: duration_ms, clip: clip}) when is_binary(text) do
     case words_in(text) do
       [] ->
         {:error, :invalid_index}
@@ -158,7 +156,7 @@ defmodule BusterClaw.Notifications.Capture.Take do
     end
   end
 
-  def index_for(_source, _text, _take), do: {:error, :invalid_index}
+  defp index_for(_source, _text, _take), do: {:error, :invalid_index}
 
   # `Vad.energy_profile/2` is passed to `align/3` so interior boundaries snap to
   # the quiet moments near them rather than landing wherever arithmetic put them.
@@ -370,14 +368,12 @@ defmodule BusterClaw.Notifications.Capture.Take do
   # Float [-1.0, 1.0] to signed 16-bit little-endian.
   #
   # Scaling by 32_767 rather than 32_768 keeps +1.0 inside the positive rail
-  # instead of wrapping to the negative one, and the clamp catches a sample that
-  # arrived beyond full scale. Both are guards against a click at exactly the
-  # loudest moment of a take, which is where one is least forgivable.
+  # instead of wrapping to the negative one. Saturation is `SoundStudio`'s —
+  # this module had its own copy until 08-16, which made three implementations
+  # of "what is the loudest sample" for a value where disagreeing is audible.
   defp pcm16(floats) do
     for f <- floats, into: <<>> do
-      <<f |> Kernel.*(32_767) |> round() |> clamp()::little-signed-16>>
+      <<SoundStudio.clamp16(f * 32_767)::little-signed-16>>
     end
   end
-
-  defp clamp(sample), do: sample |> max(-32_768) |> min(32_767)
 end

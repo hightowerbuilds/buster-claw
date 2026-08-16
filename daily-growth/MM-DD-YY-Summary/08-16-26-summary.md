@@ -1,4 +1,4 @@
-# 08-16-26 — Five estimates outlived the things they described
+# 08-16-26 — Six estimates outlived the things they described
 
 Two arcs, both in the Studio. The Voice tab became the **Voice Library** — browse
 your words, hear them, build a sentence, hear that, record what was missing. Then
@@ -7,7 +7,7 @@ operator had reported twice.
 
 It started as two doc fixes.
 
-The through-line arrived five times before it was exhausted, and it is not
+The through-line arrived six times before it was exhausted, and it is not
 yesterday's. Yesterday was *guards that guarded nothing*. Today was **written
 claims that were true when written and had quietly stopped being true**, every
 one of them understating what the code could already do:
@@ -19,6 +19,7 @@ one of them understating what the code could already do:
 | Pane 2 "needs a route serving a take's audio, which is its own surface" | 08-09 | The route had existed since the Studio shipped |
 | "A name collision is refused, never auto-suffixed" | **this morning** | Made the recorder able to capture each word exactly once |
 | "A hook's `pushEvent` resolves against the `phx-target` on the hook's own element" | before today | **It does not.** Every click on a clip crashed the LiveView |
+| "Every write goes through here" — `SoundStudio.clamp16/1` | long before today | True until **today**, when two more write paths were built beside it |
 
 The fourth is the one worth sitting with. **I wrote it, defended it in a comment,
 and it was load-bearingly wrong within nine hours** — not because the rule was
@@ -29,9 +30,16 @@ the wrong comment did not merely fail to describe the code — it *shaped the te
 that was written to check it*, and that test passed while the app crashed on
 every click. It gets its own section at the bottom.
 
-Not one of the five was found by reading. The gate was run, the file was opened,
-the route was questioned, the operator asked for something the code refused, and
-the last needed a real browser.
+**The sixth is the one to end on**, because it is the only one nobody wrote
+wrongly. `SoundStudio.clamp16/1` said "every write goes through here" and it was
+true for months — until this morning, when the recorder and the effect chain each
+grew their own saturation. **A single-door claim is not falsified by editing it;
+it is falsified by building a second door**, which is precisely the thing a
+comment cannot notice.
+
+Not one of the six was found by reading. The gate was run, the file was opened,
+the route was questioned, the operator asked for something the code refused, the
+fifth needed a real browser, and the sixth needed a scan for duplicate helpers.
 
 | Shipped | |
 |---|---|
@@ -399,3 +407,69 @@ rather than left to be discovered.
 **Pitch-shift that holds duration.** `speed` is tape varispeed — pitch and length
 move together, honestly labelled. Holding duration needs a phase vocoder, which
 is its own catalog entry rather than an option on this one.
+
+
+---
+
+# The quality pass
+
+The operator asked, at the end: *"lets make sure dead and orphaned code is
+deleted and that we are thoroughly modularized."* Scanned rather than asserted —
+every public function in the eight new modules against its call sites, every JS
+export against its importers.
+
+**Int16 saturation was written three times.** `SoundStudio.clamp16/1`,
+`Take.clamp/1`, `Effects.clamp16/1` — and the first carried the comment quoted in
+the table above. Three implementations of "what is the loudest sample" is two
+that can disagree, and a wrapped sample is a full-scale sign flip at the loudest
+moment of the audio. `samples/1`, `map_samples/2`, `frame_bytes/1` and
+`clamp16/1` are public on `SoundStudio` now — the module that DEFINES the format
+— and both copies are gone.
+
+**Preview versioning existed twice**, identically, six lines each. It is what
+stops `voice_audition.js` replaying the previous sentence or chain from a cached
+URL — a bug already hit once today — so it is now `Studio.Preview` and stated
+once.
+
+**`Take.index_for/3` was public with no caller anywhere.** Made private, after
+checking for dynamic references first: this repo has an incident on file where a
+`defp` conversion passed 3,569 tests and broke seeding at runtime.
+
+**Two stale module references** (`Status.Contribute`, renamed hours earlier), and
+**one module with no size cap** — `capture/take.ex`, the only one of the day's
+additions that missed getting one on arrival, which is exactly the drift the
+inventory exists to make visible.
+
+## The two "dead" exports that were not dead
+
+`meter.js` exported `TARGET_LOW_DB` and `TARGET_HIGH_DB` and nothing imported
+them. The obvious move is to delete them. The truth is that **V.6 asks for the
+meter by name** — *"−60 to 0, with a marked target zone"* — and the constants had
+been exported for a zone that was never drawn.
+
+Deleting them would have quietly closed a requirement. The zone is drawn now,
+positioned from the same constants the hook colours the bar with, so the band the
+operator aims at and the band the meter calls "good" cannot drift apart.
+
+Then the same commit created two NEW orphans doing it — `data-role="target-low"`
+and `target-high` on the scale labels, read by nothing — which the second run of
+the same scan caught. The lesson is cheap and worth keeping: **run the scan
+again after fixing what it found.**
+
+## What was deliberately NOT split
+
+`Status.Voice` sits at 365 against a 400 cap and its own comment names the seam:
+the CORPUS half (report, query, phrase, preview) and the TAKE half (selection,
+preference, deletion). It stays whole. The halves interact on most operations —
+`delete_take` calls `load_report`, and the Words pane needs both — so splitting
+produces two modules that call each other constantly. **That is dispersal, not
+modularisation.** The seam stays documented for when it earns itself.
+
+Three JS "dead method" hits were false positives (`onClick` is bound as a
+listener; `process` lives inside the AudioWorklet template string). Each was
+checked rather than trusted, because a crude grep is how a load-bearing function
+gets deleted.
+
+**The strongest signal in the whole pass is one that costs nothing**: Elixir
+warns on unused private functions, so `mix compile --warnings-as-errors` passing
+means no dead `defp` survives anywhere in the day's work.

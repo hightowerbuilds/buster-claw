@@ -203,7 +203,7 @@ defmodule BusterClaw.Notifications.Studio.Effects do
   defp reverse(clip) do
     reversed =
       clip.data
-      |> chunk_frames(frame_bytes(clip))
+      |> chunk_frames(SoundStudio.frame_bytes(clip))
       |> Enum.reverse()
       |> IO.iodata_to_binary()
 
@@ -214,7 +214,7 @@ defmodule BusterClaw.Notifications.Studio.Effects do
   # int16 wrapping turns the loudest moment of a clip into the harshest possible
   # click, which is exactly where it is least forgivable.
   defp gain(clip, amount) do
-    map_samples(clip, fn s -> clamp16(round(s * amount)) end)
+    SoundStudio.map_samples(clip, fn s, _i -> s * amount end)
   end
 
   # Varispeed: resample by a ratio, so pitch and duration move together. This is
@@ -227,7 +227,7 @@ defmodule BusterClaw.Notifications.Studio.Effects do
   # Below 2.0 on speech it is not audible; the fix, if it ever matters, is a
   # low-pass before the resample and belongs here rather than in the caller.
   defp speed(clip, rate) when rate > 0 do
-    source = samples(clip.data)
+    source = SoundStudio.samples(clip.data)
     count = length(source)
     table = List.to_tuple(source)
     target = max(trunc(count / rate), 1)
@@ -241,7 +241,7 @@ defmodule BusterClaw.Notifications.Studio.Effects do
         a = at(table, left, count)
         b = at(table, left + 1, count)
 
-        <<clamp16(round(a + (b - a) * frac))::little-signed-16>>
+        <<SoundStudio.clamp16(a + (b - a) * frac)::little-signed-16>>
       end
 
     %{clip | data: resampled}
@@ -266,7 +266,7 @@ defmodule BusterClaw.Notifications.Studio.Effects do
     delays = Enum.map([1116, 1188, 1277, 1356], &max(trunc(&1 * scale * rate / 44_100), 1))
     feedback = 0.72 + size * 0.2
 
-    dry = samples(clip.data)
+    dry = SoundStudio.samples(clip.data)
     tail = trunc(rate * (0.3 + size * 1.2))
     padded = dry ++ List.duplicate(0, tail)
 
@@ -281,7 +281,7 @@ defmodule BusterClaw.Notifications.Studio.Effects do
       padded
       |> Enum.zip(wet)
       |> Enum.reduce(<<>>, fn {d, w}, acc ->
-        acc <> <<clamp16(round(d * (1.0 - mix) + w * mix))::little-signed-16>>
+        acc <> <<SoundStudio.clamp16(d * (1.0 - mix) + w * mix)::little-signed-16>>
       end)
 
     %{clip | data: data}
@@ -337,8 +337,6 @@ defmodule BusterClaw.Notifications.Studio.Effects do
 
   defp clamp(value, {min, max, _default}), do: value |> max(min) |> min(max)
 
-  defp clamp16(sample), do: sample |> max(-32_768) |> min(32_767)
-
   defp numeric(value) when is_number(value), do: value * 1.0
 
   defp numeric(value) when is_binary(value) do
@@ -352,19 +350,6 @@ defmodule BusterClaw.Notifications.Studio.Effects do
 
   defp at(table, i, count) when i >= 0 and i < count, do: elem(table, i)
   defp at(_table, _i, _count), do: 0
-
-  defp samples(data), do: for(<<s::little-signed-16 <- data>>, do: s)
-
-  defp map_samples(clip, fun) do
-    data =
-      for <<s::little-signed-16 <- clip.data>>, into: <<>> do
-        <<fun.(s)::little-signed-16>>
-      end
-
-    %{clip | data: data}
-  end
-
-  defp frame_bytes(clip), do: div(clip.bits, 8) * clip.channels
 
   defp chunk_frames(data, size) do
     for <<frame::binary-size(size) <- data>>, do: frame

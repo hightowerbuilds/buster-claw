@@ -52,7 +52,7 @@ defmodule BusterClawWeb.Status.Voice do
   alias BusterClaw.Notifications.Cutup.Index
   alias BusterClaw.Notifications.Cutup.Sentence
   alias BusterClaw.Notifications.Cutup.Takes
-  alias BusterClaw.Notifications.SoundStudio
+  alias BusterClawWeb.Studio.Preview
 
   @doc """
   Mount defaults. Nothing is read from disk here — the corpus load waits until
@@ -234,27 +234,13 @@ defmodule BusterClawWeb.Status.Voice do
   def build_preview(socket) do
     phrase = socket.assigns.voice_sentence
 
-    case Sentence.build(phrase, bank: Bank.active(), assemble: []) do
-      {:ok, built} ->
-        path = Path.join(SoundStudio.dir(), @preview_name)
-        File.mkdir_p(SoundStudio.dir())
-
-        case SoundStudio.write(built.clip, path) do
-          :ok ->
-            socket
-            |> assign(:voice_preview, %{
-              name: @preview_name,
-              phrase: phrase,
-              version: version(socket)
-            })
-            |> assign(:voice_preview_error, nil)
-
-          {:error, reason} ->
-            preview_error(socket, reason)
-        end
-
-      {:error, reason} ->
-        preview_error(socket, reason)
+    with {:ok, built} <- Sentence.build(phrase, bank: Bank.active(), assemble: []),
+         {:ok, preview} <- Preview.write(built.clip, @preview_name, socket.assigns.voice_preview) do
+      socket
+      |> assign(:voice_preview, Map.put(preview, :phrase, phrase))
+      |> assign(:voice_preview_error, nil)
+    else
+      {:error, reason} -> preview_error(socket, reason)
     end
   end
 
@@ -262,18 +248,6 @@ defmodule BusterClawWeb.Status.Voice do
   # surface renders it as such. A phrase that cannot be built is a different
   # thing entirely (usually a missing word, which is actionable), and routing it
   # through the corpus error would tell the operator their library is broken.
-  # A monotonic counter, not a timestamp: the preview file keeps ONE name and is
-  # overwritten on every build, so the client needs something that changes to
-  # know its cached copy is stale. Without it the audition hook replays the
-  # previous sentence from the same URL — real audio of a real phrase, and
-  # therefore convincing.
-  defp version(socket) do
-    case socket.assigns.voice_preview do
-      %{version: n} when is_integer(n) -> n + 1
-      _none -> 1
-    end
-  end
-
   defp preview_error(socket, reason),
     do: socket |> assign(:voice_preview, nil) |> assign(:voice_preview_error, reason)
 
@@ -295,7 +269,7 @@ defmodule BusterClawWeb.Status.Voice do
   voice (`Cutup.Bank`). A word another bank has thirty takes of is still missing
   here, and saying so is the point.
 
-  `Status.Contribute` calls this whenever the bank changes or a take lands, so
+  `Status.Recorder` calls this whenever the bank changes or a take lands, so
   the two tabs never disagree about whose corpus is on screen.
   """
   def load_report(socket) do

@@ -26,7 +26,7 @@
 // what it actually found, and the server renders that sentence. In Chrome and
 // in `cargo tauri dev` it may work today; in a signed build it will say what
 // stopped it. Neither is hard-coded.
-import {analyse, band, createHold, meterFraction, toDb} from "../lib/meter.js"
+import {analyse, band, createHold, meterFraction, toDb, TARGET_LOW_DB, TARGET_HIGH_DB} from "../lib/meter.js"
 
 // A processor that forwards raw frames to the main thread. Registered from a
 // blob-free data: URL — `worklet.addModule` accepts one, and a separate asset
@@ -68,7 +68,18 @@ export const VoiceRecorder = {
       peak: this.el.querySelector('[data-role="peak"]'),
       clip: this.el.querySelector('[data-role="clip"]'),
       format: this.el.querySelector('[data-role="format"]'),
+      zone: this.el.querySelector('[data-role="target-zone"]'),
       status: this.el.querySelector('[data-role="status"]'),
+    }
+
+    // Draw the target band from the same constants that colour the bar, so the
+    // zone the operator aims at and the band the meter calls "good" are one
+    // number rather than two that can drift.
+    if (this.els.zone) {
+      const from = meterFraction(TARGET_LOW_DB) * 100
+      const to = meterFraction(TARGET_HIGH_DB) * 100
+      this.els.zone.style.left = `${from.toFixed(1)}%`
+      this.els.zone.style.width = `${(to - from).toFixed(1)}%`
     }
 
     this.onClick = this.onClick.bind(this)

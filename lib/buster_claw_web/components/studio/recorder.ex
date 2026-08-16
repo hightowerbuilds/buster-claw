@@ -1,10 +1,10 @@
 defmodule BusterClawWeb.Studio.Recorder do
   @moduledoc """
-  The Studio's **Contribute** sub-tab: record a word into a voice bank
-  (`STUDIO_ROADMAP` V.6–V.8).
+  The Voice Library's **Record** section: capture a word or a sentence into a
+  voice bank (`STUDIO_ROADMAP` V.6–V.8).
 
   Presentation only. Every assign belongs to `StatusLive` and is prepared by
-  `BusterClawWeb.Status.Contribute`, for the reason the whole home tab works that
+  `BusterClawWeb.Status.Recorder`, for the reason the whole home tab works that
   way: this renders behind `:if`, so a half-set-up recording session would empty
   the moment the operator glanced at Chat.
 
@@ -158,8 +158,19 @@ defmodule BusterClawWeb.Studio.Recorder do
           No input opened yet.
         </div>
 
-        <div class="h-3 w-full overflow-hidden rounded-sm border border-base-content/20 bg-base-300">
-          <div data-role="meter" class="h-full w-0 bg-success transition-[width] duration-75"></div>
+        <%!-- The TARGET ZONE, which V.6 asks for by name: "-60 to 0, with a
+              marked target zone". Aim for peaks between the marks and nothing
+              touching 0 — digital clipping is unrecoverable, so this band is the
+              whole point of running the meter before you arm.
+
+              Positioned from the same constants the hook colours the bar with
+              (`meter.js`), so the drawn zone and the "hot" band cannot drift
+              apart. They were exported for this and nothing drew them until the
+              08-16 quality pass found them unused. --%>
+        <div class="relative h-3 w-full overflow-hidden rounded-sm border border-base-content/20 bg-base-300">
+          <div data-role="target-zone" class="absolute inset-y-0 bg-success/20"></div>
+          <div data-role="meter" class="relative h-full w-0 bg-success transition-[width] duration-75">
+          </div>
         </div>
 
         <div class="flex justify-between font-mono text-[0.55rem] text-base-content/40">

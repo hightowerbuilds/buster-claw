@@ -689,11 +689,25 @@ defmodule BusterClaw.Notifications.SoundStudio do
   # Sample plumbing
   # ---------------------------------------------------------------------------
 
-  defp frame_bytes(%__MODULE__{} = clip), do: div(clip.bits, 8) * clip.channels
+  @doc "Bytes per frame — one sample across every channel."
+  def frame_bytes(%__MODULE__{} = clip), do: div(clip.bits, 8) * clip.channels
 
-  defp samples(data), do: for(<<s::little-signed-16 <- data>>, do: s)
+  @doc """
+  The int16 samples of a PCM binary, as a list.
 
-  defp map_samples(%__MODULE__{} = clip, fun) do
+  Public since 08-16: `Studio.Effects` and `Capture.Take` both read samples, and
+  each had grown its own copy of this one-liner. Three readings of "what is a
+  sample" is two that can disagree with the format module that defines it.
+  """
+  def samples(data), do: for(<<s::little-signed-16 <- data>>, do: s)
+
+  @doc """
+  Rewrite every sample through `fun.(sample, index)`, saturating on the way out.
+
+  The saturation is not optional and is why callers should reach for this rather
+  than mapping the binary themselves — see `clamp16/1`.
+  """
+  def map_samples(%__MODULE__{} = clip, fun) do
     data =
       clip.data
       |> samples()
@@ -705,10 +719,19 @@ defmodule BusterClaw.Notifications.SoundStudio do
     %{clip | data: data}
   end
 
-  # Every write goes through here. Rounding a scaled sample can land one step
-  # outside int16, and a wrapped sample is not quiet distortion — it is a
-  # full-scale sign flip, the loudest possible artifact.
-  defp clamp16(value) do
+  @doc """
+  Round and saturate a value into int16.
+
+  **Every write of a sample goes through here**, and that sentence was a comment
+  on a private function until 08-16 — by which point `Studio.Effects` and
+  `Capture.Take` had each written their own, so the claim was false in exactly
+  the way a single-door claim must never be. Made public and the copies deleted.
+
+  Rounding a scaled sample can land one step outside int16, and a wrapped sample
+  is not quiet distortion — it is a full-scale sign flip, the loudest possible
+  artifact, and it lands at the loudest moment of the audio.
+  """
+  def clamp16(value) do
     value |> round() |> clamp_int(-32_768, 32_767)
   end
 
