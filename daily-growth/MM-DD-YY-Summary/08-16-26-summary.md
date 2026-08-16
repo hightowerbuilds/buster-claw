@@ -1,9 +1,13 @@
 # 08-16-26 — Six estimates outlived the things they described
 
-Two arcs, both in the Studio. The Voice tab became the **Voice Library** — browse
-your words, hear them, build a sentence, hear that, record what was missing. Then
-the **Mix** half got an effect chain, clip removal, and the fix for a crash the
-operator had reported twice.
+Three arcs. Two in the Studio: the Voice tab became the **Voice Library** —
+browse your words, hear them, build a sentence, hear that, record what was
+missing — and then the **Mix** half got an effect chain, clip removal, and the
+fix for a crash the operator had reported twice.
+
+**The third was a deletion, and it did not come from the code.** Two product
+reviews arrived in the evening, and one of them ended Scene3D: −7,264 lines, the
+largest single cut since the trading stack.
 
 It started as two doc fixes.
 
@@ -504,3 +508,114 @@ a raised cap: `render_error/1` moved to `SoundStudio.Format`, where the tab's
 other pure presentation already lives. 1,184 → 1,178. Twice today the freeze
 turned "just add a bit here" into a structural improvement, which is the entire
 argument for capping a file you have already decomposed.
+
+---
+
+## The evening's third arc: two reviews, and one of them cost 7,264 lines
+
+Two product reviews landed, both dated today, neither about code quality:
+**[`NOVICE_AI_APP_REVIEW`](../roadmaps/NOVICE_AI_APP_REVIEW.md)** — the app
+through the eyes of someone who has never used an AI agent — and
+**[`YEAR_ONE_SURVIVAL_REVIEW`](../roadmaps/YEAR_ONE_SURVIVAL_REVIEW.md)**, the
+same app judged by a committed user twelve months in.
+
+**They are the same review at two time horizons**: the product presents its
+machinery instead of its loop. The newcomer meets Claude Code, a workspace,
+OAuth, trusted senders, a terminal, a shift, Dispatch and Sentinel before
+completing one task. The year-one user finds eight tabs of permanent navigation
+weight, half of it holding features that never became habits, and six partial
+memories — Chat, Notes, Memory, Activity, Dispatch, the filesystem — where they
+needed one.
+
+**One claim from the novice review was checked against the code rather than
+believed, and it is worse than a copy problem.** `off-duty` appears in exactly
+two files in the web layer, `explained/gws.ex:175` and `setup_live.ex:268`, and
+**both are prose telling you to type a CLI command.** No LiveView reads
+`Orchestration` at all — so the app cannot show whether a shift is running, let
+alone stop one. That is not a UX nicety: `IX.3`'s pass bar names *"stop the agent
+immediately"* as one of the two tasks that matter, so today the release plan has
+a task nobody can complete inside the app. Filed, not fixed.
+
+### Scene3D is deleted
+
+The year-one review proposed a **Labs** section for Studio, Voice, Cutup and
+Scene3D. **The operator took the harder half of that advice for one of them** —
+*"we don't want it"* — and kept Labs for the others later.
+
+| | |
+|---|---|
+| `scene3d.ex` + its five stages | **3,370** |
+| Six test files | **3,765** |
+| Chat wiring, test and CSS cleanup | 176 |
+| **Removed / added** | **7,311 / 47 — net −7,264** |
+
+**The seam was far cleaner than 3,370 lines suggests, and that is the finding.**
+Scene3D was reachable from exactly one place — the homepage chat — and was never
+a command, never in the catalog, never in the size gate. So the whole removal is
+`push_msg/7` becoming `/6`, the visual pool numbering drawings and attachments
+only, history replay no longer re-rendering, and one guide in the system prompt
+instead of two. A feature can be enormous and still be *attached* by four lines,
+which is the argument for contract-first construction arriving from the exit
+rather than the entrance: **the same discipline that made four parallel agents
+compose on 08-08 is what made deleting their work an afternoon.**
+
+**Both `LEFTOVERS_AGENT_CORE` entries closed by deletion rather than dangling.**
+Neither was ever blocked on difficulty. Both said *waiting on evidence* — the
+guide-as-skill move and four polish items, deferred because "nobody has yet
+wanted them prettier." In the eight days since, nobody did. **A deferral whose
+stated unblock condition is other people's enthusiasm has no expiry, so it needs
+a reader willing to call the absence itself the answer.**
+
+### The palette lost its second home
+
+`Scene3d.Svg` sole-sourced the app's validated 5-slot series palette, having
+inherited it when the Chart Builder that first carried it was deleted on 08-08.
+The standing instruction, in its own `@palette` comment, was **promote it, never
+copy it** — because a copy is how slot ordering quietly stops being a guarantee.
+
+**There was nobody to promote it to.** One consumer before the cut, zero after,
+and a `BusterClaw.Palette` with no callers is precisely what the dead-code pass
+exists to delete — it would have gone in the next sweep with nothing to say for
+itself. So the five hexes, the slot order, and the numbers that make the order a
+mechanism rather than a preference (worst adjacent CVD ΔE **16.0**, normal-vision
+ΔE **23.4**, all five slots ≥**3:1** on the dark canvas) are recorded in
+`archive/08-08-26-scene3d-roadmap.md`, with the rule attached: **the next surface
+that needs series colours promotes them at that moment and cites the file.**
+
+Written down plainly because it is the second time this measurement has outlived
+its home in eight days. **A validated fact with exactly one consumer is one
+deletion away from being a guess again**, and the honest place for it is not a
+module built in advance — it is the document that explains why the numbers are
+what they are.
+
+### The test that pins an absence
+
+The two Scene3D LiveView tests became one. A reply carrying a `scene3d` block
+must now render as ordinary prose, with no card and no `.ic-scene-card`. It costs
+one test and means a re-introduced renderer fails loudly rather than arriving
+unnoticed — the same shape as the reverse hook assertion added on 08-13, and for
+the same reason: **after a deletion, the thing worth guarding is that it stays
+deleted.**
+
+`mix precommit`: **3,950 tests, 0 failures.** `bun test`: 339 pass. Pushed as
+`ac23f47`.
+
+### What the reviews are owed, and did not get today
+
+Both are still untracked and unlinked from the SUPERMAP, which is the one thing
+this repo's own convention forbids — findings get filed by section, not left
+floating. Their P0 overlaps almost entirely with `FRONT_DOOR` `VI-a`/`VI-e`/`VI-f`,
+which has been **ACTIVE, nothing done** since 08-09 and is the cheapest
+high-leverage work anywhere in the build by the repo's own accounting.
+
+**And a caution that belongs on both of them:** neither reviewer ran the app.
+This repo has the lesson on file twice — *a finding written from reading is a
+lower bound* — and the whole through-line of this very summary is claims that
+were true when written and quietly stopped being true. The year-one review in
+particular recommends the largest change in it (rebuild Home as **Today**, one
+evidence layer, five areas) and then, near its end, says the product needs local
+feature-usage data before deciding what stays. **That paragraph is the argument
+against acting on the rest of it yet** — restructuring navigation for a mature
+user who does not exist is the same error as building number provisioning before
+`IX.4` says anyone wants it. Scene3D was the one item that needed no such data:
+its own roadmap had recorded, in writing, that nobody had wanted it.
