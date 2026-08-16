@@ -57,6 +57,7 @@ defmodule BusterClawWeb.HomeWidget do
   attr :notifications, :list, required: true
   attr :notify_form, :any, required: true
   attr :notify_kind, :string, required: true
+  attr :widget_bg, :map, required: true
 
   # Calendar + Contacts as a rectangle filling the header gap to the right of the
   # banner. The card is absolutely positioned to fill the widget box, so its
@@ -122,7 +123,7 @@ defmodule BusterClawWeb.HomeWidget do
             />
           </div>
           <div class={["h-full", @tab != "place" && "hidden"]}>
-            <PlacePanel.place_panel weather={@weather} form={@weather_form} />
+            <PlacePanel.place_panel weather={@weather} form={@weather_form} bg={@widget_bg} />
           </div>
           <div class={["h-full", @tab != "notify" && "hidden"]}>
             <NotifyPanel.notify_panel

@@ -243,7 +243,10 @@ check lib/buster_claw_web/components/gws/calendar_sync.ex    101 HELD
 # Note what did NOT land here: the lazy corpus load. `select_studio_tab` already
 # routes through `Status.Studio`, so the "arriving at Voice reads the corpus"
 # rule lives there and this file's tab clause is unchanged.
-check lib/buster_claw_web/live/status_live.ex                955 HELD
+# 955 -> 970: the widget surface's assign, subscription and one `handle_info`
+# (WIDGET_BACKGROUND Phase 2). Its own topic and its own assign — the homepage's
+# background and the corner card's are two surfaces that share a page, not one.
+check lib/buster_claw_web/live/status_live.ex                970 HELD
 check lib/buster_claw_web/live/status/chat.ex                685 HELD
 
 # Added 08-09 when the chat skins pushed this past 1,000 lines. It has never been
@@ -729,7 +732,12 @@ check lib/buster_claw/commands/web.ex                         848 FROZEN
 # that lets a default be renderable without being selectable, and `"default"` as
 # a mode. Most of it is the comment explaining why one list became two — that
 # conflation is what would have shipped a blank card.
-check lib/buster_claw/appearance.ex                           875 HELD
+# 875 -> 895 for WIDGET_BACKGROUND Phase 2: `@daylight_shaders` and
+# `needs_daylight?/1`. A third small list rather than reusing an existing one —
+# "needs a clock", "is bundled" and "is offered" are three unrelated facts that
+# happen to overlap today, and one list answering two questions is what nearly
+# shipped a blank card in Phase 1.
+check lib/buster_claw/appearance.ex                           895 HELD
 check lib/buster_claw/appearance/shader_approval.ex           160 HELD
 check lib/buster_claw/appearance/migration.ex                 170 HELD
 

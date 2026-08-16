@@ -68,6 +68,7 @@ defmodule BusterClawWeb.StatusLive do
 
     if connected?(socket) do
       Phoenix.PubSub.subscribe(BusterClaw.PubSub, Appearance.home_topic())
+      Phoenix.PubSub.subscribe(BusterClaw.PubSub, Appearance.topic(:widget))
       subscribe_chat_look()
       Notifications.subscribe()
       # Keep the corner-widget's "Recent activity" live as calls/texts land.
@@ -90,6 +91,7 @@ defmodule BusterClawWeb.StatusLive do
      socket
      |> assign(:page_title, "Home")
      |> assign(:home_bg, Appearance.home_background_state())
+     |> assign(:widget_bg, Appearance.background(:widget))
      |> assign_chat_look()
      |> assign(status: Status.snapshot())
      |> assign(:today, today)
@@ -636,6 +638,13 @@ defmodule BusterClawWeb.StatusLive do
   # The homepage background changed in settings — re-render it live. Switching
   # onto the weather shader also feeds it the real sky right away (from the
   # already-loaded conditions, or a fresh fetch).
+  # The corner widget's Time & Place panel. Its own topic and its own assign —
+  # the homepage's background and the card's are two surfaces that happen to
+  # share a page.
+  def handle_info({:widget_background, state}, socket) do
+    {:noreply, assign(socket, :widget_bg, state)}
+  end
+
   def handle_info({:home_background, state}, socket) do
     socket = assign(socket, :home_bg, state)
 
@@ -814,6 +823,7 @@ defmodule BusterClawWeb.StatusLive do
               </div>
             </div>
             <BusterClawWeb.HomeWidget.corner_widget
+              widget_bg={@widget_bg}
               tab={@widget_tab}
               contacts={@comms_contacts}
               activity={@phone_activity}

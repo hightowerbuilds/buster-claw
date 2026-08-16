@@ -16,21 +16,28 @@ defmodule BusterClawWeb.Widget.PlacePanel do
   # glass. The card's ic-scanlines overlay stays on top of everything.
   attr :weather, :any, required: true
   attr :form, :boolean, required: true
+  attr :bg, :map, required: true
 
   def place_panel(assigns) do
     ~H"""
-    <section class="relative h-full overflow-hidden">
+    <section id="home-place-panel" class="relative h-full overflow-hidden">
+      <%!-- Was a hardcoded `daycycle` mount with a literal `data-daylight`. Both
+            are the surface's choice now (WIDGET_BACKGROUND Phase 2): the shader
+            comes from Appearance, and the clock flag is derived from the shader
+            by `ShaderCanvas` so no mount can forget it.
+
+            An image paints as a sibling div, the way the homepage does it — the
+            terminal instead styles its host element, which is why there is no
+            single `background/1` component to share here. `ic-shader-fill` is
+            `absolute; inset: 0`, so both kinds fill the panel identically. --%>
       <div
-        id="place-daycycle"
-        phx-hook="SmokeBackground"
-        phx-update="ignore"
-        data-shader="daycycle"
-        data-daylight="true"
+        :if={@bg.mode == "image"}
         class="ic-shader-fill"
+        style={"background-image:url('#{@bg.image_url}');background-size:cover;background-position:center;"}
         aria-hidden="true"
       >
-        <canvas data-smoke-canvas></canvas>
       </div>
+      <BusterClawWeb.ShaderCanvas.shader_canvas bg={@bg} prefix="widget" />
 
       <%!-- Clock and conditions side by side, transparent so the sky reads through. --%>
       <div class="relative z-10 flex h-full gap-2 p-3">

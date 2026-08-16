@@ -13,6 +13,14 @@ defmodule BusterClawWeb.ShaderCanvas do
   all three, and both homepage files sit at their size cap — so the honest move
   was to remove the duplication rather than ratchet three caps for a copy-paste.
 
+  ## The clock is the shader's business, not the mount's
+
+  `data-daylight` tells the hook to feed the local day fraction into `u.lens.x`.
+  It is derived here from `bg.shader` rather than set by whoever renders the
+  canvas — see `Appearance.needs_daylight?/1`. It used to be a literal on the one
+  mount that ran `daycycle`, which worked exactly as long as that shader could
+  not be selected anywhere else.
+
   ## The id is a remount key, not a name
 
   `phx-update="ignore"` means LiveView never patches inside this div, so the
@@ -49,6 +57,7 @@ defmodule BusterClawWeb.ShaderCanvas do
       phx-hook="SmokeBackground"
       phx-update="ignore"
       data-shader={@bg.shader}
+      data-daylight={to_string(BusterClaw.Appearance.needs_daylight?(@bg.shader))}
       data-shader-source={@bg.source_url}
       data-custom={to_string(@bg.custom)}
       data-colors={Enum.join(@bg.colors, ",")}

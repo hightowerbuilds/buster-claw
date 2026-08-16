@@ -489,11 +489,64 @@ defmodule BusterClawWeb.StatusLiveTest do
     # `render_click` — but it does so incidentally, while asserting something
     # else. This says out loud that each tab draws ITS OWN panel, so a dispatch
     # wired to the wrong sibling fails here instead of looking fine.
+    # WIDGET_BACKGROUND Phase 2. The panel's shader was a literal until 08-15,
+    # and `data-daylight` was a literal beside it.
+    test "the Time & Place panel follows the surface, and the clock follows the shader",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      # Default: the sky, with the flag that makes its sun track the clock.
+      assert has_element?(
+               view,
+               ~s(#home-place-panel [data-shader="daycycle"][data-daylight="true"])
+             )
+
+      # Pick something else and the panel follows, live — no reload.
+      {:ok, _} = Appearance.set_background(:widget, "waves")
+      render(view)
+
+      assert has_element?(view, ~s(#home-place-panel [data-shader="waves"]))
+      refute has_element?(view, ~s(#home-place-panel [data-shader="daycycle"]))
+
+      # `waves` does not read the clock, so it must not be told the time.
+      assert has_element?(view, ~s(#home-place-panel [data-daylight="false"]))
+
+      # `default` is the only way back — daycycle is in no catalog row.
+      {:ok, "default"} = Appearance.set_background(:widget, "default")
+      render(view)
+
+      assert has_element?(
+               view,
+               ~s(#home-place-panel [data-shader="daycycle"][data-daylight="true"])
+             )
+    end
+
+    # The failure D3 exists to prevent, and the reason it is not a detail: before
+    # this, `data-daylight` was a literal on the ONE mount that ran daycycle. Any
+    # other surface running it would render a sun frozen wherever `lens.x = 0`
+    # puts it — a broken-looking shader with no error anywhere.
+    test "daycycle carries its clock onto a surface that never had the flag",
+         %{conn: conn} do
+      # The widget's default is the only way to get daycycle anywhere, so this
+      # asserts the derivation rather than a selection: the flag is computed
+      # from the shader name, so it is right on whichever surface runs it.
+      assert Appearance.needs_daylight?("daycycle")
+
+      for shader <- Appearance.builtin_shaders() do
+        refute Appearance.needs_daylight?(shader),
+               "#{shader} does not read the clock and must not be handed one"
+      end
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      assert has_element?(view, ~s([data-shader="daycycle"][data-daylight="true"]))
+      assert has_element?(view, ~s([data-shader="smoke"][data-daylight="false"]))
+    end
+
     test "each widget tab renders its own panel", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
       panels = %{
-        "place" => "#place-daycycle",
+        "place" => "#home-place-panel",
         "contacts" => "#home-comms-panel",
         "notify" => "#home-notify-panel"
       }

@@ -343,8 +343,28 @@ Two things to get right, both already documented in that module:
   WebGPU devices at rest. Measure it; the cheap fix if it is bad is `:if` on the
   panel wrappers, which is what `PhoneComponent` already does.
 
-**Exit:** the widget shows the operator's choice, and picking `daycycle` on the
-homepage moves the sun.
+**Exit:** met. **✅ DONE 08-15.**
+
+`data-daylight` is derived in `ShaderCanvas` from `Appearance.needs_daylight?/1`,
+so no mount can forget it and no surface can get it wrong. It is a **third**
+small list rather than a reuse of `@default_only_shaders`, which holds exactly
+the same name today: "needs a clock", "is bundled" and "is offered" are three
+unrelated facts that happen to overlap, and one list answering two questions is
+what nearly shipped a blank card in Phase 1.
+
+**No `background/1` component was extracted, and the reason is worth recording**
+so nobody tries: the three surfaces genuinely paint an image differently. The
+homepage uses a sibling div, the terminal styles its host element. The widget
+follows the homepage because its panel already has a positioned wrapper. Only
+the *canvas* half was ever shareable, which is what `ShaderCanvas` already is.
+
+**The panel gained an id** (`#home-place-panel`). `ShaderCanvas`'s id is a
+remount key with a hash in it, so the old `#place-daycycle` selector was both
+gone and unsafe to replace with the new one — a palette change would move it.
+The other two panels already had stable ids; this brings the third in line.
+
+Both halves broken and verified: pinning `data-daylight` to a literal fails
+three tests, and putting the hardcoded mount back fails the panel test.
 
 ### Phase 3 — The Appearance UI
 

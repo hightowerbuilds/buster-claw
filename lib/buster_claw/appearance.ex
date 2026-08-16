@@ -76,6 +76,22 @@ defmodule BusterClaw.Appearance do
   # source URL and is never a "custom" workspace shader, offered or not.
   @bundled_shaders @builtin_shaders ++ @default_only_shaders
 
+  # Shaders that need to know what time it is. The hook feeds `u.lens.x` the
+  # local day fraction for these, which is what moves `daycycle`'s sun.
+  #
+  # **A property of the SHADER, not of where it is mounted** — and it was the
+  # other way round until 08-15 (WIDGET_BACKGROUND D3). The widget's markup set
+  # `data-daylight` because the widget was the only thing that ever ran daycycle.
+  # The moment a shader is a choice, that breaks in a way nothing reports: pick
+  # daycycle on a surface whose markup does not set the flag and the sun sits
+  # wherever `lens.x = 0` puts it. A frozen sky, no error.
+  #
+  # Its own list rather than reusing `@default_only_shaders`, which happens to
+  # hold exactly the same name today. "Needs a clock" and "is a default nobody
+  # may pick" are unrelated facts, and `@builtin_shaders` doing two jobs at once
+  # is what would have shipped a blank card an hour ago.
+  @daylight_shaders ~w(daycycle)
+
   # Bundled shaders that react to the selected background image. The Elixir half
   # of a pair whose JS half is `IMAGE_REACTIVE_BUILTINS` in
   # `assets/js/smoke/shaders.js`; `appearance_test.exs` reads that file and
@@ -174,6 +190,14 @@ defmodule BusterClaw.Appearance do
 
   @doc "Built-in shader design names."
   def builtin_shaders, do: @builtin_shaders
+
+  @doc """
+  Whether `name` reads the local clock, so its canvas needs `data-daylight`.
+
+  Asked of the shader wherever it is mounted, so a surface cannot get this wrong
+  by forgetting an attribute.
+  """
+  def needs_daylight?(name), do: name in @daylight_shaders
 
   @doc "Bundled shader designs that react to the selected background image."
   def builtin_image_shaders, do: @builtin_image_shaders
