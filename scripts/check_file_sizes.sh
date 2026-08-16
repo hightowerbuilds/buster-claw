@@ -810,6 +810,12 @@ check lib/buster_claw_web/components/brand_art.ex              59 HELD
 # The dock nav, lifted OUT of the layout so it can re-render (an app layout is
 # rendered once at mount and never diffed). Capped at arrival with no headroom.
 check lib/buster_claw_web/live/dock_nav_live.ex                45 HELD
+# The visible brake (G-30, 08-16), a fourth sticky dock LiveView for the same
+# layout-diff reason as the nav. Capped on arrival: over half of it is the
+# argument for why it exists, why it renders nothing when idle, why it does not
+# confirm, and why it must not be merged with the chat's Stop. If it grows, the
+# growth is a second concern and the cap is where that gets noticed.
+check lib/buster_claw_web/live/duty_live.ex                   142 HELD
 # Raised 08-09, 71 -> 97, for terminal paint's Phase 0. This hook is now the one
 # place that carries "wear this theme now" out to the browser, because the
 # selected terminal theme lives in localStorage and a command has no socket. That

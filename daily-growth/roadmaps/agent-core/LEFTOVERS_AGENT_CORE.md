@@ -74,6 +74,27 @@ tells the operator the harness is theirs and the cost is theirs, which invites
 exactly the question this would answer — and an operator who asks "what did
 today cost" and gets nothing will not ask twice.
 
+> **Reached independently by the 08-16 novice review**, which asked for cost to
+> be explained in human language — *"prevent the belief that background work is
+> free and infinite."* Nothing new to file; this section already owns it and
+> already knows why it is not a `SUM()`.
+>
+> **But the review's version contains a claim this app cannot make, and writing
+> it verbatim would ship a fresh falsehood.** It asks the product to say "Buster
+> Claw limits runaway work" and show "where the limit lives" — implying a spend
+> cap. There is none. The governor is a **run-count** cap
+> (`max_runs_per_shift`, `dispatcher.ex:181`) plus a per-run wall-clock cap, and
+> reaching it stops the shift. So the honest sentence is *"the shift stops after
+> N runs"*, which is a different promise from *"it stops before it costs too
+> much"* and must not be blurred into it.
+>
+> Worth recording because it is the same trap as the sentence above about codex:
+> **the failure mode of cost UI is not absence, it is an authoritative-looking
+> number nobody can stand behind.** One more measured surface, from the review's
+> own angle: the only place cost appears in the entire UI today is the Phone
+> tab's per-voicemail Twilio figure — the one expense that is *not* the
+> operator's AI plan.
+
 ---
 
 ### `opencode models` is uncached, and must not reach a render path

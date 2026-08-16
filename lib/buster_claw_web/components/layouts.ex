@@ -263,7 +263,13 @@ defmodule BusterClawWeb.Layouts do
               page (or inside the Music tab's :if) is destroyed on navigation,
               which would stop the music every time you changed tabs. Here it
               outlives both. --%>
+        <%!-- The visible brake (G-30). Sticky for the same reason as its
+              neighbours, and FIRST in this group on purpose: it is the only
+              control here that stops something, and it renders nothing at all
+              when no shift is running — so it costs no width in the common case
+              and is unmissable in the one that matters. --%>
         <div class="ml-auto flex shrink-0 items-center gap-3">
+          {@socket && live_render(@socket, BusterClawWeb.DutyLive, id: "bc-duty-dock", sticky: true)}
           {@socket &&
             live_render(@socket, BusterClawWeb.MusicPlayerLive, id: "bc-music", sticky: true)}
           {@socket && live_render(@socket, BusterClawWeb.DockLive, id: "bc-dock", sticky: true)}

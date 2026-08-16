@@ -172,9 +172,15 @@ defmodule BusterClawWeb.Explained.Gws do
             sender and starting an on-duty shift are the controls for this path.
           </li>
           <li>
-            Stand down with <code>./buster-claw off-duty</code>. A <code>STOP</code>
-            file kills the shift instantly, and a hard budget cap stops it rather
-            than burning tokens.
+            <span class="font-semibold text-base-content">Stand down</span>
+            from the dock — while a shift is running, the button sits in the bar at
+            the bottom of every screen. It stops new work at once; a run already in
+            progress finishes on its own. <code>./buster-claw off-duty</code>
+            does the
+            same thing from a terminal, and either way a <code>STOP</code>
+            file keeps
+            the shift down until you go back on duty. A run cap stops the shift too,
+            rather than letting it burn on unattended.
           </li>
         </ol>
       </.example>

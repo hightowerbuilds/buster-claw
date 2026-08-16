@@ -94,6 +94,17 @@ the section tables below point at it from wherever else it applies.**
 5. **[The Dialyzer gate](#part-vii--platform--release)** — **GREEN, exit 0, verified 08-16.** The baseline is a rule rather than a file list (`1d52cff`) and that fix has held; the three unreachable `refusal/2` clauses that 08-15 added were deleted 08-16 rather than baselined. Part VII records what the deletion cost.
 6. **The whole-codebase review (08-13)** — **ARCHIVED 08-15**, [`CODE_REVIEW_08-13-26.html`](../archive/CODE_REVIEW_08-13-26.html): every part with its argument, every large file diagnosed feature-sized vs overloaded, 21 ranked findings. **The top four landed same-day** — the gmail attachment fence (`1728e64`), both `chat.ex` contract bugs (`20a36a9`), the dead Trading hooks plus a both-directions hook guard (`577085e`). Everything else is **filed, not floating**: by section into the LEFTOVERS maps — [agent-core](agent-core/LEFTOVERS_AGENT_CORE.md), [platform](platform/LEFTOVERS_PLATFORM.md), [surfaces](surfaces/LEFTOVERS_SURFACES.md), and the shell's first, [`LEFTOVERS_SHELL`](shell/LEFTOVERS_SHELL.md), created for it. The review's two structural conclusions: the size gate covers no core/JS/Rust file (its §12 has the 19-file proposed inventory), and `commands/sound.ex` at 2,514 is the one file where the 08-08 "commands/ is correct" ruling no longer holds.
 
+7. **The two product reviews (08-16)** — **FILED AND ARCHIVED the same day.**
+   [Novice](../archive/NOVICE_AI_APP_REVIEW.md) and
+   [year-one](../archive/YEAR_ONE_SURVIVAL_REVIEW.md). Five of the novice
+   review's seven P0 items turned out to be **rediscoveries** of `VI-a`/`VI-e`/
+   `VI-f` and `G-30` by a reader with no access to these maps — good evidence the
+   maps aim at real things, and equal evidence that **writing an item down does
+   nothing for it**. Three findings were new (`VI-h`/`VI-i`/`VI-j`). The year-one
+   review ended Scene3D and is otherwise deliberately unfiled: it asks for a Home
+   rebuild and then says the product needs usage data first, which is the
+   argument against acting on it yet.
+
 Two of those wait on the operator rather than an agent: the `getUserMedia` spike
 needs a permission dialog clicked at a packaged build, and **`G-4` needs an Apple
 Silicon Mac** — a dependency this repo had recorded backwards until 08-10.
@@ -140,6 +151,7 @@ and zero issues in the verdict. Budget hours per release, not minutes
 |---|---|---|---|
 | Dock navigation | `DockNavLive` | SHIPPED | — |
 | Dock strip (chips, sticky player) | `DockLive`, `MusicPlayerLive` | SHIPPED | — |
+| **The visible brake** | `DutyLive`, `Orchestration.stand_down/1` | **SHIPPED 08-16 — `G-30`, promoted R2 → R1.** A fourth sticky dock LiveView: invisible when idle, a **Stand down** button whenever a shift runs. Stops new work at once; a run in flight finishes, and the surface says so | [`TRUST_AND_SUPPORT`](platform/TRUST_AND_SUPPORT_ROADMAP.md) `G-30` |
 | First-run onboarding | `SetupLive` `/setup` | SHIPPED | [`FRONT_DOOR`](distribution/FRONT_DOOR_ROADMAP.md) — the wizard is one of four surfaces that must agree |
 | Appearance — skins, text size, backgrounds | `AppearanceLive` `/appearance` | SHIPPED | — |
 | **The macOS Dock icon** | `Pockets.AppIcon`, `app_icon_set` | **BUILT 08-15** — drop an image in `pockets/app-icon/` and apply it; keyed to the file's bytes, so replacing it reverts to the shipped icon. The bundle icon stays sealed by the signature. **The native half is unwalked** — see [`QA_BACKLOG`](platform/QA_BACKLOG.md) | [`APP_ICON`](surfaces/APP_ICON_ROADMAP.md) |

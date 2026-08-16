@@ -211,6 +211,56 @@ defmodule BusterClaw.Orchestration do
     end
   end
 
+  @doc """
+  The operator's brake: latch the kill switch, then stop the shift.
+
+  **The order is the whole point and must not be swapped.**
+  `Dispatcher.maybe_run/1` consults `kill_switch_engaged?/0` on every decision,
+  so engaging first closes the door before anything else runs. Stopping first
+  would leave a window in which a `shift_start` — from an agent, a stale CLI, a
+  retry — brings the pump straight back up, and the operator's stop would read as
+  a glitch rather than a decision.
+
+  The latch is also what makes the stop *stick*: `stop_shift/1` alone ends one
+  row, while the `STOP` file survives until somebody deliberately goes back on
+  duty. `shift_start` clears it (`Commands.Orchestration.shift_start/1`), so
+  resume needs no new mechanism and no second answer to "who may clear this".
+
+  **What it cannot do, stated because the UI states it too:** a run already in
+  flight is monitored, not killed — nothing in this app cancels a headless run
+  mid-flight. It finishes on its own or at `run_timeout_ms`.
+
+  Returns `{:ok, shift}` when a shift was stopped and `{:ok, :latched}` when the
+  brake was pulled with nothing running — a distinction the caller needs, because
+  the second is still a real effect (the next `shift_start` is what clears it)
+  and must not be reported as a failure.
+  """
+  def stand_down(reason \\ "stood down from the app") do
+    :ok = engage_kill_switch_ok()
+
+    case stop_shift(reason) do
+      {:ok, shift} -> {:ok, shift}
+      {:error, :no_active_shift} -> {:ok, :latched}
+      other -> other
+    end
+  end
+
+  # `engage_kill_switch/0` returns `File.write/2`'s result. A brake whose latch
+  # silently failed to write is the one failure mode worth being loud about, so
+  # it raises rather than being pattern-matched away at each call site.
+  defp engage_kill_switch_ok do
+    case engage_kill_switch() do
+      :ok ->
+        :ok
+
+      {:error, posix} ->
+        raise File.Error,
+          reason: posix,
+          action: "write the STOP kill-switch file to",
+          path: kill_switch_path()
+    end
+  end
+
   # Mark a shift completed (e.g. superseded by a new shift). The only caller
   # maps over `active_shifts/0`, so a shift is always in hand — the old
   # `complete_shift()` / `complete_shift(nil, reason)` arity that looked one up
