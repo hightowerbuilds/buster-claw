@@ -30,6 +30,7 @@ export const StudioContextMenu = {
       rename: item("[data-ctx-rename]"),
       newMix: item("[data-ctx-new-mix]"),
       delete: item("[data-ctx-delete]"),
+      removeClip: item("[data-ctx-remove-clip]"),
     }
     this.renameInput = item("[data-ctx-rename-input]")
 
@@ -37,6 +38,16 @@ export const StudioContextMenu = {
     this.armed = false
 
     this.onContext = (e) => {
+      // Clips first: a clip block sits inside the arranger, never inside the
+      // sidebar, so the two selectors cannot both match — but checking the more
+      // specific one first keeps that true if the markup ever nests.
+      const clip = e.target.closest("[data-clip]")
+      if (clip) {
+        e.preventDefault()
+        this.openClip(clip)
+        return
+      }
+
       const row = e.target.closest("[data-studio-source]")
       if (!row) {
         this.hide()
@@ -67,6 +78,14 @@ export const StudioContextMenu = {
     this.items.newMix.addEventListener("click", () => this.push("new_mix_from_source"))
     this.items.delete.addEventListener("click", (e) => this.onDelete(e))
 
+    // No two-step. Removing a clip deletes no file and ⌘Z puts it back, so an
+    // "are you sure?" here would train the reflex that makes the confirm on
+    // `data-ctx-delete` — which DOES destroy a file — worth ignoring.
+    this.items.removeClip.addEventListener("click", () => {
+      if (this.clipId) this.pushEventTo(this.el, "remove_clip", {id: this.clipId})
+      this.hide()
+    })
+
     // Enter commits, Escape abandons. Keydown rather than change/blur: a blur
     // commit renames on a stray click somewhere else, which is a destructive
     // thing to do by accident.
@@ -94,7 +113,22 @@ export const StudioContextMenu = {
     window.removeEventListener("resize", this.onScroll)
   },
 
+  // A clip's menu is one item, so it skips `open/1`'s deletability questions
+  // entirely — there is no "is this yours" for a block you placed yourself.
+  openClip(clip) {
+    this.clipId = clip.dataset.clipId
+    this.targetId = null
+
+    this.renameInput.hidden = true
+    Object.values(this.items).forEach((el) => (el.hidden = true))
+    this.items.removeClip.hidden = false
+
+    this.el.hidden = false
+    this.place(clip.getBoundingClientRect())
+  },
+
   open(row) {
+    this.clipId = null
     this.targetId = row.dataset.studioSource
     const label = row.dataset.sourceLabel || this.targetId
     const sourceable = !!row.dataset.sourceable
@@ -108,6 +142,7 @@ export const StudioContextMenu = {
     // isn't. A built-in chime has nothing of yours to rename either.
     this.items.rename.hidden = !owned
     this.items.delete.hidden = !owned
+    this.items.removeClip.hidden = true
     this.disarm(label)
 
     // Nothing this row can offer — don't flash an empty box at the user.

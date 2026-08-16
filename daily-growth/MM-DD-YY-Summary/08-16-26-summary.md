@@ -1,11 +1,13 @@
-# 08-16-26 — Four estimates outlived the things they described
+# 08-16-26 — Five estimates outlived the things they described
 
-One arc: the Studio's Voice tab became the **Voice Library**, a surface where you
-browse your words, hear them, build a sentence, hear that, and record what was
-missing. Voice banks, an in-app recorder, audition, curation. It started as two
-doc fixes.
+Two arcs, both in the Studio. The Voice tab became the **Voice Library** — browse
+your words, hear them, build a sentence, hear that, record what was missing. Then
+the **Mix** half got an effect chain, clip removal, and the fix for a crash the
+operator had reported twice.
 
-The through-line arrived four times before it was recognisable, and it is not
+It started as two doc fixes.
+
+The through-line arrived five times before it was exhausted, and it is not
 yesterday's. Yesterday was *guards that guarded nothing*. Today was **written
 claims that were true when written and had quietly stopped being true**, every
 one of them understating what the code could already do:
@@ -16,15 +18,20 @@ one of them understating what the code could already do:
 | "Studio → Voice: **PLACEHOLDER**" | 08-09 | Built 08-14, two panes shipping |
 | Pane 2 "needs a route serving a take's audio, which is its own surface" | 08-09 | The route had existed since the Studio shipped |
 | "A name collision is refused, never auto-suffixed" | **this morning** | Made the recorder able to capture each word exactly once |
+| "A hook's `pushEvent` resolves against the `phx-target` on the hook's own element" | before today | **It does not.** Every click on a clip crashed the LiveView |
 
 The fourth is the one worth sitting with. **I wrote it, defended it in a comment,
 and it was load-bearingly wrong within nine hours** — not because the rule was
 bad, but because it was applied to a case it was never about.
 
-Not one of the four was found by reading. The first was found by running the
-gate, the second by opening the file, the third by asking whether the route
-really was missing, the fourth by an operator asking for something the code
-refused to do.
+**The fifth cost the most and is the sharpest instance of the pattern**, because
+the wrong comment did not merely fail to describe the code — it *shaped the test
+that was written to check it*, and that test passed while the app crashed on
+every click. It gets its own section at the bottom.
+
+Not one of the five was found by reading. The gate was run, the file was opened,
+the route was questioned, the operator asked for something the code refused, and
+the last needed a real browser.
 
 | Shipped | |
 |---|---|
@@ -38,6 +45,10 @@ refused to do.
 | `commands/sound.ex` 2,514 → 2,464 | the extraction, not a cut |
 | The Dialyzer gate, green and *measured* | — |
 | Five commands: `voice_bank_*`, `sound_record_save` | 206 → 211 |
+| **Clip effects** — reverse, gain, speed, reverb, chained in the operator's order | `Studio.Effects` |
+| The mixdown out of a FROZEN LiveView, and effects applied per clip | `Studio.Render` |
+| **Right-click a clip → Remove**, undoable | `clip_inspector.ex`, `studio_context_menu.js` |
+| **The clip-click crash** — reported twice, fixed in four lines | `status_live.ex` |
 
 ---
 
@@ -263,3 +274,128 @@ to throw away.
 **No review-and-trim after a take.** V.7 wants waveform review with
 `wave_trim.js`; a take currently saves or is refused, and the surface says so
 rather than implying it with a button that does half the job.
+
+---
+
+# The Mix half
+
+## Both things the operator asked for already existed
+
+*"Right users can add clips into the mix and move them around. Thats it. we need
+them to be able to remove clips and to be able to delete tracks."*
+
+Both were built. **Remove clip** had a handler and a keyboard path — ⌫ on a
+selected clip — and **no button anywhere**. **Delete track** had a real button
+with a confirm, at 10px and 30% opacity, hidden entirely when only one track
+exists.
+
+A feature reachable only by reading `studio_keys.js` is missing for everyone who
+has not read `studio_keys.js`. So the gap was discoverability, and the honest
+report was to say so rather than build a second copy of working code.
+
+## The effects chain, which is what "strengthen the studio" actually meant
+
+The durable half of the ask was *"built so we can continue strengthening"* —
+reverb, reverse, pitch. So the deliverable is a registry, not four features:
+
+    @catalog entry + apply_one/2 clause
+      → appears in the inspector
+      → saves into the mix
+      → applies on render
+      → is audible in preview
+
+Nothing in the UI, the mix format or the renderer changes. A test fails if a
+catalog entry has no clause, so a dead control cannot ship.
+
+Three properties every effect holds, each one a bug the chain would otherwise
+grow: **total** (a bad parameter clamps, never raises), **format-preserving**
+(or `mixdown` refuses the whole arrangement), and **length-free**.
+
+**Length-free is the design call worth keeping.** Reverb adds a tail; speed
+changes duration. So a clip's `duration_ms` means *how much source it takes*, not
+how long it sounds. Re-deriving it would make the timeline jump under a dragging
+hand and make undo move clips. `mixdown` sums overlaps, so a tail bleeding into
+the next clip is correct rather than a bug. The panel says so instead of drawing
+a lie.
+
+Order is the operator's and is never normalised: reverb-then-reverse is a swell
+into the note, reverse-then-reverb is a note with a tail.
+
+## The gate forced the right extraction
+
+`SoundStudioComponent` is `FROZEN` and could not hold any of this, so the
+mixdown, `placement/1` and `install_render` moved to `Studio.Render`. The
+component went **1,235 → 1,184**, and the render became testable without mounting
+a LiveView — which is what made `preview/2` a function instead of a second copy
+of the pipeline.
+
+That is the whole argument for FROZEN, stated as an outcome: the choice was
+extract or do not ship.
+
+Preview is a **server render**, not WebAudio. Reverb has no client-side
+equivalent, so approximating half a chain accurately would mislead more than not
+previewing at all. Measured: 0.85s for a ten-second clip.
+
+## The crash, and the comment that hid it
+
+**The fifth row of the table at the top.** The operator had reported it twice:
+clicking a clip threw them back to the Chat tab, with *"something went wrong"*.
+
+`home_tab` is only ever `"chat"` at mount, so it was a remount — the LiveView
+dying and the client reconnecting. The cause was one missing clause:
+
+> **A hook's `pushEvent` goes to the LiveView.** `pushEventTo` is what targets a
+> component.
+
+`track_arrange.js` called `pushEvent("select_clip", …)`, `StatusLive` had no
+`select_clip` clause, and every click was a `FunctionClauseError`.
+
+**Three things made it survive two rounds of testing**, and they are the part
+worth keeping:
+
+1. **The comment asserted the opposite**, in two files — and ten lines below one
+   of them, `move_clip` correctly used `pushEventTo`. Two calls in one function
+   behaved differently while a comment claimed they were the same.
+2. **The test was written to agree with the comment.**
+   `render_hook(element(view, "…"), …)` routes to the component and passes;
+   `render_hook(view, …)` routes where the browser goes and crashes. Only the
+   first existed.
+3. **Nothing in the console.** It was a server crash, so every client-side
+   hypothesis — a navigation, a JS exception, a form submit — was wrong, and
+   ruling them out took a full pass before the right question got asked.
+
+It was found by driving a real browser: empty console proved the server was
+dying, and the LiveView-targeted path reproduced it on the first try. The
+generalisation was then checked — **`select_clip` was the only hook event in the
+app with no `StatusLive` handler.** Every other one already had one.
+
+Four lines to fix. Both comments corrected, both paths now tested, and a
+fallback clause added so a payload without an id costs a no-op rather than a
+crash — because ending a bug caused by one unmatched clause with a second
+unmatched clause would be a poor joke.
+
+## And one thing the screenshot caught that no test would
+
+With the inspector docked, the clip's name printed **on top of** the arranger's
+hint line. Measured in the browser: 27px of overlap. The arranger's root was
+`flex-1 min-h-0` inside a scrolling column, so it compressed below its own
+content and the tracks spilled over whatever sat beneath. Now `shrink-0` — taking
+natural height and letting the column scroll, which is what `overflow-y-auto` on
+the parent was always for. Re-measured: 12px of clearance.
+
+## Verified in the operator's own browser
+
+Not only in tests: clicked a clip (stays on Studio, inspector opens, ring
+appears), right-clicked one (menu opens with exactly one item), removed it (4
+clips → 3, no crash) — **and undid it**, restoring the real `busterClaw-song` mix
+to 4 clips across both tracks, confirmed on disk.
+
+### Deliberately not built, second arc
+
+**Effects in the timeline transport.** Play still schedules raw sources and does
+not reflect the chain. Render and the per-clip preview do. Stated on the surface
+rather than left to be discovered.
+
+**Pitch-shift that holds duration.** `speed` is tape varispeed — pitch and length
+move together, honestly labelled. Holding duration needs a phase vocoder, which
+is its own catalog entry rather than an option on this one.

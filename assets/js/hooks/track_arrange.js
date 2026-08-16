@@ -103,11 +103,16 @@ export const TrackArrange = {
     // copy, paste, and delete have something to act on. Without this, clips
     // could be moved but never picked.
     if (isClick(event.clientX - originX, event.clientY - originY)) {
-      // This does NOT reach StatusLive directly, even though the selection
-      // lives there: a hook's pushEvent resolves against the phx-target on the
-      // hook's own element, and this container carries phx-target={@myself}.
-      // The component takes `select_clip` and forwards it up — see its
-      // handle_event for the bug this once caused.
+      // This reaches STATUSLIVE, and the comment here used to say the opposite.
+      // A hook's `pushEvent` goes to the LiveView that owns the hook; the
+      // `phx-target` on this container does NOT redirect it. `pushEventTo` is
+      // what targets a component — which is exactly what the move below uses,
+      // ten lines from a comment claiming the two behave the same way.
+      //
+      // Believing that cost a crash on every clip click: StatusLive had no
+      // `select_clip` clause, so the LiveView died, the client reconnected, and
+      // the remount dropped the operator back on the Chat tab. Both ends handle
+      // it now, and StatusLive is the one that actually receives this.
       this.pushEvent("select_clip", {id: clipId})
       return
     }

@@ -279,7 +279,19 @@ check lib/buster_claw_web/components/gws/calendar_sync.ex    101 HELD
 # 995 -> 1005: three more delegating clauses for take curation (prefer, unprefer,
 # delete) and the notice assign they write. Still one line each into
 # `Status.Voice`; the standing test applies.
-check lib/buster_claw_web/live/status_live.ex               1005 HELD
+# 1005 -> 1050: the selected clip's effect chain — four delegating clauses, the
+# `studio_preview` assign, and one integer coercion. They are HERE rather than in
+# the component because `Status.Studio.mutate_open_mix/2` is what records undo,
+# and an effect that could not be undone would be the first arrangement change in
+# the Studio that could not. The standing test still applies: no `case`, no
+# domain call, one line each into `Status.Studio`.
+# 1050 -> 1060: `select_clip`, and the bug it fixes is the reason to keep the
+# lines rather than trim them. A hook's `pushEvent` reaches the LIVEVIEW; only
+# `pushEventTo` reaches a component. That clause was missing, so every click on
+# a clip crashed the LiveView and the remount threw the operator back to Chat.
+# Two reports, no failing test, and comments in two files asserting the opposite
+# routing — which is why the comment here is longer than the clause.
+check lib/buster_claw_web/live/status_live.ex               1060 HELD
 check lib/buster_claw_web/live/status/chat.ex                685 HELD
 
 # Added 08-09 when the chat skins pushed this past 1,000 lines. It has never been
@@ -351,7 +363,15 @@ check lib/buster_claw_web/live/status/comms.ex               125 HELD
 # reads `StudioPanel.tab_keys/0`, so the rail, the guard and the dispatch cannot
 # disagree), and left the LiveView one assign, one clause and one condition. Most
 # of the +33 is the `@doc`s stating why the assign is not the panel's.
-check lib/buster_claw_web/live/status/studio.ex              150 HELD
+# 150 -> 240 on 08-16 for clip effects. This module was the arranger's state and
+# is now also the effect chain's: `effect_change/2` (every mutation, through
+# undo), `preview_clip/1` (render one clip through its chain), and the preview
+# versioning that stops the browser replaying a stale chain.
+#
+# The seam if it grows again: the ARRANGER half (history, open mix, selection)
+# and the CLIP half (effects, preview) share only `mutate_open_mix/2`. Splitting
+# there is clean; splitting anywhere else is not.
+check lib/buster_claw_web/live/status/studio.ex              240 HELD
 check lib/buster_claw_web/live/status/weather.ex              97 HELD
 
 # The Studio tab's sub-tab rail (STUDIO_ROADMAP VI.0b, 08-09): Mix is the
@@ -501,7 +521,34 @@ check lib/buster_claw_web/components/notes/switcher.ex         134 HELD
 
 # Phase 3. 20% markup, so ~987 lines of logic in a live_component. The source
 # catalog comes out to core, where the missing sound_* CLI will need it.
-check lib/buster_claw_web/live/sound_studio_component.ex     1235 FROZEN
+# 1235 -> 1206 on 08-16, and DOWN is the direction this row has been waiting for.
+# The mixdown, the effect chain and `placement/1` moved to `Studio.Render`, which
+# is where they wanted to be once clips gained effects — a render is domain work
+# and was only ever in a LiveView because it was three short functions.
+#
+# The gate is what forced it: this file could not have grown to hold the chain,
+# so the choice was extract or do not ship. That is the whole argument for FROZEN.
+check lib/buster_claw_web/live/sound_studio_component.ex     1184 FROZEN
+# The Studio's effect chain, capped on arrival. `effects.ex` is the registry AND
+# the DSP: adding an effect is a `@catalog` entry plus an `apply_one/2` clause,
+# and it then appears in the inspector, saves into the mix, applies on render and
+# is audible in preview with nothing else touched. That is the extension point
+# the operator asked for, so the thing to watch is whether it stays one.
+#
+# If it grows past this, the seam is REGISTRY vs DSP — the catalog and the
+# clamping are contract, the comb filters are arithmetic. They are together today
+# because splitting four effects across two files would be ceremony.
+#
+# `render.ex` is the mixdown, extracted from the FROZEN component on 08-16. Watch
+# for source RESOLUTION appearing here: it is passed in as a function on purpose,
+# because it spans the sidebar's three groups and belongs to the surface.
+check lib/buster_claw/notifications/studio/effects.ex         400 HELD
+check lib/buster_claw/notifications/studio/render.ex          160 HELD
+# The clip inspector: remove, and the chain. Renders `Effects.catalog/0`, so a new
+# effect needs no edit here. Its controls carry NO `phx-target` — they bubble to
+# `StatusLive` so they route through undo — and a later reader "fixing" that by
+# adding one would silently remove ⌘Z from every effect.
+check lib/buster_claw_web/components/sound_studio/clip_inspector.ex 240 HELD
 
 # Phase 4 STARTED 08-15, so this stops being FROZEN and becomes HELD: 936 -> 643,
 # banked here at 708. It was frozen as "four unrelated features sharing a

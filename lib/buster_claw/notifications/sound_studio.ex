@@ -538,9 +538,6 @@ defmodule BusterClaw.Notifications.SoundStudio do
     File.mkdir_p(dir())
     readme = Path.join(dir(), "README.md")
     unless File.exists?(readme), do: File.write(readme, readme_body())
-    # The Studio's folder is made here, so the mix layout's v1→v2 fold belongs
-    # here too — one place that runs when the Studio first appears.
-    BusterClaw.Notifications.StudioMix.migrate_v1()
     :ok
   rescue
     error ->

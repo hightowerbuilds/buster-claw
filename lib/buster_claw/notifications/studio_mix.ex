@@ -52,6 +52,8 @@ defmodule BusterClaw.Notifications.StudioMix do
 
   alias BusterClaw.Library.Artifact
   alias BusterClaw.Music
+  alias BusterClaw.Notifications.SoundStudio
+  alias BusterClaw.Notifications.Studio.Effects
 
   # v2 disk layout. See the moduledoc: v1 (`tracks/`, `.track.json`, `"lanes"`)
   # is migrated on boot and still readable, so nothing is orphaned.
@@ -72,7 +74,8 @@ defmodule BusterClaw.Notifications.StudioMix do
           id: binary(),
           source: binary(),
           start_ms: number(),
-          duration_ms: number()
+          duration_ms: number(),
+          effects: [BusterClaw.Notifications.Studio.Effects.effect()]
         }
   @type track :: %{
           id: binary(),
@@ -86,6 +89,26 @@ defmodule BusterClaw.Notifications.StudioMix do
   # ---------------------------------------------------------------------------
   # Shape
   # ---------------------------------------------------------------------------
+
+  @doc """
+  Prepare the Studio: its folder, and the mix layout's v1→v2 fold.
+
+  This used to be the other way round — `SoundStudio.ensure/0` called
+  `migrate_v1/0`, on the reasoning that the folder is made there so the fold
+  belongs there too. It reads well and it pointed the dependency **upwards**: the
+  audio-format module, which the cut-up engine and the recorder both sit on, knew
+  about arrangements.
+
+  `check_cycles.sh` found it the moment `Studio.Effects` arrived and closed the
+  loop (`SoundStudio → StudioMix → Effects → SoundStudio`). The fix is this
+  function: the mix layer prepares itself and calls down to the format layer,
+  which is the direction that was always true.
+  """
+  def ensure do
+    SoundStudio.ensure()
+    migrate_v1()
+    :ok
+  end
 
   @doc "A new mix with one empty track."
   def new(name) when is_binary(name) do
@@ -163,7 +186,8 @@ defmodule BusterClaw.Notifications.StudioMix do
       id: new_id(),
       source: source,
       start_ms: max(0.0, start_ms * 1.0),
-      duration_ms: max(0.0, duration_ms * 1.0)
+      duration_ms: max(0.0, duration_ms * 1.0),
+      effects: []
     }
 
     update_track(mix, track_id, fn track -> %{track | clips: track.clips ++ [clip]} end)
@@ -194,6 +218,89 @@ defmodule BusterClaw.Notifications.StudioMix do
           mix
         end
     end
+  end
+
+  @doc """
+  Add an effect to a clip's chain, at the end.
+
+  Appending rather than inserting is the whole ordering model: the chain is the
+  order the operator built it in, and `Studio.Effects` applies it in that order
+  because reverb-then-reverse and reverse-then-reverb are different sounds.
+
+  An unknown type is ignored — `Effects.build/1` is what decides what exists, so
+  a stale client cannot put something unrenderable into a mix file.
+  """
+  def add_effect(%__MODULE__{} = mix, clip_id, type) do
+    case Effects.build(type) do
+      {:ok, effect} -> update_clip(mix, clip_id, &%{&1 | effects: chain(&1) ++ [effect]})
+      :error -> mix
+    end
+  end
+
+  @doc "Remove the effect at `position` (0-based) from a clip's chain."
+  def remove_effect(%__MODULE__{} = mix, clip_id, position) when is_integer(position) do
+    update_clip(mix, clip_id, fn clip ->
+      %{clip | effects: List.delete_at(chain(clip), position)}
+    end)
+  end
+
+  def remove_effect(%__MODULE__{} = mix, _clip_id, _position), do: mix
+
+  @doc """
+  Set one parameter of the effect at `position`, clamped to its declared range.
+
+  The clamp lives in `Studio.Effects`, not here: this module owns the shape of an
+  arrangement and knows nothing about what a reverb's `size` may be.
+  """
+  def put_effect_param(%__MODULE__{} = mix, clip_id, position, key, value)
+      when is_integer(position) do
+    update_clip(mix, clip_id, fn clip ->
+      case Enum.at(chain(clip), position) do
+        nil ->
+          clip
+
+        effect ->
+          %{
+            clip
+            | effects:
+                List.replace_at(chain(clip), position, Effects.put_param(effect, key, value))
+          }
+      end
+    end)
+  end
+
+  def put_effect_param(%__MODULE__{} = mix, _clip_id, _position, _key, _value), do: mix
+
+  @doc "Drop every effect from a clip — the way back to the raw source."
+  def clear_effects(%__MODULE__{} = mix, clip_id),
+    do: update_clip(mix, clip_id, &%{&1 | effects: []})
+
+  @doc """
+  A clip's effect chain, tolerant of a clip that predates the field.
+
+  Every mix written before 08-16 has clips with no `effects` key at all, and they
+  must keep opening. Reading through this rather than `clip.effects` is what makes
+  that true everywhere at once.
+  """
+  def chain(clip), do: Map.get(clip, :effects) || []
+
+  @doc "The clip with `id`, wherever it sits, or `nil`."
+  def find_clip(%__MODULE__{} = mix, clip_id) do
+    Enum.find_value(mix.tracks, fn track -> Enum.find(track.clips, &(&1.id == clip_id)) end)
+  end
+
+  # One path for "change this clip in place", so the four effect operations above
+  # cannot each invent their own traversal.
+  defp update_clip(%__MODULE__{} = mix, clip_id, fun) do
+    tracks =
+      Enum.map(mix.tracks, fn track ->
+        %{
+          track
+          | clips: Enum.map(track.clips, fn c -> if c.id == clip_id, do: fun.(c), else: c end)
+        }
+      end)
+
+    %{mix | tracks: tracks}
   end
 
   @doc "Remove a clip from wherever it sits."
@@ -541,7 +648,11 @@ defmodule BusterClaw.Notifications.StudioMix do
                   "id" => clip.id,
                   "source" => clip.source,
                   "start_ms" => clip.start_ms,
-                  "duration_ms" => clip.duration_ms
+                  "duration_ms" => clip.duration_ms,
+                  "effects" =>
+                    Enum.map(chain(clip), fn effect ->
+                      %{"type" => effect.type, "params" => effect.params}
+                    end)
                 }
               end)
           }
@@ -587,9 +698,38 @@ defmodule BusterClaw.Notifications.StudioMix do
       id: id,
       source: source,
       start_ms: max(0.0, start * 1.0),
-      duration_ms: max(0.0, Map.get(clip, "duration_ms", 0) * 1.0)
+      duration_ms: max(0.0, Map.get(clip, "duration_ms", 0) * 1.0),
+      effects: parse_effects(Map.get(clip, "effects"))
     }
   end
 
   defp parse_clip(_clip), do: nil
+
+  # Same tolerance as everything else in this file: the mix is hand-editable, so
+  # an effect naming a type that does not exist is DROPPED rather than making the
+  # mix unopenable. `Effects.apply_chain/2` would skip it anyway; dropping it here
+  # means the next save writes a file that says what will actually happen.
+  defp parse_effects(rows) when is_list(rows) do
+    rows
+    |> Enum.flat_map(fn
+      %{"type" => type} = row when is_binary(type) ->
+        case Effects.build(type) do
+          {:ok, effect} -> [restore_params(effect, Map.get(row, "params"))]
+          :error -> []
+        end
+
+      _other ->
+        []
+    end)
+  end
+
+  defp parse_effects(_rows), do: []
+
+  # Params go back through `put_param/3`, so a hand-written value out of range is
+  # clamped on the way IN rather than trusted and clamped later.
+  defp restore_params(effect, params) when is_map(params) do
+    Enum.reduce(params, effect, fn {key, value}, acc -> Effects.put_param(acc, key, value) end)
+  end
+
+  defp restore_params(effect, _params), do: effect
 end

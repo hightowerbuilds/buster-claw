@@ -130,6 +130,7 @@ defmodule BusterClawWeb.StatusLive do
      # on a tab switch is the kind of thing that reads as the feature being
      # broken.
      |> assign(:studio_clip, nil)
+     |> assign(:studio_preview, nil)
      |> assign(:studio_clipboard, nil)
      |> assign(:studio_undo, [])
      |> assign(:studio_redo, [])
@@ -421,6 +422,41 @@ defmodule BusterClawWeb.StatusLive do
         {:noreply, assign(socket, :studio_clip, nil)}
     end
   end
+
+  # The selected clip's effect chain. Each is one line into `Status.Studio`,
+  # which routes through `mutate_open_mix/2` so every one of them is undoable.
+  # A hook's `pushEvent` reaches the LIVEVIEW, not the component — `pushEventTo`
+  # is what targets a component, which is why `move_clip` two lines below it in
+  # `track_arrange.js` uses that instead. Without this clause every click on a
+  # clip was a FunctionClauseError: the LiveView crashed, the client reconnected,
+  # and the remount put the operator back on Chat. Reported twice before it was
+  # found, because no server test reproduced it — `render_hook(element(...))`
+  # routes to the component and only `render_hook(view, ...)` routes here.
+  def handle_event("select_clip", %{"id" => id}, socket) when is_binary(id),
+    do: {:noreply, assign(socket, :studio_clip, id)}
+
+  # A payload without an id costs a no-op, never a crash-and-remount. The whole
+  # bug above was one unmatched clause; a second one is not the way to end it.
+  def handle_event("select_clip", _params, socket), do: {:noreply, socket}
+
+  def handle_event("studio_add_effect", %{"type" => type}, socket),
+    do: {:noreply, effect_change(socket, &StudioMix.add_effect(&1, &2, type))}
+
+  def handle_event("studio_remove_effect", %{"position" => position}, socket),
+    do: {:noreply, effect_change(socket, &StudioMix.remove_effect(&1, &2, to_int(position)))}
+
+  def handle_event("studio_set_effect_param", params, socket) do
+    %{"position" => position, "key" => key, "value" => value} = params
+
+    {:noreply,
+     effect_change(
+       socket,
+       &StudioMix.put_effect_param(&1, &2, to_int(position), key, value)
+     )}
+  end
+
+  def handle_event("studio_preview_clip", _params, socket),
+    do: {:noreply, preview_clip(socket)}
 
   def handle_event("studio_undo", _params, socket) do
     {:noreply, step_history(socket, :studio_undo, :studio_redo)}
@@ -965,6 +1001,8 @@ defmodule BusterClawWeb.StatusLive do
                 studio_source={@studio_source}
                 studio_trim={@studio_trim}
                 studio_clip={@studio_clip}
+                studio_clip_data={selected_clip(assigns)}
+                studio_preview={@studio_preview}
                 studio_clipboard={@studio_clipboard}
                 studio_undo={@studio_undo}
                 studio_redo={@studio_redo}
@@ -1001,4 +1039,16 @@ defmodule BusterClawWeb.StatusLive do
     </Layouts.app>
     """
   end
+
+  # `phx-value-*` arrives as a string; the mix API wants an index.
+  defp to_int(value) when is_integer(value), do: value
+
+  defp to_int(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {parsed, _rest} -> parsed
+      :error -> -1
+    end
+  end
+
+  defp to_int(_value), do: -1
 end

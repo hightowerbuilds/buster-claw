@@ -61,13 +61,19 @@ defmodule BusterClawWeb.SoundStudio.Arranger do
           else in the app. It reads what is actionable off these two data
           attributes rather than guessing, so ⌘C over ordinary page text
           still does what the browser does. --%>
+    <%!-- `shrink-0`, not `flex-1`. As `flex-1 min-h-0` this compressed below its
+          own content inside the scrolling column and the tracks spilled OVER the
+          clip inspector docked beneath it — 27 px of overlap, measured in the
+          browser, with a clip's name printed across the hint line. Natural
+          height lets the column scroll instead, which is what `overflow-y-auto`
+          on the parent was always for. --%>
     <div
       :if={@selected && @selected.kind == :mix && @mix}
       id="studio-keys"
       phx-hook="StudioKeys"
       data-clip-selected={to_string(not is_nil(@studio_clip))}
       data-clipboard={to_string(not is_nil(@studio_clipboard))}
-      class="flex min-h-0 flex-1 flex-col gap-3"
+      class="flex shrink-0 flex-col gap-3"
     >
       <header class="flex flex-wrap items-baseline justify-between gap-2">
         <div class="min-w-0">

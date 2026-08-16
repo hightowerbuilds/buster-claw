@@ -25,7 +25,10 @@ defmodule BusterClawWeb.Status.Studio do
   import Phoenix.Component
   import Phoenix.LiveView
 
+  alias BusterClaw.Notifications.SoundStudio
+  alias BusterClaw.Notifications.Studio.Render
   alias BusterClaw.Notifications.StudioMix
+  alias BusterClawWeb.SoundStudioComponent
   alias BusterClawWeb.Status.Recorder
   alias BusterClawWeb.Status.Voice
   alias BusterClawWeb.StudioPanel
@@ -74,6 +77,11 @@ defmodule BusterClawWeb.Status.Studio do
 
   # Deep enough for a working session, bounded because these are whole
   # arrangements and this LiveView is long-lived.
+  # One name, overwritten. A clip preview is scratch — not a take, not a render,
+  # and forty numbered files in `studio/` would turn the source list into a junk
+  # drawer within an afternoon.
+  @preview_name "clip-preview.wav"
+
   @studio_history_limit 50
 
   def reset_studio_history(socket) do
@@ -139,7 +147,73 @@ defmodule BusterClawWeb.Status.Studio do
     end
   end
 
-  def selected_clip(socket) do
+  # ---------------------------------------------------------------------------
+  # The selected clip: effects, and hearing them
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Apply a change to the selected clip's effect chain.
+
+  Every one of these goes through `mutate_open_mix/2`, which is what gives them
+  ⌘Z. That is the reason the inspector's buttons carry no `phx-target` and reach
+  the LiveView instead of the component: an effect that could not be undone would
+  have been the first arrangement change in the Studio that could not.
+  """
+  def effect_change(socket, fun) do
+    case socket.assigns.studio_clip do
+      nil -> socket
+      clip_id -> socket |> mutate_open_mix(&fun.(&1, clip_id)) |> expire_preview()
+    end
+  end
+
+  @doc """
+  Render the selected clip through its chain and make it playable.
+
+  The same `Studio.Render` the mixdown uses, so a preview cannot disagree with
+  the render about what an effect does — which is the whole reason effects are
+  not approximated in WebAudio. Written under one fixed name and versioned, for
+  the reason the Voice Library's sentence preview is: the browser caches by URL
+  and would otherwise replay the previous chain.
+  """
+  # `resolve_source/1` is public on the component rather than here because source
+  # resolution spans the sidebar's three groups (mixes, imports, library) and the
+  # component owns that catalogue. It was made public as a `defp` -> `def` swap:
+  # the component is FROZEN and a doc line would have grown it.
+  def preview_clip(socket) do
+    with clip when is_map(clip) <- selected_clip(socket),
+         {:ok, audio} <- Render.preview(clip, &SoundStudioComponent.resolve_source/1),
+         :ok <- File.mkdir_p(SoundStudio.dir()),
+         :ok <- SoundStudio.write(audio, Path.join(SoundStudio.dir(), @preview_name)) do
+      assign(socket, :studio_preview, %{name: @preview_name, version: next_version(socket)})
+    else
+      _other -> assign(socket, :studio_preview, nil)
+    end
+  end
+
+  # A rendered preview describes the chain it was rendered from. Changing the
+  # chain must retire it, or "Hear it" plays the version before the edit — real
+  # audio of a real chain, which is the convincing way to be wrong.
+  defp expire_preview(socket), do: assign(socket, :studio_preview, nil)
+
+  defp next_version(socket) do
+    case socket.assigns[:studio_preview] do
+      %{version: n} when is_integer(n) -> n + 1
+      _none -> 1
+    end
+  end
+
+  @doc """
+  The selected clip's map, from a socket OR from bare assigns.
+
+  Both, because the arranger's handlers hold a socket and the template holds
+  `assigns` — and the inspector needs the clip itself, not its id. One function
+  with two entry shapes beats the same traversal written twice.
+  """
+  def selected_clip(%{assigns: _} = socket), do: find_selected(socket)
+  def selected_clip(assigns) when is_map(assigns), do: find_selected(%{assigns: assigns})
+  def selected_clip(_other), do: nil
+
+  defp find_selected(socket) do
     with id when is_binary(id) <- socket.assigns.studio_clip,
          {:ok, mix} <- open_mix(socket) do
       mix |> StudioMix.clips() |> Enum.find_value(fn {_t, c} -> if c.id == id, do: c end)

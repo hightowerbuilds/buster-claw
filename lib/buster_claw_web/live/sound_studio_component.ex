@@ -32,6 +32,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
   import BusterClawWeb.SoundStudio.Format
 
   alias BusterClawWeb.SoundStudio.Arranger
+  alias BusterClawWeb.SoundStudio.ClipInspector
   alias BusterClawWeb.SoundStudio.Overlays
   alias BusterClawWeb.SoundStudio.Sidebar
 
@@ -39,6 +40,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
   alias BusterClaw.Music
   alias BusterClaw.Notifications.Sound
   alias BusterClaw.Notifications.SoundStudio
+  alias BusterClaw.Notifications.Studio.Render
   alias BusterClaw.Notifications.StudioMix
   alias BusterClaw.Settings
   alias BusterClaw.Telephony
@@ -65,7 +67,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
   @impl true
   def mount(socket) do
     # The Studio's working folder (`sounds/studio/`) appears when the Studio does.
-    BusterClaw.Notifications.SoundStudio.ensure()
+    BusterClaw.Notifications.StudioMix.ensure()
 
     {:ok,
      socket
@@ -127,7 +129,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
   defp load_mix(socket, _selected), do: assign(socket, :mix, nil)
 
   # Resolve a source id to its entry in `groups/0` — which mix a render came from.
-  defp resolve_source(id), do: find_source(groups(), id)
+  def resolve_source(id), do: find_source(groups(), id)
 
   # ---------------------------------------------------------------------------
   # The catalog
@@ -352,18 +354,19 @@ defmodule BusterClawWeb.SoundStudioComponent do
     end
   end
 
-  # Clicking a clip lands HERE, not in `StatusLive`, even though the selection
-  # lives there. LiveView resolves a hook's `pushEvent` against the `phx-target`
-  # on the hook's own element, and this arranger carries one so `move_clip`
-  # reaches the component — which means every event from that hook is
-  # component-bound, whether or not it wants to be. So take it and pass it up.
+  # A SECOND door, not the main one. This comment used to claim a hook's
+  # `pushEvent` resolves against `phx-target` and therefore lands here; it does
+  # not. `pushEvent` goes to the LiveView, `pushEventTo` goes to a component,
+  # and `StatusLive.handle_event("select_clip", ...)` is what a real click hits.
   #
-  # This cost a real bug: `select_clip` was originally handled only in
-  # `StatusLive`, so in a browser every click on a clip hit a
-  # FunctionClauseError and nothing was ever selected — which made copy and
-  # paste look broken while undo worked fine. The tests missed it because
-  # `render_hook(view, ...)` addresses the LiveView directly and skips the
-  # `phx-target` resolution a real click goes through.
+  # Kept because a caller that DOES target this component (a future
+  # `pushEventTo`) should not crash, and because forwarding costs one message.
+  # The clause is deliberately identical in effect to the LiveView's.
+  #
+  # The wrong version of this comment hid a crash on every clip click for two
+  # reports: no test caught it, because `render_hook(element(...))` routes here
+  # and only `render_hook(view, ...)` routes where the browser actually goes.
+  # `clip_actions_test.exs` now drives both.
   def handle_event("select_clip", %{"id" => id}, socket) do
     send(self(), {:studio_select_clip, id})
     {:noreply, socket}
@@ -646,69 +649,10 @@ defmodule BusterClawWeb.SoundStudioComponent do
     end
   end
 
-  defp render_mix(%StudioMix{} = mix) do
-    # Audible clips only: the mix must be what the arranger SHOWS it will be,
-    # and a muted track that still rendered would make M a lie with a UI.
-    placements =
-      mix
-      |> StudioMix.audible_clips()
-      |> Enum.map(fn {_track, clip} -> placement(clip) end)
-
-    cond do
-      StudioMix.clips(mix) == [] ->
-        {:error, :empty_mix}
-
-      # Clips exist but mute/solo silenced every one — a different mistake
-      # than an empty arrangement, deserving a different sentence.
-      placements == [] ->
-        {:error, :all_silenced}
-
-      # A clip whose source was deleted or renamed since it was placed. Refuse
-      # the whole render rather than quietly dropping it: a mix missing one
-      # layer still sounds finished, and you would never know what was lost.
-      Enum.any?(placements, &match?({:error, _}, &1)) ->
-        {:error, :missing_source}
-
-      true ->
-        with {:ok, mixed} <- SoundStudio.mixdown(Enum.map(placements, fn {:ok, p} -> p end)) do
-          install_render(mixed, mix.name <> "-mix")
-        end
-    end
-  end
-
-  # A render lands in `sounds/` — the library — not in `sounds/studio/`.
-  #
-  # The two folders mean different things: studio/ is what you are working ON,
-  # sounds/ is what the app will play. A render is the finished thing, so this
-  # is where it belongs, and putting it here is what makes it appear in
-  # Settings → Notify's list with no further step. Nothing is lost by not also
-  # keeping a studio/ copy: library sounds are addable as clips, so a render can
-  # still be a layer in the next mix.
-  #
-  # Via a temp file so `Sound.install_file/2` stays the single door into the
-  # library — it owns the never-overwrite rule, which matters here because this
-  # layer shadows bundled chimes by basename.
-  defp install_render(clip, suggested) do
-    tmp =
-      Path.join(System.tmp_dir!(), "bc-render-#{:erlang.unique_integer([:positive])}.wav")
-
-    try do
-      with :ok <- File.write(tmp, SoundStudio.render(clip)) do
-        Sound.install_file(tmp, Path.rootname(suggested) <> ".wav")
-      end
-    after
-      File.rm(tmp)
-    end
-  end
-
-  defp placement(clip) do
-    with %{path: path} when is_binary(path) <- resolve_source(clip.source),
-         {:ok, decoded} <- SoundStudio.import_source(path) do
-      {:ok, {decoded, clip.start_ms}}
-    else
-      _ -> {:error, clip.source}
-    end
-  end
+  # The mixdown and the effect chain live in `Studio.Render` — this file is
+  # FROZEN and could not hold them, which is the size gate earning its keep.
+  # Source resolution stays here because it spans the sidebar's three groups.
+  defp render_mix(%StudioMix{} = mix), do: Render.install(mix, &resolve_source/1)
 
   defp render_error(:empty_mix), do: "Add a clip before rendering."
 
@@ -1069,6 +1013,11 @@ defmodule BusterClawWeb.SoundStudioComponent do
           studio_clipboard={@studio_clipboard}
           studio_undo={@studio_undo}
           studio_redo={@studio_redo}
+        />
+
+        <ClipInspector.inspector
+          clip={@studio_clip_data}
+          preview={@studio_preview}
         />
 
         <div

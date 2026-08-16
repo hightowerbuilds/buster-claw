@@ -54,6 +54,8 @@ defmodule BusterClawWeb.StudioPanel do
   attr :studio_source, :any, required: true
   attr :studio_trim, :any, required: true
   attr :studio_clip, :any, required: true
+  attr :studio_clip_data, :any, required: true
+  attr :studio_preview, :any, required: true
   attr :studio_clipboard, :any, required: true
   attr :studio_undo, :list, required: true
   attr :studio_redo, :list, required: true
@@ -122,6 +124,8 @@ defmodule BusterClawWeb.StudioPanel do
           studio_source={@studio_source}
           studio_trim={@studio_trim}
           studio_clip={@studio_clip}
+          studio_clip_data={@studio_clip_data}
+          studio_preview={@studio_preview}
           studio_clipboard={@studio_clipboard}
           studio_undo={@studio_undo}
           studio_redo={@studio_redo}
