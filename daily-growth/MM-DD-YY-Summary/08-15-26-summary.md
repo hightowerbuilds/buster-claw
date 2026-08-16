@@ -1,9 +1,13 @@
-# 08-15-26 — The DMG opened, and the app told on itself
+# 08-15-26 — Six guards were green and guarding nothing
 
-A signed DMG on the Desktop, four findings, three requested builds, and all of it
-closed in a day. But the two things worth remembering are that **a one-line bug
-report was a three-form bug**, and that **a feature I shipped in the morning
-broke a security property that a documentation test caught in the afternoon.**
+Three arcs in one day: a signed DMG that produced four findings in ten minutes,
+BusterPhone learning to place a call start to finish, and the model finally being
+told the truth about what it can do.
+
+The through-line only became visible near the end. **Six separate times today, a
+guard or a switch was green while protecting nothing** — and every one was found
+by deliberately breaking it, never by reading it. Two of the six were mine, and
+one was in a contract I wrote for four agents to build against.
 
 | Shipped | Commit |
 |---|---|
@@ -15,6 +19,14 @@ broke a security property that a documentation test caught in the afternoon.**
 | A Pockets tutorial, the ninth | `d2f6ffa` |
 | `phx-submit` everywhere Enter could navigate away | `6994407` |
 | Appearance: an overlaid image still marks its tile | `089494e` |
+| **`phone_call` — the app can place a bridged call** | `9c1d0b4` |
+| **Both kill switches were unflippable; `sms_enabled` had been since 07-18** | `a9f3739` |
+| The keypad gets a Call button, and asks once before ringing | `a647409` |
+| A bridged call is two bills, and we were pricing one | `d287852` |
+| Phase 0: outbound calls present the app's number | `775f9e5` |
+| **The model may apply a shader you have looked at once** | `655f7f7` |
+| INTRODUCTION.md stopped lying to the model about backgrounds | `ea169ea`, `1a630ec` |
+| The macOS Dock icon, scoped | `6b94a44` |
 
 ---
 
@@ -126,6 +138,129 @@ not recur.
 
 ---
 
+## The phone learned to dial, and A2P had nothing to do with it
+
+The afternoon started with the operator stuck in the Twilio console, which had
+classified them as a business. That is **two problems with opposite shapes**, and
+reading them as one is what makes the wait indefinite: outgoing *texts* are
+blocked by A2P 10DLC registration, which is the operator's paperwork; outgoing
+*calls* were blocked by nothing at Twilio and were simply **unbuilt**, which was
+ours. A2P is an SMS gate and touches voice in neither direction. So the half that
+looked blocked shipped the same day, while the registration is still stuck.
+
+A related question the tab had left implied, and the operator had to ask:
+**none of this needs a business.** Twilio sells numbers to individuals, outbound
+voice needs no registration at all — only an *upgraded* account, since a trial
+dials only verified numbers — and even the SMS side has a Sole Proprietor tier on
+a personal tax ID. Now written down, because "do I need a company" is the
+question that stops someone using the feature entirely.
+
+**A phase deleted itself.** The roadmap scoped a Supabase edge function serving
+`<Dial>` TwiML, with a signature check, a required `PUBLIC_URL_BASE`, and an
+opaque id so a public endpoint could not be talked into dialling anything. None
+of it was needed: Twilio's Calls API takes a `Twiml` parameter carrying the
+document inline. That removed the phase **and its headline risk together** —
+there is no endpoint to abuse, and the number dialled cannot arrive from a
+callback because nothing calls back.
+
+The design is a **bridge**: your own phone rings first, and `<Dial>` joins the far
+end only when you answer. No audio touches the Mac, so calling did not have to
+queue behind the unrun WKWebView `getUserMedia` spike still blocking Studio →
+Voice. Gated, capped at 5 per recipient per day against SMS's 20, and it reads
+the SMS opt-out list — voice has no STOP, and it is the same human.
+
+**Two legs, and we were pricing one.** `<Dial>` creates a second call resource
+with its own price, so reading the parent alone reported half the bill *and
+marked it settled*. Three things the voicemail path could not lend it: an empty
+child list is not `:pending` here (it can mean nobody answered, so one leg is the
+whole bill); a price does not imply the call ended; and the work list needed a
+give-up, because one row that can never finalize starves every row behind it in
+an oldest-first list. That last one **closed the same latent starvation in the
+voicemail path**, which had been surviving only by never blocking on the inbound
+leg.
+
+---
+
+## The documents that were lying to the model
+
+The evening's thread started as "let the model change the background" and turned
+out to be about documentation.
+
+`background_list` / `background_set` had shipped that morning. But
+**`INTRODUCTION.md` — the orientation document the model itself reads — said
+backgrounds are "chosen in Settings → Appearance" and that the model "can never
+force one onto their screen."**
+
+That is the worse version of the bug, not a lesser one. The generated command
+table at the end of the same document already listed both verbs. The model had a
+table saying *yes* and a paragraph saying *no*, and **prose is what it believes**.
+It would have read `background_set` in the catalog and concluded it was for
+something else.
+
+Three maps said the same stale thing and were corrected: the image-shader map's
+D5 ("the model proposes; the human selects"), `TERMINAL_PAINT`, and
+`TERMINAL_THEME`, which cited "Appearance has no commands at all" as a precedent
+for refusing something.
+
+> **The pattern is not "docs drift".** It is that a *generated* section and a
+> *written* section of the same document can disagree, and the generated one is
+> the one nobody re-reads. A guard that asserts "the verb appears in the file"
+> cannot see it.
+
+---
+
+## Agent-applied shaders — and the six guards
+
+The operator then asked for the nebula shader on the homepage, got refused, and
+said: *"we want you to be able to do that yourself."* A parallel session had
+already scoped the fix; the operator clarified the ask — **"we just want the
+model to change the background selection, this is separate from the creation of
+shader patterns"** — which answered the question the whole design hung on and
+inverted the recommendation I had just given. There is no tweak-apply-look loop,
+so the friction of approving per version costs nothing.
+
+Shipped: a workspace shader applies by command once the operator has applied its
+**exact bytes** themselves. Editing withdraws it. Existing shaders backfilled.
+Keyed by content because **names are forgeable** — approving by name would let a
+run overwrite an approved file and apply it under a blessed name, the same
+file-write shortcut that made "no command authors a shader" insufficient.
+
+Built by **four agents on disjoint files against a contract written first** — the
+rule from 08-14, and it held again. What they found:
+
+1. **A built-in shadows a workspace file of the same name**, so minting without
+   filtering stored an approval for bytes that can never render.
+2. **The store backfills on first read**, so a test that writes a shader and then
+   clicks it passes on the day-one grant and never touches the click path. It ate
+   a real test.
+3. **`approved_shaders/0` — my own contract API — was wrong for the job.** It
+   returns the hash that *was* approved, not whether the file still matches, so
+   `background_list` would have reported `approved: true` for an edited shader
+   that `background_set` then refuses. The agent rejected my suggested API and
+   documented the rejection at the call site.
+
+### The six
+
+| # | Looked green | Guarded nothing because |
+|---|---|---|
+| 1 | `voice_enabled` kill switch | read from a config map `runtime.exs` never wrote — false in every build, and every test set the key directly |
+| 2 | `sms_enabled`, same map | gated on an env var that an operator storing credentials in the Clinch does not have. **Broken since 07-18**, and would not have worked when A2P approval arrived |
+| 3 | The Call button's disabled state | only its *enabled* behaviour was tested; pinning `disabled` to `false` passed everything |
+| 4 | The cost path's terminal-status check | a pending child already covered every case the test exercised — pure scenery |
+| 5 | My INTRODUCTION.md guard, v1 | asserted the verb appeared in the document, which the **generated table** makes true; it passed with the whole prose section deleted |
+| 6 | My per-built-in loop, v2 of the same guard | `veil` and `weather` occur elsewhere in the section, so it passed with two of the five deleted |
+
+Five and six are the ones worth sitting with: **I wrote both of them, in the same
+hour, while writing about this exact failure mode.** The fix in each case was to
+assert something derived from code (`Appearance.builtin_shaders/0`, rendered) and
+scoped to the half a human wrote.
+
+There is a seventh that never shipped: nothing proved the four agents' layers
+*meet*. Each tested its own half. The handoff — operator clicks here, model
+applies there — is now its own test, broken two ways.
+
+---
+
 ## Where this leaves the build
 
 The review is **closed and archived**, with one thing deliberately moved rather
@@ -136,5 +271,26 @@ re-check a harness list — are in `LEFTOVERS_PLATFORM`.
 
 Still nobody has opened this app on a machine that did not build it.
 
-**Gates at close:** precommit exit 0 — 3,992 tests, credo clean, 2 accepted
+`OUTBOUND_VOICE_ROADMAP` and `AGENT_APPLIED_SHADERS_ROADMAP` are both
+**complete — nothing in either is open.** Which leaves the money leg in an odd
+shape worth saying plainly: BusterPhone can receive calls, receive texts and
+**place calls**, and the only thing it cannot do is send a text. That is the one
+gate that was never ours.
+
+**To place the first real call:** upgrade the Twilio account out of trial, set
+`TWILIO_PHONE_NUMBER`, `OPERATOR_PHONE_NUMBER` and `BUSTER_CLAW_VOICE_ENABLED`,
+restart, press the button.
+
+**Scoped, not built:** the macOS Dock icon as a Pocket. Two icons wear that name
+and only the *running* tile is touchable — the bundle icon is sealed by the code
+signature, and that is the property that makes the DMG worth signing.
+
+**Owed:** the mode grammar is now parsed in three places, two of them written an
+hour apart by agents who could not see each other, and they already differ. Filed
+in `LEFTOVERS_SURFACES` with both cap raises naming it inline, so the debt is
+visible from the gate.
+
+Still nobody has opened this app on a machine that did not build it.
+
+**Gates at close:** precommit exit 0 — 4,048 tests, credo clean, 2 accepted
 cycles, file-size inventory holds, bun and Rust suites green.
