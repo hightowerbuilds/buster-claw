@@ -78,50 +78,67 @@ defmodule BusterClawWeb.Pockets.BrandSlots do
             </button>
           </div>
 
-          <form
+          <.upload_form
             :if={@upload_role == slot.role}
-            id={"brand-upload-#{slot.role}"}
-            phx-submit="upload_brand"
-            phx-change="validate_brand"
-            phx-target={@target}
-            class="w-full pt-1"
-          >
-            <.live_file_input upload={@uploads.brand} class="file-input file-input-xs w-full" />
-            <p class="pt-1 font-mono text-[10px] text-base-content/45">
-              Choosing a file applies it straight away.
-            </p>
-
-            <%!-- Every reason an upload can fail has to be visible here. With
-                  none of this rendered, a refused file looked exactly like a
-                  file that had not been chosen — which is how this read as
-                  "the upload does nothing". --%>
-            <p
-              :for={err <- upload_errors(@uploads.brand)}
-              class="pt-1 font-mono text-[10px] text-error"
-            >
-              {error_text(err)}
-            </p>
-            <div :for={entry <- @uploads.brand.entries} class="pt-1">
-              <p
-                :for={err <- upload_errors(@uploads.brand, entry)}
-                class="font-mono text-[10px] text-error"
-              >
-                {entry.client_name}: {error_text(err)}
-              </p>
-              <progress
-                :if={entry.progress > 0 and entry.progress < 100}
-                class="progress progress-primary h-1 w-full"
-                value={entry.progress}
-                max="100"
-              />
-            </div>
-            <p :if={@upload_error} class="pt-1 font-mono text-[10px] text-error">
-              {@upload_error}
-            </p>
-          </form>
+            role={slot.role}
+            uploads={@uploads}
+            upload_error={@upload_error}
+            target={@target}
+          />
         </li>
       </ul>
     </section>
+    """
+  end
+
+  @doc """
+  The file picker for one slot, plus every reason an upload can fail.
+
+  Shared with `AppIconSlot` rather than copied. The error rendering below is the
+  load-bearing part: with none of it drawn, a refused file looked exactly like a
+  file that had not been chosen, which is how this read as "the upload does
+  nothing". A second copy of that is a second place for it to go missing.
+  """
+  attr :role, :string, required: true
+  attr :uploads, :map, required: true
+  attr :upload_error, :string, default: nil
+  attr :target, :any, required: true
+
+  def upload_form(assigns) do
+    ~H"""
+    <form
+      id={"brand-upload-#{@role}"}
+      phx-submit="upload_brand"
+      phx-change="validate_brand"
+      phx-target={@target}
+      class="w-full pt-1"
+    >
+      <.live_file_input upload={@uploads.brand} class="file-input file-input-xs w-full" />
+      <p class="pt-1 font-mono text-[10px] text-base-content/45">
+        Choosing a file applies it straight away.
+      </p>
+
+      <p :for={err <- upload_errors(@uploads.brand)} class="pt-1 font-mono text-[10px] text-error">
+        {error_text(err)}
+      </p>
+      <div :for={entry <- @uploads.brand.entries} class="pt-1">
+        <p
+          :for={err <- upload_errors(@uploads.brand, entry)}
+          class="font-mono text-[10px] text-error"
+        >
+          {entry.client_name}: {error_text(err)}
+        </p>
+        <progress
+          :if={entry.progress > 0 and entry.progress < 100}
+          class="progress progress-primary h-1 w-full"
+          value={entry.progress}
+          max="100"
+        />
+      </div>
+      <p :if={@upload_error} class="pt-1 font-mono text-[10px] text-error">
+        {@upload_error}
+      </p>
+    </form>
     """
   end
 

@@ -41,6 +41,8 @@ defmodule BusterClaw.Pockets.AppIcon do
   that table would make the model wrong for six slots to accommodate a seventh.
   """
 
+  alias BusterClaw.FileManager
+  alias BusterClaw.Library.Artifact
   alias BusterClaw.Pockets
   alias BusterClaw.Settings
 
@@ -143,6 +145,40 @@ defmodule BusterClaw.Pockets.AppIcon do
   end
 
   @doc """
+  Put `src_path` in as the icon and apply it, replacing whatever was there.
+
+  **This applies immediately, and that is not a hole in the gate.** The gate asks
+  whether a *human* chose the image; an upload arrives through a file picker in
+  the app's own UI, which nothing but a person can drive. What the gate stops is
+  a file that appeared in the folder without anyone choosing it — dropped in
+  Finder, or written by an agent — and that path still needs the button.
+
+  Existing art is **moved to the workspace root, not deleted**, the same call
+  `Brand` makes: it is a file the operator made or chose, and picking a different
+  one is not permission to destroy it.
+
+  `{:ok, filename}` | `{:error, :not_an_icon | reason}`.
+  """
+  def put(src_path, client_name) do
+    ext = client_name |> Path.extname() |> String.downcase()
+
+    if ext in @image_exts do
+      ensure()
+      retire_all()
+
+      name = "app-icon#{ext}"
+      File.cp!(src_path, Path.join(Pockets.pocket_dir(@pocket), name))
+
+      # Applied rather than left pending: see the doc above. `apply_icon/0`
+      # broadcasts, so there is no second notification here.
+      apply_icon()
+      {:ok, name}
+    else
+      {:error, :not_an_icon}
+    end
+  end
+
+  @doc """
   Stop using a custom icon. The file stays; only the choice is withdrawn.
 
   Deleting the operator's image would be the app destroying something they made
@@ -156,6 +192,22 @@ defmodule BusterClaw.Pockets.AppIcon do
   end
 
   # --- internals ----------------------------------------------------------
+
+  # Art that comes out of this Pocket is moved to the top level of the workspace,
+  # never removed — `Brand.retirement_dir/0`'s rule, for the same reason.
+  defp retire_all do
+    dir = Pockets.pocket_dir(@pocket)
+    root = Artifact.workspace_root()
+
+    Enum.each(images(), fn name ->
+      src = Path.join(dir, name)
+
+      case FileManager.import_file(src, root, name, root) do
+        {:ok, _target} -> File.rm(src)
+        {:error, _reason} -> :ok
+      end
+    end)
+  end
 
   defp applied?(filename) do
     case {applied_hash(), hash(filename)} do

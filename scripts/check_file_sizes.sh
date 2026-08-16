@@ -522,9 +522,12 @@ check lib/buster_claw/pocket.ex                               138 HELD
 # `brand_slots.ex` for the same reason that one exists — and because this slot is
 # the only one with a verb, so it does not belong in a list of six that follow
 # their folder.
-check lib/buster_claw_web/components/pockets_panel.ex         510 HELD
-check lib/buster_claw_web/components/pockets/app_icon_slot.ex 105 HELD
-check lib/buster_claw/pockets/app_icon.ex                     210 HELD
+check lib/buster_claw_web/components/pockets_panel.ex         525 HELD
+check lib/buster_claw_web/components/pockets/app_icon_slot.ex 135 HELD
+# 210 -> 265 the same day: `put/2`, so the slot has the "Add art" button the six
+# brand slots have. Filling a Pocket only in Finder is a Pocket most people never
+# fill — operator found it in the first minute of using it.
+check lib/buster_claw/pockets/app_icon.ex                     265 HELD
 check desktop/tauri/src/app_icon.rs                           215 HELD
 check lib/buster_claw_web/components/pockets/pocket_controls.ex  174 HELD
 # Raised 08-10, 97 -> 108, for one `.wgsl` entry in the content-type table and
@@ -608,7 +611,12 @@ check lib/buster_claw/terminal_paint.ex                        81 HELD
 # Raised again 08-09, 347 -> 362, for `topic/0` and the two broadcasts that make
 # a swap reach surfaces the operator is not looking at.
 check lib/buster_claw/pockets/brand.ex                        362 HELD
-check lib/buster_claw_web/components/pockets/brand_slots.ex   146 HELD
+# 146 -> 175 on 08-15: the file picker became a shared `upload_form/1` so the
+# Dock icon slot could use it. That is a NET reduction in risk, not growth for
+# its own sake — the four places an upload can fail are rendered once instead of
+# twice, and this file's own comment records what happened the last time they
+# were missing.
+check lib/buster_claw_web/components/pockets/brand_slots.ex   175 HELD
 check lib/buster_claw_web/components/brand_art.ex              59 HELD
 # The dock nav, lifted OUT of the layout so it can re-render (an app layout is
 # rendered once at mount and never diffed). Capped at arrival with no headroom.

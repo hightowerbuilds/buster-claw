@@ -22,6 +22,9 @@ defmodule BusterClawWeb.Pockets.AppIconSlot do
   use BusterClawWeb, :html
 
   attr :status, :any, required: true
+  attr :uploads, :map, required: true
+  attr :upload_role, :string, default: nil
+  attr :upload_error, :string, default: nil
   attr :target, :any, required: true
 
   def app_icon_slot(assigns) do
@@ -44,6 +47,23 @@ defmodule BusterClawWeb.Pockets.AppIconSlot do
           </p>
         </div>
 
+        <%!-- The same "Add art" the six brand slots have, and for the same
+              reason: a Pocket you can only fill in Finder is a Pocket most
+              people will not fill. Choosing a file here applies it — an upload
+              arrives through a picker nothing but a person can drive, which is
+              precisely what the gate is asking about. A file that appears in the
+              folder any other way still needs the button below. --%>
+        <button
+          id="app-icon-pick"
+          type="button"
+          phx-click="pick_brand"
+          phx-value-role="app_icon"
+          phx-target={@target}
+          class="shrink-0 rounded border border-base-content/20 px-2 py-1 font-mono text-[10px] uppercase tracking-wide transition hover:bg-base-content/10"
+        >
+          {if @status == :empty, do: "Add art", else: "Replace"}
+        </button>
+
         <button
           :if={@status in [:pending, :replaced]}
           id="app-icon-apply"
@@ -65,6 +85,15 @@ defmodule BusterClawWeb.Pockets.AppIconSlot do
         >
           Stop using it
         </button>
+      </div>
+
+      <div :if={@upload_role == "app_icon"} class="px-4 pb-3">
+        <BusterClawWeb.Pockets.BrandSlots.upload_form
+          role="app_icon"
+          uploads={@uploads}
+          upload_error={@upload_error}
+          target={@target}
+        />
       </div>
     </section>
     """

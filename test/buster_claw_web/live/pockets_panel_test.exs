@@ -255,17 +255,66 @@ defmodule BusterClawWeb.PocketsPanelTest do
       File.write!(Path.join(dir, name), bytes)
     end
 
-    test "an empty Pocket offers no button at all", %{conn: conn} do
+    test "an empty Pocket offers Add art, and nothing to apply yet", %{conn: conn} do
       {view, _html} = open_tab(conn)
 
       assert has_element?(view, "#pockets-app-icon")
       assert has_element?(view, "#app-icon-status", "Drop one image into this Pocket")
+
+      # The six brand slots all have this button; a Pocket you can only fill in
+      # Finder is a Pocket most people will not fill.
+      assert has_element?(view, "#app-icon-pick", "Add art")
       refute has_element?(view, "#app-icon-apply")
       refute has_element?(view, "#app-icon-revoke")
     end
 
-    test "a file dropped in offers the button and changes nothing yet", %{conn: conn} do
+    test "Add art opens the picker, and picking again closes it", %{conn: conn} do
       {view, _html} = open_tab(conn)
+
+      view |> element("#app-icon-pick") |> render_click()
+      assert has_element?(view, "#brand-upload-app_icon")
+
+      view |> element("#app-icon-pick") |> render_click()
+      refute has_element?(view, "#brand-upload-app_icon")
+    end
+
+    test "uploading through the app applies it, because a picker is a person",
+         %{conn: conn} do
+      {view, _html} = open_tab(conn)
+      view |> element("#app-icon-pick") |> render_click()
+
+      upload =
+        file_input(view, "#brand-upload-app_icon", :brand, [
+          %{name: "claw.png", content: "icon-bytes", type: "image/png"}
+        ])
+
+      render_upload(upload, "claw.png")
+
+      # The gate asks whether a HUMAN chose the image. A file picker in the app's
+      # own UI is not something an agent can drive, so this needs no second click
+      # — where a file dropped into the folder still does.
+      refute AppIcon.current_path() == nil
+      assert has_element?(view, "#app-icon-status", "Your icon is on the Dock")
+    end
+
+    test "an image macOS cannot read is refused in words", %{conn: conn} do
+      {view, _html} = open_tab(conn)
+      view |> element("#app-icon-pick") |> render_click()
+
+      upload =
+        file_input(view, "#brand-upload-app_icon", :brand, [
+          %{name: "logo.svg", content: "<svg/>", type: "image/svg+xml"}
+        ])
+
+      render_upload(upload, "logo.svg")
+
+      # `Brand` accepts SVG for in-app chrome; NSImage does not read one, so
+      # taking it here would promise a Dock icon that silently never appears.
+      assert AppIcon.current_path() == nil
+      assert render(view) =~ "macOS will not read that image type"
+    end
+
+    test "a file dropped in offers the button and changes nothing yet", %{conn: conn} do
       drop_icon()
       {view, _html} = open_tab(conn)
 

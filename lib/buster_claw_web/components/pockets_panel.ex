@@ -193,9 +193,18 @@ defmodule BusterClawWeb.PocketsPanel do
     if entry.done? do
       role = socket.assigns.upload_role
 
+      # One upload socket, two destinations. The Dock icon is not a `Brand` role —
+      # it has a verb the six art slots do not — so it cannot go through
+      # `Brand.put/3`, but it shares the picker rather than opening a second
+      # `allow_upload` for a thing the operator does once.
       results =
         consume_uploaded_entries(socket, :brand, fn %{path: path}, e ->
-          {:ok, Brand.put(role, path, e.client_name)}
+          {:ok,
+           if role == "app_icon" do
+             AppIcon.put(path, e.client_name)
+           else
+             Brand.put(role, path, e.client_name)
+           end}
         end)
 
       failed = Enum.find(results, &match?({:error, _}, &1))
@@ -232,6 +241,9 @@ defmodule BusterClawWeb.PocketsPanel do
     do: "a surface is using this Pocket, so it cannot move outside the workspace"
 
   defp write_error_text(other), do: "could not do that: #{inspect(other)}"
+
+  defp brand_error_text(:not_an_icon),
+    do: "macOS will not read that image type — use PNG, JPEG, GIF, TIFF or ICNS"
 
   defp brand_error_text(:unsupported_type), do: "that file type is not an image we can show"
   defp brand_error_text(:unknown_role), do: "that slot no longer exists"
@@ -329,6 +341,9 @@ defmodule BusterClawWeb.PocketsPanel do
         <BusterClawWeb.Pockets.AppIconSlot.app_icon_slot
           :if={is_nil(@open_row)}
           status={@app_icon}
+          uploads={@uploads}
+          upload_role={@upload_role}
+          upload_error={@upload_error}
           target={@myself}
         />
         <BusterClawWeb.Pockets.BrandSlots.brand_slots

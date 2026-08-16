@@ -174,8 +174,22 @@ running packaged app, and invoking it with `None` puts the original back.
   removes the only case that would have needed a path into `priv/static` from a
   release, which is the awkward half of `image_url/1`'s `default` field.
 
-**Exit:** the Pockets panel lists an App Icon slot that uploads, replaces and
-clears exactly like the six that exist, with no special-casing in the panel.
+**Exit:** met on the second pass. The first shipped without an upload button —
+the Pocket was fillable only from Finder — and the operator hit it in the first
+minute: *"we need a simple add art button like the rest, the drag and drop isn't
+working."* A Pocket you can only fill in Finder is a Pocket most people never
+fill.
+
+**Uploading through the picker applies immediately, and that is not a hole in the
+gate.** The gate asks whether a *human* chose the image. A file input in the
+app's own UI is not something an agent can drive; what the gate stops is a file
+that appeared in the folder without anyone choosing it — dropped in Finder, or
+written by a run — and that path still needs the button.
+
+The picker itself is `BrandSlots.upload_form/1`, shared rather than copied. Its
+four failure states are rendered once, and that file's own comment records what
+happened the last time they were missing: a refused file looked exactly like a
+file that had not been chosen, so the upload read as doing nothing.
 
 ---
 
