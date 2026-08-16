@@ -459,6 +459,42 @@ often than people do**, since a script clicks the instant the DOM is ready. If i
 is ever worth addressing, the lever is a connected-state affordance on
 destructive controls, not a retry queue.
 
+### The background mode grammar is parsed in three places
+
+**Operator asked for this extraction on 08-15, then deferred it** — recorded here
+the same hour so the seam does not have to be rediscovered.
+
+The mode grammar is `off | <shader> | image:<slot> | image:<slot>+<shader>`, and
+three modules now take it apart:
+
+| Where | Function | Wants |
+|---|---|---|
+| `lib/buster_claw/appearance.ex` | resolution / validation | the whole mode |
+| `lib/buster_claw/commands/appearance.ex` | `shader_component/1` | the shader half, to check approval |
+| `lib/buster_claw_web/live/appearance_live.ex` | `workspace_shader/1` | the shader half, to mint approval |
+
+The last two arrived **within an hour of each other** on 08-15, written by two
+agents working in parallel on disjoint files — neither could see the other, and
+both needed the same three lines. That is the honest reason there are three
+copies rather than an argument that they should be one.
+
+**Why it is worth doing:** a fourth mode form (the roadmap's Phase 5 names
+palette extraction; a second overlay strength is another) has to be added in
+three places, and the two shader-half copies differ subtly already — the command
+one returns the raw name, the LiveView one filters to `custom_shaders/0` first.
+A parser that disagrees with itself about what a mode *is* is the shape of bug
+that renders nothing and refuses nothing.
+
+**What makes it expensive later:** both files are over their old caps because of
+this work (`commands/appearance.ex` 365 → 430, `appearance_live.ex` 1000 →
+1060), and the LiveView is the one the operator named. Every later feature
+raises them again against a seam everybody already knows is there.
+
+**The likely shape:** one pure module — call it `Appearance.Mode` — that parses a
+mode string into `{:off | :shader | :image | :image_shader, parts}` and is the
+only thing that knows the `+`. It is `import`-able so call sites stay
+byte-identical, which is the rule that made the TradingLive extraction hold.
+
 ---
 
 ## The rule for this file

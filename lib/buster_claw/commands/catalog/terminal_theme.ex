@@ -9,13 +9,13 @@ defmodule BusterClaw.Commands.Catalog.TerminalTheme do
   forgets what the agent painted. There is no import, no export, no random, no
   animation and no per-surface theming.
 
-  ## Why a palette gets commands when a shader never will
+  ## Why a palette needs no approval and a shader does
 
-  `Appearance` accepts operator-authored `.wgsl` and has **no commands at all**,
-  because only a human click may put user-authored GPU code on a screen. That
-  refusal is unchanged (roadmap D1): a shader is arbitrary GPU code, and a
-  palette is 21 validated `#rrggbb` values that cannot execute and cannot
-  escape. This opens *one table of colours*, not appearance.
+  `Appearance` accepts operator-authored `.wgsl`, and a command may apply one only
+  when its exact bytes are approved — the operator's click, or the one-time
+  backfill of files predating that gate — so an edit withdraws it. A palette needs
+  no approval (roadmap D1): 21 validated `#rrggbb` values cannot execute or escape,
+  where a shader is GPU code nobody has read. One table of colours, not appearance.
 
   ## Why the writes are `:restricted` and not gated
 

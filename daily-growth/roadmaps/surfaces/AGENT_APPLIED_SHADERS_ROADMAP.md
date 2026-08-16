@@ -1,9 +1,25 @@
 # Agent-applied shaders — letting the model put a workspace pattern on screen
 
-**Scoped 08-15-26 · Status: Phase 0 DECIDED 08-15 — option D, with backfill.
-Phases 1–5 NOT STARTED, no code written. This document exists because the
-operator asked for a capability the app currently refuses on purpose, and the
-refusal is one day old.**
+**Scoped 08-15-26 · Status: COMPLETE 08-15. Phase 0 decided by the operator,
+Phases 1–5 built the same day. `nebula` — the shader whose refusal started this —
+applies by command after one click.**
+
+> **What shipped.** `background_set` accepts a workspace shader whose **current
+> bytes** the operator has approved by applying it once themselves; editing the
+> file withdraws that. Shaders already in the workspace were backfilled. The
+> store is `BusterClaw.Appearance.ShaderApproval`, in `app_settings`, outside the
+> workspace so nothing with file write can forge an approval.
+>
+> **The property that survived:** GPU code no human has ever looked at cannot
+> reach the screen from a command. "Never apply a workspace shader" was only ever
+> a proxy for that, and a crude one — it refused the operator's own files too.
+>
+> **One contradiction the build found.** IV.1 and VI.2 both suggested answering
+> the whole catalog with one read of the approval map. It cannot be done: the map
+> holds the hash that *was* approved, not whether the file still matches, so an
+> edited shader would report `approved: true` and then be refused — the exact
+> round trip VI.2 exists to prevent. `background_list` re-hashes per shader.
+> `approved_shaders/0` is an inspection API and now says so.
 
 > ### The one-sentence version
 >
@@ -211,7 +227,7 @@ cost is priced at roughly zero rather than at the loop it would otherwise break.
 answers and the reasoning are in [Part VIII](#part-viii--the-operators-answers).
 Phases 1–5 are unblocked; budget two to three days.
 
-### Phase 1 — The approval store
+### Phase 1 — The approval store ✅ SHIPPED 08-15
 
 New functions on `BusterClaw.Appearance` (**not** in `commands/`, see VI.1):
 
@@ -222,7 +238,7 @@ New functions on `BusterClaw.Appearance` (**not** in `commands/`, see VI.1):
 Hash the **file bytes as served**, not the catalog entry. A deleted-and-rewritten
 file must not inherit approval.
 
-### Phase 2 — Wire the page
+### Phase 2 — Wire the page ✅ SHIPPED 08-15
 
 `AppearanceLive` calls `approve_shader/1` whenever a human applies a workspace
 shader. This is the only place approval is minted. **Backfill on first run: YES**
@@ -230,7 +246,20 @@ shader. This is the only place approval is minted. **Backfill on first run: YES*
 approved at its current hash, so the feature works on day one instead of after
 22 clicks. A file written *after* that point is new and needs its click.
 
-### Phase 3 — Relax the command check
+> **Correction, 08-15: the backfill is Phase 1's, not Phase 2's.** It lives in
+> `ShaderApproval.backfill/0` and runs lazily on first read, because it needs
+> `Shaders.list/0` and the stamp key — both the store's business, neither
+> `AppearanceLive`'s. This paragraph is where the *decision* is recorded; the
+> code is one phase earlier.
+>
+> **A consequence for anyone writing tests here.** The store backfills
+> everything present the first time it is asked anything, so a test that writes
+> a shader and then clicks it will pass on the day-one grant and never exercise
+> the click path at all. Force the backfill first (read `approved_shaders/0`, or
+> stamp the marker key) and then write the shader under test. This ate a real
+> test during the build.
+
+### Phase 3 — Relax the command check ✅ SHIPPED 08-15
 
 `check_shader/2` becomes: built-in **or** `Appearance.shader_approved?(name)`.
 The refusal sentence in `authored_shader_refusal/1` (`:194`) needs rewriting —
@@ -238,7 +267,7 @@ it currently says commands may *never* apply workspace shaders, which would
 become false. New wording must tell the caller the fix: *click it once in
 Settings → Appearance and this command will work from then on.*
 
-### Phase 4 — Correct the prose
+### Phase 4 — Correct the prose ✅ SHIPPED 08-15
 
 Non-optional, and the reason this is a roadmap and not a patch:
 
@@ -249,7 +278,7 @@ Non-optional, and the reason this is a roadmap and not a patch:
 - `appearance.ex:132-157` — the comment block explains why the check exists;
   it must explain why it now has an exception.
 
-### Phase 5 — Tests
+### Phase 5 — Tests ✅ SHIPPED 08-15
 
 `appearance_test.exs:277` and `:295` keep their names and their meaning: an
 **unapproved** shader the agent wrote is still refused. Add:
@@ -286,6 +315,11 @@ being refused, which `Catalog.Appearance` already argues is bad manners.
 
 `terminal_background_mode` sits on the same table. Whatever is decided applies
 to both, and `Catalog.TerminalTheme` carries the twin sentence.
+
+**Free, as built (08-15).** Approval is keyed by shader *name*, not by surface,
+so applying a workspace shader to the Terminal grants exactly what applying it
+to the Homepage grants. No extra code — and worth knowing before someone writes
+a per-surface approval test, which could not fail and would be scenery.
 
 ---
 

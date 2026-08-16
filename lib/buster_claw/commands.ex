@@ -590,8 +590,10 @@ defmodule BusterClaw.Commands do
   defdelegate terminal_theme_paint(args), to: BusterClaw.Commands.TerminalTheme
   defdelegate terminal_theme_reset(args \\ %{}), to: BusterClaw.Commands.TerminalTheme
   # Backgrounds — the other half of dressing a surface (DMG review B1). Selection
-  # only: these choose among the shaders the operator wrote and the images they
-  # uploaded, and no command at any tier adds either. Every write goes through
+  # only: these choose among the built-in designs, the images the operator
+  # uploaded, and the workspace shaders whose CURRENT bytes the operator has
+  # approved by applying them once (AGENT_APPLIED_SHADERS). No command at any
+  # tier authors a shader or adds an image. Every write goes through
   # `Appearance.set_background/2`, which is the app's one definition of a valid
   # background; `commands/appearance_test.exs` fails if this module ever reaches
   # past it to a Settings key.

@@ -34,6 +34,7 @@ defmodule BusterClaw.Appearance do
   require Logger
 
   alias BusterClaw.Appearance.Migration
+  alias BusterClaw.Appearance.ShaderApproval
   alias BusterClaw.Library.Artifact
   alias BusterClaw.Pockets
   alias BusterClaw.Settings
@@ -196,6 +197,40 @@ defmodule BusterClaw.Appearance do
   def custom_shaders do
     Enum.reject(Shaders.list(), &(&1 in @builtin_shaders or Shaders.face?(&1)))
   end
+
+  @doc """
+  Whether a command may apply this workspace shader — see
+  `BusterClaw.Appearance.ShaderApproval`.
+
+  Delegated rather than reimplemented, and read through `Appearance` rather than
+  the store directly, because `commands/appearance.ex` is held to a name-blind
+  reach list and must never name the settings layer.
+
+  Says nothing about the Appearance PAGE, which applies any catalog entry: a
+  human is clicking there.
+  """
+  defdelegate shader_approved?(name), to: ShaderApproval, as: :approved?
+
+  @doc """
+  Record a workspace shader as operator-approved. Minted in exactly one place —
+  the Appearance page, when a human applies one.
+  """
+  defdelegate approve_shader(name), to: ShaderApproval, as: :approve
+
+  @doc """
+  The stored approval record, `%{name => hash}` — **what was approved, not what
+  is applicable now.**
+
+  It reports the bytes that were blessed; it does not re-read the files. A shader
+  edited since its click is still listed here and would be refused by
+  `background_set`, so **never answer "may I apply this?" with this map** — that
+  is `shader_approved?/1`, one shader at a time, which re-hashes. `background_set`
+  rejected the cheap read for exactly that reason and says so at its call site.
+
+  It is an inspection API: what the store holds, for tests and for anything that
+  needs to see the record itself.
+  """
+  defdelegate approved_shaders(), to: ShaderApproval, as: :approvals
 
   # --- the catalog ---------------------------------------------------------
 

@@ -167,7 +167,7 @@ and zero issues in the verdict. Budget hours per release, not minutes
 | Widget → Contacts | `BusterClaw.Contacts` | SHIPPED | — |
 | Widget → Notify | `NotifyLive` | SHIPPED | [`LEFTOVERS_AGENT_CORE`](agent-core/LEFTOVERS_AGENT_CORE.md) — the chime designer |
 | Background shader | `Shaders` | SHIPPED | — |
-| **Agent-applied shaders** | `background_set`'s `refuse_authored_shader/1` | **Phase 0 DECIDED 08-15 (option D + backfill), Phases 1–5 unbuilt** — today the command applies only the five built-ins, *whoever wrote the alternative*; approval by content hash relaxes that for shaders the operator has clicked once | [`AGENT_APPLIED_SHADERS`](surfaces/AGENT_APPLIED_SHADERS_ROADMAP.md) |
+| **Agent-applied shaders** | `Appearance.ShaderApproval` | **COMPLETE 08-15** — a workspace shader applies by command once the operator has applied its exact bytes themselves; editing withdraws it. Existing shaders backfilled. The property kept: GPU code no human has looked at cannot reach the screen from a command | [`AGENT_APPLIED_SHADERS`](surfaces/AGENT_APPLIED_SHADERS_ROADMAP.md) |
 | Image-reactive shaders | `ShaderCanvas`, `Appearance.image_shader_options/0` | SHIPPED — Phase 4 (the skill) open | [`IMAGE_SHADER`](surfaces/IMAGE_SHADER_ROADMAP.md) |
 | The home screen's primary action | `StatusLive` | SHIPPED, **says the wrong thing** | [`FRONT_DOOR`](distribution/FRONT_DOOR_ROADMAP.md) `VI-a` |
 

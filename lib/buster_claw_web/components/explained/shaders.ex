@@ -1,25 +1,29 @@
 defmodule BusterClawWeb.Explained.Shaders do
   @moduledoc """
   The Shaders & Backgrounds tutorial — the one surface in Explained where the
-  agent cannot press the button.
+  agent may press only a button whose exact contents the operator has approved.
 
-  The security property this tutorial teaches survived a change on 08-15 and is
-  now **sharper than "no commands"**. `background_list` and `background_set`
-  exist, so an agent can point a surface at a built-in design or at an image you
-  uploaded. What it still cannot do is apply a shader **it wrote**:
-  `Commands.Appearance` refuses any shader that is not in
-  `Appearance.builtin_shaders/0`, so a `shaders/<name>.wgsl` written by anything
-  with workspace access stays a *proposal* until a human clicks it in
-  Settings → Appearance.
+  The security property this tutorial teaches has changed twice in one week, and
+  got narrower both times rather than dying: "no command selects a background"
+  fell to `background_list`/`background_set`, then "an agent may never apply a
+  shader it wrote" fell to AGENT_APPLIED_SHADERS. What neither change touched is
+  that **the model cannot put GPU code the operator has not seen on a screen.**
 
-  That refusal lives in the command module rather than in `Appearance`, and
-  deliberately: the page must keep applying workspace shaders, because a human is
-  choosing. The command surface is the narrower one.
+  The mechanism is approval by content hash: a built-in applies by command always,
+  a workspace `shaders/<name>.wgsl` only when its current bytes are on the approval
+  list — written when the operator applies that file in Settings → Appearance, plus
+  a one-time backfill of the shaders that predate the feature, and kept outside the
+  workspace. A file the model just wrote is still a *proposal*; editing an approved
+  one makes it one again. Names are forgeable, which is why the key is the bytes.
+
+  That check lives in the command module rather than in `Appearance`, and
+  deliberately: the page applies any workspace shader, because a human is choosing
+  and that click IS the approval. The command surface is the narrower one.
 
   **The reason it is narrower is that authoring needs no command at all.** The
   workspace is writable, so "no verb writes a shader" was never the containment —
-  the containment is that no verb *applies* one. That was found the hour the
-  verbs landed, by this page's own claim going false.
+  the containment is that no verb applies one the operator has not seen. That was
+  found the hour the verbs landed, by this page's own claim going false.
 
   Two things here disagreed with the code before this was written, and both are
   now taken from the implementation rather than from the older prose:
@@ -56,7 +60,7 @@ defmodule BusterClawWeb.Explained.Shaders do
       <div>
         <p class="ic-eyebrow">Ambiance</p>
         <h2 class="mt-2 font-display text-2xl font-black tracking-tight">
-          Shaders & Backgrounds — the one thing the agent can't switch on
+          Shaders & Backgrounds — new GPU code waits for your click
         </h2>
       </div>
 
@@ -71,15 +75,26 @@ defmodule BusterClawWeb.Explained.Shaders do
         </p>
         <p class="border-l-2 border-primary pl-3">
           <span class="font-semibold text-base-content">An agent can change your
-            background. It cannot apply a shader it wrote.</span>
+            background. It cannot put GPU code you have never looked at on your screen.</span>
           Ask for <code>background_set</code>
-          and it will point the homepage or the terminal at a built-in design, or
-          at an image you uploaded. Ask it to apply the <code>.wgsl</code>
-          it just wrote for you and it is refused, by name, every time. Anything
-          with write access to your workspace can author a shader file — so the
-          line is not who can write one, it is that <span class="italic">applying</span>
-          one is a click only you can make. That is the entire safety model for
-          arbitrary GPU code.
+          and it will point the homepage or the terminal at a built-in design, at an
+          image you uploaded, or at a workspace shader <span class="italic">you have already applied yourself</span>. Ask it to
+          apply the <code>.wgsl</code>
+          it just wrote for you and it is refused, by name: the file exists, and it
+          stays a proposal until you click it once in Appearance. After that click
+          the agent may apply it whenever it likes — until the file changes.
+        </p>
+        <p>
+          <span class="font-semibold text-base-content">The approval is a
+            fingerprint of the file, not its name.</span>
+          Clicking a shader records a hash of exactly the bytes you were shown, so any
+          later edit — yours or the agent's — withdraws it and the next apply is a
+          click again. Approving by name would buy nothing: anything that can write to
+          your workspace can author a shader, so a name you blessed could be
+          overwritten with different code and ride the blessing. One exception, once:
+          shaders already in your folder the day this arrived were approved as they
+          stood, because they predate the question. Anything written since is a
+          proposal until you click it — unseen code never reaches the screen unasked.
         </p>
       </div>
 
@@ -113,7 +128,8 @@ defmodule BusterClawWeb.Explained.Shaders do
           <li>
             <span class="font-mono font-bold text-base-content">Workspace shaders</span>
             — anything valid in your workspace's <code>shaders/</code>
-            folder, listed by name. This is the part you write.
+            folder, listed by name. This is the part you write, and clicking one
+            here is also what lets a command apply it later.
           </li>
           <li>
             <span class="font-mono font-bold text-base-content">Images</span>
@@ -256,7 +272,7 @@ defmodule BusterClawWeb.Explained.Shaders do
         want="Describe a look; get a file. Then decide whether it goes on your screen."
         needs="An agent CLI signed in, and the shader-designer skill in your workspace (it ships seeded)."
         touches="Writes one file, `shaders/<name>.wgsl`, in your workspace. It touches no setting and no surface."
-        confirm="The hard stop is structural: `background_set` refuses any shader that did not ship with the app, so the agent cannot apply what it just wrote — it is refused by name. Applying a workspace shader is your click, always."
+        confirm="The hard stop is structural: `background_set` applies a workspace shader only when the file's current bytes are ones you applied yourself, and a file written a second ago matches nothing you have ever seen. So the agent cannot apply what it just wrote — a pattern that arrived after you did runs the first time because you clicked it."
         result="A new row in the Appearance catalog under Shaders, once the page reads the folder again. Invalid WGSL never appears there; a file that compiles but throws leaves the surface unpainted rather than crashing the page."
       >
         <.prompt text="Read the shader-designer skill, then write me a background shader called deep-tide — slow diagonal swells, mostly dark, with the accent color only in the crests. Put it in my shaders folder and tell me what to click." />
@@ -283,8 +299,10 @@ defmodule BusterClawWeb.Explained.Shaders do
           </li>
           <li>
             Iterate in the same breath: "make the crests sharper" rewrites the file,
-            and the shader layer picks up the new source on remount. Delete the file
-            and the surface falls back to its default instead of going blank.
+            and the shader layer picks up the new source on remount. Each rewrite is
+            new code, so it withdraws the approval you gave the old bytes — applying
+            that name by command needs another click. Delete the file and the
+            surface falls back to its default instead of going blank.
           </li>
         </ol>
       </.example>
@@ -304,8 +322,9 @@ defmodule BusterClawWeb.Explained.Shaders do
           A shader is code that runs on your GPU. It is sandboxed — WGSL cannot reach
           memory or the filesystem — but it can still own every pixel behind your
           work, and a surface you cannot read is a surface you cannot trust. So the
-          catalog is generous about what may be *offered* and absolute about who
-          *chooses*. Files can arrive from anywhere. Selection stays with you.
+          catalog is generous about what may be *offered* and strict about what may
+          run *unseen*. Files can arrive from anywhere; a new one runs the first time
+          because you chose it, and it needs choosing again each time it changes.
         </p>
       </div>
 

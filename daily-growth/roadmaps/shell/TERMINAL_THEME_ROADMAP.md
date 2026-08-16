@@ -202,9 +202,12 @@ is refused rather than stored.
   two, which is the point at which the list UI earns its keep.
 - **Import/export a theme file.** The natural next ask after a library, and it
   inherits the whole validation surface. Not now.
-- **Themes as commands** (`terminal_theme_set`, …). No. Note the precedent:
-  `Appearance` deliberately has **no commands at all**, because a human click is
-  the gate on arbitrary user-authored visual input. Colours are far less dangerous
+- **Themes as commands** (`terminal_theme_set`, …). No. Note the precedent —
+  **and note that the precedent moved on 08-15, in the direction of this
+  bullet.** `Appearance` had no commands at all when this was written; it now has
+  `background_list` / `background_set`, and a workspace shader is applicable once
+  the operator has applied its exact bytes themselves. The gate is no longer
+  "a human click every time" but "a human has seen this code once". Colours are far less dangerous
   than WGSL, but the argument for adding an agent-reachable verb here is "it would
   be neat", which is not one.
 - **Theming the 16 ANSI colours by algorithm** (deriving bright variants,

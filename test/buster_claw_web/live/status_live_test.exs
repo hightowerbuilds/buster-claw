@@ -1724,7 +1724,7 @@ defmodule BusterClawWeb.StatusLiveTest do
       end
     end
 
-    test "the Shaders tab teaches the file contract and that selection is yours alone",
+    test "the Shaders tab teaches the file contract and that unseen GPU code needs your click",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
       render_click(view, "select_home_tab", %{"tab" => "explained"})
@@ -1744,14 +1744,19 @@ defmodule BusterClawWeb.StatusLiveTest do
 
       assert html =~ "up to #{Appearance.max_images()} slots"
 
-      # The claim the whole tab rests on, and it CHANGED on 08-15 rather than
-      # dying. It used to be "nothing on the command surface selects a
-      # background"; `background_list` / `background_set` landed and this test
-      # failed, which is exactly what it was written to do.
+      # The claim the whole tab rests on, and it has now CHANGED TWICE rather
+      # than dying — which is the argument for writing it this way. It used to be
+      # "nothing on the command surface selects a background"; `background_list` /
+      # `background_set` landed on 08-15 and this test failed, which is exactly
+      # what it was written to do. It then became "an agent may never apply a
+      # shader IT WROTE", and AGENT_APPLIED_SHADERS made that false too: a
+      # workspace shader whose current bytes the operator has applied by hand is
+      # now applicable by command.
       #
-      # The new claim is narrower and stronger: an agent may select, but may
-      # never apply a shader IT WROTE. So this asserts the surface has not grown
-      # a third appearance-ish verb behind our backs — a shader-writing or
+      # What survived both narrowings, and what the tab must keep teaching, is
+      # that GPU code the operator has never looked at does not reach a screen on
+      # the agent's say-so. So this asserts the surface has not grown a third
+      # appearance-ish verb behind our backs — a shader-writing or
       # image-uploading one would break the property the tab teaches, and would
       # land here first.
       selectors =
@@ -1768,17 +1773,42 @@ defmodule BusterClawWeb.StatusLiveTest do
              """
              The appearance command surface changed. The Shaders tutorial teaches
              that an agent may point a surface at something that already exists
-             but may never apply a shader it authored, and `Commands.Appearance`
-             enforces that by refusing any shader outside
-             `Appearance.builtin_shaders/0`.
+             but may never put GPU code the operator has not seen on a screen, and
+             `Commands.Appearance` enforces that by refusing any shader that is
+             neither a built-in nor approved at its current content hash.
 
              A new verb here needs that property re-argued, and this page
              rewritten. Found: #{Enum.join(selectors, ", ")}
              """
 
-      # The tab says what the agent CAN do, and what it still cannot.
+      # The tab says what the agent CAN do, and what it still cannot. The second
+      # of these is the sentence that replaced "cannot apply a shader it wrote"
+      # when approval-by-hash shipped: the narrower claim is the one that is
+      # still true, so it is the one asserted.
       assert html =~ "background_set"
-      assert html =~ "cannot apply a shader it wrote"
+      assert html =~ "cannot put GPU code you have never looked at on your screen"
+
+      # And the tab must teach the rule, not just the reassurance: built-ins
+      # always, a workspace shader once YOU have applied it, and an edit puts it
+      # back behind a click. A tutorial that stopped at "the agent can't" would
+      # now be teaching a refusal the app no longer makes.
+      assert html =~ "you have already applied yourself"
+      assert html =~ "stays a proposal until you click it once in Appearance"
+      assert html =~ "until the file changes"
+
+      # Why the approval is a hash and not a name. This is the load-bearing half:
+      # a name-keyed approval would let a run overwrite an approved file and ride
+      # the blessing, which is the same file-write shortcut that made "no command
+      # authors a shader" insufficient in the first place.
+      assert html =~ "fingerprint of the file, not its name"
+      assert html =~ "overwritten with different code and ride the blessing"
+
+      # The backfill is stated, not hidden. Shaders already in the folder when
+      # approval shipped were approved unclicked, so a page claiming every shader
+      # runs first because the operator clicked it would be false for exactly the
+      # 22 files most operators have. A tutorial that overstates the guarantee is
+      # the failure this tab was rewritten to avoid.
+      assert html =~ "because they predate the question"
 
       # The file contract, each part of it load-bearing.
       assert html =~ "fs_main"

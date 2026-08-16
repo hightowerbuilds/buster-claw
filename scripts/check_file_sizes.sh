@@ -293,7 +293,16 @@ check lib/buster_claw_web/components/chat_panel.ex          1040 HELD
 # genuinely broad surface and the review named its two remaining seams (the
 # terminal-theme block, the background catalog), so leaving a little room is
 # honest rather than generous.
-check lib/buster_claw_web/live/appearance_live.ex            1000 HELD
+# 1000 -> 1060 on 08-15: minting approval on the human click
+# (AGENT_APPLIED_SHADERS Phase 2) — two call sites, one shared key extractor, and
+# the disclosure line that keeps a silent grant from being silent. About 25 lines
+# of code to 45 of comment and markup.
+#
+# EXTRACTION OWED (operator, 08-15) and this file is the reason it was asked for:
+# it was already at its cap with no headroom before this landed. See
+# LEFTOVERS_SURFACES; `workspace_shader/1` here is the third copy of the mode
+# grammar and is the obvious first thing to leave.
+check lib/buster_claw_web/live/appearance_live.ex            1060 HELD
 check lib/buster_claw_web/live/status/comms.ex               125 HELD
 # Raised 08-09, 114 -> 150, for the Studio's Mix|Voice sub-tab (STUDIO_ROADMAP
 # VI.0b). This module moved instead of `status_live.ex` — which is at its cap and
@@ -554,7 +563,16 @@ check lib/buster_claw/commands/catalog/terminal_theme.ex      101 HELD
 #
 # If a later reader "simplifies" that check away, appearance_test.exs fails: it
 # writes a shader as an agent would and asserts the command refuses it.
-check lib/buster_claw/commands/appearance.ex                  365 HELD
+# 365 -> 430 on 08-15 for AGENT_APPLIED_SHADERS Phases 3 + VI.2: the check gains
+# an approval branch, the refusal is rewritten to name the fix, and every option
+# entry gains `approved`. Most of the growth is the comment block, which now has
+# to carry BOTH why the refusal exists and why it has an exception — and that
+# history is the thing that stops it being deleted again.
+#
+# EXTRACTION OWED (operator, 08-15). The seam is named in LEFTOVERS_SURFACES:
+# the mode grammar `off | <name> | image:<slot> | image:<slot>+<shader>` is now
+# parsed in three places, and `shader_component/1` here is one of them.
+check lib/buster_claw/commands/appearance.ex                  430 HELD
 check lib/buster_claw/commands/catalog/appearance.ex           87 HELD
 check lib/buster_claw/terminal_paint.ex                        81 HELD
 
@@ -666,7 +684,14 @@ check lib/buster_claw/commands/web.ex                         848 FROZEN
 # here means someone added a migration to a module whose whole argument is that
 # it will one day be deleted with `rm`. If that is genuinely right, the raise
 # needs to say which install it is for.
-check lib/buster_claw/appearance.ex                           780 HELD
+# 780 -> 800 on 08-15 for three `defdelegate`s and their docs
+# (AGENT_APPLIED_SHADERS Phase 1). The approval STORE is a sibling module rather
+# than more of this file, for two reasons that both bite: this file was at 764
+# against 780, and `commands/appearance.ex` is held to a name-blind reach list
+# plus a source-grep guard, so the command layer must reach approval through
+# `Appearance` and must never name the settings store even in a comment.
+check lib/buster_claw/appearance.ex                           800 HELD
+check lib/buster_claw/appearance/shader_approval.ex           160 HELD
 check lib/buster_claw/appearance/migration.ex                 170 HELD
 
 if [ "$fail" -ne 0 ]; then

@@ -78,6 +78,8 @@ defmodule BusterClawWeb.AppearanceLive do
       s ->
         case Appearance.set_background(s, option) do
           {:ok, _key} ->
+            mint_approval(option)
+
             {:noreply,
              socket
              |> assign_backgrounds()
@@ -190,6 +192,7 @@ defmodule BusterClawWeb.AppearanceLive do
 
       case Appearance.set_background(s, key) do
         {:ok, _} ->
+          mint_approval(key)
           {:noreply, assign_backgrounds(socket)}
 
         {:error, reason} ->
@@ -371,6 +374,21 @@ defmodule BusterClawWeb.AppearanceLive do
                   surface just stays solid. Drop a <span class="font-mono text-xs">.wgsl</span>
                   file into your workspace's <span class="font-mono text-xs">shaders/</span>
                   folder and it appears here without a rebuild.
+                </p>
+
+                <%!-- Said out loud, because sending a shader to a surface quietly
+                      grants a standing capability the operator did not come here
+                      to grant (AGENT_APPLIED_SHADERS_ROADMAP, risk VII.2). A line
+                      rather than a confirmation: a background is visible the
+                      instant it happens and undone by one more click, so gating it
+                      would only teach the operator to click through the gates that
+                      do matter. The second sentence is not decoration — approval
+                      is keyed to the file's contents, so an edited shader really
+                      does go back to needing a click, and an operator who wasn't
+                      told that would read it as the feature failing. --%>
+                <p class="text-xs leading-5 text-base-content/55">
+                  Sending one of your own shaders to a surface also lets commands re-apply
+                  that exact file later. Edit the file and they'll need you to pick it again.
                 </p>
 
                 <%!-- One shader per row: the names are the whole content, so a
@@ -935,6 +953,58 @@ defmodule BusterClawWeb.AppearanceLive do
     # shader that samples the image should make it offerable without a restart.
     |> assign(:overlays, Appearance.image_shader_options())
     |> assign(:pool_full, Appearance.pool_full?())
+  end
+
+  # A human just put this background on a surface, so if it carries one of their
+  # own shaders, record that they have seen it — `background_set` may apply an
+  # approved workspace shader from then on (AGENT_APPLIED_SHADERS_ROADMAP Phase
+  # 2). This page is the ONLY place approval is minted, and that is the entire
+  # security property: no command can tell a shader the model wrote from one the
+  # operator wrote, so a human clicking it is the only signal there is to take.
+  #
+  # Called after `set_background/2` has already succeeded, never before. Approval
+  # follows a choice that actually landed — a refused overlay must not leave the
+  # operator having granted something for a background they never got.
+  #
+  # It also may not fail the click. `approve_shader/1` errors when the file will
+  # not read, which cannot happen on this path (`set_background/2` just resolved
+  # the same name), but if it ever did, flashing it would be exactly backwards:
+  # the background IS applied, and the operator would be shown an error about a
+  # capability they never asked for, over the change they did ask for.
+  defp mint_approval(key) do
+    case workspace_shader(key) do
+      nil -> :ok
+      name -> Appearance.approve_shader(name)
+    end
+
+    :ok
+  end
+
+  # The shader inside a background key, when it is one of the operator's own.
+  #
+  # Two forms, and the second is the one that gets forgotten: a bare name from a
+  # catalog row, and `image:<slot>+<shader>` from the overlay picker. Both call
+  # sites route through here rather than each doing their own extraction, because
+  # a missed overlay is worse than a missing feature — the operator watches their
+  # shader appear over their photo and the model still refuses to re-apply it,
+  # which looks like the feature is broken rather than like a gate holding.
+  #
+  # `custom_shaders/0` is the filter rather than "not a built-in", so this is the
+  # same list the catalog offers: a built-in (already applicable by command), a
+  # shaderface, and a name that is no longer a file all drop out for free.
+  # Approving a built-in would be inert, and inert rows in a security store are
+  # how the store stops being readable.
+  defp workspace_shader("off"), do: nil
+
+  defp workspace_shader("image:" <> rest) do
+    case String.split(rest, "+", parts: 2) do
+      [_slot, shader] -> workspace_shader(shader)
+      [_slot] -> nil
+    end
+  end
+
+  defp workspace_shader(name) do
+    if name in Appearance.custom_shaders(), do: name
   end
 
   defp overlay_error(:not_image_reactive),

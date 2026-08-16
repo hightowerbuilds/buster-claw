@@ -11,15 +11,15 @@ defmodule BusterClaw.Commands.Catalog.Appearance do
 
   ## What this changes about `Appearance` having no commands, and what it does not
 
-  `Catalog.TerminalTheme`'s moduledoc says `Appearance` has no commands at all,
-  because only a human click may put user-authored GPU code on a screen. B1 asked
-  for exactly one half of that back, and the half it asked for is **selection**:
-  `background_set` chooses among `Appearance.options/0`, which is `off`, the
-  bundled shaders, the `shaders/*.wgsl` the operator wrote, and the images the
-  operator uploaded. The rule that stands is the other half — **no command
-  authors a shader or adds an image**, at any tier. An agent picking one of the
-  operator's own designs is a different act from an agent writing WGSL and
-  running it, and it is the second one that D1 was about.
+  B1 asked for one half of `Appearance`'s no-commands rule back, and the half it
+  asked for is **selection**: `background_set` chooses among `Appearance.options/0`
+  — `off`, the bundled shaders, the operator's `shaders/*.wgsl`, and their images.
+  The half that stands is **authoring**: no command writes a shader or adds an
+  image, at any tier — picking a design the operator already put on their machine
+  is a different act from writing WGSL and running it, and D1 was about the second.
+  APPLYING is where the exception landed: a workspace shader is accepted when its
+  current bytes are approved — the operator's click, or the one-time backfill of
+  files that predate the feature — so one the model just wrote is still a proposal.
 
   ## Why the write is `:restricted` and not gated
 
@@ -38,9 +38,9 @@ defmodule BusterClaw.Commands.Catalog.Appearance do
   matter.
 
   The containment that makes that defensible is the reach, not a policy check:
-  the set of backgrounds this verb can select is exactly the set the operator
-  already put on their own machine. The worst an unattended run can do with it is
-  show them one of their own images.
+  this verb selects a bundled design, an image the operator uploaded, or a shader
+  whose exact bytes the operator approved. The worst an unattended run can do with
+  it is show them something that was already on their own machine, approved.
 
   ## Why the read is `:safe`
 
@@ -59,7 +59,7 @@ defmodule BusterClaw.Commands.Catalog.Appearance do
         type: :read,
         tier: :safe,
         description:
-          "Every background the terminal and the homepage can show, and what each is showing right now. `options` is the shared catalog both surfaces draw from: `off`, the bundled shader designs, any shaders the operator wrote into their workspace, and the image pool — each with a `filled` flag, because an EMPTY image slot is listed (the picker shows it as a placeholder) and is never a valid target. `surfaces` reports each surface's RESOLVED mode, kind (none / shader / image / image_shader), shader, slot and image URL — resolved, not stored, so a mode whose shader file was deleted or whose image slot was cleared reports the default it degrades to rather than a value that would render nothing. `image_shaders` is the exact set of shader names that may be laid OVER an image in the `image:<slot>+<shader>` form; any other shader is refused for that form. Unlike terminal_theme_list, current state is reported and can be: a background lives on the server, not in the operator's browser.",
+          "Every background the terminal and the homepage can show, and what each is showing right now. `options` is the shared catalog both surfaces draw from: `off`, the bundled shader designs, any shaders the operator wrote into their workspace, and the image pool — each with a `filled` flag, because an EMPTY image slot is listed (the picker shows it as a placeholder) and is never a valid target, and an `approved` flag, because an option can be perfectly valid and still not applicable from a command — a workspace shader the operator has never applied themselves is exactly that case, and reading `approved` here is how you learn it without being refused. `surfaces` reports each surface's RESOLVED mode, kind (none / shader / image / image_shader), shader, slot and image URL — resolved, not stored, so a mode whose shader file was deleted or whose image slot was cleared reports the default it degrades to rather than a value that would render nothing. `image_shaders` is the exact set of shader names that may be laid OVER an image in the `image:<slot>+<shader>` form; any other shader is refused for that form. Unlike terminal_theme_list, current state is reported and can be: a background lives on the server, not in the operator's browser.",
         args: %{}
       },
       %{
@@ -67,7 +67,7 @@ defmodule BusterClaw.Commands.Catalog.Appearance do
         type: :mutate,
         tier: :restricted,
         description:
-          "Point one surface at one background, live — every open terminal and the homepage re-render immediately, no reload and no click. `surface` is `terminal` or `home`. `mode` is one of: `off`; a shader name from background_list; `image:<slot>` for an uploaded image; or `image:<slot>+<shader>` for an image with an image-reactive shader over it. Refusals are specific and correctable: an empty slot names the slots that DO hold an image, a shader that would not react to the image names the ones that would, and an unrecognised mode restates the grammar and lists the keys that exist. You cannot upload an image or write a shader from any command — this chooses among what the operator already put on their machine, so if what you want is not in background_list, ask them for it. This changes what the operator is looking at, so say what you are doing and why.",
+          "Point one surface at one background, live — every open terminal and the homepage re-render immediately, no reload and no click. `surface` is `terminal` or `home`. `mode` is one of: `off`; a shader name from background_list; `image:<slot>` for an uploaded image; or `image:<slot>+<shader>` for an image with an image-reactive shader over it. Refusals are specific and correctable: an empty slot names the slots that DO hold an image, a shader that would not react to the image names the ones that would, and an unrecognised mode restates the grammar and lists the keys that exist. You cannot upload an image or write a shader from any command — this chooses among what the operator already put on their machine, so if what you want is not in background_list, ask them for it. A shader from their workspace is applied only when its CURRENT contents are ones they applied themselves in Settings → Appearance (background_list says `approved`), so a shader you just wrote or just edited is refused until they click it once; the refusal says so and says what to ask for. This changes what the operator is looking at, so say what you are doing and why.",
         args: %{
           "surface" => %{
             type: :string,

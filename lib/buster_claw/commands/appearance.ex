@@ -60,6 +60,11 @@ defmodule BusterClaw.Commands.Appearance do
   something the operator already put on their own machine, visibly, reversibly,
   and without touching a file.
 
+  A workspace shader narrows it further, because a shader is a file and the
+  workspace is writable: a run that writes one and asks for it by name would be
+  showing the operator something they never chose. `background_set` takes one
+  only once the operator has approved that exact code — see `check_shader/2`.
+
   ## Refusals are sentences
 
   Every atom `set_background/2` can return is spelled out with the fix in it —
@@ -84,6 +89,11 @@ defmodule BusterClaw.Commands.Appearance do
   reported mode is the **resolved** one — a stored mode whose shader file was
   deleted or whose image slot was cleared degrades to the surface's default on
   read, and this reports what would actually render, not what is in the store.
+
+  Each option also carries `approved`: whether `background_set` would take it
+  right now. An option can exist, be perfectly valid, and still not be applicable
+  from a command — a workspace shader the operator has never looked at is that
+  case — and a caller should see it here rather than by being refused.
   """
   def background_list(_args \\ %{}) do
     {:ok,
@@ -134,21 +144,44 @@ defmodule BusterClaw.Commands.Appearance do
   #
   # `Appearance.set_background/2` accepts any option the catalog offers,
   # including a workspace `shaders/*.wgsl`. That is right for the page, because a
-  # human is clicking. It is wrong for a command, because **authoring a shader
-  # needs no command at all** — the workspace is writable, so an agent can write
-  # `shaders/x.wgsl` and then ask for it by name. Allowing that would let an
-  # unattended run put arbitrary agent-authored GPU code on the operator's
-  # screen, which is precisely the property `Explained.Shaders` teaches: only a
-  # human click ever applies a pattern.
+  # human is clicking. It is wrong for a command by default, because **authoring
+  # a shader needs no command at all** — the workspace is writable, so an agent
+  # can write `shaders/x.wgsl` and then ask for it by name. Left open, an
+  # unattended run could put arbitrary agent-authored GPU code on the operator's
+  # screen that no human had ever looked at.
   #
   # The containment argument for leaving `background_set` ungated was "no command
   # authors a shader". True, and not sufficient, because authoring is a file
-  # write. So the shader half of any mode must be a BUILT-IN here. Images are
-  # unaffected: the operator put those in the pool themselves, and no command
-  # can add one.
+  # write. Found the hour after these verbs landed, by the Shaders tutorial's own
+  # claim going false (DMG-review-8-15). Images are unaffected throughout: the
+  # operator put those in the pool themselves, and no command can add one.
   #
-  # Found the hour after these verbs landed, by the Shaders tutorial's own claim
-  # going false (DMG-review-8-15).
+  # ## The exception, and why it does not give the property back
+  #
+  # A workspace shader the operator has APPROVED is accepted too: selecting a
+  # pattern the operator already chose and running code written a minute ago are
+  # different acts, and this is where the app draws that line. Two properties
+  # keep it an exception rather than a hole:
+  #
+  #   * **Approval is keyed by the file's CONTENTS, not its name.**
+  #     `Appearance.shader_approved?/1` re-hashes the file on every call, so
+  #     overwriting `nebula.wgsl` with different code and applying it under a
+  #     blessed name does not work — that is the same file-write shortcut that
+  #     made "no command authors a shader" insufficient, and names are forgeable
+  #     in exactly the way bytes are not. Editing an approved shader therefore
+  #     re-arms the gate, as a consequence of the design and not a rule about
+  #     editing.
+  #   * **The record lives outside the workspace**, minted in one place: the
+  #     Appearance page, when a human applies a shader. A manifest inside
+  #     `shaders/` would be self-certifying — anything able to write the shader
+  #     could write the file vouching for it — so nothing an agent can reach
+  #     forges an approval.
+  #
+  # What survives is the property that was always the real one: GPU code no human
+  # has looked at cannot reach the screen from a command. "A command may never
+  # apply a workspace shader" was a proxy for that, and one that also refused the
+  # operator's own long-standing patterns.
+  #
   # Narrow on purpose, and the narrowness is the interesting part: this fires
   # ONLY for a shader that Appearance would otherwise have accepted. A
   # shaderface, a deleted file or a typo is not an authored-shader problem — it
@@ -164,8 +197,11 @@ defmodule BusterClaw.Commands.Appearance do
 
   defp check_shader(_name, false), do: :ok
 
+  # Built-in first, and not merely for speed: a built-in is a design that shipped
+  # with the app and has no file behind it to approve, so asking about its
+  # approval would be asking a question with no meaning.
   defp check_shader(name, true) do
-    if name in Appearance.builtin_shaders(),
+    if name in Appearance.builtin_shaders() or Appearance.shader_approved?(name),
       do: :ok,
       else: {:error, authored_shader_refusal(name)}
   end
@@ -192,12 +228,15 @@ defmodule BusterClaw.Commands.Appearance do
   defp shader_component(mode), do: mode
 
   defp authored_shader_refusal(name) do
-    "#{name} is a shader from your workspace, and commands may not apply those — " <>
-      "only a click in Settings → Appearance can. Anything with write access to " <>
-      "the workspace can author a shader file, so applying one by name from here " <>
-      "would put GPU code on your screen that you never chose. Built-in designs " <>
-      "are selectable: #{Enum.join(Appearance.builtin_shaders(), ", ")}. " <>
-      "Images you uploaded are selectable too, with image:<slot>."
+    "#{name} is a shader from your workspace that you have not approved, so this " <>
+      "command cannot apply it yet — click it once in Settings → Appearance and " <>
+      "this command works from then on. Anything with write access to the " <>
+      "workspace can author a shader file, so what gets approved is the exact " <>
+      "code you looked at: editing #{name} later asks for that click again. " <>
+      "Built-in designs never need one: " <>
+      "#{Enum.join(Appearance.builtin_shaders(), ", ")}. " <>
+      "Images you uploaded are selectable too, with image:<slot>. " <>
+      "background_list reports approved: true for everything applicable right now."
   end
 
   # A string is matched against the surfaces that exist rather than converted to
@@ -238,14 +277,41 @@ defmodule BusterClaw.Commands.Appearance do
   # model can tell "slot 4 is not a background yet" from "there is no slot 4" —
   # the empty ones are catalogued (the picker shows them as placeholders) and are
   # never valid targets.
+  #
+  # `approved` answers a different question: not "is this a real background" but
+  # "may a COMMAND put it on a surface right now". A workspace shader is
+  # `filled: true` from the moment its file parses and stays unapplicable from
+  # here until the operator has looked at it. Without this field a caller learns
+  # that boundary only by being refused, which costs a round trip the operator
+  # watches happen.
   defp option_entry(option) do
     %{
       key: option.key,
       kind: Atom.to_string(option.kind),
       label: option.label,
-      filled: option.filled
+      filled: option.filled,
+      approved: option_approved?(option)
     }
   end
+
+  # `off` and the built-in designs are always applicable. An image is applicable
+  # once something is in the slot — approval is not a question for one, since the
+  # operator loaded it themselves and no command can. Only a workspace shader is
+  # actually asked about.
+  #
+  # Asked one shader at a time, deliberately. `Appearance.approved_shaders/0`
+  # answers the whole catalog in one read, but it reports the code that WAS
+  # approved rather than whether the file still matches it — so a shader edited
+  # since its click would come back `approved: true` here and then be refused by
+  # `background_set`. That is the exact round trip this field exists to spare the
+  # caller, so the cheaper read would defeat the point of reporting at all.
+  # Re-hashing a couple of dozen small files beats answering wrongly.
+  defp option_approved?(%{kind: :image} = option), do: option.filled
+
+  defp option_approved?(%{kind: :shader, key: name}),
+    do: name in Appearance.builtin_shaders() or Appearance.shader_approved?(name)
+
+  defp option_approved?(_option), do: true
 
   # ---------------------------------------------------------------------------
   # Refusals, as sentences

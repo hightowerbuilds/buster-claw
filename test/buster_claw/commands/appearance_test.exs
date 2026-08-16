@@ -22,6 +22,12 @@ defmodule BusterClaw.Commands.AppearanceTest do
   # all — the workspace is writable. Reading the built-in list is how this module
   # tells "a design that shipped with the app" from "a file something wrote".
   #
+  # `shader_approved?/1` joined it the same day, and is the exception to that
+  # refusal: a workspace shader the operator has looked at IS applicable from a
+  # command. It is a reader like the rest, and it has to be one on `Appearance` —
+  # the approval record is not the command layer's to read directly, and this
+  # list is where that would show up if anyone tried.
+  #
   # Still all readers plus `set_background/2`. Nothing here writes.
   @reach [
     {BusterClaw.Appearance, :background, 1},
@@ -32,6 +38,7 @@ defmodule BusterClaw.Commands.AppearanceTest do
     {BusterClaw.Appearance, :option_key, 1},
     {BusterClaw.Appearance, :options, 0},
     {BusterClaw.Appearance, :set_background, 2},
+    {BusterClaw.Appearance, :shader_approved?, 1},
     {BusterClaw.Appearance, :surface_label, 1},
     {BusterClaw.Appearance, :surfaces, 0}
   ]
@@ -41,6 +48,19 @@ defmodule BusterClaw.Commands.AppearanceTest do
     File.mkdir_p!(root)
     prev = Application.get_env(:buster_claw, :workspace_root)
     Application.put_env(:buster_claw, :workspace_root, root)
+
+    # Shader approvals backfill ONCE, over whatever is in `shaders/` the first
+    # time anything asks — those files predate the feature and making the
+    # operator click 22 of them buys nothing. Draining that here, against a
+    # workspace that is still empty, is what makes the rest of this file mean
+    # what it says: a shader a test writes afterwards is a NEW file and needs a
+    # click, exactly like one an agent drops in at runtime.
+    #
+    # Without the drain the D1 attack below would pass or fail depending on
+    # whether its own shader happened to be the first thing written — the
+    # backfill would bless it. That is a real property of the store and not a
+    # test artifact, which is why this is a call and not a stub.
+    Appearance.approved_shaders()
 
     for surface <- Appearance.surfaces() do
       Phoenix.PubSub.subscribe(BusterClaw.PubSub, Appearance.topic(surface))
@@ -60,13 +80,16 @@ defmodule BusterClaw.Commands.AppearanceTest do
     path
   end
 
-  defp write_custom_shader(root, name) do
+  # `tint` exists so a test can rewrite a shader with DIFFERENT bytes that are
+  # still a valid shader — an edit, not a corruption. An approval is keyed by
+  # content, so proving it re-arms needs a file that changes and still renders.
+  defp write_custom_shader(root, name, tint \\ "1.0") do
     dir = Path.join(root, "shaders")
     File.mkdir_p!(dir)
 
     File.write!(
       Path.join(dir, name <> ".wgsl"),
-      "@fragment\nfn fs_main(in: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0); }\n"
+      "@fragment\nfn fs_main(in: VOut) -> @location(0) vec4<f32> { return vec4<f32>(#{tint}); }\n"
     )
   end
 
@@ -274,11 +297,17 @@ defmodule BusterClaw.Commands.AppearanceTest do
   # onto the operator's screen — the exact thing `Explained.Shaders` teaches is
   # impossible. Regression found the hour these verbs landed, because that
   # tutorial's claim went false (DMG-review-8-15).
+  #
+  # Approval narrowed this property on 08-15 without giving it up: the shader
+  # here is one nobody has looked at, which is the case the refusal is FOR. The
+  # setup drains the backfill against an empty workspace so this file is new,
+  # the way an agent's would be.
   test "a shader the agent wrote itself cannot be applied by command", %{root: root} do
     write_custom_shader(root, "agentwrote")
 
     # It IS in the catalog — the page can apply it, and should be able to.
     assert "agentwrote" in Enum.map(Appearance.options(), & &1.key)
+    refute Appearance.shader_approved?("agentwrote")
 
     assert {:error, message} =
              Commands.call("background_set", %{"surface" => "home", "mode" => "agentwrote"})
@@ -298,6 +327,8 @@ defmodule BusterClaw.Commands.AppearanceTest do
     write_image_shader(root, "veiled")
     {:ok, slot} = Appearance.put_image(fake_image(), "a.png")
 
+    refute Appearance.shader_approved?("veiled")
+
     assert {:error, message} =
              Commands.call("background_set", %{
                "surface" => "terminal",
@@ -314,6 +345,125 @@ defmodule BusterClaw.Commands.AppearanceTest do
                Commands.call("background_set", %{"surface" => "home", "mode" => design})
     end
   end
+
+  # --- the exception: a shader the operator has approved -------------------
+
+  # The other half of D1, and the reason it is not simply "commands never apply
+  # workspace shaders" any more. The operator's ask was to put a pattern they
+  # already have on screen without doing it by hand; the line drawn is between
+  # selecting code a human has seen and running code written a minute ago.
+  test "an approved shader applies by command", %{root: root} do
+    write_custom_shader(root, "nebula")
+    assert {:ok, _hash} = Appearance.approve_shader("nebula")
+
+    assert {:ok, result} =
+             Commands.call("background_set", %{"surface" => "home", "mode" => "nebula"})
+
+    assert result.mode == "nebula"
+    assert result.kind == "shader"
+    assert result.shader == "nebula"
+
+    assert_receive {:home_background, %{kind: :shader, shader: "nebula"}}
+    assert Appearance.background_mode(:home) == "nebula"
+  end
+
+  test "an approved shader applies as an image overlay too", %{root: root} do
+    write_image_shader(root, "veiled")
+    {:ok, slot} = Appearance.put_image(fake_image(), "a.png")
+    assert {:ok, _hash} = Appearance.approve_shader("veiled")
+
+    assert {:ok, result} =
+             Commands.call("background_set", %{
+               "surface" => "terminal",
+               "mode" => "image:#{slot}+veiled"
+             })
+
+    # Both halves render, and the approval covered the shader half — the overlay
+    # path reads the same approval as the bare name rather than a second one.
+    assert result.kind == "image_shader"
+    assert result.shader == "veiled"
+    assert result.mode == "image:#{slot}+veiled"
+  end
+
+  # The hash test, and the one this feature is worthless without: approval is
+  # keyed by the file's CONTENTS, not its name. Overwriting an approved shader
+  # with different code and applying it under the blessed name is the same
+  # file-write shortcut that made "no command authors a shader" insufficient in
+  # the first place, so it has to fail with the file still perfectly valid.
+  test "editing an approved shader's file revokes its approval", %{root: root} do
+    write_custom_shader(root, "nebula")
+    assert {:ok, _hash} = Appearance.approve_shader("nebula")
+
+    assert {:ok, _result} =
+             Commands.call("background_set", %{"surface" => "home", "mode" => "nebula"})
+
+    # Something rewrites the file. It is still a valid shader and still in the
+    # catalog — only the bytes changed, which is the whole point.
+    write_custom_shader(root, "nebula", "0.25")
+    assert "nebula" in Enum.map(Appearance.options(), & &1.key)
+    refute Appearance.shader_approved?("nebula")
+
+    assert {:error, message} =
+             Commands.call("background_set", %{"surface" => "terminal", "mode" => "nebula"})
+
+    assert message =~ "Settings → Appearance"
+    assert Appearance.background_mode(:terminal) == "off"
+
+    # And a re-approval of the NEW bytes lets it through again, so the gate
+    # re-arms rather than latching shut.
+    assert {:ok, _hash} = Appearance.approve_shader("nebula")
+
+    assert {:ok, _result} =
+             Commands.call("background_set", %{"surface" => "terminal", "mode" => "nebula"})
+  end
+
+  test "approving one shader does not approve another", %{root: root} do
+    write_custom_shader(root, "blessed")
+    write_custom_shader(root, "stranger")
+    assert {:ok, _hash} = Appearance.approve_shader("blessed")
+
+    assert {:ok, _result} =
+             Commands.call("background_set", %{"surface" => "home", "mode" => "blessed"})
+
+    assert {:error, message} =
+             Commands.call("background_set", %{"surface" => "terminal", "mode" => "stranger"})
+
+    assert message =~ "stranger"
+    assert Appearance.background_mode(:terminal) == "off"
+    # The approved one is still up: refusing the stranger changed nothing else.
+    assert Appearance.background_mode(:home) == "blessed"
+  end
+
+  # VI.2. Without this a model finds the boundary only by being refused, which
+  # `Catalog.Appearance` argues is bad manners and costs a round trip the
+  # operator watches happen.
+  test "background_list says which options a command may actually apply", %{root: root} do
+    write_custom_shader(root, "blessed")
+    write_custom_shader(root, "stranger")
+    assert {:ok, _hash} = Appearance.approve_shader("blessed")
+    assert {:ok, 1} = Appearance.put_image(fake_image(), "a.png")
+
+    assert {:ok, result} = Commands.call("background_list", %{})
+    approved = Map.new(result.options, &{&1.key, &1.approved})
+
+    assert approved["off"] == true
+    assert approved["smoke"] == true, "a built-in has no file to approve and never needs one"
+    assert approved["blessed"] == true
+    assert approved["stranger"] == false
+
+    # An image is applicable once there is something in the slot — approval is
+    # not a question for one, because no command can put it there.
+    assert approved["image:1"] == true
+    assert approved["image:2"] == false
+
+    # The report agrees with the verb, which is the only thing that makes it
+    # worth reporting: what it calls applicable is applicable.
+    for {key, true} <- approved, do: assert({:ok, _} = set_home(key))
+
+    for {key, false} <- approved, do: assert({:error, _} = set_home(key))
+  end
+
+  defp set_home(mode), do: Commands.call("background_set", %{"surface" => "home", "mode" => mode})
 
   test "an unknown surface names the surfaces that have a background" do
     assert {:error, message} =

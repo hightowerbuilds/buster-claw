@@ -59,6 +59,14 @@ the reason down while cutting operator-authored skins:
 > because only a human click may ever put user-authored GPU code on screen."*
 
 **This roadmap is the first thing to cross that line, so it owes the argument.**
+
+> **The line moved twice on 08-15, after this was written.** `background_list` /
+> `background_set` shipped (selection became a command), and then
+> `AGENT_APPLIED_SHADERS` made a workspace shader applicable once the operator
+> has applied its exact bytes themselves. The quote above is preserved as the
+> position this roadmap argued against, not as current behaviour. **The property
+> that survived both moves is narrower and is the one to argue against now:** GPU
+> code no human has ever looked at cannot reach the screen from a command.
 It is made in [D1](#d1--a-palette-is-data-a-shader-is-code-and-that-is-the-whole-argument).
 
 ### I.2 — The active theme is client-side only. The server cannot see it or set it.

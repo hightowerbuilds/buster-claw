@@ -330,9 +330,13 @@ even though `Appearance` would accept it from a human click. Selecting one of th
 operator's own designs and running WGSL the model just wrote are different acts,
 and only the second was ever the danger.
 
-**And the *author* half is itself under review.** `background_set` refuses every
-non-built-in shader, whoever wrote it — including ones the operator wrote by
-hand — because a command cannot tell one from the other. Relaxing that to
+**And the *author* half moved again the same day.** `background_set` refused
+every non-built-in shader, whoever wrote it — including ones the operator wrote
+by hand — because a command cannot tell one from the other. It now accepts a
+workspace shader whose **current bytes** the operator has approved by applying it
+once themselves, and existing shaders were backfilled, so `nebula` works. The
+paragraph above therefore overstates the refusal: what a command cannot apply is
+a shader **no human has looked at**, not every workspace shader. Relaxing that to
 "anything the operator has clicked once" is scoped and decided in
 [`AGENT_APPLIED_SHADERS_ROADMAP`](AGENT_APPLIED_SHADERS_ROADMAP.md) (Phase 0
 decided 08-15, unbuilt). Until it ships, the sentence below stands.
@@ -584,10 +588,12 @@ photos more than once).
 
 - ~~**The model still cannot select a background.**~~ **Stale as of 08-15** — see
   [D5](#d5--the-model-may-select-a-background-and-may-not-author-one).
-  It selects among what the operator already has, on either surface. What it
-  still cannot do is *put something new there*: no upload verb, no delete verb,
-  and a shader it wrote itself is refused by the command even though the
-  Appearance page would accept it.
+  It selects among what the operator already has, on either surface — including
+  workspace shaders, as of `AGENT_APPLIED_SHADERS` the same day. What it still
+  cannot do is *put something new there*: no upload verb, no delete verb, and a
+  shader it wrote **that the operator has never applied** is refused by the
+  command even though the Appearance page would accept it. Editing an approved
+  shader withdraws the approval, so a rewrite is new again.
 - **The model does not choose the image.** One shader must work over any picture.
   This is a *feature* — it is why the pattern adapts — but it means the model
   cannot tune a shader to one photograph unless the operator asks it to look at

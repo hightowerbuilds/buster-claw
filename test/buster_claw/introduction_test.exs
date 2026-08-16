@@ -66,26 +66,49 @@ defmodule BusterClaw.IntroductionTest do
     assert md =~ "Changing a background yourself"
     assert md =~ "terminal" and md =~ "home"
 
-    # ...and it CANNOT apply a workspace shader, which is the refusal it will
-    # otherwise hit and read as a bug. Asserted as the RULE rather than as
-    # "one you wrote yourself" — the first version of this prose said that, and
-    # it was wrong in the direction that costs a run: `check_shader/2` tests
-    # membership of `builtin_shaders/0`, so a shader the OPERATOR wrote is
-    # refused too, and prose implying otherwise sends the model at a wall.
-    assert prose =~ "only the five\nbuilt-ins" or prose =~ "only the five built-ins"
+    # ...and it can only apply SOME shaders, which is the refusal it will
+    # otherwise hit and read as a bug. Asserted against a whitespace-flattened
+    # copy: this prose is hard-wrapped, so a sentence the model reads as one
+    # line is not one line in the source, and an assertion that pins the wrap
+    # point starts failing on a reflow that changed nothing.
+    flat = String.replace(prose, ~r/\s+/, " ")
+
+    # The two tiers of the rule, in the model's own terms. Applying a built-in
+    # always works; applying a workspace shader depends on the operator having
+    # applied that exact file once themselves.
+    assert flat =~ "the five built-ins outright"
+    assert flat =~ "applied that exact file themselves in Settings → Appearance"
 
     # The LIST, rendered, not each word — `veil` and `weather` appear elsewhere
     # in this section, so a per-word loop passed with two of the five deleted.
     applicable = Enum.map_join(Appearance.builtin_shaders(), ", ", &"`#{&1}`")
 
-    assert prose =~ applicable,
-           "the prose must name exactly the applicable set, in order: #{applicable}"
+    assert flat =~ applicable,
+           "the prose must name exactly the always-applicable set, in order: #{applicable}"
 
-    assert prose =~ "whoever wrote it"
+    # Approval is by CONTENT HASH, so the model editing a shader revokes it.
+    # A briefing that taught the exception without this would teach a model to
+    # edit an approved file and expect it to keep working.
+    assert flat =~ "if you edit the shader the approval is void"
+
+    # The practical consequence for a shader the model just wrote: hand over
+    # the name and ask, rather than promise an apply it cannot perform.
+    assert flat =~ "tell them the name, and ask them to apply it once"
+
+    # ...and the loop the operator explicitly does NOT want (roadmap VIII.2).
+    # Without this the exception reads as an invitation to iterate.
+    assert flat =~ "do not plan on tweak-look-tweak"
 
     # The claim that was wrong must not come back in any form.
     refute md =~ "can never force one onto their screen"
     refute md =~ "only when the user selects it"
+
+    # Nor may the rule that REPLACED it, which was true for one day: the
+    # absolute refusal is now the unapproved case only, and prose stating it
+    # flatly would send the model at a wall that is no longer there.
+    flat_md = String.replace(md, ~r/\s+/, " ")
+    refute flat_md =~ "will not apply a workspace shader at all"
+    refute flat_md =~ "whoever wrote it"
   end
 
   test "routes web work by consequence, not by convenience" do

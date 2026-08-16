@@ -33,6 +33,18 @@ defmodule BusterClawWeb.AppearanceLiveTest do
     )
   end
 
+  # Same shape, but the body calls the image API — which is what makes
+  # `Shaders.samples_image?/1` true and so what makes the overlay picker offer it.
+  defp write_image_shader(root, name) do
+    dir = Path.join(root, "shaders")
+    File.mkdir_p!(dir)
+
+    File.write!(
+      Path.join(dir, name <> ".wgsl"),
+      "@fragment\nfn fs_main(in: VOut) -> @location(0) vec4<f32> { return img(in.uv); }\n"
+    )
+  end
+
   defp add_image do
     src = Path.join(System.tmp_dir!(), "bc_lv_#{System.unique_integer([:positive])}.png")
     File.write!(src, "img-bytes")
@@ -789,6 +801,103 @@ defmodule BusterClawWeb.AppearanceLiveTest do
                view,
                ~s|#surface-home [phx-hook="ShaderPreview"][data-image-url="#{url}"]|
              )
+    end
+  end
+
+  # --- minting approval (AGENT_APPLIED_SHADERS_ROADMAP Phase 2) -------------
+
+  describe "applying a workspace shader approves it for commands" do
+    # Take the store's day-one backfill FIRST. It approves every shader present
+    # the first time it is asked anything, so a shader written before this line
+    # is already approved and a test asserting `shader_approved?` would pass
+    # without the page doing a thing. Everything below writes its shader after
+    # the stamp, which is the case the roadmap says still needs a click.
+    setup do
+      Appearance.approved_shaders()
+      :ok
+    end
+
+    test "a catalog row's surface button mints approval", %{conn: conn, root: root} do
+      write_custom_shader(root, "nebula")
+      refute Appearance.shader_approved?("nebula")
+
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      view
+      |> element("[data-bg-option='nebula'] button[phx-value-surface='home']")
+      |> render_click()
+
+      # Both halves matter: the operator got the background they clicked for, and
+      # the click is what granted the capability. Approval is a side effect of the
+      # choice, never a precondition for it.
+      assert Appearance.background(:home).shader == "nebula"
+      assert Appearance.shader_approved?("nebula")
+    end
+
+    # The path most likely to be written as scenery. An overlay is the roadmap's
+    # own example, and a shader that mints as a bare name but not as
+    # `image:<slot>+<name>` fails for exactly the case the operator will try
+    # first — they watch it appear over their photo and the model still refuses.
+    test "so does laying it over an image as an overlay", %{conn: conn, root: root} do
+      write_image_shader(root, "nebula")
+      slot = add_image()
+      {:ok, _} = Appearance.set_background(:home, "image:#{slot}")
+      refute Appearance.shader_approved?("nebula")
+
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      view
+      |> element("#surface-home form[phx-change='set_overlay']")
+      |> render_change(%{"surface" => "home", "shader" => "nebula"})
+
+      assert %{kind: :image_shader, shader: "nebula"} = Appearance.background(:home)
+      assert Appearance.shader_approved?("nebula")
+    end
+
+    # A built-in never needs approval — the command check accepts it outright —
+    # so a record for one is noise in a store whose whole value is being
+    # readable. The workspace file sharing the name is what makes this test
+    # non-vacuous: a built-in SHADOWS a workspace file, so minting here would
+    # store the hash of bytes that are not the bytes anything rendered.
+    test "a built-in mints nothing, even shadowing a workspace file of the same name",
+         %{conn: conn, root: root} do
+      write_custom_shader(root, "veil")
+
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      view
+      |> element("[data-bg-option='veil'] button[phx-value-surface='home']")
+      |> render_click()
+
+      assert Appearance.background(:home).shader == "veil"
+      refute Map.has_key?(Appearance.approved_shaders(), "veil")
+    end
+
+    test "an image mints nothing", %{conn: conn, root: root} do
+      # `nebula` is on disk and unapproved throughout: applying a picture must
+      # not approve whatever shader happens to be sitting in the workspace.
+      write_custom_shader(root, "nebula")
+      slot = add_image()
+
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      view
+      |> element("[data-bg-option='image:#{slot}'] button[phx-value-surface='home']")
+      |> render_click()
+
+      assert Appearance.background(:home).kind == :image
+      assert Appearance.approved_shaders() == %{}
+    end
+
+    # Roadmap risk VII.2: the operator clicks a shader to LOOK at it and silently
+    # grants a standing capability. The page has to say so, and it has to say the
+    # part about editing — otherwise an edited shader going back to refused reads
+    # as the feature breaking.
+    test "the picker discloses what applying a shader grants", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/appearance")
+
+      assert html =~ "lets commands re-apply"
+      assert html =~ "Edit the file"
     end
   end
 end
