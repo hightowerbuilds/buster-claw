@@ -119,7 +119,7 @@ defmodule BusterClawWeb.ChatPanelTest do
       assert html =~ "look at this"
       assert html =~ "data:image/png;base64,AAAA"
       # `zoom_svg`, not a second viewer: attachments join the same visual pool
-      # drawings and 3D scenes use, so paging walks all of them.
+      # drawings use, so paging walks all of them.
       assert html =~ ~s(phx-click="zoom_svg")
       assert html =~ ~s(phx-value-id="1")
     end
@@ -163,7 +163,6 @@ defmodule BusterClawWeb.ChatPanelTest do
       text: text,
       svg_ids: [],
       delivery: nil,
-      scenes: [],
       attachments: attachments
     }
 
@@ -183,7 +182,6 @@ defmodule BusterClawWeb.ChatPanelTest do
       text: "#{role} says something",
       svg_ids: [],
       delivery: nil,
-      scenes: [],
       attachments: []
     }
     |> Map.merge(overrides)
@@ -347,7 +345,7 @@ defmodule BusterClawWeb.ChatPanelTest do
     end
 
     test "a corrupt fence costs the message nothing" do
-      # Silent, like a malformed ```scene3d block: the prose is the message, and
+      # Silent, like a malformed ```svg block: the prose is the message, and
       # losing a citation must not lose the sentence it was attached to.
       assert {"still here", []} =
                ChatAttachments.decode("still here\n\n```attachments\nnot json\n```")

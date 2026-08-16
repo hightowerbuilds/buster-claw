@@ -302,51 +302,24 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert render(view) =~ "View drawing"
     end
 
-    # A scene differs from a drawing in the one way that matters to the reader:
-    # it renders INLINE. These pin that difference, because a scene that quietly
-    # degraded into a "View drawing" link would still pass every other test.
-    test "a scene3d block in a reply renders an inline card", %{conn: conn} do
+    # Scene3D was deleted on 08-16, and with it the ```scene3d block. A reply
+    # carrying one is now ordinary prose: nothing strips it, nothing renders it,
+    # and the message costs nothing. This pins the *absence* — a re-introduced
+    # renderer would fail here rather than arriving unnoticed.
+    test "a scene3d block is no longer a visual channel", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
       active = active_chat(view)
-
-      scene = ~s({"nodes": [{"kind": "box", "size": [1,1,1], "label": "Ingest"}]})
 
       send(
         view.pid,
         {:agent_chat, active,
-         {:message, %{role: :assistant, text: "See the scene:\n```scene3d\n#{scene}\n```"}}}
+         {:message, %{role: :assistant, text: "See the scene:\n```scene3d\n{\"nodes\": []}\n```"}}}
       )
 
       html = render(view)
       assert html =~ "See the scene:"
-      refute html =~ "```scene3d"
-      # The JSON must not leak into the bubble, and the SVG must be inline —
-      # not behind a link.
-      refute html =~ ~s("kind")
-      assert html =~ "3D scene"
-      assert html =~ "<svg"
-      assert html =~ "Ingest"
-      assert has_element?(view, ~s(button[phx-click="zoom_svg"] svg))
-    end
-
-    test "a malformed scene3d block costs the message nothing", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/")
-      active = active_chat(view)
-
-      send(
-        view.pid,
-        {:agent_chat, active,
-         {:message,
-          %{role: :assistant, text: "Still here.\n```scene3d\n{\"kind\": \"teapot\"}\n```"}}}
-      )
-
-      html = render(view)
-      # The text survives, the block is stripped, and no card appears. The
-      # failure is silent on purpose — see `extract_scenes/1`.
-      assert html =~ "Still here."
-      refute html =~ "```scene3d"
-      refute html =~ "teapot"
       refute html =~ "3D scene"
+      refute has_element?(view, ".ic-scene-card")
     end
 
     test "New chat adds a tab and clears the panel", %{conn: conn} do

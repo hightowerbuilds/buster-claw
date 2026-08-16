@@ -581,8 +581,9 @@ body { background-color: var(--color-base-100); }
 }
 
 /* SVG viewer sizing — the enlarge overlay lets a drawing grow to most of the
-   viewport. In-chat cards size their own SVG with inline `[&>svg]:` utilities
-   (see ChatPanel.scene_card), so there is no card rule here.
+   viewport. There is no in-chat card rule: a drawing is a link into this modal,
+   never inline. (Scene3D rendered inline and sized itself with inline
+   `[&>svg]:` utilities; it was deleted 08-16.)
 
    Fill the modal: explicit box + the SVG's own preserveAspectRatio (meet)
    letterboxes the drawing inside it — always whole, as large as fits. width/

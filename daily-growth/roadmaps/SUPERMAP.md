@@ -235,7 +235,6 @@ Not surfaces. The machinery every surface sits on.
 | Dispatch, orchestration, swarm | `Dispatch`, `Orchestrator`, `swarm/` | SHIPPED | — |
 | Skills | `Skills` | SHIPPED | [`LEFTOVERS_AGENT_CORE`](agent-core/LEFTOVERS_AGENT_CORE.md) — two seeds uncombed |
 | Memory | `Memory` | SHIPPED | — |
-| Scene3D | `Scene3D` | SHIPPED | [`LEFTOVERS_AGENT_CORE`](agent-core/LEFTOVERS_AGENT_CORE.md) — polish, waiting on evidence |
 | Shaders — the authoring machinery | `Shaders` | SHIPPED | — |
 | Library, analyzer, ingest, journal | `Library`, `Analyzer`, `ingest/` | SHIPPED | — |
 

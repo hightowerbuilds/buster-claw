@@ -800,10 +800,7 @@ defmodule BusterClawWeb.ChatPanel do
   end
 
   defp chat_bubble(%{msg: %{role: :assistant}} = assigns) do
-    assigns =
-      assigns
-      |> assign(:svg_ids, Map.get(assigns.msg, :svg_ids, []))
-      |> assign(:scenes, Map.get(assigns.msg, :scenes, []))
+    assigns = assign(assigns, :svg_ids, Map.get(assigns.msg, :svg_ids, []))
 
     ~H"""
     <div id={@id} data-chat-role="assistant" class="flex flex-col items-start gap-1">
@@ -815,11 +812,6 @@ defmodule BusterClawWeb.ChatPanel do
       >
         {@msg.text}
       </div>
-      <%!-- A 3D scene renders INLINE (unlike a drawing, which is a link) — the
-              card is the message's point, not an attachment to it. Clicking still
-              opens the same modal, so paging across every visual in the
-              conversation keeps working. --%>
-      <.scene_card :for={scene <- @scenes} scene={scene} />
       <%!-- Drawings are stripped from the text and open in the modal on demand. --%>
       <button
         :if={@svg_ids != []}
@@ -956,7 +948,6 @@ defmodule BusterClawWeb.ChatPanel do
          text: "How does this look?",
          svg_ids: [],
          delivery: nil,
-         scenes: [],
          attachments: []
        }},
       {"assistant",
@@ -968,7 +959,6 @@ defmodule BusterClawWeb.ChatPanel do
              "the tools I run, and the notes in between.",
          svg_ids: [],
          delivery: nil,
-         scenes: [],
          attachments: []
        }},
       {"tool",
@@ -978,7 +968,6 @@ defmodule BusterClawWeb.ChatPanel do
          text: "Bash: ./buster-claw note_list",
          svg_ids: [],
          delivery: nil,
-         scenes: [],
          attachments: []
        }},
       {"meta",
@@ -988,43 +977,8 @@ defmodule BusterClawWeb.ChatPanel do
          text: "Run finished · 4.2s",
          svg_ids: [],
          delivery: nil,
-         scenes: [],
          attachments: []
        }}
     ]
-  end
-
-  @doc """
-  One inline 3D scene card in the transcript.
-
-  `scene` is a `%{id, svg}` from the session's visual pool, where `svg` was
-  **generated** by `BusterClaw.Scene3d.Svg` from a validated scene — not authored
-  by the model. That is why it is safe to render live here with `raw/1` without a
-  sanitizer pass: no model-controlled markup exists in the string, and the only
-  model-controlled text (labels) is escaped at generation.
-
-  The card is a button so the whole surface zooms into `svg_modal/1`. `svg` has a
-  `viewBox` but no `width`/`height`, so the CSS cap below scales it rather than
-  cropping it — the same failure `SvgViewer.normalize/1` exists to prevent.
-  """
-  attr :scene, :map, required: true
-
-  def scene_card(assigns) do
-    ~H"""
-    <button
-      type="button"
-      phx-click="zoom_svg"
-      phx-value-id={@scene.id}
-      aria-label="Open 3D scene full-screen"
-      class="ic-scene-card group block w-full max-w-[85%] cursor-zoom-in overflow-hidden rounded-sm border-2 border-base-content/20 bg-base-100 transition hover:border-primary"
-    >
-      <div class="[&>svg]:block [&>svg]:h-auto [&>svg]:w-full">
-        {Phoenix.HTML.raw(@scene.svg)}
-      </div>
-      <div class="flex items-center gap-1.5 border-t-2 border-base-content/10 px-2 py-1 font-mono text-[0.6rem] uppercase tracking-wider text-base-content/50 transition group-hover:text-primary">
-        <.icon name="hero-cube" class="size-3" /> 3D scene
-      </div>
-    </button>
-    """
   end
 end

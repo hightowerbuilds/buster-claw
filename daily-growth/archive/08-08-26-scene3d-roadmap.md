@@ -1,5 +1,27 @@
 # Scene3D — a 3D card the model can put in the chat
 
+> ## THE FEATURE WAS DELETED 2026-08-16 — this file is now a design record only
+>
+> **Scene3D is gone from the app**: `lib/buster_claw/scene3d.ex` + its five
+> stages (3,370 lines), the six test files (3,765 lines), the `scene3d` block in
+> the homepage chat, the inline card, and `Scene3d.guide/0` out of the system
+> prompt. The two leftovers items it had left are closed by the deletion in
+> [`LEFTOVERS_AGENT_CORE`](../roadmaps/agent-core/LEFTOVERS_AGENT_CORE.md).
+>
+> **Operator call**, following the 08-16 year-one survival review's finding that
+> expressive one-off surfaces accumulate permanent maintenance cost without
+> demonstrated recurring use. The review proposed a Labs section; the operator
+> chose deletion outright — *"we don't want it"* — and Labs for other features
+> later. **Do not rebuild speculatively.** The code is in git history at
+> `caa78c2`; everything below is the argument that produced it.
+>
+> **One thing left the codebase with it and is preserved below** — the validated
+> 5-slot series palette, which Scene3D sole-sourced after the Chart Builder that
+> first carried it was deleted on 08-08. See "The palette, carried out" at the
+> foot of this file.
+>
+> ---
+>
 > ## ARCHIVED 2026-08-08 — shipped, field-tested, fixed, and closed the same day
 >
 > **Phases 0, 1 and 2 all shipped** (`da57ac8` → `a314990`). The model can put a
@@ -39,10 +61,11 @@
 >   `scene3d/types.ex` before dispatching — a compiled, types-only module pinning
 >   winding, handedness and units — is why four independently-built stages
 >   composed on the first try. Done twice, both times the same way.
-> - **The validated 5-slot palette is now sole-sourced in `Scene3d.Svg`**, having
->   outlived the Chart Builder code deleted the same morning. The instruction to
+> - **The validated 5-slot palette was sole-sourced in `Scene3d.Svg`**, having
+>   outlived the Chart Builder code deleted the same morning. ~~The instruction to
 >   *promote, not copy* it now lives in that module's `@palette` comment rather
->   than only here.
+>   than only here.~~ **That comment went with the module on 08-16 and this file
+>   is the palette's home again** — see "The palette, carried out" at the foot.
 
 **Scoped 08-08-26 · Status: PHASES 0-1 SHIPPED, PHASE 2 PASSES 1-2 SHIPPED 08-08-26.**
 
@@ -444,3 +467,39 @@ support it and identically-legibly on machines that don't.
   sibling `scene-designer` **reference skill** rather than growing `guide/0`. The
   skills layer is runtime-loadable and operator-editable; a long guide in the
   system prompt is neither.
+
+---
+
+## The palette, carried out — 2026-08-16
+
+**Recorded here because the deletion took its last home in the codebase, and it
+is a measurement rather than a preference.**
+
+The app's validated 5-slot series palette, reconciled against the `dataviz`
+method in Chart Builder Phase 3 (`9c12d24`). In slot order:
+
+| Slot | Hex | Name |
+|---|---|---|
+| 0 | `#ff4407` | hazard |
+| 1 | `#00a1ce` | cyan |
+| 2 | `#9417ff` | violet |
+| 3 | `#e10095` | magenta |
+| 4 | `#ac9000` | yellow |
+
+**The order is the colourblind-safety mechanism, not decoration.** Worst adjacent
+CVD ΔE **16.0**; worst adjacent normal-vision ΔE **23.4**; all five slots at or
+above **3:1** on the dark canvas. Changing a hex or reordering a slot invalidates
+that validation run — it does not merely restyle.
+
+**It has now outlived two homes.** The Chart Builder that first carried it was
+deleted with the trading stack on 08-08; `Scene3d.Svg` inherited it and was
+deleted on 08-16. Both times the standing instruction was *promote it to a shared
+module, never copy the hexes* — and both times there was exactly one consumer, so
+promotion would have created a module with a single caller and then none.
+
+**No `BusterClaw.Palette` was created on the way out, deliberately.** A module
+with zero callers is what the dead-code pass exists to delete, and it would have
+been deleted by the next sweep with nothing to say for itself. **The rule for the
+next surface that needs series colours: take these five values and the validation
+numbers from here, put them in a shared module at that moment, and cite this
+file** — so the third home is the last one.

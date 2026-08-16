@@ -57,7 +57,7 @@ defmodule BusterClawWeb.Status.ChatAttachments do
 
   ## The zoom modal is reused, not rebuilt
 
-  An image attachment joins the same visual pool as drawings and 3D scenes
+  An image attachment joins the same visual pool as drawings
   (`chat_svgs`), so `ChatPanel.svg_modal/1` opens it, `zoom_svg` addresses it,
   and ← / → page across every visual in the conversation with no new event and no
   second modal. The pool is a pool of *rendered markup*, which is a slightly
