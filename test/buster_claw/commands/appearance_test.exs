@@ -610,4 +610,57 @@ defmodule BusterClaw.Commands.AppearanceTest do
       _ -> []
     end
   end
+
+  # The model changing the corner card, end to end through the command surface.
+  # No code was written for this — `fetch_surface/1` matches against
+  # `Appearance.surfaces/0`, so Phase 1 made it reachable — which is exactly the
+  # claim this module's moduledoc makes and therefore the thing worth pinning.
+  describe "the widget surface, from a command" do
+    test "the model can point the Time & Place card at a pattern" do
+      assert {:ok, result} =
+               Commands.call("background_set", %{"surface" => "widget", "mode" => "waves"})
+
+      assert result.applied
+      assert Appearance.background(:widget).shader == "waves"
+      assert_receive {:widget_background, _state}
+    end
+
+    test "and can put the sky back with default, which is the only way" do
+      {:ok, _} = Commands.call("background_set", %{"surface" => "widget", "mode" => "waves"})
+
+      assert {:error, message} =
+               Commands.call("background_set", %{"surface" => "widget", "mode" => "daycycle"})
+
+      assert is_binary(message)
+
+      assert {:ok, _} =
+               Commands.call("background_set", %{"surface" => "widget", "mode" => "default"})
+
+      assert Appearance.background(:widget).shader == "daycycle"
+    end
+
+    test "an unknown surface names the ones that exist, including the new one" do
+      assert {:error, message} =
+               Commands.call("background_set", %{"surface" => "sidebar", "mode" => "waves"})
+
+      for surface <- Appearance.surfaces() do
+        assert message =~ Atom.to_string(surface)
+      end
+    end
+
+    test "default is not shadowed by a workspace shader of that name", %{root: root} do
+      # The command layer puts `refuse_authored_shader/1` in FRONT of
+      # `Appearance.set_background/2`, so reserving the word in Appearance is not
+      # enough on its own — an unapproved `shaders/default.wgsl` would otherwise
+      # make the one undo every surface has refuse.
+      write_custom_shader(root, "default")
+
+      {:ok, _} = Commands.call("background_set", %{"surface" => "widget", "mode" => "waves"})
+
+      assert {:ok, _} =
+               Commands.call("background_set", %{"surface" => "widget", "mode" => "default"})
+
+      assert Appearance.background(:widget).shader == "daycycle"
+    end
+  end
 end

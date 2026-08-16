@@ -606,7 +606,12 @@ check lib/buster_claw/commands/catalog/terminal_theme.ex      101 HELD
 # EXTRACTION OWED (operator, 08-15). The seam is named in LEFTOVERS_SURFACES:
 # the mode grammar `off | <name> | image:<slot> | image:<slot>+<shader>` is now
 # parsed in three places, and `shader_component/1` here is one of them.
-check lib/buster_claw/commands/appearance.ex                  430 HELD
+# 430 -> 445: reserving `default` at THIS layer too. `refuse_authored_shader/1`
+# runs in front of `set_background/2`, so reserving the word in `Appearance`
+# reserved it there and not here — an unapproved shaders/default.wgsl made the
+# one undo every surface has refuse. Found by testing the model's path, not the
+# page's.
+check lib/buster_claw/commands/appearance.ex                  445 HELD
 # 87 -> 100: the third surface in both descriptions, plus `default` as a mode.
 # The moduledoc stops stating a COUNT — `Appearance.surfaces/0` is what the verbs
 # validate against, so a fourth arrives with no edit here, and "two" outlived the

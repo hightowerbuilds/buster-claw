@@ -1,7 +1,26 @@
 # The widget's sky — making the corner card a third background surface
 
 **Scoped 08-15-26 · Status: COMPLETE 08-15. All five phases, D1–D3 decided and
-built. The Time & Place card is a background surface like any other.**
+built. The Time & Place card is a background surface like any other — for the
+operator and for the model.**
+
+> ### The model needed no new code, and one bug proved it
+>
+> `background_set` reaches the widget because `fetch_surface/1` matches against
+> `Appearance.surfaces/0` — Phase 1 made it reachable and nothing else was
+> written. That is the claim `Catalog.Appearance` has made all along, now pinned
+> by tests that drive the card from a command.
+>
+> **The exception found a real defect.** `default` was reserved in `Appearance`,
+> but the command layer runs `refuse_authored_shader/1` *in front of*
+> `set_background/2` — so an operator with an unapproved `shaders/default.wgsl`
+> in their workspace would have found the one undo every surface has **refused**,
+> with a message about approving a shader they never meant to apply. Reserving a
+> word in one layer does not reserve it in the layer above.
+>
+> The literal now lives once, in `Appearance.default_mode/0`, read into the
+> command module as a compile-time attribute — a `when` guard cannot call a
+> remote function, the same constraint `Phone.Registry` records.
 
 Operator: *"incorporate the widget on the home page into the shader background
 feature. We want the current WGSL to default but we want the other shader

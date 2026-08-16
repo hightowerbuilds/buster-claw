@@ -188,6 +188,15 @@ defmodule BusterClaw.Appearance do
   @doc "Absolute path to the background Pocket that holds the image pool."
   def dir, do: Pockets.pocket_dir(@pocket)
 
+  @doc """
+  The mode that means "clear the stored choice" rather than naming an option.
+
+  Exported so the command layer can recognise it without a second copy of the
+  literal. It has its own gate in front of `set_background/2`, and reserving the
+  word here does not reserve it there.
+  """
+  def default_mode, do: "default"
+
   @doc "Built-in shader design names."
   def builtin_shaders, do: @builtin_shaders
 

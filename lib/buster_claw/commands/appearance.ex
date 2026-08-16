@@ -77,6 +77,12 @@ defmodule BusterClaw.Commands.Appearance do
 
   alias BusterClaw.Appearance
 
+  # Read at COMPILE TIME from the one owner, because a `when` guard cannot call a
+  # remote function — the same constraint `Phone.Registry` records for its tab
+  # keys, and the same reason: two literals in two files drift, and this one
+  # drifting would break the only undo any surface has.
+  @default_mode Appearance.default_mode()
+
   # ---------------------------------------------------------------------------
   # What exists, and what is on screen
   # ---------------------------------------------------------------------------
@@ -188,6 +194,14 @@ defmodule BusterClaw.Commands.Appearance do
   # is an invalid mode, and `Appearance` already has a better sentence for each.
   # Answering those here would replace a precise refusal with a vaguer one, which
   # a test caught within a minute of this check being written.
+  # `default` is an instruction, not an option — it clears the surface's stored
+  # choice. Skipped before the shader check because that check would otherwise
+  # read it as a NAME: an operator with an unapproved `shaders/default.wgsl` in
+  # their workspace would find the one undo every surface has refused, with a
+  # message about approving a shader they never meant to apply. Reserving the
+  # word in `Appearance` does not reserve it here; this layer has its own gate.
+  defp refuse_authored_shader(@default_mode), do: :ok
+
   defp refuse_authored_shader(mode) do
     case shader_component(mode) do
       nil -> :ok
