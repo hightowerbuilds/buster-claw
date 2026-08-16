@@ -194,6 +194,52 @@ defmodule BusterClaw.Notifications.StudioMix do
   end
 
   @doc """
+  Place a copy of a clip spec on a track, with a NEW id.
+
+  The spec is `%{source, duration_ms, effects}` — whatever `duplicate_clip/2`
+  found or the clipboard is holding. One function for both, because "make a new
+  clip that sounds like this one" is one operation and having two of it is how
+  the copy path came to drop effects while duplicate kept them.
+
+  **Effects ride along.** A clip you have shaped is the clip you meant to copy;
+  a duplicate that came back dry would be a worse-than-useless shortcut, since
+  the loss is silent and only audible on render.
+  """
+  def place_copy(%__MODULE__{} = mix, spec, track_id, start_ms) when is_number(start_ms) do
+    clip = %{
+      id: new_id(),
+      source: spec.source,
+      start_ms: max(0.0, start_ms * 1.0),
+      duration_ms: max(0.0, Map.get(spec, :duration_ms, 0) * 1.0),
+      effects: Map.get(spec, :effects) || []
+    }
+
+    update_track(mix, track_id, fn track -> %{track | clips: track.clips ++ [clip]} end)
+  end
+
+  @doc """
+  Duplicate a clip: the same audio, the same chain, on the same track,
+  immediately after the original.
+
+  **Immediately after, not at the end of the track**, which is where paste puts
+  things. The two gestures mean different things: paste is "put this somewhere",
+  duplicate is "again, right here" — the DAW convention, and the one that makes
+  doubling a hit a single action rather than a drag afterwards.
+
+  Silently does nothing for an unknown id, matching `move_clip/4` and
+  `remove_clip/2`: a stale client should cost a no-op, never a crash.
+  """
+  def duplicate_clip(%__MODULE__{} = mix, clip_id) do
+    case Enum.find(clips(mix), fn {_track, clip} -> clip.id == clip_id end) do
+      nil ->
+        mix
+
+      {track, clip} ->
+        place_copy(mix, clip, track.id, clip.start_ms + clip.duration_ms)
+    end
+  end
+
+  @doc """
   Move a clip — along its track, to another track, or both.
 
   Removing then re-adding rather than mutating in place, because a move that

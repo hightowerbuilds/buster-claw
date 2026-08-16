@@ -30,6 +30,7 @@ export const StudioContextMenu = {
       rename: item("[data-ctx-rename]"),
       newMix: item("[data-ctx-new-mix]"),
       delete: item("[data-ctx-delete]"),
+      duplicateClip: item("[data-ctx-duplicate-clip]"),
       removeClip: item("[data-ctx-remove-clip]"),
     }
     this.renameInput = item("[data-ctx-rename-input]")
@@ -81,6 +82,11 @@ export const StudioContextMenu = {
     // No two-step. Removing a clip deletes no file and ⌘Z puts it back, so an
     // "are you sure?" here would train the reflex that makes the confirm on
     // `data-ctx-delete` — which DOES destroy a file — worth ignoring.
+    this.items.duplicateClip.addEventListener("click", () => {
+      if (this.clipId) this.pushEventTo(this.el, "duplicate_clip", {id: this.clipId})
+      this.hide()
+    })
+
     this.items.removeClip.addEventListener("click", () => {
       if (this.clipId) this.pushEventTo(this.el, "remove_clip", {id: this.clipId})
       this.hide()
@@ -121,6 +127,7 @@ export const StudioContextMenu = {
 
     this.renameInput.hidden = true
     Object.values(this.items).forEach((el) => (el.hidden = true))
+    this.items.duplicateClip.hidden = false
     this.items.removeClip.hidden = false
 
     this.el.hidden = false
@@ -143,6 +150,7 @@ export const StudioContextMenu = {
     this.items.rename.hidden = !owned
     this.items.delete.hidden = !owned
     this.items.removeClip.hidden = true
+    this.items.duplicateClip.hidden = true
     this.disarm(label)
 
     // Nothing this row can offer — don't flash an empty box at the user.

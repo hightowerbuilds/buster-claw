@@ -386,10 +386,16 @@ defmodule BusterClawWeb.StatusLive do
       clip ->
         # The clipboard holds a spec, not the clip: pasting makes a NEW clip
         # with its own id, so a pasted copy can be moved and deleted on its own.
+        #
+        # `effects` joined the spec on 08-16. Without it, copying a clip you had
+        # shaped pasted it DRY — silently, and only audible on render, which is
+        # the worst place to discover it. Effects arrived that morning and this
+        # spec was written before they existed.
         {:noreply,
          assign(socket, :studio_clipboard, %{
            source: clip.source,
-           duration_ms: clip.duration_ms
+           duration_ms: clip.duration_ms,
+           effects: StudioMix.chain(clip)
          })}
     end
   end
@@ -403,11 +409,11 @@ defmodule BusterClawWeb.StatusLive do
       nil ->
         {:noreply, socket}
 
-      %{source: source, duration_ms: duration} ->
+      %{} = spec ->
         {:noreply,
          mutate_open_mix(socket, fn mix ->
            track = StudioMix.paste_track(mix, socket.assigns.studio_clip)
-           StudioMix.add_clip(mix, track.id, source, StudioMix.track_end_ms(track), duration)
+           StudioMix.place_copy(mix, spec, track.id, StudioMix.track_end_ms(track))
          end)}
     end
   end

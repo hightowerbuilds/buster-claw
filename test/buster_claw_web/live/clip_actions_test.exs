@@ -163,6 +163,109 @@ defmodule BusterClawWeb.ClipActionsTest do
       assert length(StudioMix.clips(restored)) == 1
     end
 
+    test "offers Duplicate clip too, and only the clip items", %{conn: conn} do
+      {view, _clip} = studio_with_clip(conn)
+
+      assert has_element?(view, "[data-ctx-duplicate-clip]")
+      assert has_element?(view, "[data-ctx-remove-clip]")
+    end
+
+    test "duplicating places a copy on the SAME track, right after the original",
+         %{conn: conn} do
+      {view, clip} = studio_with_clip(conn)
+
+      render_hook(element(view, "#studio-ctx"), "duplicate_clip", %{"id" => clip.id})
+
+      {:ok, mix} = StudioMix.load("m")
+      placed = Enum.map(StudioMix.clips(mix), fn {track, c} -> {track.id, c} end)
+      assert length(placed) == 2
+
+      [{track_a, original}, {track_b, copy}] = Enum.sort_by(placed, fn {_t, c} -> c.start_ms end)
+
+      # Same track, and immediately after — "again, right here", not "somewhere".
+      assert track_a == track_b
+      assert copy.start_ms == original.start_ms + original.duration_ms
+      assert copy.source == original.source
+      assert copy.duration_ms == original.duration_ms
+
+      # A NEW id, so the copy can be moved and deleted on its own.
+      refute copy.id == original.id
+    end
+
+    test "a duplicate carries the effect chain — a dry copy would be a silent loss",
+         %{conn: conn} do
+      {view, clip} = studio_with_clip(conn)
+
+      # Through the UI, not straight to disk: the component holds its mix in
+      # memory from `update/2`, so a write behind its back is overwritten by the
+      # next `save_mix`. That is also why this test is worth having — it is the
+      # path the operator takes.
+      render_hook(view, "select_clip", %{"id" => clip.id})
+      render_click(view, "studio_add_effect", %{"type" => "reverb"})
+
+      render_click(view, "studio_set_effect_param", %{
+        "position" => "0",
+        "key" => "mix",
+        "value" => "0.8"
+      })
+
+      render_hook(element(view, "#studio-ctx"), "duplicate_clip", %{"id" => clip.id})
+
+      {:ok, after_dup} = StudioMix.load("m")
+
+      copy =
+        after_dup
+        |> StudioMix.clips()
+        |> Enum.map(fn {_t, c} -> c end)
+        |> Enum.find(&(&1.id != clip.id))
+
+      assert [%{type: "reverb", params: %{"mix" => 0.8}}] = StudioMix.chain(copy)
+    end
+
+    test "duplicating is undoable, and an unknown id is a no-op", %{conn: conn} do
+      {view, clip} = studio_with_clip(conn)
+
+      render_hook(element(view, "#studio-ctx"), "duplicate_clip", %{"id" => clip.id})
+      {:ok, two} = StudioMix.load("m")
+      assert length(StudioMix.clips(two)) == 2
+
+      render_click(view, "studio_undo", %{})
+      {:ok, back} = StudioMix.load("m")
+      assert length(StudioMix.clips(back)) == 1
+
+      # A stale client costs a no-op, never a crash.
+      render_hook(element(view, "#studio-ctx"), "duplicate_clip", %{"id" => "ghost"})
+      assert home_tab(view) == "studio"
+      {:ok, still} = StudioMix.load("m")
+      assert length(StudioMix.clips(still)) == 1
+    end
+
+    # Not the menu, but the same defect and the same fix: the clipboard spec
+    # predates effects, so ⌘C/⌘V pasted a shaped clip DRY until 08-16. Both now
+    # go through `place_copy/4`, because two ways to say "a clip like this one"
+    # is how one of them came to forget the chain.
+    test "copy and paste carry the chain too, through the same primitive",
+         %{conn: conn} do
+      {view, clip} = studio_with_clip(conn)
+
+      render_hook(view, "select_clip", %{"id" => clip.id})
+      render_click(view, "studio_add_effect", %{"type" => "reverse"})
+
+      render_click(view, "studio_copy", %{})
+      render_click(view, "studio_paste", %{})
+
+      {:ok, mix} = StudioMix.load("m")
+
+      pasted =
+        mix
+        |> StudioMix.clips()
+        |> Enum.map(fn {_t, c} -> c end)
+        |> Enum.find(&(&1.id != clip.id))
+
+      assert pasted, "nothing was pasted"
+      assert [%{type: "reverse"}] = StudioMix.chain(pasted)
+    end
+
     test "a stale selection heals itself rather than rendering a ghost clip",
          %{conn: conn} do
       {view, clip} = studio_with_clip(conn)

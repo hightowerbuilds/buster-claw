@@ -528,7 +528,12 @@ check lib/buster_claw_web/components/notes/switcher.ex         134 HELD
 #
 # The gate is what forced it: this file could not have grown to hold the chain,
 # so the choice was extract or do not ship. That is the whole argument for FROZEN.
-check lib/buster_claw_web/live/sound_studio_component.ex     1184 FROZEN
+# 1184 -> 1178 on 08-16. A `duplicate_clip` handler needed four lines, and FROZEN
+# means a new feature is funded by an EXTRACTION rather than a raised cap — so
+# `render_error/1` moved to `SoundStudio.Format`, where the rest of this tab's
+# pure presentation already lives. Net six lines down, and the gate is the only
+# reason the right thing happened rather than the easy one.
+check lib/buster_claw_web/live/sound_studio_component.ex     1178 FROZEN
 # The Studio's effect chain, capped on arrival. `effects.ex` is the registry AND
 # the DSP: adding an effect is a `@catalog` entry plus an `apply_one/2` clause,
 # and it then appears in the inspector, saves into the mix, applies on render and

@@ -43,6 +43,29 @@ defmodule BusterClawWeb.SoundStudio.Format do
     "#{source} · starts #{ms(at)} · #{ms(dur)} long"
   end
 
+  @doc """
+  A render refusal, as a sentence.
+
+  Moved out of `SoundStudioComponent` on 08-16 to pay for the `duplicate_clip`
+  handler: that file is FROZEN, so a new feature has to be funded by an
+  extraction rather than a raised cap. This is the right kind to move — it is
+  pure presentation over `Studio.Render`'s error atoms, with no assigns and no
+  socket, which is exactly what this module already collects.
+
+  The catch-all is deliberate and stays: `Render` can surface a `:file.posix()`
+  from a failed write, and "Couldn't render that mix" beats showing `:enospc` to
+  someone who wanted a sound.
+  """
+  def render_error(:empty_mix), do: "Add a clip before rendering."
+
+  def render_error(:all_silenced),
+    do: "Every clip is muted — unmute or solo something first."
+
+  def render_error(:missing_source), do: "A clip's source is missing — nothing was rendered."
+  def render_error(:too_long), do: "That arrangement is longer than five minutes."
+  def render_error(:format_mismatch), do: "Those clips don't share a format."
+  def render_error(_other), do: "Couldn't render that mix."
+
   @doc "The shared class for a row in the sidebar's right-click menu."
   def menu_item_class,
     do:

@@ -46,6 +46,9 @@ defmodule BusterClawWeb.SoundStudio.Overlays do
       <%!-- Clips get exactly one item. Removing a clip takes nothing off disk —
             the source stays in the sidebar — and it is undoable with ⌘Z, so it
             needs no two-step confirm the way deleting a FILE does. --%>
+      <button type="button" data-ctx-duplicate-clip hidden class={menu_item_class()}>
+        Duplicate clip
+      </button>
       <button type="button" data-ctx-remove-clip hidden class={menu_item_class()}>
         Remove clip
       </button>

@@ -376,6 +376,10 @@ defmodule BusterClawWeb.SoundStudioComponent do
     {:noreply, save_mix(socket, StudioMix.remove_clip(socket.assigns.mix, clip_id))}
   end
 
+  def handle_event("duplicate_clip", %{"id" => clip_id}, socket) do
+    {:noreply, save_mix(socket, StudioMix.duplicate_clip(socket.assigns.mix, clip_id))}
+  end
+
   # Pushed by the TrackArrange hook on drop.
   def handle_event("move_clip", %{"clip_id" => id, "track_id" => track, "start_ms" => at}, socket)
       when is_binary(id) and is_binary(track) and is_number(at) do
@@ -653,16 +657,6 @@ defmodule BusterClawWeb.SoundStudioComponent do
   # FROZEN and could not hold them, which is the size gate earning its keep.
   # Source resolution stays here because it spans the sidebar's three groups.
   defp render_mix(%StudioMix{} = mix), do: Render.install(mix, &resolve_source/1)
-
-  defp render_error(:empty_mix), do: "Add a clip before rendering."
-
-  defp render_error(:all_silenced),
-    do: "Every clip is muted — unmute or solo something first."
-
-  defp render_error(:missing_source), do: "A clip's source is missing — nothing was rendered."
-  defp render_error(:too_long), do: "That arrangement is longer than five minutes."
-  defp render_error(:format_mismatch), do: "Those clips don't share a format."
-  defp render_error(_other), do: "Couldn't render that mix."
 
   defp apply_trim(nil, _trim), do: {:error, :no_selection}
   defp apply_trim(_selected, nil), do: {:error, :no_selection}

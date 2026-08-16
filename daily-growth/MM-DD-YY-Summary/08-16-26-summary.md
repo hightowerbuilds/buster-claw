@@ -473,3 +473,34 @@ gets deleted.
 **The strongest signal in the whole pass is one that costs nothing**: Elixir
 warns on unused private functions, so `mix compile --warnings-as-errors` passing
 means no dead `defp` survives anywhere in the day's work.
+
+
+---
+
+## Duplicate, and the defect it surfaced
+
+*"add a 'duplicate' button to the right click menu for clips."* Same source, same
+duration, same chain, on the same track **immediately after the original** —
+which is deliberately not where paste drops things. Paste means "put this
+somewhere"; duplicate means "again, right here."
+
+Building it found a defect in code shipped the same morning. **The clipboard spec
+was `%{source, duration_ms}`, written before effects existed**, so ⌘C/⌘V on a
+clip you had shaped pasted it DRY — silently, and only audible on render.
+
+The fix was not to teach paste about effects. Both now go through
+`StudioMix.place_copy/4`, because two ways to say "a clip like this one" is
+exactly how one of them came to forget the chain. That is the same lesson the
+quality pass had just applied to int16 saturation, arriving twice in one day from
+opposite directions: **the duplication is not the bug, it is the mechanism by
+which the bug becomes possible.**
+
+Verified in the browser and undone afterwards; the guard was then broken on
+purpose (`effects: []` in `place_copy/4`) to confirm the test fails without it.
+
+**And the FROZEN gate earned its keep a second time.** The handler needed four
+lines in a file that may not grow, so it was funded by an extraction rather than
+a raised cap: `render_error/1` moved to `SoundStudio.Format`, where the tab's
+other pure presentation already lives. 1,184 → 1,178. Twice today the freeze
+turned "just add a bit here" into a structural improvement, which is the entire
+argument for capping a file you have already decomposed.
