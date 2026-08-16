@@ -1914,6 +1914,31 @@ defmodule BusterClawWeb.StatusLiveTest do
       # Corrected 08-08 against the implementation: the catalog is click, and
       # there is no palette-coloured fallback — the layer simply does not paint.
       assert html =~ "a single click"
+
+      # The tab has to name every surface it teaches about. Derived from
+      # `Appearance.surfaces/0` rather than counted in prose, because the count
+      # changed on 08-15 and a page that says "two" while the picker shows three
+      # is the drift this whole day was spent on.
+      # Scoped to the CATALOG SECTION, not the page. The first version asserted
+      # against the whole homepage and passed with the surface deleted from the
+      # tutorial — because the corner widget's own tab button also says "Time &
+      # Place". A guard that the page satisfies for you is not a guard.
+      #
+      # Compared the way prose renders: case-insensitively, since a label reads
+      # as "the homepage" mid-sentence, and with `&` escaped, since "Time &
+      # Place" reaches the page as `Time &amp; Place`.
+      section =
+        view |> element("#explained-shader-catalog") |> render() |> String.downcase()
+
+      for surface <- Appearance.surfaces() do
+        label =
+          Appearance.surface_label(surface)
+          |> String.downcase()
+          |> String.replace("&", "&amp;")
+
+        assert section =~ label, "the Shaders tab never names the #{surface} surface"
+      end
+
       refute html =~ "drag"
       assert html =~ "stays solid"
 

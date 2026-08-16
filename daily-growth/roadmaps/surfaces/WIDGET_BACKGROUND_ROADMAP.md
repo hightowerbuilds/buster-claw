@@ -1,8 +1,7 @@
 # The widget's sky — making the corner card a third background surface
 
-**Scoped 08-15-26 · Status: UNBUILT. D1 and D2 DECIDED 08-15 — the surface is
-the Time & Place panel, and `daycycle` stays out of the catalog. VII.3 is still
-open and is what gates starting.**
+**Scoped 08-15-26 · Status: COMPLETE 08-15. All five phases, D1–D3 decided and
+built. The Time & Place card is a background surface like any other.**
 
 Operator: *"incorporate the widget on the home page into the shader background
 feature. We want the current WGSL to default but we want the other shader
@@ -373,8 +372,19 @@ What is **not** free is that three buttons per row on a catalog of `off` + 5
 built-ins + N workspace shaders + 8 image slots is a denser grid than the design
 was drawn for.
 
-**Exit:** the three-surface row reads clearly at the narrowest supported width,
-and the surface labels say which is which without a legend.
+**Exit:** met, and the density question had a real answer rather than a
+reassuring one. **✅ DONE 08-15.**
+
+The buttons were fine; **the label was not**. Flex children do not shrink below
+their content, and the chip row's label had no `truncate` — so a long option name
+pushed the buttons out of the row instead of ellipsing. Invisible with two
+surfaces and reachable with three, which is exactly the class of thing this phase
+was for. The label is now the item that yields.
+
+"Without a legend" is asserted rather than eyeballed: each button's short label
+(`Home`, `Term`, `Clock`) is backed by an `aria-label` carrying the surface's
+**full** name, so the row needs no key and a screen reader is not handed three
+mystery words. Both broken and verified.
 
 ### Phase 4 — The prose
 

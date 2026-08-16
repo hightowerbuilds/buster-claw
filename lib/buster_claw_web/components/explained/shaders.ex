@@ -106,11 +106,14 @@ defmodule BusterClawWeb.Explained.Shaders do
           <.link navigate="/appearance" class="font-semibold text-primary hover:opacity-80">
             Settings → Appearance
           </.link>
-          shows the catalog once, on the left, and the two surfaces on the right,
-          each previewing what it is actually running. Every catalog row has one
-          button per surface, so pointing something at a surface is a single click —
-          and the same option can back both at the same time, which is exactly why
-          it is one catalog and not two pickers.
+          shows the catalog once, on the left, and every surface on the right,
+          each previewing what it is actually running. There are three: the
+          homepage, the terminal, and the
+          <span class="font-semibold text-base-content">Time & Place card</span>
+          in the corner of the home header, which joined on 08-15. Every catalog
+          row has one button per surface, so pointing something at one is
+          a single click, and the same option can back all three at once —
+          which is exactly why it is one catalog and not three pickers.
         </p>
         <ul class="ic-unfold" style="list-style: none; padding-left: 0;">
           <li>

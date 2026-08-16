@@ -837,17 +837,21 @@ defmodule BusterClawWeb.AppearanceLive do
         name={if(@opt.kind == :off, do: "hero-no-symbol", else: "hero-sparkles")}
         class="size-4 shrink-0 text-base-content/45"
       />
-      <span class="text-sm font-semibold">{@opt.label}</span>
+      <%!-- The label is the item that yields. Flex items do not shrink below
+            their content by default, so before this a long shader name pushed
+            the buttons out of the row instead of ellipsing — invisible with two
+            surfaces, and the third is what made it reachable. --%>
+      <span class="min-w-0 flex-1 truncate text-sm font-semibold">{@opt.label}</span>
 
       <span
         :if={@assigned != []}
         data-assigned={assigned_badge(@assigned)}
-        class="rounded bg-primary px-1.5 py-0.5 text-[0.625rem] font-bold uppercase tracking-wide text-primary-content"
+        class="shrink-0 rounded bg-primary px-1.5 py-0.5 text-[0.625rem] font-bold uppercase tracking-wide text-primary-content"
       >
         {assigned_badge(@assigned)}
       </span>
 
-      <span class="ml-auto flex shrink-0 items-center gap-0.5 border-l-2 border-base-content/15 pl-1.5">
+      <span class="flex shrink-0 items-center gap-0.5 border-l-2 border-base-content/15 pl-1.5">
         <.assign_button :for={surface <- Appearance.surfaces()} surface={surface} opt={@opt} />
       </span>
     </div>

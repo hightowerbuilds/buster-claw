@@ -71,20 +71,52 @@ defmodule BusterClawWeb.AppearanceLiveTest do
     assert has_element?(view, "#background-upload-form")
   end
 
-  test "every filled option offers both surface buttons; an empty slot offers none",
+  # Derived from `Appearance.surfaces/0`, not a literal pair — the buttons are
+  # rendered by a `:for` over that list, so a surface added there arrives here
+  # with no edit and this must be what notices. It went from two to three on
+  # 08-15 (WIDGET_BACKGROUND Phase 1).
+  test "every filled option offers a button per surface; an empty slot offers none",
        %{conn: conn} do
     slot = add_image()
     {:ok, view, _html} = live(conn, "/appearance")
 
-    for opt <- ["off", "smoke", "image:#{slot}"], surface <- ["home", "terminal"] do
+    for opt <- ["off", "smoke", "image:#{slot}"], surface <- Appearance.surfaces() do
       assert has_element?(
                view,
                "[data-bg-option='#{opt}'] button[phx-value-surface='#{surface}']"
-             )
+             ),
+             "#{opt} offers no button for #{surface}"
     end
 
     # Slot 8 is empty — a placeholder, not something you can send anywhere.
     refute has_element?(view, "[data-bg-option='image:8'] button[phx-value-surface='home']")
+  end
+
+  # WIDGET_BACKGROUND Phase 3. Three buttons per row is denser than the design
+  # was drawn for, and the two failures that density causes are both silent: a
+  # button whose short label means nothing on its own, and a long option name
+  # that pushes the buttons out of the row instead of ellipsing.
+  test "a three-button row still says which surface is which, and yields to them",
+       %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/appearance")
+
+    # "Home", "Term", "Clock" are abbreviations. Each one's accessible name
+    # carries the surface's FULL label, so the row needs no legend and a screen
+    # reader is not handed three mystery words.
+    for surface <- Appearance.surfaces() do
+      label = Appearance.surface_label(surface)
+
+      assert has_element?(
+               view,
+               ~s([data-bg-option='smoke'] button[phx-value-surface='#{surface}'][aria-label*="#{label}"])
+             ),
+             "the #{surface} button does not name #{label} to a screen reader"
+    end
+
+    # The label is the item that gives way. Flex children do not shrink below
+    # their content by default, so without this a long name overflows the row
+    # rather than truncating — and the third button is what made that reachable.
+    assert has_element?(view, "[data-bg-option='smoke'] span.truncate")
   end
 
   test "shader options carry no thumbnail; images do", %{conn: conn} do

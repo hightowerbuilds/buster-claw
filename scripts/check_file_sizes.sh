@@ -157,7 +157,10 @@ check lib/buster_claw_web/components/explained/studio.ex       307 HELD
 # that leaves a reader believing otherwise costs them the feature.
 check lib/buster_claw_web/components/explained/phone.ex        710 HELD
 check lib/buster_claw_web/components/explained/cmd.ex          430 HELD
-check lib/buster_claw_web/components/explained/shaders.ex      340 HELD
+# 340 -> 350: the tab taught two surfaces and there are three
+# (WIDGET_BACKGROUND Phase 4). Named rather than counted — a page that says
+# "two" while the picker shows three is the drift this feature spent a day on.
+check lib/buster_claw_web/components/explained/shaders.ex      350 HELD
 check lib/buster_claw_web/components/explained/browser.ex      310 HELD
 check lib/buster_claw_web/components/explained/models.ex       305 HELD
 check lib/buster_claw_web/components/explained/gws.ex          278 HELD
@@ -305,7 +308,11 @@ check lib/buster_claw_web/components/chat_panel.ex          1040 HELD
 # it was already at its cap with no headroom before this landed. See
 # LEFTOVERS_SURFACES; `workspace_shader/1` here is the third copy of the mode
 # grammar and is the obvious first thing to leave.
-check lib/buster_claw_web/live/appearance_live.ex            1060 HELD
+# 1060 -> 1075: the catalog row's label now yields (WIDGET_BACKGROUND Phase 3).
+# Flex children do not shrink below their content, so a long option name pushed
+# the buttons out of the row instead of ellipsing — invisible with two surfaces,
+# reachable with three. The EXTRACTION OWED above is unchanged and now overdue.
+check lib/buster_claw_web/live/appearance_live.ex            1075 HELD
 check lib/buster_claw_web/live/status/comms.ex               125 HELD
 # Raised 08-09, 114 -> 150, for the Studio's Mix|Voice sub-tab (STUDIO_ROADMAP
 # VI.0b). This module moved instead of `status_live.ex` — which is at its cap and
@@ -600,7 +607,11 @@ check lib/buster_claw/commands/catalog/terminal_theme.ex      101 HELD
 # the mode grammar `off | <name> | image:<slot> | image:<slot>+<shader>` is now
 # parsed in three places, and `shader_component/1` here is one of them.
 check lib/buster_claw/commands/appearance.ex                  430 HELD
-check lib/buster_claw/commands/catalog/appearance.ex           87 HELD
+# 87 -> 100: the third surface in both descriptions, plus `default` as a mode.
+# The moduledoc stops stating a COUNT — `Appearance.surfaces/0` is what the verbs
+# validate against, so a fourth arrives with no edit here, and "two" outlived the
+# truth by about an hour the first time.
+check lib/buster_claw/commands/catalog/appearance.ex          100 HELD
 check lib/buster_claw/terminal_paint.ex                        81 HELD
 
 # Brand Pockets (POCKETS_ROADMAP Part XI, 08-09) — the dock icons and the

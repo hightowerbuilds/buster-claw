@@ -1,7 +1,13 @@
 defmodule BusterClaw.Commands.Catalog.Appearance do
   @moduledoc """
-  Catalog entries for the two surfaces that have a background — the terminal and
-  the homepage (DMG review B1).
+  Catalog entries for the surfaces that have a background — the terminal, the
+  homepage, and the home header's Time & Place card (DMG review B1; the card
+  joined on 08-15, `WIDGET_BACKGROUND`).
+
+  The count is deliberately not stated as a number here. `Appearance.surfaces/0`
+  is what the verbs validate against and what the picker iterates, so a fourth
+  arrives with no edit to this file — and a moduledoc saying "two" outlived the
+  truth by about an hour the first time.
 
   **Two verbs.** `background_list` says what exists and what each surface is
   showing, `background_set` points one surface at one option. There is no upload
@@ -59,7 +65,7 @@ defmodule BusterClaw.Commands.Catalog.Appearance do
         type: :read,
         tier: :safe,
         description:
-          "Every background the terminal and the homepage can show, and what each is showing right now. `options` is the shared catalog both surfaces draw from: `off`, the bundled shader designs, any shaders the operator wrote into their workspace, and the image pool — each with a `filled` flag, because an EMPTY image slot is listed (the picker shows it as a placeholder) and is never a valid target, and an `approved` flag, because an option can be perfectly valid and still not applicable from a command — a workspace shader the operator has never applied themselves is exactly that case, and reading `approved` here is how you learn it without being refused. `surfaces` reports each surface's RESOLVED mode, kind (none / shader / image / image_shader), shader, slot and image URL — resolved, not stored, so a mode whose shader file was deleted or whose image slot was cleared reports the default it degrades to rather than a value that would render nothing. `image_shaders` is the exact set of shader names that may be laid OVER an image in the `image:<slot>+<shader>` form; any other shader is refused for that form. Unlike terminal_theme_list, current state is reported and can be: a background lives on the server, not in the operator's browser.",
+          "Every background the terminal, the homepage and the Time & Place card can show, and what each is showing right now. `options` is the shared catalog both surfaces draw from: `off`, the bundled shader designs, any shaders the operator wrote into their workspace, and the image pool — each with a `filled` flag, because an EMPTY image slot is listed (the picker shows it as a placeholder) and is never a valid target, and an `approved` flag, because an option can be perfectly valid and still not applicable from a command — a workspace shader the operator has never applied themselves is exactly that case, and reading `approved` here is how you learn it without being refused. `surfaces` reports each surface's RESOLVED mode, kind (none / shader / image / image_shader), shader, slot and image URL — resolved, not stored, so a mode whose shader file was deleted or whose image slot was cleared reports the default it degrades to rather than a value that would render nothing. `image_shaders` is the exact set of shader names that may be laid OVER an image in the `image:<slot>+<shader>` form; any other shader is refused for that form. Unlike terminal_theme_list, current state is reported and can be: a background lives on the server, not in the operator's browser.",
         args: %{}
       },
       %{
@@ -67,13 +73,13 @@ defmodule BusterClaw.Commands.Catalog.Appearance do
         type: :mutate,
         tier: :restricted,
         description:
-          "Point one surface at one background, live — every open terminal and the homepage re-render immediately, no reload and no click. `surface` is `terminal` or `home`. `mode` is one of: `off`; a shader name from background_list; `image:<slot>` for an uploaded image; or `image:<slot>+<shader>` for an image with an image-reactive shader over it. Refusals are specific and correctable: an empty slot names the slots that DO hold an image, a shader that would not react to the image names the ones that would, and an unrecognised mode restates the grammar and lists the keys that exist. You cannot upload an image or write a shader from any command — this chooses among what the operator already put on their machine, so if what you want is not in background_list, ask them for it. A shader from their workspace is applied only when its CURRENT contents are ones they applied themselves in Settings → Appearance (background_list says `approved`), so a shader you just wrote or just edited is refused until they click it once; the refusal says so and says what to ask for. This changes what the operator is looking at, so say what you are doing and why.",
+          "Point one surface at one background, live — every open terminal and the homepage re-render immediately, no reload and no click. `surface` is `terminal`, `home`, or `widget` (the Time & Place card in the home header). `mode` is one of: `off`; a shader name from background_list; `image:<slot>` for an uploaded image; `image:<slot>+<shader>` for an image with an image-reactive shader over it; or `default`, which clears the choice so the surface goes back to what it ships with. `default` is the only undo, and on `widget` it is the only way back at all — that card's default sky is bundled but offered in no catalog row, so it cannot be named. Refusals are specific and correctable: an empty slot names the slots that DO hold an image, a shader that would not react to the image names the ones that would, and an unrecognised mode restates the grammar and lists the keys that exist. You cannot upload an image or write a shader from any command — this chooses among what the operator already put on their machine, so if what you want is not in background_list, ask them for it. A shader from their workspace is applied only when its CURRENT contents are ones they applied themselves in Settings → Appearance (background_list says `approved`), so a shader you just wrote or just edited is refused until they click it once; the refusal says so and says what to ask for. This changes what the operator is looking at, so say what you are doing and why.",
         args: %{
           "surface" => %{
             type: :string,
             required: true,
             description:
-              "Which surface to change: terminal (the in-app terminal) or home (the homepage chat). One surface at a time; the same option may back both."
+              "Which surface to change: terminal (the in-app terminal), home (the homepage chat), or widget (the Time & Place card in the home header). One surface at a time; the same option may back all of them."
           },
           "mode" => %{
             type: :string,
