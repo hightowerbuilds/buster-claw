@@ -1,7 +1,8 @@
 # The widget's sky — making the corner card a third background surface
 
-**Scoped 08-15-26 · Status: UNBUILT. Part III has five decisions, two of which
-are the operator's and gate the rest.**
+**Scoped 08-15-26 · Status: UNBUILT. D1 and D2 DECIDED 08-15 — the surface is
+the Time & Place panel, and `daycycle` stays out of the catalog. VII.3 is still
+open and is what gates starting.**
 
 Operator: *"incorporate the widget on the home page into the shader background
 feature. We want the current WGSL to default but we want the other shader
@@ -146,7 +147,9 @@ The shader is on the **Time & Place panel**, inside a card that has three tabs.
   a single object — but it puts a shader behind two lists that were designed on a
   flat panel, and the operator would likely turn it off there immediately.
 
-**Exit:** the operator picks. Everything below assumes the panel.
+**DECIDED 08-15: the panel.** The surface is Time & Place. Contacts and Notify
+keep the flat card they were drawn on, and the surface's label says what it
+backs.
 
 ### D2 — Does `daycycle` join the catalog?
 
@@ -160,6 +163,40 @@ The widget's default has to be `daycycle`. Two ways:
   shared catalog, at the cost of a shader that exists, renders, and cannot be
   chosen — which is exactly the state `veil` was in and which
   `IMAGE_SHADER_ROADMAP` had to unpick.
+
+**DECIDED 08-15: keep it out.** `daycycle` is the widget's default and is offered
+nowhere.
+
+> #### What that costs, measured rather than guessed
+>
+> This branch was scoped as the one that "avoids touching the shared catalog".
+> **It does not — it needs two small mechanisms, and without the first the widget
+> renders nothing at all.** Traced through the code after the decision:
+>
+> **1. The default would resolve to `:off`.** `resolve_mode/1` classifies the
+> stored mode and falls back to `classify_default/1`, which classifies
+> `config(surface).default` through the *same* `shader_selectable?/1` —
+> `name in @builtin_shaders or (not a face and `Shaders.exists?(name)`)`.
+> `daycycle` is in neither: it is bundled in the JS, so there is no
+> `shaders/daycycle.wgsl` for `exists?/1` to find. `classify_default` returns
+> `:unknown`, which becomes `:off`, and **the Time & Place panel goes blank.**
+>
+> The fix is a named list, not a bypass: bundled shaders a surface may *default*
+> to but nobody may *pick*. One list, and the concept is exactly what this
+> decision asked for — "renderable, not offered" — rather than a hole punched in
+> validation that the next reader has to reverse-engineer.
+>
+> **2. There is no way back.** With `daycycle` absent from the catalog, an
+> operator who picks `waves` has no row to click to undo it, and neither has the
+> model. So the widget needs a **"Use default"** affordance — the same words and
+> the same shape `BrandSlots` already uses when a slot is not on its default —
+> and `background_set` needs to accept `"default"` as a mode.
+>
+> Making `"default"` a mode for **all three** surfaces rather than a widget
+> special case: it is one grammar token, it means the same thing everywhere
+> ("clear the stored choice"), and a surface-specific verb is the kind of thing
+> that reads as an accident later. It also gives the model an honest way to undo
+> a background change it made, which it does not currently have for any surface.
 
 ### D3 — `data-daylight` follows the **shader**, not the mount
 
@@ -219,6 +256,14 @@ gate re-tiered from `FROZEN` to `HELD` in the same commit that earns it.
 One entry in `Appearance.@surfaces`: `:widget`, keys
 `widget_background_{mode,custom,colors}`, its own topic and message, label
 `"Time & Place"`, default `"daycycle"`.
+
+**Plus the two mechanisms D2 turned out to need**, and the first is not optional
+— without it this phase ships a blank panel:
+
+- a list of bundled shaders a surface may **default to but nobody may pick**, so
+  `classify_default/1` stops resolving `daycycle` to `:off`;
+- `"default"` as a mode for every surface, meaning "clear the stored choice", so
+  there is a way back to the sky from both the picker and `background_set`.
 
 Then follow the ripple in [I.5](#i5--one-table-drives-every-surface-and-a-third-entry-ripples) — the two `:for` sites in
 `AppearanceLive`, `background_list`/`background_set`, the catalog descriptions,
@@ -290,14 +335,13 @@ is worse than one that omits it, and the model reads `INTRODUCTION.md`.
 
 ## Part VII — Open questions for the operator
 
-**VII.1 — D1: the Time & Place panel, or the whole card?** Everything above
-assumes the panel.
+**VII.1 — ANSWERED 08-15: the Time & Place panel.**
 
-**VII.2 — D2: should `daycycle` become selectable everywhere**, or stay the
-widget's default and nothing else? Recommending everywhere; it costs D3 either
-way.
+**VII.2 — ANSWERED 08-15: stay the default, offered nowhere.** See D2 for the two
+mechanisms this turned out to need.
 
-**VII.3 — Is Phase 0 acceptable as the price?** The feature is small and the
+**VII.3 — STILL OPEN, and it is the only thing left. Is Phase 0 acceptable as the
+price?** The feature is small and the
 decomposition in front of it is not. The honest alternative is to say so and not
 do this yet — which is a legitimate answer, and better than a raised `FROZEN`
 cap.
