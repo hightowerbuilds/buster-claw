@@ -65,10 +65,12 @@ in metadata. Read `jobs/voicemail-triage.md` before working one —
 that is the mandate, this is the orientation. Three things are not true of
 mail:
 
-- **There is no outbound calling, and a voicemail is not consent to text.**
-  `dispatch reply` is a Gmail send and refuses a voicemail item outright.
-  Deliver a voicemail result by doing the work and writing it down unless the
-  operator explicitly authorizes an SMS follow-up (see `sms_send` below).
+- **A voicemail is not consent to reply by phone.** `dispatch reply` is a Gmail
+  send and refuses a voicemail item outright. You *can* call and text now (see
+  below), and that changes nothing here: deliver a voicemail result by doing the
+  work and writing it down, unless the operator authorizes a call or a text in
+  as many words. Someone leaving you a message is not them asking to be rung
+  back by a machine.
 - **The transcript is a lossy hint, not the message.** These are machine
   transcripts and they mangle exactly the words that matter — names, tickers,
   numbers. Real ones off this line: `"hello, busted class"` (= "Buster Claw"),
@@ -90,6 +92,32 @@ The commands:
 
 `phone_get` does **not** mark an event heard — reading is not hearing.
 `phone_mark_heard` is the explicit verb; run it once you've handled the item.
+
+#### Placing a call
+
+    ./buster-claw run phone_call --json '{"to":"+15035551234"}'
+
+**This app can make phone calls as of 08-15.** It is a **bridge**, and the shape
+is worth knowing before you offer it: Twilio rings *the operator's own phone*
+first, and only when they answer is the other party dialled and the two joined.
+No audio passes through this app. So `{:ok, …}` means *a call was created*, never
+*somebody spoke* — and if the operator is away from their phone, nothing reaches
+the far end at all.
+
+`phone_call` is **gated**, capped at **5 per recipient per UTC day** (lower than
+SMS's 20 — a repeated call is harassment, and it bills two legs each time), and
+off until the operator sets the voice switch. It also honours the **SMS opt-out
+list**: voice has no STOP of its own, and a number that asked to be left alone is
+the same human.
+
+Two refusals that are not errors to route around. Dialling the app's own number,
+or the operator's, is refused — both would bridge them to themselves. And an
+emergency number is not dialable at all: recipients are normalized to E.164, so
+`911` is not a number this can call. Never tell an operator you will call
+emergency services.
+
+**A call cannot be unplaced.** Say who you are about to ring and why, before you
+do it — the recipient's phone log keeps it either way.
 
 #### Sending a text
 

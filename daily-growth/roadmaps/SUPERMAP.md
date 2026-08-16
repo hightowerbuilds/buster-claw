@@ -158,7 +158,7 @@ and zero issues in the verdict. Budget hours per release, not minutes
 | Notes | `NotesComponent` | SHIPPED | [`LEFTOVERS_SURFACES`](surfaces/LEFTOVERS_SURFACES.md) — renaming orphans `[[wiki links]]` |
 | Pockets | `PocketsPanel` | SHIPPED | [`APP_ICON`](surfaces/APP_ICON_ROADMAP.md) — a seventh Brand slot, for the macOS Dock |
 | Calendar | `CalendarComponent` | SHIPPED | — |
-| Phone | `PhoneComponent` | surface SHIPPED, leg **ACTIVE** | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) |
+| Phone | `PhoneComponent`, `Phone.CallAction` | SHIPPED — **the keypad dials as of 08-15**, gated and confirmed once before the first ring | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) |
 | **Studio → Mix** | `SoundStudioComponent` | SHIPPED | [`LEFTOVERS_AGENT_CORE`](agent-core/LEFTOVERS_AGENT_CORE.md) — `commands/sound.ex` is owed a split |
 | **Studio → Voice** | `Studio.Registry` | **PLACEHOLDER** | [`STUDIO`](surfaces/STUDIO_ROADMAP.md) Parts V–VI |
 | Explained | `ExplainedPanel` | SHIPPED | [`LEFTOVERS_SURFACES`](surfaces/LEFTOVERS_SURFACES.md) — two errands, five tiles |
@@ -168,7 +168,7 @@ and zero issues in the verdict. Budget hours per release, not minutes
 | Widget → Notify | `NotifyLive` | SHIPPED | [`LEFTOVERS_AGENT_CORE`](agent-core/LEFTOVERS_AGENT_CORE.md) — the chime designer |
 | Background shader | `Shaders` | SHIPPED | — |
 | **Agent-applied shaders** | `Appearance.ShaderApproval` | **COMPLETE 08-15** — a workspace shader applies by command once the operator has applied its exact bytes themselves; editing withdraws it. Existing shaders backfilled. The property kept: GPU code no human has looked at cannot reach the screen from a command | [`AGENT_APPLIED_SHADERS`](surfaces/AGENT_APPLIED_SHADERS_ROADMAP.md) |
-| **The corner widget's sky** | `HomeWidget.place_panel/1`, hardcoded `daycycle` | **SCOPED 08-15, UNBUILT** — it already renders a shader; nobody can change it. D1/D2 decided (the Time & Place panel; `daycycle` defaults but is never offered). Blocked on decomposing `home_widget.ex`, 699 lines and **FROZEN** — VII.3 asks whether that price is worth a small feature | [`WIDGET_BACKGROUND`](surfaces/WIDGET_BACKGROUND_ROADMAP.md) |
+| **The corner widget's sky** | `Widget.PlacePanel`, `Appearance` surface `:widget` | **Phases 0 and 1 SHIPPED 08-15** — `home_widget.ex` decomposed 699 → 135 (FROZEN → HELD) and `:widget` is a real surface with `daycycle` as a default nothing can select. **Phase 2 is the visible half**: the panel still renders its hardcoded div | [`WIDGET_BACKGROUND`](surfaces/WIDGET_BACKGROUND_ROADMAP.md) |
 | Image-reactive shaders | `ShaderCanvas`, `Appearance.image_shader_options/0` | SHIPPED — Phase 4 (the skill) open | [`IMAGE_SHADER`](surfaces/IMAGE_SHADER_ROADMAP.md) |
 | The home screen's primary action | `StatusLive` | SHIPPED, **says the wrong thing** | [`FRONT_DOOR`](distribution/FRONT_DOOR_ROADMAP.md) `VI-a` |
 
@@ -234,7 +234,7 @@ Not surfaces. The machinery every surface sits on.
 |---|---|---|---|
 | **The Clinch — credentials** | `Clinch`, `ClinchPanels`, Tauri `clinch_*` | **ACTIVE — Phases 0–4 COMPLETE 08-10; Phase 5 guarded 08-13, now waiting on the operator's tunnel spike** | [`CLINCH`](integrations/CLINCH_ROADMAP.md) |
 | **Reaching it from a phone** | the relay, as a control channel | **PARKED 08-13 — research done, starts after the desktop app ships** | [`PHONE_ACCESS`](integrations/PHONE_ACCESS_ROADMAP.md) |
-| **Twilio / BusterPhone** | `Telephony` | **ACTIVE — the money leg. Inbound is LIVE on the operator's number (verified in the app 08-14); what remains is vending one to somebody else** | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) |
+| **Twilio / BusterPhone** | `Telephony` | **ACTIVE — the money leg. Inbound LIVE (verified in the app 08-14) and outbound CALLING shipped 08-15, so the only thing this phone cannot do is send a text. What remains is vending a number to somebody else** | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) |
 | Outgoing texts | `sms_send`, kill-switched | **BUILT, BLOCKED ON PAPERWORK** — the Twilio brand registered down the business path; the fix is Direct Sole Proprietor, and the procedure is written | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) Phase 2 |
 | Outgoing calls | `phone_call`, `Phone.CallAction` | **SHIPPED 08-15, roadmap COMPLETE** — needed no A2P at all. A bridge: your own phone rings first, so no audio touches the Mac. Gated, capped at 5/recipient/day, off until `BUSTER_CLAW_VOICE_ENABLED` | [`OUTBOUND_VOICE`](integrations/OUTBOUND_VOICE_ROADMAP.md) |
 | The relay (Supabase) | `telephony/relay.ex` | SHIPPED — **now erases, 08-10** | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) — pre-08-10 backlog sweep · [`LEFTOVERS_PLATFORM`](platform/LEFTOVERS_PLATFORM.md) — rotated DB password |

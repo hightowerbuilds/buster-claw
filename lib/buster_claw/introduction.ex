@@ -45,7 +45,8 @@ defmodule BusterClaw.Introduction do
     "05-browsing.md",
     "06-documents-and-services.md",
     "07-notify-memory-shaders.md",
-    "08-skills-and-commands.md"
+    "08-skills-and-commands.md",
+    "09-sound-pockets-and-chrome.md"
   ]
 
   for section <- @sections do

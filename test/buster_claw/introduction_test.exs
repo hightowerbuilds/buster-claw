@@ -111,6 +111,70 @@ defmodule BusterClaw.IntroductionTest do
     refute flat_md =~ "whoever wrote it"
   end
 
+  # The briefing went stale twice on 08-15 — it denied a capability that had
+  # shipped, and it described two background surfaces when there were three. Both
+  # were found by a human reading, which does not scale to 200-odd commands.
+  #
+  # This is the general form: every FAMILY of commands must be named somewhere a
+  # human wrote. It deliberately does not check individual verbs — the generated
+  # catalog covers those, and demanding prose for all 206 would be noise that
+  # gets suppressed. A family is the unit at which "the model does not know this
+  # exists" starts to cost something.
+  test "every command family is named in the prose, not just the generated table" do
+    md = Introduction.markdown()
+    [prose, _generated] = String.split(md, "These are the commands you can run", parts: 2)
+
+    families =
+      Commands.list_commands()
+      |> Enum.map(& &1.name)
+      |> Enum.group_by(fn name -> name |> String.split("_") |> hd() end)
+
+    missing =
+      Enum.reject(families, fn {family, commands} ->
+        String.contains?(prose, family <> "_") or
+          Enum.any?(commands, &String.contains?(prose, &1))
+      end)
+
+    assert missing == [],
+           """
+           These command families exist and INTRODUCTION.md never mentions them:
+
+             #{Enum.map_join(missing, ", ", &elem(&1, 0))}
+
+           The generated catalog at the end of the document lists every verb, so
+           the model can see them — but prose is what it believes, and a family
+           with no orientation is one it will not reach for or will misuse. Add a
+           row to the table in `introduction/01-orientation.md` and a paragraph
+           wherever it belongs.
+           """
+  end
+
+  # The family guard above catches a capability the briefing never mentions. It
+  # cannot catch one the briefing DENIES — `phone_*` was named throughout while a
+  # bullet said "there is no outbound calling", which is the shape that shipped
+  # on 08-15 and had to be corrected. A denial needs its own assertion, tied to
+  # the catalog so it cannot outlive the verb.
+  test "the briefing does not deny a capability the catalog has" do
+    md = Introduction.markdown()
+    [prose, _generated] = String.split(md, "These are the commands you can run", parts: 2)
+
+    if Commands.command_type("phone_call") do
+      assert prose =~ "can make phone calls"
+
+      refute prose =~ "There is no outbound calling",
+             "phone_call exists; the briefing must not tell the model otherwise"
+
+      # The shape is the surprising part and the model will offer this wrongly
+      # without it: the OPERATOR's phone rings first, so a success means a call
+      # was created, never that anyone spoke.
+      assert prose =~ "rings *the operator's own phone*"
+      assert prose =~ "never\n*somebody spoke*" or prose =~ "never *somebody spoke*"
+
+      # The refusal it would otherwise promise and then fail to deliver.
+      assert prose =~ "emergency number is not dialable"
+    end
+  end
+
   test "routes web work by consequence, not by convenience" do
     md = Introduction.markdown()
 

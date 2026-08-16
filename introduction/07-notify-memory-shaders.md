@@ -34,8 +34,9 @@ silently approving your own.
 
 Backgrounds are live WebGPU **shader patterns**, chosen in Settings →
 Appearance **or by you, with `background_set`**. There is **one** catalog and
-**two** surfaces that can point at it —
-the homepage and the terminal — and the same pattern may back both at once. The
+**three** surfaces that can point at it — the homepage, the terminal, and the
+Time & Place card in the corner of the home header — and the same pattern may
+back all three at once. The
 shipped patterns are **smoke, waves, mandel,
 and weather**, all sharing one uniform/binding contract (value-noise/
 fbm helpers, a 3-colour palette in `colA`/`colB`/`colC`, and a shared
@@ -99,7 +100,8 @@ being refused first. Read it before you offer. Read it first: it is the only pla
 from, and it marks empty image slots as `filled: false` so you do not offer the
 operator a slot with nothing in it.
 
-`background_set` takes a `surface` — `terminal` or `home` — and a `mode`:
+`background_set` takes a `surface` — `terminal`, `home`, or `widget` (the
+Time & Place card) — and a `mode`:
 
 | `mode` | Effect |
 |---|---|
@@ -107,6 +109,12 @@ operator a slot with nothing in it.
 | a shader name from `background_list` | that pattern — a built-in, or a workspace one they have approved |
 | `image:<slot>` | an image the operator uploaded |
 | `image:<slot>+<shader>` | that image with an image-reactive shader over it |
+| `default` | clear the choice — the surface goes back to what it ships with |
+
+`default` is the only undo you have, and on the **widget** it is the only way
+back at all: that card's default is a sky called `daycycle` which is bundled but
+**offered in no catalog row**, so you cannot select it by name. Nothing is wrong
+if `background_list` never mentions it.
 
 ```sh
 ./buster-claw run background_set --json '{"surface":"home","mode":"image:2+veil"}'
