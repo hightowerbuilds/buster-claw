@@ -54,13 +54,18 @@ the name must be lowercase letters/digits/hyphens, and reads are size-capped
 (64 KB). The browser compile-checks the WGSL and falls back gracefully on
 error, so a broken shader degrades rather than blanking the homepage.
 
-**But you cannot apply a shader you just wrote.** `background_set` refuses it,
-even though the operator can select that exact file by clicking. Authoring and
-applying are two acts and only you can do the first one in a single breath —
-this workspace is writable, so "no command writes a shader" would mean nothing
-if the command that *applies* one accepted your own. Write the file, tell them
-its name, and let them select it once. After that it is theirs and you can
-point either surface at it.
+**But `background_set` will not apply a workspace shader at all — only the five
+built-ins: `smoke`, `waves`, `mandel`, `weather`, `veil`.** Every other pattern
+in `shaders/` is refused, **whoever wrote it**, including ones the operator
+wrote by hand. That is wider than it may look, and it is not an oversight: a
+shader is a file, this workspace is writable, and no command can tell a file you
+wrote from one they wrote. The Appearance page has no such limit, because a
+human is clicking there.
+
+So the loop is: write the file, tell them its name, and let them select it in
+Settings → Appearance. Do not tell them you will apply it and then discover you
+cannot. (Images are unaffected — you may point either surface at any *filled*
+image slot, because only the operator can put an image in one.)
 
 That is the whole safety story, and it is a reach limit rather than a
 permission check: WGSL runs in the WebGPU sandbox with no memory or IO escape,

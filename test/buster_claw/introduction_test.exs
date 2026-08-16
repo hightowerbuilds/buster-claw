@@ -1,6 +1,7 @@
 defmodule BusterClaw.IntroductionTest do
   use ExUnit.Case, async: false
 
+  alias BusterClaw.Appearance
   alias BusterClaw.Commands
   alias BusterClaw.Introduction
 
@@ -65,9 +66,22 @@ defmodule BusterClaw.IntroductionTest do
     assert md =~ "Changing a background yourself"
     assert md =~ "terminal" and md =~ "home"
 
-    # ...and it CANNOT apply one it wrote itself, which is the refusal it will
-    # otherwise hit and read as a bug.
-    assert md =~ "cannot apply a shader you just wrote"
+    # ...and it CANNOT apply a workspace shader, which is the refusal it will
+    # otherwise hit and read as a bug. Asserted as the RULE rather than as
+    # "one you wrote yourself" — the first version of this prose said that, and
+    # it was wrong in the direction that costs a run: `check_shader/2` tests
+    # membership of `builtin_shaders/0`, so a shader the OPERATOR wrote is
+    # refused too, and prose implying otherwise sends the model at a wall.
+    assert prose =~ "only the five\nbuilt-ins" or prose =~ "only the five built-ins"
+
+    # The LIST, rendered, not each word — `veil` and `weather` appear elsewhere
+    # in this section, so a per-word loop passed with two of the five deleted.
+    applicable = Enum.map_join(Appearance.builtin_shaders(), ", ", &"`#{&1}`")
+
+    assert prose =~ applicable,
+           "the prose must name exactly the applicable set, in order: #{applicable}"
+
+    assert prose =~ "whoever wrote it"
 
     # The claim that was wrong must not come back in any form.
     refute md =~ "can never force one onto their screen"
