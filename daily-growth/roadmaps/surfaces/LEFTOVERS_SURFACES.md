@@ -355,7 +355,7 @@ Pair with the Chart Build walk below; both need a browser and nothing else.
 
 ### From the 08-13 code review — surfaces
 
-*Filed from [`CODE_REVIEW_08-13-26`](../CODE_REVIEW_08-13-26.html) §§4 and 6.
+*Filed from [`CODE_REVIEW_08-13-26`](../../archive/CODE_REVIEW_08-13-26.html) §§4 and 6.
 Both frozen modularization phases were re-verified against current code and
 still fit — with corrections that change how they should be executed.*
 

@@ -171,7 +171,7 @@ DB password and a reset stays a two-minute dashboard job. Pure bookkeeping.
 
 ### From the 08-13 code review — code health
 
-*Filed from [`CODE_REVIEW_08-13-26`](../CODE_REVIEW_08-13-26.html) §§7 and 12.
+*Filed from [`CODE_REVIEW_08-13-26`](../../archive/CODE_REVIEW_08-13-26.html) §§7 and 12.
 The gmail fence — the review's one security-weight finding — landed same-day
 (`1728e64`); these are the follow-ons.*
 

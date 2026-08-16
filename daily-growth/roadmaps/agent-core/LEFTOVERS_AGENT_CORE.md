@@ -268,7 +268,7 @@ whole design assumes free tiers and endpoints will move.
 
 ### From the 08-13 code review — the agent core's ledger
 
-*Filed from [`CODE_REVIEW_08-13-26`](../CODE_REVIEW_08-13-26.html) §5, the
+*Filed from [`CODE_REVIEW_08-13-26`](../../archive/CODE_REVIEW_08-13-26.html) §5, the
 whole-codebase review. Its top findings for this section were fixed the same
 day (`20a36a9`); these are the ones that remain, each verified against the
 file, not inferred.*

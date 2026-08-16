@@ -4,9 +4,9 @@
 > three requested builds shipped. One thing is deliberately NOT closed here and
 > was moved rather than ticked: findings 1 and 2 are proven **in dev only**, and
 > the packaged re-check now lives in
-> [`QA_BACKLOG`](QA_BACKLOG.md) — "Harness detection — the one check that can
+> [`QA_BACKLOG`](../roadmaps/platform/QA_BACKLOG.md) — "Harness detection — the one check that can
 > only pass in a packaged build". Two tails from the same fix are in
-> [`LEFTOVERS_PLATFORM`](LEFTOVERS_PLATFORM.md).
+> [`LEFTOVERS_PLATFORM`](../roadmaps/platform/LEFTOVERS_PLATFORM.md).
 >
 > **The sharpest thing this review produced is not in its table.** Finding 3's
 > sweep, and the security regression that B1 introduced and B2 exposed, both

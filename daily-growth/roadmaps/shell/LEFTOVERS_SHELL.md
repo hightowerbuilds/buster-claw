@@ -1,7 +1,7 @@
 # Leftovers — the shell
 
 **Created 08-13**, when the whole-codebase review
-([`CODE_REVIEW_08-13-26`](../CODE_REVIEW_08-13-26.html) §§8–9) produced the
+([`CODE_REVIEW_08-13-26`](../../archive/CODE_REVIEW_08-13-26.html) §§8–9) produced the
 first item list for the JS and Rust layers — the two layers the size gate does
 not cover. Same rules as the sibling LEFTOVERS files: everything here is
 concrete, blocks nothing, and is deferred on purpose. The review's shell-side

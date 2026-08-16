@@ -92,8 +92,26 @@
 <div class="wrap">
 
 <header class="masthead">
-  <div class="eyebrow">Buster Claw · Internal Review</div>
+  <div class="eyebrow">Buster Claw · Internal Review · <strong>ARCHIVED 08-15-26</strong></div>
   <h1>Code Review — Every Part, With Its Argument</h1>
+  <p class="sub" style="border-left:4px solid currentColor;padding-left:.9rem">
+    <strong>Archived because nothing here is floating.</strong> The top four findings landed the
+    same day (the gmail attachment fence <code>1728e64</code>, both <code>chat.ex</code> contract
+    bugs <code>20a36a9</code>, the dead Trading hooks plus a both-directions hook guard
+    <code>577085e</code>). Every remaining finding was filed by section into the four leftovers
+    maps — <code>LEFTOVERS_AGENT_CORE</code> §5, <code>LEFTOVERS_SURFACES</code> §§4 and 6,
+    <code>LEFTOVERS_PLATFORM</code> §§7 and 12, and <code>LEFTOVERS_SHELL</code> §§8–9, which was
+    created for it. Those maps are the live documents; this one is the argument they came from.
+    <br><br>
+    <strong>Two structural conclusions outlived the findings</strong> and are still open where they
+    were filed: the size gate covered no core, JS or Rust file (§12 carries the 19-file proposed
+    inventory — the core layer entered on 08-13/14), and <code>commands/sound.ex</code> at 2,514
+    lines is the one file where the 08-08 "<code>commands/</code> is correct" ruling no longer
+    holds. That split is the headline debt and lives in <code>LEFTOVERS_AGENT_CORE</code>.
+    <br><br>
+    The filename is unchanged on purpose: four maps and a comment in
+    <code>scripts/check_file_sizes.sh</code> cite this document by name.
+  </p>
   <p class="sub">
     Whole-codebase review, 2026-08-13. Six parallel reviewers, one per cluster, each briefed with the
     prior rulings (the archived <code>MODULARIZATION_ROADMAP</code>, the size gate, the operator's
