@@ -397,12 +397,25 @@ it kept getting deferred inside a roadmap about signing binaries.
 
 | Section | Where | State | Map |
 |---|---|---|---|
-| `/` homepage | separate repo (Vercel) | 200, **wrong headline** | [`WEBSITE`](website/WEBSITE_ROADMAP.md) `G-23` · [`FRONT_DOOR`](distribution/FRONT_DOOR_ROADMAP.md) |
-| `/download` | — | **404** | [`WEBSITE`](website/WEBSITE_ROADMAP.md) `G-21` |
-| `/privacy` | — | **404** | [`WEBSITE`](website/WEBSITE_ROADMAP.md) `G-22` |
-| `/terms` | — | **404** | [`WEBSITE`](website/WEBSITE_ROADMAP.md) `G-22` |
+| `/` homepage | separate repo (Vercel) | 200 — **headline already matches the README**; body copy had four false claims, **fixed 08-16, undeployed** | [`WEBSITE`](website/WEBSITE_ROADMAP.md) `G-23` · [`FRONT_DOOR`](distribution/FRONT_DOOR_ROADMAP.md) |
+| The download page | `#/downloads/busterclaw` | **EXISTS — and its button points at `DOMAIN-TBD.invalid`** | [`WEBSITE`](website/WEBSITE_ROADMAP.md) `G-21` |
+| Privacy + terms | `/busterphone/*.html` | **200, BusterPhone-scoped** — site-wide versions still owed | [`WEBSITE`](website/WEBSITE_ROADMAP.md) `G-22` |
+| Path routes (`/download`, `/privacy`) | — | **404 by construction** — the site is hash-routed with no rewrites | [`WEBSITE`](website/WEBSITE_ROADMAP.md) `G-21` |
 | Stated floor + Claude requirement | — | not stated | [`WEBSITE`](website/WEBSITE_ROADMAP.md) `G-24` |
 | The landing-page test | — | **SCOPED** | [`WEBSITE`](website/WEBSITE_ROADMAP.md) `IX.2` |
+
+> **Part IX was measured against the live site on 08-16 and three of its five
+> rows were wrong** — all in the optimistic-to-pessimistic direction, which is
+> the rarer and less dangerous way to be wrong, but wrong. The download page and
+> both legal pages existed; this map had guessed their addresses and recorded the
+> guesses as 404s. **What it missed instead was worse than what it invented: a
+> live Download button resolving to `.invalid`, and four false capability claims
+> on the homepage.**
+>
+> The lesson is the one this repo keeps relearning at this exact seam: **the site
+> is a fifth front-door surface, in another repository, that no test here
+> renders.** It cost two weeks of contradictory licence terms in August. Checking
+> it took ninety seconds of `curl`.
 
 **It sits on two critical paths, not one.** `/privacy` at a matching domain is a
 hard prerequisite for Google OAuth brand verification, so the website gates
