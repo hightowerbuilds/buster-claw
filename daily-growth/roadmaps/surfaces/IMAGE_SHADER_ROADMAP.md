@@ -4,6 +4,11 @@
 `4c664cf`). Phase 0 deferred (needs a running app), Phase 4 — the skill — is
 next and is the durable half.**
 
+> **D5 was overturned in half on 08-15 and this map has been corrected.** The
+> model can now *select* a background on either surface — `background_list` and
+> `background_set`, live, from chat or the CLI. It still cannot author one. Two
+> places said otherwise until 08-15: D5 itself and Part VI's first bullet.
+
 > Phase 4 carries one correction it owes independently of this feature: the
 > shader skill documents `touch()` as *"an interaction signal"* and its example
 > adds it to the colour, but `touch()` always returns exactly **0**. Every
@@ -305,15 +310,32 @@ no longer samples degrades to the surface default rather than rendering half the
 thing. That last clause matters — a shader can stop sampling by being edited, so
 this is not a write-time check.
 
-### D5 — Still no commands. The model proposes; the human selects.
+### D5 — the model may select a background, and may not author one
 
-Unchanged, and this feature does not owe the argument `TERMINAL_PAINT_ROADMAP`
-had to make, because it takes no new ground:
+**Retitled 08-15. It was "Still no commands. The model proposes; the human
+selects."** As scoped it said selecting the combined mode is a human click in
+Settings → Appearance. **That stopped being true on 08-15**, when the DMG review's B1 asked for
+selection back and `background_list` / `background_set` shipped
+(`09343be`, `d2f6ffa`). Both surfaces, live, no reload:
+
+```sh
+./buster-claw run background_set --json '{"surface":"home","mode":"image:2+veil"}'
+```
+
+**The half that stands is the one D5 was actually protecting.** No command
+authors a shader or adds an image, at any tier. That is not a policy check — the
+workspace is writable, so an agent can *write* `shaders/x.wgsl` without any
+command at all, and `background_set` therefore refuses a shader the agent wrote
+even though `Appearance` would accept it from a human click. Selecting one of the
+operator's own designs and running WGSL the model just wrote are different acts,
+and only the second was ever the danger.
+
+What remains true as scoped:
 
 - The model already authors `shaders/*.wgsl` — "operator- and agent-editable,
   exactly like skills and jobs" (`shaders.ex:13`).
 - The image is chosen by the operator, from the operator's own pool, by clicking.
-- Selecting the combined mode is a human click in Settings → Appearance.
+  **There is still no upload verb and no delete verb**, deliberately.
 
 **On the image being visible to a shader:** there is no readback path in this
 pipeline. The fragment shader writes to the canvas and nowhere else — no
@@ -527,6 +549,11 @@ its own file. What it must carry, gathered while building 1 and 2:
 - The density tiers ([I.7](#i7--some-shaders-render-at-06-density-and-a-820px-cap)) —
   a photo sampled at 0.6 reads soft, and the author will blame their own shader.
 - Point at `veil` as the worked example rather than re-explaining it.
+- **That the model can now apply its own work — with one exception it will hit.**
+  `background_set` selects; it refuses a shader the model itself wrote, so the
+  skill must teach the loop that actually works: write the file, tell the
+  operator its name, let them select it once. A skill that says "and then apply
+  it" produces a refusal the author will read as a bug.
 
 **One correction the skill owes independently of this feature.** It documents
 `touch()` as *"an interaction signal"* and its example does
@@ -548,8 +575,12 @@ photos more than once).
 
 ## Part VI — What this does not solve
 
-- **The model still cannot select a background.** By design (D5). It writes a file
-  and tells the operator its name, exactly as today.
+- ~~**The model still cannot select a background.**~~ **Stale as of 08-15** — see
+  [D5](#d5--the-model-may-select-a-background-and-may-not-author-one).
+  It selects among what the operator already has, on either surface. What it
+  still cannot do is *put something new there*: no upload verb, no delete verb,
+  and a shader it wrote itself is refused by the command even though the
+  Appearance page would accept it.
 - **The model does not choose the image.** One shader must work over any picture.
   This is a *feature* — it is why the pattern adapts — but it means the model
   cannot tune a shader to one photograph unless the operator asks it to look at
