@@ -681,4 +681,81 @@ defmodule BusterClaw.AppearanceTest do
       end
     end
   end
+
+  # --- the widget surface (WIDGET_BACKGROUND Phase 1) -----------------------
+  #
+  # Two mechanisms D2 turned out to need, and the first is the one that would
+  # have shipped a blank card.
+
+  describe "a default nothing can select" do
+    test "the widget defaults to daycycle, which no picker offers" do
+      assert Appearance.background(:widget).shader == "daycycle"
+
+      # The whole point of the second list. `daycycle` is bundled in the JS, so
+      # it needs no source URL and is not the operator's own work...
+      assert Appearance.background(:widget).source_url == nil
+      refute Appearance.background(:widget).custom_shader
+
+      # ...and it is offered nowhere.
+      refute "daycycle" in Enum.map(Appearance.options(), & &1.key)
+      refute "daycycle" in Appearance.builtin_shaders()
+    end
+
+    test "daycycle cannot be selected by name, on any surface" do
+      for surface <- Appearance.surfaces() do
+        assert {:error, :invalid_mode} = Appearance.set_background(surface, "daycycle")
+      end
+    end
+
+    test "a default that is neither offered nor default-only still degrades to off" do
+      # The guard rail on the mechanism itself: widening `classify_default/1`
+      # must not turn every unknown default into a rendered shader.
+      assert Appearance.background(:terminal).kind == :none
+    end
+  end
+
+  describe "default as a mode — the way back" do
+    test "it clears the stored choice and every surface takes it" do
+      for surface <- Appearance.surfaces() do
+        shipped = Appearance.background(surface)
+
+        {:ok, _} = Appearance.set_background(surface, "waves")
+        assert Appearance.background(surface).shader == "waves"
+
+        assert {:ok, "default"} = Appearance.set_background(surface, "default")
+        assert Appearance.background(surface) == shipped
+      end
+    end
+
+    test "it is the ONLY way back to the widget's sky" do
+      {:ok, _} = Appearance.set_background(:widget, "waves")
+      refute Appearance.background(:widget).shader == "daycycle"
+
+      # There is no catalog row to click and no name to type, by design.
+      assert {:error, :invalid_mode} = Appearance.set_background(:widget, "daycycle")
+
+      {:ok, "default"} = Appearance.set_background(:widget, "default")
+      assert Appearance.background(:widget).shader == "daycycle"
+    end
+
+    test "it broadcasts, so an open page follows" do
+      Phoenix.PubSub.subscribe(BusterClaw.PubSub, Appearance.topic(:widget))
+      {:ok, _} = Appearance.set_background(:widget, "waves")
+      assert_receive {:widget_background, _state}
+
+      {:ok, "default"} = Appearance.set_background(:widget, "default")
+      assert_receive {:widget_background, _state}
+    end
+
+    test "a workspace shader named default cannot shadow the word", %{root: root} do
+      write_custom_shader(root, "default")
+
+      # It is a real, selectable shader everywhere else...
+      assert "default" in Enum.map(Appearance.options(), & &1.key)
+
+      # ...but the word is spoken for, so setting it clears rather than selects.
+      assert {:ok, "default"} = Appearance.set_background(:home, "default")
+      assert Appearance.background(:home).shader == "smoke"
+    end
+  end
 end

@@ -304,7 +304,28 @@ Then follow the ripple in [I.5](#i5--one-table-drives-every-surface-and-a-third-
 and the tests that assert the pair.
 
 **Exit:** `background_list` reports three surfaces and `background_set --json
-'{"surface":"widget","mode":"waves"}'` changes the card, live.
+'{"surface":"widget","mode":"waves"}'` is accepted and broadcast. **✅ DONE
+08-15** — the *visible* half is Phase 2, which is the honest reading of this
+exit: the data layer and the command surface are done, and the panel still
+renders its hardcoded div until the next phase swaps it.
+
+**The command layer needed no edit at all**, as its moduledoc promised: it
+validates against `Appearance.surfaces/0`, so *"a surface added there is
+reachable here the same day."* That claim was written before there was a third
+surface and it held.
+
+**One list was doing two jobs**, and separating them is most of this phase.
+`@builtin_shaders` answered both "is this bundled in the JS?" (so it needs no
+`/shaders/` URL and is not the operator's own work) and "is this offered?" (what
+a picker shows, what `set_background/2` accepts). Those were the same set until a
+default had to be renderable without being selectable. Now
+`@default_only_shaders` holds `daycycle`, `@bundled_shaders` is the union, and
+each call site was reclassified by which question it was asking.
+
+**The predicted ripple landed in exactly one place**: `AppearanceLive`'s
+`short_label/1`, which has a clause per surface and crashed on `:widget` — 62
+tests, all the same cause. A missing clause is a crash rather than a fallback on
+purpose, since a silent one would render a blank button nobody notices.
 
 ### Phase 2 — Render through `ShaderCanvas`
 

@@ -724,7 +724,12 @@ check lib/buster_claw/commands/web.ex                         848 FROZEN
 # against 780, and `commands/appearance.ex` is held to a name-blind reach list
 # plus a source-grep guard, so the command layer must reach approval through
 # `Appearance` and must never name the settings store even in a comment.
-check lib/buster_claw/appearance.ex                           800 HELD
+# 800 -> 875 on 08-15 for the third surface (WIDGET_BACKGROUND Phase 1): the
+# `:widget` table entry, the `@default_only_shaders`/`@bundled_shaders` split
+# that lets a default be renderable without being selectable, and `"default"` as
+# a mode. Most of it is the comment explaining why one list became two — that
+# conflation is what would have shipped a blank card.
+check lib/buster_claw/appearance.ex                           875 HELD
 check lib/buster_claw/appearance/shader_approval.ex           160 HELD
 check lib/buster_claw/appearance/migration.ex                 170 HELD
 

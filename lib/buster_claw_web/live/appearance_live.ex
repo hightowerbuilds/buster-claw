@@ -1040,8 +1040,14 @@ defmodule BusterClawWeb.AppearanceLive do
 
   defp assigned_badge(surfaces), do: Enum.map_join(surfaces, " · ", &short_label/1)
 
+  # One clause per surface, and a missing one is a crash rather than a fallback
+  # — deliberately. `Appearance.surfaces/0` is what the buttons iterate, so a
+  # surface added there with no label here would otherwise render a blank button
+  # nobody notices. The widget arrived on 08-15 and this is where it landed
+  # (WIDGET_BACKGROUND I.5, which predicted it).
   defp short_label(:home), do: "Home"
   defp short_label(:terminal), do: "Term"
+  defp short_label(:widget), do: "Clock"
 
   defp upload_error_to_string(:too_large), do: "That image is larger than 8 MB."
   defp upload_error_to_string(:too_many_files), do: "Choose a single image."

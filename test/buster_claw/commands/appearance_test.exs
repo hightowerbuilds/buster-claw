@@ -115,15 +115,28 @@ defmodule BusterClaw.Commands.AppearanceTest do
 
   # --- background_list ----------------------------------------------------
 
-  test "background_list reports both surfaces and the whole shared catalog" do
+  test "background_list reports every surface and the whole shared catalog" do
     assert {:ok, result} = Commands.call("background_list", %{})
 
-    assert Enum.map(result.surfaces, & &1.surface) == ["home", "terminal"]
+    # A review-forcing snapshot rather than scenery: a surface added to
+    # `Appearance.surfaces/0` is reachable from this command with no edit, so
+    # this list is the only thing that makes a fourth one a decision. It went
+    # red when the widget arrived (WIDGET_BACKGROUND Phase 1), which is the job.
+    assert Enum.map(result.surfaces, & &1.surface) == ["home", "terminal", "widget"]
 
     # The defaults, resolved: the homepage drifts because an empty homepage
     # reads as broken, and the terminal is plain because an empty one does not.
     assert %{mode: "smoke", kind: "shader", label: "Homepage"} = surface(result, "home")
     assert %{mode: "off", kind: "none", label: "Terminal"} = surface(result, "terminal")
+
+    # The widget's default is a shader NOTHING can select — `daycycle` is
+    # bundled but never offered (D2), so it reaches the panel through
+    # `classify_default/1` and appears in no catalog row below.
+    assert %{mode: "daycycle", kind: "shader", label: "Time & Place"} =
+             surface(result, "widget")
+
+    refute "daycycle" in Enum.map(result.options, & &1.key),
+           "daycycle must be renderable and unofferable — a picker row would make it selectable"
 
     keys = Enum.map(result.options, & &1.key)
     assert "off" in keys

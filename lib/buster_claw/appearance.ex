@@ -58,6 +58,24 @@ defmodule BusterClaw.Appearance do
 
   @builtin_shaders ~w(smoke waves mandel weather veil)
 
+  # Bundled in the JS, and deliberately NOT offered (WIDGET_BACKGROUND D2). A
+  # surface may name one of these as its `default`; nobody may select one.
+  #
+  # `daycycle` is the widget's sky. Operator's call: it stays the Time & Place
+  # default and appears in no picker, so the homepage and the terminal never
+  # offer a shader that only makes sense over a clock.
+  #
+  # The two lists exist because `@builtin_shaders` was doing two jobs. "Is this
+  # bundled in the JS?" decides whether a name needs a `/shaders/` URL and counts
+  # as the operator's own work; "is this offered?" decides what a picker shows and
+  # what `set_background/2` accepts. They were the same set until a default had to
+  # be renderable without being selectable.
+  @default_only_shaders ~w(daycycle)
+
+  # Everything the JS bundle carries as a background. A name here never gets a
+  # source URL and is never a "custom" workspace shader, offered or not.
+  @bundled_shaders @builtin_shaders ++ @default_only_shaders
+
   # Bundled shaders that react to the selected background image. The Elixir half
   # of a pair whose JS half is `IMAGE_REACTIVE_BUILTINS` in
   # `assets/js/smoke/shaders.js`; `appearance_test.exs` reads that file and
@@ -96,6 +114,18 @@ defmodule BusterClaw.Appearance do
       # broken, where an empty terminal reads as plain.
       default: "smoke"
     },
+    widget: %{
+      mode_key: "widget_background_mode",
+      custom_key: "widget_background_custom",
+      colors_key: "widget_background_colors",
+      topic: "appearance:widget_background",
+      message: :widget_background,
+      label: "Time & Place",
+      # A `@default_only_shaders` name: renderable, never offered. The panel is
+      # a clock over a sky, so an empty one reads as broken in a way the terminal
+      # does not.
+      default: "daycycle"
+    },
     terminal: %{
       mode_key: "terminal_background_mode",
       custom_key: "terminal_background_custom",
@@ -119,7 +149,7 @@ defmodule BusterClaw.Appearance do
   @migrated_key "appearance_image_pool_migrated"
 
   @doc "The surfaces that have a background, in display order."
-  def surfaces, do: [:home, :terminal]
+  def surfaces, do: [:home, :terminal, :widget]
 
   @doc "Human label for a surface (`:home` -> \"Homepage\")."
   def surface_label(surface), do: config(surface).label
@@ -195,7 +225,7 @@ defmodule BusterClaw.Appearance do
   background, though the reverse (a background as a face) is fine.
   """
   def custom_shaders do
-    Enum.reject(Shaders.list(), &(&1 in @builtin_shaders or Shaders.face?(&1)))
+    Enum.reject(Shaders.list(), &(&1 in @bundled_shaders or Shaders.face?(&1)))
   end
 
   @doc """
@@ -344,10 +374,10 @@ defmodule BusterClaw.Appearance do
             kind: :shader,
             mode: name,
             shader: name,
-            source_url: if(name in @builtin_shaders, do: nil, else: "/shaders/#{name}"),
+            source_url: if(name in @bundled_shaders, do: nil, else: "/shaders/#{name}"),
             image_url: nil,
             slot: nil,
-            custom_shader: name not in @builtin_shaders
+            custom_shader: name not in @bundled_shaders
           }
 
         {:image, slot} ->
@@ -370,10 +400,10 @@ defmodule BusterClaw.Appearance do
             kind: :image_shader,
             mode: name,
             shader: name,
-            source_url: if(name in @builtin_shaders, do: nil, else: "/shaders/#{name}"),
+            source_url: if(name in @bundled_shaders, do: nil, else: "/shaders/#{name}"),
             image_url: image_url(slot),
             slot: slot,
-            custom_shader: name not in @builtin_shaders
+            custom_shader: name not in @bundled_shaders
           }
 
         :off ->
@@ -451,10 +481,21 @@ defmodule BusterClaw.Appearance do
     end
   end
 
+  # A surface's default is resolved through a WIDER gate than a stored mode: it
+  # may name a `@default_only_shaders` entry, which `classify/1` would call
+  # `:unknown` because nothing may select it. Without this the widget's default
+  # falls through to `:off` and the Time & Place panel renders nothing at all —
+  # a blank card, with no error anywhere.
   defp classify_default(surface) do
-    case classify(config(surface).default) do
-      :unknown -> :off
-      resolved -> resolved
+    default = config(surface).default
+
+    if default in @default_only_shaders do
+      {:shader, default}
+    else
+      case classify(default) do
+        :unknown -> :off
+        resolved -> resolved
+      end
     end
   end
 
@@ -515,6 +556,24 @@ defmodule BusterClaw.Appearance do
   the image. Returns `{:ok, key}`, `{:error, :empty_slot}`,
   `{:error, :not_image_reactive}`, or `{:error, :invalid_mode}`.
   """
+  # `"default"` is a verb wearing a key's clothes: it clears the stored choice so
+  # the surface falls back to whatever it ships with. Every surface takes it, not
+  # just the widget — one token meaning the same thing everywhere beats a
+  # widget-only escape hatch that reads as an accident later.
+  #
+  # It is the ONLY way back to a `@default_only_shaders` sky, since nothing can
+  # select `daycycle` by name. It is also the first honest undo any surface has
+  # had: before this, "put it back how it was" meant knowing what it was.
+  #
+  # Checked before `classify/1`, which means a workspace `shaders/default.wgsl`
+  # cannot shadow it. That file would still be selectable everywhere else; it
+  # just cannot claim this word.
+  def set_background(surface, "default") when is_map_key(@surfaces, surface) do
+    Settings.put(config(surface).mode_key, nil)
+    broadcast(surface)
+    {:ok, "default"}
+  end
+
   def set_background(surface, key) when is_map_key(@surfaces, surface) and is_binary(key) do
     case classify(key) do
       :unknown -> {:error, invalid_reason(key)}
