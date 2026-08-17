@@ -30,7 +30,7 @@ defmodule BusterClaw.Sketch.Element do
   than scaling what is on it, which keeps a stroke the size it was drawn.
   """
 
-  @kinds ~w(stroke image)a
+  @kinds ~w(stroke image text)a
   @authors ~w(operator model)a
 
   # Bounds, not preferences. Each one is the point past which a document stops
@@ -47,12 +47,35 @@ defmodule BusterClaw.Sketch.Element do
   # An image bigger than this is not a placement, it is a mistake.
   @max_extent 20_000
 
+  # A label, not a document. Text longer than this belongs in a note, and a
+  # sketch that carries an essay is one the renderer cannot lay out anyway.
+  @max_content 2_000
+  @text_sizes [12, 18, 28, 48]
+
   @type t :: %__MODULE__{}
 
-  defstruct [:id, :kind, :author, :created_at, :points, :color, :width, :source, :x, :y, :w, :h]
+  defstruct [
+    :id,
+    :kind,
+    :author,
+    :created_at,
+    :points,
+    :color,
+    :width,
+    :source,
+    :x,
+    :y,
+    :w,
+    :h,
+    :content,
+    :size
+  ]
 
   @doc "The element kinds that exist today. An unknown kind is refused."
   def kinds, do: @kinds
+
+  @doc "The text sizes a label may use — a closed set, not a free number."
+  def text_sizes, do: @text_sizes
 
   @doc """
   Build a validated element, minting its id. Returns `{:ok, element}` or
@@ -102,6 +125,20 @@ defmodule BusterClaw.Sketch.Element do
          {:ok, color} <- fetch_color(attrs),
          {:ok, width} <- fetch_width(attrs) do
       {:ok, %__MODULE__{points: points, color: color, width: width}}
+    end
+  end
+
+  # Text is a label placed at a point — no box, because it is sized by its own
+  # content and the renderer measures it. Deliberately a small closed set of
+  # sizes rather than a number: a free `font-size` invites a model to specify
+  # 13.5px, which no one asked for and nothing else on the surface offers.
+  defp build(:text, attrs) do
+    with {:ok, content} <- fetch_content(attrs),
+         {:ok, color} <- fetch_color(attrs),
+         {:ok, size} <- fetch_size(attrs),
+         {:ok, x} <- fetch_coord(attrs, "x"),
+         {:ok, y} <- fetch_coord(attrs, "y") do
+      {:ok, %__MODULE__{content: content, color: color, size: size, x: x, y: y}}
     end
   end
 
@@ -211,6 +248,29 @@ defmodule BusterClaw.Sketch.Element do
   end
 
   defp fetch_source(_attrs), do: {:error, :missing_source}
+
+  # Trimmed, length-capped, and stripped of control characters. It lands as SVG
+  # TEXT CONTENT rather than an attribute, so the renderer escapes it — but a
+  # newline or a NUL in a label is a rendering artefact nobody asked for, and the
+  # cheapest place to refuse one is here.
+  defp fetch_content(%{"content" => content}) when is_binary(content) do
+    cleaned = content |> String.replace(~r/[\x00-\x1F\x7F]/, " ") |> String.trim()
+
+    cond do
+      cleaned == "" -> {:error, :empty_content}
+      String.length(cleaned) > @max_content -> {:error, :content_too_long}
+      true -> {:ok, cleaned}
+    end
+  end
+
+  defp fetch_content(_attrs), do: {:error, :missing_content}
+
+  defp fetch_size(%{"size" => size}) when is_number(size) do
+    rounded = round(size)
+    if rounded in @text_sizes, do: {:ok, rounded}, else: {:error, {:bad_size, size}}
+  end
+
+  defp fetch_size(_attrs), do: {:ok, hd(@text_sizes)}
 
   # Explicit error atoms rather than `String.to_existing_atom("missing_" <> key)`:
   # that would raise on the first miss (nothing has minted `:missing_x`) and, if

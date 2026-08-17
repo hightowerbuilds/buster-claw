@@ -23,6 +23,19 @@ defmodule BusterClaw.Sketch.Svg do
 
   alias BusterClaw.Sketch.{Document, Element, ImageInfo, Paths}
 
+  # The label face, and the three ratios everything about text is estimated with.
+  # No quotes in the stack, because this string goes into an SVG attribute in the
+  # standalone document and a nested `"` would end it.
+  @font_family "IBM Plex Sans, ui-sans-serif, system-ui, sans-serif"
+
+  # Ascent, line height, and average advance per character as fractions of the
+  # font size. All three are guesses — nothing in the BEAM can measure a glyph —
+  # and they live here rather than in either renderer so the two cannot guess
+  # differently, which is the same reason `path_data/1` lives here.
+  @ascent 0.8
+  @line_height 1.2
+  @advance 0.6
+
   @doc """
   Points to an SVG path.
 
@@ -58,6 +71,48 @@ defmodule BusterClaw.Sketch.Svg do
   end
 
   def num(n) when is_integer(n), do: Integer.to_string(n)
+
+  @doc "The font stack a label is drawn in, in both renderers."
+  def font_family, do: @font_family
+
+  @doc """
+  Where a label's baseline sits, given that its `y` is the TOP of its box.
+
+  SVG's own `y` on a `<text>` is the baseline; every other element kind here is
+  placed by its top-left corner. One of the two had to bend, and it was SVG's:
+  "click here to put a label" should mean what it already means for an image,
+  and an operator who places text at `y: 0` should see it rather than have it
+  hang off the top of the panel.
+
+  The cost is that `y` in the file is not the `y` in the markup, so a hand-edited
+  sketch reads slightly differently than it renders. That is one indirection in
+  one place against a placement rule that is wrong for every gesture.
+  """
+  def text_baseline(%Element{y: y, size: size}), do: round1(y + size * @ascent)
+
+  @doc """
+  A label's approximate width, and it is only ever approximate.
+
+  Nothing server-side can measure a glyph, so this counts characters. A line of
+  Ws overflows the estimate and a line of i's leaves slack. Both places that
+  need it — a preview's extent, and a hit target you can click — degrade
+  gracefully when it is a little wrong, which is why an estimate is allowed to
+  be the answer here and would not be for, say, a layout.
+  """
+  def text_width(%Element{content: content, size: size}) when is_binary(content) do
+    round1(String.length(content) * size * @advance)
+  end
+
+  def text_width(_element), do: 0.0
+
+  @doc "A label's box height — one line, since `Element` refuses control characters."
+  def text_height(%Element{size: size}), do: round1(size * @line_height)
+
+  # Every derived number here goes through the same rounding the coordinates
+  # do. Not cosmetic: `18 * 1.2` is 21.599999999999998 as a double, and `num/1`
+  # prints the SHORTEST string that round-trips — so the honest answer is
+  # seventeen digits of noise in an attribute, repeated on every element.
+  defp round1(n), do: Float.round(n / 1, 1)
 
   @doc """
   A standalone SVG document for `doc`, sized to fit what is on it.
@@ -121,7 +176,40 @@ defmodule BusterClaw.Sketch.Svg do
       ~s(preserveAspectRatio="none" xlink:href="#{data_uri(sketch, el.source)}"/>)
   end
 
+  defp element(%Element{kind: :text} = el, _sketch) do
+    ~s(<text x="#{num(el.x)}" y="#{num(text_baseline(el))}" fill="#{el.color}" ) <>
+      ~s(font-size="#{num(el.size)}" font-family="#{@font_family}">#{escape(el.content)}</text>)
+  end
+
   defp element(_el, _sketch), do: ""
+
+  # `content` is the only field on any element that lands as SVG **text
+  # content** rather than inside an attribute — and from Phase 3 on it arrives
+  # from a model. `Element` trims it, caps its length and strips control
+  # characters; it deliberately does not strip markup, because escaping belongs
+  # to whoever is building the document and there are two of those.
+  #
+  # Hand-rolled rather than `Phoenix.HTML.html_escape/1`: this module is web-free
+  # on purpose (see the moduledoc — a command renders headlessly and must not
+  # reach into `BusterClawWeb`), and importing Phoenix.HTML for five replacements
+  # would buy that dependency back for nothing.
+  #
+  # `&` first, or the ampersands the later clauses introduce get escaped again.
+  #
+  # Quotes are escaped too, which text content does not require. The cost is a
+  # few characters nobody reads; the alternative is that the day this string is
+  # moved into an attribute, the escape quietly stops being enough and nothing
+  # says so.
+  defp escape(content) when is_binary(content) do
+    content
+    |> String.replace("&", "&amp;")
+    |> String.replace("<", "&lt;")
+    |> String.replace(">", "&gt;")
+    |> String.replace("\"", "&quot;")
+    |> String.replace("'", "&#39;")
+  end
+
+  defp escape(_content), do: ""
 
   # Embedded rather than referenced — see the moduledoc. A missing or unreadable
   # asset yields an empty href rather than raising: a preview with one picture
@@ -148,5 +236,12 @@ defmodule BusterClaw.Sketch.Svg do
   end
 
   defp element_extent(%Element{kind: :image, x: x, y: y, w: w, h: h}), do: {x + w, y + h}
+
+  # Without this a sketch that is nothing but a label renders at the floor size
+  # and the label falls outside it — a preview of a blank rectangle, which is
+  # worse than a preview that is a little too generous.
+  defp element_extent(%Element{kind: :text} = el),
+    do: {el.x + text_width(el), el.y + text_height(el)}
+
   defp element_extent(_element), do: {0.0, 0.0}
 end

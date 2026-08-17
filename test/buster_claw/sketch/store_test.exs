@@ -185,6 +185,14 @@ defmodule BusterClaw.Sketch.StoreTest do
         "color" => "#1C9BFF",
         "width" => 6
       },
+      text: %{
+        "kind" => "text",
+        "content" => "the checkout is broken here",
+        "color" => "#F4F1EA",
+        "size" => 18,
+        "x" => 40,
+        "y" => 90
+      },
       image: %{
         "kind" => "image",
         "source" => "0123456789abcdef.png",
@@ -223,7 +231,7 @@ defmodule BusterClaw.Sketch.StoreTest do
 
         # Every populated field, whatever the kind. A serializer that forgets one
         # produces an element that loads with a hole rather than an error.
-        for field <- [:points, :color, :width, :source, :x, :y, :w, :h] do
+        for field <- [:points, :color, :width, :source, :x, :y, :w, :h, :content, :size] do
           assert Map.get(before, field) == Map.get(after_load, field),
                  "#{before.kind}.#{field} did not survive the round trip"
         end

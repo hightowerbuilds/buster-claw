@@ -1,7 +1,13 @@
 # The Sketch Pad — a surface two of you can draw on
 
-**Scoped 2026-08-16 · Status: ACTIVE — Phases 0, 1, 2 and 4 COMPLETE 08-16.
-Phase 3 (the model draws, behind `D6`) is next and is the one that matters.**
+**Scoped 2026-08-16 · Status: Phases 0–4 COMPLETE 08-16. Phase 5 (live
+co-drawing) remains deliberately unscoped — `D10` says the turn boundary makes
+it optional, so scope it when there is a real complaint.**
+
+> **Unwalked.** Every phase is green in the suite and none of it has been used by
+> a person. The exit test that matters — *the model attempts to delete an
+> operator's stroke and is gated, not obeyed* — is asserted in code and has never
+> been watched happen.
 
 > ### The one-sentence version
 >
@@ -163,6 +169,29 @@ projection — which is what LiveView is for.
 | **D10** | **No live co-drawing in v1.** The model's turn produces a batch the operator sees arrive | Concurrency is the published hard problem; a turn boundary is the cheap way to not have it. Revisit only with a reason |
 | **D11** | **Image bytes live in a sidecar beside the sketch** — `sketches/<name>.assets/`, content-named | Operator call, 08-16. A sketch and its images travel together: deleting the sketch deletes them, and the folder is legible in Finder. The cost is a duplicate when two sketches use one image, which is the cheaper mistake — the shared-folder alternative needs an orphan sweeper nobody has written, and quietly leaves files behind on every delete |
 | **D12** | **A drop is TWO transports; a paste is one** | Not a preference — a measured platform fact. See below |
+| **D13** | **A command that needs to know its caller declares it by taking a second argument** | `D6` is the first rule in this codebase that a tier cannot express. See below |
+
+### D13, because it changed the command surface for everything
+
+Until 08-16 **no command had ever known who was calling it.** Authorization was
+entirely the `PolicyEngine`'s, decided from the command's *name* before it ran —
+and that is still right for almost the whole catalog.
+
+`D6` is the first rule that cannot be expressed that way. *"The model may delete
+what the model drew, and asks about the operator's marks"* is a decision about
+**the data being touched**, not about the verb: the same `sketch_delete` is fine
+or gated depending on which element it names. No tier encodes that, so the
+command itself has to be told.
+
+`dispatch/3` now hands the caller to any command that **declares arity 2**.
+Everything else keeps the one-argument shape it has always had.
+
+> Opt-in by arity rather than a registry or a reserved `_caller` key in the args
+> map. A registry goes stale silently. A reserved key is invisible in the
+> signature, rides along into every command that never asked for it, and would
+> have to be scrubbed back out of the audit log. This way *"this command's answer
+> depends on who asked"* is legible exactly where it matters — in the function
+> head — and a command that does not care cannot accidentally read it.
 
 ### D12, because it is the one that would ship broken
 

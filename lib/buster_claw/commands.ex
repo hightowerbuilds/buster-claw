@@ -149,8 +149,9 @@ defmodule BusterClaw.Commands do
   defp rate_limited(name, args, caller) do
     case BusterClaw.RateLimiter.check(caller, name) do
       :ok ->
-        result = dispatch(name, args)
+        result = dispatch(name, args, caller)
         audit_invoke(name, args, caller, result)
+        surface_confirmation(name, args, caller, result)
         result
 
       {:error, :rate_limited} ->
@@ -292,6 +293,45 @@ defmodule BusterClaw.Commands do
     end)
   end
 
+  # A command that ran and decided for ITSELF that it needs the operator's say-so.
+  #
+  # `refuse/4` covers the refusals `PolicyEngine` makes before dispatch — by tier,
+  # by the gated set, by an operator deny rule. It cannot cover a rule that
+  # depends on the *data being touched*, because that is only knowable once the
+  # command has loaded it. `D6` of SKETCH_ROADMAP is the first of those: deleting
+  # the model's own mark is free, deleting the operator's asks.
+  #
+  # Without this the promise would have been hollow. The command returned
+  # `:requires_confirmation` and **nothing was recorded** — no `Sentinel.Pending`
+  # entry, no security event — so "gated, surfaced for approval" meant a string
+  # the caller saw and the operator never did. A refusal nobody can see is a
+  # refusal that may as well have been a silent no-op, which is the exact failure
+  # the Sentinel spine exists to prevent.
+  #
+  # Deliberately generic rather than sketch-specific: any command may reach this
+  # conclusion, and the invariant worth holding is that **however a call comes to
+  # need confirmation, it lands in the same two places.**
+  defp surface_confirmation(name, args, caller, {:error, :requires_confirmation}) do
+    BusterClaw.Sentinel.Pending.record(name, scrub_args(name, args), caller)
+
+    record(
+      :security_block,
+      "Refused #{name} for #{caller} caller",
+      %{
+        command: name,
+        args: args,
+        caller: caller,
+        tier: command_tier(name),
+        policy: :command,
+        reason: "the command refused this target for this caller"
+      }
+    )
+
+    :ok
+  end
+
+  defp surface_confirmation(_name, _args, _caller, _result), do: :ok
+
   # Feed the Sentinel audit/notify spine for a *dispatched* command (refusals are
   # recorded in `refuse/4`). Only consequential (mutating/triggering) commands are
   # recorded — pure reads are skipped to keep the audit log signal-rich.
@@ -432,9 +472,35 @@ defmodule BusterClaw.Commands do
   """
   def command_gated?(name), do: match?(%{gated: true}, Map.get(by_name(), name))
 
-  defp dispatch(name, args) do
+  # A command whose behaviour depends on WHO is calling declares that by defining
+  # **arity 2**, and gets the caller as its second argument. Everything else keeps
+  # the one-argument shape it has always had.
+  #
+  # Until 08-16 no command had ever known its caller: authorization was entirely
+  # the `PolicyEngine`'s, decided from the command's *name* before it ran. That is
+  # still the right default and most of the catalog needs nothing else.
+  #
+  # `D6` of SKETCH_ROADMAP is the first rule that cannot be expressed that way.
+  # "The model may delete what the model drew, and asking about the operator's
+  # marks" is a decision about the *data being touched*, not about the verb — the
+  # same call is fine or gated depending on which element it names. No tier can
+  # encode that, so the command itself has to be told.
+  #
+  # Opt-in by arity rather than a registry or a magic `_caller` key in the args
+  # map: a registry goes stale silently, and a reserved key is invisible in the
+  # signature and would ride along into every command that never asked for it.
+  # This way "this command's answer depends on who asked" is legible where it
+  # matters — in the function head.
+  defp dispatch(name, args, caller) do
     if has_command?(name) do
-      apply(__MODULE__, String.to_existing_atom(name), [normalize_args(args)])
+      fun = String.to_existing_atom(name)
+      normalized = normalize_args(args)
+
+      if function_exported?(__MODULE__, fun, 2) do
+        apply(__MODULE__, fun, [normalized, caller])
+      else
+        apply(__MODULE__, fun, [normalized])
+      end
     else
       {:error, :unknown_command}
     end
@@ -588,13 +654,18 @@ defmodule BusterClaw.Commands do
   defdelegate pocket_list(args \\ %{}), to: BusterClaw.Commands.Pocket
   defdelegate pocket_describe(args), to: BusterClaw.Commands.Pocket
   defdelegate pocket_read(args), to: BusterClaw.Commands.Pocket
-  # Sketch Pad — READS ONLY (SKETCH_ROADMAP Phase 2). There is deliberately no
-  # verb here that adds, changes or removes an element: Phase 3 brings those
-  # behind `D6`'s authorship boundary, where the model may touch what the model
-  # made and an operator's mark is gated. `commands/sketch_test.exs` fails if a
-  # mutating verb appears before then.
+  # Sketch Pad — two reads and four writes (SKETCH_ROADMAP Phases 2 and 3). The
+  # three that touch an existing mark take the CALLER as a second argument, which
+  # `dispatch/3` supplies: `D6` decides what may be changed by WHO MADE IT, not
+  # by tier, so `Sketch.Authorship` needs the caller and must never read it from
+  # `args` — that map is the model's own input. There is deliberately no verb
+  # that deletes a whole sketch; a sketch is a file the operator owns (`D9`).
   defdelegate sketch_list(args \\ %{}), to: BusterClaw.Commands.Sketch
   defdelegate sketch_get(args), to: BusterClaw.Commands.Sketch
+  defdelegate sketch_create(args), to: BusterClaw.Commands.Sketch
+  defdelegate sketch_add(args, caller \\ :agent), to: BusterClaw.Commands.Sketch
+  defdelegate sketch_update(args, caller \\ :agent), to: BusterClaw.Commands.Sketch
+  defdelegate sketch_delete(args, caller \\ :agent), to: BusterClaw.Commands.Sketch
   # Terminal colours — the model repaints the terminal it is running in. The
   # writes reach the agent's OWN theme slot only: nothing here calls
   # `TerminalTheme.set_custom/3`, so the operator's saved palette survives

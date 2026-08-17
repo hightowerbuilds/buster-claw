@@ -7,7 +7,7 @@ defmodule BusterClawWeb.SketchComponentTest do
 
   import Phoenix.LiveViewTest
 
-  alias BusterClaw.Sketch.{Assets, Document, Store}
+  alias BusterClaw.Sketch.{Assets, Document, Element, Store}
 
   setup do
     root = Path.join(System.tmp_dir!(), "bc_sketchui_#{System.unique_integer([:positive])}")
@@ -248,15 +248,156 @@ defmodule BusterClawWeb.SketchComponentTest do
     end
   end
 
+  describe "the text tool" do
+    defp place_text(view, content, point \\ {40, 60}) do
+      {x, y} = point
+      render_hook(surface(view), "text", %{"content" => content, "x" => x, "y" => y})
+    end
+
+    test "is reachable, and a click places a label", %{conn: conn} do
+      view = open_sketch(conn)
+
+      html = render_click(element(view, "[data-sketch-tool='text']"))
+      assert html =~ "data-sketch-text", "the label field did not appear with the tool"
+
+      html = place_text(view, "Kitchen")
+
+      assert html =~ "<text"
+      assert html =~ "Kitchen"
+      assert {:ok, doc} = Store.load("untitled")
+
+      assert [%{kind: :text, content: "Kitchen", author: :operator, x: 40.0, y: 60.0}] =
+               doc.elements
+    end
+
+    test "the label takes the toolbar's current colour and size", %{conn: conn} do
+      view = open_sketch(conn)
+      render_click(element(view, "[data-sketch-tool='text']"))
+      render_click(element(view, "[data-sketch-color='#2FD068']"))
+      render_click(element(view, "[data-sketch-text-size='48']"))
+
+      html = place_text(view, "Big")
+
+      assert html =~ ~s(fill="#2FD068")
+      assert html =~ ~s(font-size="48")
+    end
+
+    test "picking a colour does not put the text tool down", %{conn: conn} do
+      # Picking a colour puts the ERASER down. Text draws in a colour too, so
+      # kicking someone out of text mode for recolouring the label they were
+      # about to place is the same surprise in the other direction.
+      view = open_sketch(conn)
+      render_click(element(view, "[data-sketch-tool='text']"))
+
+      html = render_click(element(view, "[data-sketch-color='#1C9BFF']"))
+
+      assert html =~ ~s(data-sketch-tool="text" data-active)
+      assert html =~ "data-sketch-text"
+    end
+
+    test "clicking before typing says what to do rather than storing nothing", %{conn: conn} do
+      view = open_sketch(conn)
+      render_click(element(view, "[data-sketch-tool='text']"))
+
+      html = place_text(view, "   ")
+
+      assert html =~ "Type a label"
+      assert Store.load("untitled") == {:error, :not_found}
+    end
+
+    test "a label can be selected and deleted like anything else", %{conn: conn} do
+      view = open_sketch(conn)
+      render_click(element(view, "[data-sketch-tool='text']"))
+      place_text(view, "Sink")
+      render_click(element(view, "[data-sketch-tool='select']"))
+      [id] = ids(view)
+
+      render_hook(surface(view), "select", %{"id" => id})
+      render_click(element(view, "button[phx-click='delete_selected']"))
+
+      assert ids(view) == []
+    end
+
+    test "a label survives a reload", %{conn: conn} do
+      view = open_sketch(conn)
+      render_click(element(view, "[data-sketch-tool='text']"))
+      place_text(view, "Fridge")
+
+      assert render(open_sketch(conn)) =~ "Fridge"
+    end
+  end
+
   describe "authorship" do
     test "everything the operator draws is stamped as theirs", %{conn: conn} do
       # D6's boundary is built on this field. A stroke that arrived unattributed —
       # or attributed to the model — would be one the model may later delete.
       view = open_sketch(conn)
       draw(view, [[0, 0], [1, 1]])
+      render_click(element(view, "[data-sketch-tool='text']"))
+      render_hook(surface(view), "text", %{"content" => "mine", "x" => 5, "y" => 5})
 
       assert {:ok, doc} = Store.load("untitled")
-      assert Enum.map(doc.elements, & &1.author) == [:operator]
+      assert Enum.map(doc.elements, & &1.author) == [:operator, :operator]
+    end
+
+    test "the model's marks are visibly distinguished from the operator's — D7", %{conn: conn} do
+      # Not decoration. D6 lets the model delete only what the model drew, and
+      # that rule reads as arbitrary unless the surface shows which are which.
+      # Seeded through the file rather than through a command, so this stays a
+      # test of the SURFACE and does not go red the day the command layer moves.
+      {:ok, mine} =
+        Element.new(%{
+          "kind" => "stroke",
+          "points" => [[0, 0], [9, 9]],
+          "color" => "#F4F1EA",
+          "width" => 2
+        })
+
+      {:ok, theirs} =
+        Element.new(%{
+          "kind" => "text",
+          "author" => "model",
+          "content" => "suggested here",
+          "color" => "#FF4D1C",
+          "size" => 18,
+          "x" => 40,
+          "y" => 40
+        })
+
+      doc =
+        Document.new(%{title: "untitled"})
+        |> Document.add(mine)
+        |> Document.add(theirs)
+
+      {:ok, _path} = Store.save("untitled", doc)
+
+      html = render(open_sketch(conn))
+
+      assert html =~ ~s(data-sketch-author="model")
+      assert html =~ "Drawn by the model"
+
+      assert Regex.scan(~r/data-sketch-author="model"/, html) |> length() == 1,
+             "the operator's own stroke was attributed to the model"
+    end
+
+    test "the status line counts the model's share, and only when there is one", %{conn: conn} do
+      view = open_sketch(conn)
+      draw(view, [[0, 0], [1, 1]])
+      refute render(view) =~ "by the model"
+
+      {:ok, theirs} =
+        Element.new(%{
+          "kind" => "stroke",
+          "author" => "model",
+          "points" => [[2, 2], [3, 3]],
+          "color" => "#FF4D1C",
+          "width" => 2
+        })
+
+      {:ok, doc} = Store.load("untitled")
+      {:ok, _path} = Store.save("untitled", Document.add(doc, theirs))
+
+      assert render(open_sketch(conn)) =~ "1 by the model"
     end
   end
 

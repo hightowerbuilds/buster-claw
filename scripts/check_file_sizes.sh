@@ -542,7 +542,14 @@ check lib/buster_claw_web/live/studio_live.ex                415 HELD
 # markup-for-a-canvas: it is now the toolbar and status line for a surface whose
 # state lives in `SketchComponent`, and the drawing moved to `Studio.SketchSvg`.
 # Three files where there was one, and this is the smallest of them.
-check lib/buster_claw_web/components/studio/sketch.ex        190 HELD
+#
+# Phase 3 raised these together (08-16): a THIRD element kind (`:text`) plus D7's
+# authorship marker. A kind costs a clause in both renderers, a hit target, a
+# selection indicator and an extent — and the marker is a second pass over every
+# element. Growth was the phase, not drift. The next kind should cost roughly the
+# same again; a kind that costs much MORE is the signal that the per-kind
+# branching wants a dispatch table rather than more clauses.
+check lib/buster_claw_web/components/studio/sketch.ex        285 HELD
 
 # The Sketch Pad's document (SKETCH_ROADMAP Phase 1) and its images (Phase 4).
 # Capped on arrival, the rule this repo adopted on 08-16. This is the substrate a
@@ -562,11 +569,16 @@ check lib/buster_claw_web/components/studio/sketch.ex        190 HELD
 #
 # `image_info.ex` is a header parser, not a decoder. It grows only when a format
 # is added, which is a decision rather than maintenance.
-check lib/buster_claw/sketch/element.ex                       275 HELD
-check lib/buster_claw/sketch/store.ex                         235 HELD
+# 275 -> 330 for the `:text` kind (Phase 3). A kind costs a `build/2` clause and
+# its field validators, which is the shape the cap comment already predicted —
+# raise it when one lands, and say which. This one also brought a closed set of
+# sizes and a control-character strip, because `content` is the first field on
+# any element that a model writes as free prose.
+check lib/buster_claw/sketch/element.ex                       330 HELD
+check lib/buster_claw/sketch/store.ex                         250 HELD
 check lib/buster_claw/sketch/assets.ex                        190 HELD
 check lib/buster_claw/sketch/image_info.ex                    180 HELD
-check lib/buster_claw/sketch/document.ex                      140 HELD
+check lib/buster_claw/sketch/document.ex                      175 HELD
 check lib/buster_claw/sketch/paths.ex                          80 HELD
 check lib/buster_claw/sketch/placement.ex                      90 HELD
 
@@ -576,21 +588,26 @@ check lib/buster_claw/sketch/placement.ex                      90 HELD
 # dependency the wrong way. `preview.ex` is the one place that shells out to a
 # rasteriser; if it grows, the question is whether a second renderer arrived,
 # which is a decision rather than maintenance.
-check lib/buster_claw/sketch/svg.ex                           175 HELD
+check lib/buster_claw/sketch/svg.ex                           265 HELD
 check lib/buster_claw/sketch/preview.ex                       190 HELD
 
 # The sketch command surface — READS ONLY until Phase 3. Growth here is either
 # the write half arriving (which belongs behind D6) or a richer representation,
 # and both are worth being asked about.
-check lib/buster_claw/commands/sketch.ex                      175 HELD
+# 175 -> 500 with Phase 3: two reads became two reads and four writes, and the
+# writes carry the reasoning for D6 — whose marks a caller may touch, why an id
+# is never accepted from input, and what a refusal means. The catalog file beside
+# it holds the descriptions the MODEL reads; this holds the ones a maintainer
+# does. If it grows again the question is whether a fifth verb arrived.
+check lib/buster_claw/commands/sketch.ex                      500 HELD
 
 # The Sketch Pad's state and its surface, split from `studio/sketch.ex` when the
 # document arrived. The component owns loading, saving, undo, uploads and the
 # event handlers; the renderer owns drawing and nothing else. Growth in the
 # component is a new tool or a new phase; growth in the renderer is a new
 # element kind.
-check lib/buster_claw_web/live/sketch_component.ex            410 HELD
-check lib/buster_claw_web/components/studio/sketch_svg.ex     190 HELD
+check lib/buster_claw_web/live/sketch_component.ex            475 HELD
+check lib/buster_claw_web/components/studio/sketch_svg.ex     315 HELD
 
 # The Notes vault: state in the live_component, markup in three function
 # components. Split at ~810 lines during the Home Activity + Notes roadmap's
@@ -1176,7 +1193,7 @@ check assets/js/hooks/note_editor.js                          600 HELD
 # off this hook entirely (it is LiveView state now) and the canvas with it,
 # leaving pointer handling and one in-flight path — so the cap comes down rather
 # than staying stale over a file two-thirds its size.
-check assets/js/hooks/sketch_pad.js                           180 HELD
+check assets/js/hooks/sketch_pad.js                           210 HELD
 
 # The Sketch Pad's dropzone. TWO transports and a paste, which is most of its
 # size: macOS WKWebView does not hand file contents to the DOM on an OS drag, so
@@ -1249,7 +1266,11 @@ check lib/buster_claw/cli.ex                                 1000 HELD
 # commands.ex — the back two-thirds is a wall of 218 defdelegates and the size
 # IS the point: a reviewable inventory of the whole surface, and it must stay
 # one module for `apply(__MODULE__, …)` to preserve the single policy door.
-check lib/buster_claw/commands.ex                             790 HELD
+# 790 -> 850. `dispatch/3` now threads the caller to any command declaring arity
+# 2 (D13), and `surface_confirmation/4` makes a command's OWN refusal land in
+# Sentinel.Pending the way a policy refusal already did — without it, "gated,
+# surfaced for approval" was a string the caller saw and the operator never did.
+check lib/buster_claw/commands.ex                             850 HELD
 # terminal_commands.ex — a different catalog entirely (the whitelisted cmd-list
 # the in-app terminal reads). Pre-named seams: the merge/normalize block (~200)
 # and skill-prompt synthesis (~50).

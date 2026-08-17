@@ -46,6 +46,24 @@ defmodule BusterClawWeb.Studio.SketchSvgTest do
     element
   end
 
+  defp text!(overrides \\ %{}) do
+    {:ok, element} =
+      Map.merge(
+        %{
+          "kind" => "text",
+          "content" => "Hello",
+          "color" => "#1C9BFF",
+          "size" => 18,
+          "x" => 10,
+          "y" => 20
+        },
+        overrides
+      )
+      |> Element.new()
+
+    element
+  end
+
   describe "path_data/1 agrees with the JavaScript renderer" do
     # These are the SAME cases asserted in `assets/js/lib/sketch.test.js`. The
     # hook draws a stroke while it is being made and this draws it the instant it
@@ -193,6 +211,184 @@ defmodule BusterClawWeb.Studio.SketchSvgTest do
 
     test "no hit target in draw mode, same as strokes" do
       refute surface(%{elements: [image!()], tool: :draw}) =~ "data-sketch-element"
+    end
+  end
+
+  describe "text, in the pure renderer" do
+    defp document(elements) do
+      Enum.reduce(
+        elements,
+        BusterClaw.Sketch.Document.new(),
+        &BusterClaw.Sketch.Document.add(&2, &1)
+      )
+    end
+
+    test "a label renders as an <text> carrying its own content" do
+      svg = Svg.to_document(document([text!(%{"content" => "Kitchen"})]))
+
+      assert svg =~ ">Kitchen</text>"
+      assert svg =~ ~s(fill="#1C9BFF")
+      assert svg =~ ~s(font-size="18")
+    end
+
+    test "markup in a label is ESCAPED, and this is the assertion that matters" do
+      # From Phase 3 on, `content` is model-supplied and lands as SVG **text
+      # content** — the only field on any element that is not a number or an
+      # allowlisted colour. `Element` strips control characters and caps the
+      # length; it deliberately does not strip markup, so the escape is here or
+      # it is nowhere. Asserted against the raw output string rather than a
+      # parsed tree, because a parser would happily hide the failure by
+      # re-escaping on the way out.
+      svg = Svg.to_document(document([text!(%{"content" => ~s(a & b <g> "q" 'p')})]))
+
+      assert svg =~ ~s(>a &amp; b &lt;g&gt; &quot;q&quot; &#39;p&#39;</text>)
+
+      refute svg =~ "<g>", "a label opened a real SVG element"
+      refute svg =~ "&amp;amp;", "the ampersand was escaped twice"
+    end
+
+    test "a script tag in a label cannot become one" do
+      svg = Svg.to_document(document([text!(%{"content" => "<script>alert(1)</script>"})]))
+
+      refute svg =~ "<script"
+      refute svg =~ "</script>"
+      assert svg =~ "&lt;script&gt;"
+    end
+
+    test "a label-only sketch is big enough to contain its label" do
+      # Without an extent clause a text-only document renders at the floor size
+      # and anything placed past it falls outside the frame — a preview of a
+      # blank rectangle, which is worse than one that is a little too generous.
+      label = text!(%{"x" => 800, "y" => 700, "content" => "far"})
+      svg = Svg.to_document(document([label]))
+
+      [_, side] = Regex.run(~r/ width="([\d.]+)"/, svg)
+      {side, _rest} = Float.parse(side)
+
+      assert side > label.x + Svg.text_width(label)
+      assert side > label.y + Svg.text_height(label)
+    end
+
+    test "the baseline sits below the element's y, because y is the top" do
+      # SVG's `y` on a <text> is the baseline and every other kind here places by
+      # its top-left. The element's convention won; this is the offset that pays
+      # for it, and both renderers read it from the same function.
+      label = text!(%{"y" => 20, "size" => 18})
+
+      assert Svg.text_baseline(label) == 20.0 + 18 * 0.8
+      assert Svg.to_document(document([label])) =~ ~s(y="34.4")
+    end
+  end
+
+  describe "text, on the live surface" do
+    test "a label renders with its content, its colour and its size" do
+      html = surface(%{elements: [text!(%{"content" => "Kitchen"})]})
+
+      assert html =~ "Kitchen"
+      assert html =~ "<text"
+      assert html =~ ~s(fill="#1C9BFF")
+      assert html =~ ~s(font-size="18")
+    end
+
+    test "HEEx escapes the content, and exactly once" do
+      # The interpolation is escaped by the template engine. A second escape
+      # added here "for safety" would render `&amp;` where the operator typed
+      # `&` — the failure this asserts against.
+      html = surface(%{elements: [text!(%{"content" => "a & b <g>"})]})
+
+      assert html =~ ">a &amp; b &lt;g&gt;</text>"
+      refute html =~ "&amp;amp;"
+    end
+
+    test "a label gets a hit target in the tools that point at things" do
+      for tool <- [:erase, :select] do
+        html = surface(%{elements: [text!()], tool: tool})
+
+        assert html =~ "data-sketch-element", "#{tool} needs something to point at"
+        # Picked up by its box, not by its glyphs — `pointer-events` on the
+        # letters themselves leaves the counter of an `o` as a hole.
+        assert html =~ ~s(fill="transparent")
+        assert html =~ ~s(pointer-events="all")
+      end
+    end
+
+    test "no hit target in draw mode, and none in text mode either" do
+      # Draw: a target there swallows the pointerdown that starts a stroke.
+      # Text: the tool places a label wherever it is clicked and never points at
+      # an existing element, so a target there is a node that does nothing.
+      for tool <- [:draw, :text] do
+        refute surface(%{elements: [text!()], tool: tool}) =~ "data-sketch-element",
+               "#{tool} mode rendered a hit target"
+      end
+    end
+
+    test "a selected label is ringed by its estimated box" do
+      element = text!(%{"content" => "abcde", "size" => 18})
+      html = surface(%{elements: [element], selected: element.id, tool: :select})
+
+      assert html =~ "text-primary"
+      assert html =~ ~s(height="21.6)
+    end
+
+    test "the width estimate follows the content, since nothing can measure it" do
+      short = Svg.text_width(text!(%{"content" => "ab"}))
+      long = Svg.text_width(text!(%{"content" => "abcdefghij"}))
+
+      assert long > short
+      assert Svg.text_width(text!(%{"content" => "ab", "size" => 48})) > short
+    end
+  end
+
+  describe "attribution is visible — D7" do
+    test "a model-authored mark carries a marker an operator's does not" do
+      # D6 lets the model delete only what the model drew. That rule reads as
+      # arbitrary unless the surface shows which marks are which, so this is a
+      # requirement rather than decoration.
+      mine = surface(%{elements: [element!()]})
+      theirs = surface(%{elements: [element!(%{"author" => "model"})]})
+
+      refute mine =~ ~s(data-sketch-author="model")
+      assert theirs =~ ~s(data-sketch-author="model")
+      assert theirs =~ "Drawn by the model"
+    end
+
+    test "every kind is attributed, not only strokes" do
+      for element <- [element!(), image!(), text!()] do
+        html = surface(%{elements: [%{element | author: :model}]})
+
+        assert html =~ ~s(data-sketch-author="model"),
+               "a model-authored #{element.kind} showed no attribution"
+      end
+    end
+
+    test "the marker sits beside the mark and never tints it" do
+      # Tinting model work would change what the drawing looks like, which is the
+      # one thing a drawing surface may not do to a drawing — the same reason the
+      # eraser stopped painting background-coloured strokes.
+      theirs = surface(%{elements: [element!(%{"author" => "model"})]})
+
+      assert theirs =~ ~s(stroke="#FF4D1C"), "the mark's own colour changed"
+      assert theirs =~ ~s(width="#{SketchSvg.marker_size()}")
+    end
+
+    test "a mark at the origin still gets a marker on the canvas" do
+      # There is no viewBox, so a negative coordinate is simply clipped — an
+      # unclamped offset would silently drop the attribution for anything drawn
+      # against the top-left edge, which is exactly where a first mark lands.
+      html =
+        surface(%{elements: [element!(%{"points" => [[0, 0], [5, 5]], "author" => "model"})]})
+
+      assert html =~ ~s(<rect data-sketch-author="model" x="1" y="1")
+    end
+  end
+
+  describe "the marks in one sketch" do
+    test "a stroke and a text on one sketch each render their own kind" do
+      html = surface(%{elements: [element!(), text!()]})
+
+      assert html =~ "<text"
+      assert html =~ "<path"
+      refute html =~ ~s(d="" stroke=), "a label rendered as an empty path"
     end
 
     test "a stroke and an image on one sketch each render their own kind" do

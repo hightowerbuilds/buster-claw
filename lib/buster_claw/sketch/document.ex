@@ -92,6 +92,25 @@ defmodule BusterClaw.Sketch.Document do
 
   def move(_doc, _id, _delta), do: :error
 
+  @doc """
+  Replace one element, in place.
+
+  In place, and that is the whole reason this exists rather than a delete
+  followed by an add: `add/2` appends, so the pair would silently raise an edited
+  mark to the top of the drawing. Editing a label is not the same as bringing it
+  forward, and a surface that rearranged itself when you fixed a typo would be
+  one nobody trusts.
+  """
+  def update(%__MODULE__{} = doc, %Element{id: id} = element) do
+    if find(doc, id) do
+      {:ok, touch(%{doc | elements: replace(doc.elements, element)})}
+    else
+      :error
+    end
+  end
+
+  def update(_doc, _element), do: :error
+
   @doc "How many elements are on this document."
   def size(%__MODULE__{elements: elements}), do: length(elements)
 
@@ -104,11 +123,27 @@ defmodule BusterClaw.Sketch.Document do
 
   # --- internals ------------------------------------------------------------
 
+  # Strokes carry their position in `points`; text and images carry it in `x`/`y`.
+  # Both move.
+  #
+  # This used to translate `points` and return every OTHER kind unchanged — and
+  # unchanged with `{:ok, doc}`, so a caller was told a label had moved when
+  # nothing had. That is exactly `D5`'s failure mode (a write that reports success
+  # and does nothing) reached from the inside, and the command layer had to grow a
+  # before/after comparison to detect it. The comparison can go now.
   defp translate(%Element{points: points} = element, dx, dy) when is_list(points) do
     %{element | points: Enum.map(points, fn [x, y] -> [round1(x + dx), round1(y + dy)] end)}
   end
 
-  defp translate(element, _dx, _dy), do: element
+  defp translate(%Element{x: x, y: y} = element, dx, dy) when is_number(x) and is_number(y) do
+    %{element | x: round1(x + dx), y: round1(y + dy)}
+  end
+
+  # No catch-all. Every kind stores its position in one of the two shapes above,
+  # so a third clause would be unreachable — and this repo deletes unreachable
+  # clauses rather than keeping them as guards, because a branch nothing can take
+  # guards nothing. A kind that stores position some other way adds its clause
+  # here, and `move/3` grows a failure return at the same moment.
 
   defp replace(elements, %Element{id: id} = updated) do
     Enum.map(elements, fn element -> if element.id == id, do: updated, else: element end)

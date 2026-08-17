@@ -9,6 +9,7 @@ defmodule BusterClawWeb.Studio.SketchTest do
 
   import Phoenix.LiveViewTest, only: [render_component: 2]
 
+  alias BusterClaw.Sketch.Element
   alias BusterClawWeb.Studio.Sketch
 
   defp toolbar(overrides \\ %{}) do
@@ -19,6 +20,7 @@ defmodule BusterClawWeb.Studio.SketchTest do
           tool: :draw,
           color: Sketch.default_color(),
           width: Sketch.default_width(),
+          text_size: Sketch.default_text_size(),
           selected: nil,
           undoable: false
         },
@@ -45,9 +47,10 @@ defmodule BusterClawWeb.Studio.SketchTest do
       end
     end
 
-    test "both tools are reachable" do
+    test "all three tools are reachable" do
       html = toolbar()
 
+      assert html =~ ~s(data-sketch-tool="text")
       assert html =~ ~s(data-sketch-tool="erase")
       assert html =~ ~s(data-sketch-tool="select")
     end
@@ -56,16 +59,72 @@ defmodule BusterClawWeb.Studio.SketchTest do
       # A toolbar button with no `phx-target` posts to the parent LiveView, where
       # nothing handles it — the click is silently swallowed and the tool never
       # changes. Nothing else in the suite would notice.
-      html = toolbar()
+      #
+      # Written as buttons-vs-targeted-buttons rather than against a count of
+      # the groups. The count version was a number that had to be edited every
+      # time a control was added, which makes it a chore rather than a guard —
+      # and it says nothing about the button that was actually added.
+      for tool <- [:draw, :text, :erase, :select] do
+        doc = toolbar(%{tool: tool}) |> LazyHTML.from_fragment()
 
-      targets =
+        buttons = doc |> LazyHTML.query("button") |> Enum.count()
+        targeted = doc |> LazyHTML.query("button[phx-target]") |> Enum.count()
+
+        assert buttons > 0
+        assert targeted == buttons, "a button in #{tool} mode is missing its phx-target"
+      end
+    end
+  end
+
+  describe "the text tool's controls" do
+    test "the label field and its sizes appear only with the text tool up" do
+      refute toolbar() =~ "data-sketch-text"
+
+      html = toolbar(%{tool: :text})
+      assert html =~ "data-sketch-text"
+
+      for size <- Element.text_sizes() do
+        assert html =~ ~s(data-sketch-text-size="#{size}")
+      end
+    end
+
+    test "the brush sizes step aside for the label sizes" do
+      # Two groups both labelled "Size" means reading both to find out which one
+      # you are about to change.
+      html = toolbar(%{tool: :text})
+
+      refute html =~ "data-sketch-size=", "the brush widths are still showing in text mode"
+    end
+
+    test "the field holds no server-side value, because the browser owns it" do
+      # `phx-update=\"ignore\"` and no `value` attribute: what is typed belongs
+      # to the browser until the click that places it. A `value` here would let
+      # LiveView blank the field on any unrelated re-render.
+      html = toolbar(%{tool: :text})
+
+      assert html =~ ~s(phx-update="ignore")
+
+      value =
         html
         |> LazyHTML.from_fragment()
-        |> LazyHTML.query("button")
-        |> LazyHTML.attribute("phx-target")
+        |> LazyHTML.query("[data-sketch-text]")
+        |> LazyHTML.attribute("value")
 
-      assert length(targets) == length(Sketch.colors()) + length(Sketch.widths()) + 4,
-             "a button is missing its phx-target"
+      assert value == []
+    end
+
+    test "the default label size is one the toolbar can actually press" do
+      # A default outside the offered set leaves every size button unlit and no
+      # way to get back to it.
+      assert Sketch.default_text_size() in Element.text_sizes()
+      assert toolbar(%{tool: :text}) =~ ~s(data-sketch-text-size="#{Sketch.default_text_size()}")
+    end
+
+    test "the held colour stays pressed while the text tool is up" do
+      # Text draws in a colour too, so the colour group is not released the way
+      # it is for the eraser — and picking one must not put the text tool down.
+      assert toolbar(%{tool: :text, color: "#1C9BFF"}) =~
+               ~s(data-sketch-color="#1C9BFF" data-active)
     end
   end
 
@@ -163,6 +222,22 @@ defmodule BusterClawWeb.Studio.SketchTest do
       refute html =~ "leaving this tab"
       refute html =~ "reload"
       refute html =~ "nothing is saved"
+    end
+
+    test "names the model's share only when the model has drawn something" do
+      # D7's legend. A marker nobody can name is a smudge — and on a sketch the
+      # model has never touched, saying "0 by the model" would be talking about
+      # a collaborator who is not there.
+      solo =
+        render_component(&Sketch.status/1, %{notice: nil, count: 4, model_count: 0, name: "x"})
+
+      refute solo =~ "by the model"
+
+      shared =
+        render_component(&Sketch.status/1, %{notice: nil, count: 4, model_count: 2, name: "x"})
+
+      assert shared =~ "2 by the model"
+      assert shared =~ "bg-primary", "the legend has to show the marker it names"
     end
 
     test "a notice is shown when there is one" do

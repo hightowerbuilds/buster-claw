@@ -143,6 +143,18 @@ defmodule BusterClaw.Sketch.Store do
     })
   end
 
+  defp element_to_map(%Element{kind: :text} = element) do
+    element
+    |> common()
+    |> Map.merge(%{
+      "content" => element.content,
+      "color" => element.color,
+      "size" => element.size,
+      "x" => element.x,
+      "y" => element.y
+    })
+  end
+
   defp element_to_map(%Element{kind: :image} = element) do
     element
     |> common()

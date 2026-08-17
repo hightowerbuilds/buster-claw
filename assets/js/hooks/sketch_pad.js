@@ -60,6 +60,7 @@ export default {
 
     if (tool === "draw") return this.startStroke(e)
     if (tool === "erase") return this.erase(id)
+    if (tool === "text") return this.placeText(e)
 
     if (tool === "select") {
       this.pushEventTo(this.el, "select", {id})
@@ -143,6 +144,32 @@ export default {
   currentWidth() {
     const pressed = document.querySelector("#studio-sketch [data-sketch-size][data-active]")
     return pressed ? pressed.dataset.sketchSize : "2"
+  },
+
+  // --------------------------------------------------------------------- text
+  //
+  // The toolbar's field is not a server assign — it is `phx-update="ignore"` and
+  // carries no `value`, so what is in it belongs to the browser until this
+  // click. Read here for the same reason the colour and the width are read here:
+  // one source of truth for what is currently held, rather than a copy in the
+  // hook that can disagree with what the toolbar shows.
+  //
+  // Deliberately NOT cleared afterwards. The field is a stamp — placing the same
+  // label in three corners is a thing people do, and retyping it twice to prove
+  // you meant it is not a safety property.
+
+  placeText(e) {
+    const field = this.textField()
+    const [x, y] = toPoint(e, this.rect())
+
+    this.pushEventTo(this.el, "text", {content: field ? field.value : "", x, y})
+  },
+
+  // Scoped to the pad, not the document: `#studio-sketch` is the pad's own
+  // subtree, and a bare `[data-sketch-text]` would happily find a field another
+  // tab left in the DOM.
+  textField() {
+    return document.querySelector("#studio-sketch [data-sketch-text]")
   },
 
   // ------------------------------------------------------------ erase and drag

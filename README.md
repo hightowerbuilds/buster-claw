@@ -2,7 +2,7 @@
 
 **An assistant on your Mac that uses your tools, keeps working, and shows you what it did.**
 
-Ask it in the app's own Chat, email it, or drive it from the built-in terminal. It reads and acts inside the browser tab you're actually looking at, your Gmail, Calendar and Drive, and it works a durable queue that survives a restart — one canonical command surface, 213 commands. Everything it changes lands on an auditable feed you can read afterwards, and restricted actions are refused outright for untrusted callers.
+Ask it in the app's own Chat, email it, or drive it from the built-in terminal. It reads and acts inside the browser tab you're actually looking at, your Gmail, Calendar and Drive, and it works a durable queue that survives a restart — one canonical command surface, 217 commands. Everything it changes lands on an auditable feed you can read afterwards, and restricted actions are refused outright for untrusted callers.
 
 **You bring the intelligence.** There is no LLM inside Buster Claw and it needs no API keys: it runs **Claude Code, Codex, or OpenCode** under the agent subscription you already pay for. The app is the hands, the memory, and the receipts.
 
@@ -22,7 +22,7 @@ That indirection is the whole design. It means work survives a crash, an agent c
 
 ## Features
 
-- **One command surface.** 213 commands across documents, browser, Google Workspace, integrations, finance, phone, notes, sketches, memory, skills, and orchestration — reachable from the CLI and an HTTP API, with per-caller trust tiers and an audit trail covering everything that changes state.
+- **One command surface.** 217 commands across documents, browser, Google Workspace, integrations, finance, phone, notes, sketches, memory, skills, and orchestration — reachable from the CLI and an HTTP API, with per-caller trust tiers and an audit trail covering everything that changes state.
 - **A real browser the agent can drive.** Not a headless scraper: the agent reads and acts inside **the tab you're actually looking at**, logged-in session and all (`browser_read`, `browser_click`, `browser_fill`), plus SSRF-guarded fetch for everything else.
 - **Google Workspace.** One-click connect, then sync and act on Gmail, Calendar, Drive, Docs, and Contacts.
 - **Integrations.** GitHub — polled on demand (by you or the agent; there is no background poller) or webhook-triggered, with signature verification that fails closed.

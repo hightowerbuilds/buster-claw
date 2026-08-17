@@ -45,7 +45,7 @@ defmodule BusterClawWeb.SketchComponent do
 
   @history_limit 50
   @default_name "untitled"
-  @tools ~w(draw erase select)a
+  @tools ~w(draw text erase select)a
 
   # More than a handful at once is a folder someone dragged by accident.
   @max_images_at_once 5
@@ -71,6 +71,7 @@ defmodule BusterClawWeb.SketchComponent do
      |> assign(:tool, :draw)
      |> assign(:color, Sketch.default_color())
      |> assign(:width, Sketch.default_width())
+     |> assign(:text_size, Sketch.default_text_size())
      |> assign(:selected, nil)
      |> assign(:history, [])
      |> assign(:notice, nil)
@@ -127,10 +128,30 @@ defmodule BusterClawWeb.SketchComponent do
   def handle_event("color", %{"color" => color}, socket) do
     # Picking a colour is picking up a pen, so it puts the eraser down — the same
     # rule the raster version needed and could not show.
+    #
+    # Except when the pen you are already holding is the text tool, which also
+    # draws in a colour. Kicking someone out of text mode for recolouring the
+    # label they were about to place would be the same class of surprise, in the
+    # other direction.
     if color in Sketch.colors() do
-      {:noreply, socket |> assign(:color, color) |> assign(:tool, :draw)}
+      tool =
+        if socket.assigns.tool in Sketch.colored_tools(), do: socket.assigns.tool, else: :draw
+
+      {:noreply, socket |> assign(:color, color) |> assign(:tool, tool)}
     else
       {:noreply, socket}
+    end
+  end
+
+  def handle_event("text_size", %{"size" => size}, socket) do
+    case Integer.parse(to_string(size)) do
+      {parsed, _rest} ->
+        if parsed in Sketch.text_sizes(),
+          do: {:noreply, assign(socket, :text_size, parsed)},
+          else: {:noreply, socket}
+
+      :error ->
+        {:noreply, socket}
     end
   end
 
@@ -169,6 +190,41 @@ defmodule BusterClawWeb.SketchComponent do
          assign(socket, :notice, "That stroke could not be saved (#{inspect(reason)}).")}
     end
   end
+
+  # A label, placed by clicking. The content comes off the toolbar field in the
+  # DOM rather than off an assign — see `Studio.Sketch` for why there is no
+  # server-side draft — so it arrives here in the same payload as the point,
+  # once, on the click that placed it.
+  def handle_event("text", %{"content" => content, "x" => x, "y" => y}, socket)
+      when is_number(x) and is_number(y) do
+    attrs = %{
+      "kind" => "text",
+      "author" => "operator",
+      "content" => content,
+      "color" => socket.assigns.color,
+      "size" => socket.assigns.text_size,
+      "x" => x,
+      "y" => y
+    }
+
+    case Element.new(attrs) do
+      {:ok, element} ->
+        {:noreply, commit(socket, Document.add(socket.assigns.doc, element))}
+
+      # The one refusal that is a normal thing to do rather than a fault: you
+      # clicked before typing. Said in the second person because it is
+      # actionable, unlike the ones below it.
+      {:error, :empty_content} ->
+        {:noreply,
+         assign(socket, :notice, "Type a label in the toolbar first, then click where it goes.")}
+
+      {:error, reason} ->
+        Logger.warning("SketchComponent: refusing a label: #{inspect(reason)}")
+        {:noreply, assign(socket, :notice, "That label could not be saved (#{inspect(reason)}).")}
+    end
+  end
+
+  def handle_event("text", _params, socket), do: {:noreply, socket}
 
   def handle_event("erase", %{"id" => id}, socket) do
     case Document.delete(socket.assigns.doc, id) do
@@ -306,6 +362,12 @@ defmodule BusterClawWeb.SketchComponent do
 
   defp refusal(reason), do: Placement.humanize(reason, Assets.max_bytes(), @max_images_at_once)
 
+  # The number behind D7's legend. Counted on render rather than tracked on the
+  # document: a cached tally is one more thing that can be wrong, and the whole
+  # list is already in memory.
+  defp model_count(%Document{elements: elements}),
+    do: Enum.count(elements, &(&1.author == :model))
+
   # ------------------------------------------------------------------ internals
 
   # One door for every mutation: push the old document onto the undo stack, take
@@ -370,6 +432,7 @@ defmodule BusterClawWeb.SketchComponent do
         width={@width}
         selected={@selected}
         undoable={@history != []}
+        text_size={@text_size}
       />
       <SketchSvg.surface
         target={@myself}
@@ -378,7 +441,12 @@ defmodule BusterClawWeb.SketchComponent do
         selected={@selected}
         tool={@tool}
       />
-      <Sketch.status notice={@notice} count={Document.size(@doc)} name={@name} />
+      <Sketch.status
+        notice={@notice}
+        count={Document.size(@doc)}
+        model_count={model_count(@doc)}
+        name={@name}
+      />
     </section>
     """
   end

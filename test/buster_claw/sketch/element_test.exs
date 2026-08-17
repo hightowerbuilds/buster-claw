@@ -125,7 +125,7 @@ defmodule BusterClaw.Sketch.ElementTest do
       # A kind here with no clause in `Studio.SketchSvg` is a document that can
       # hold something nothing can draw. Grew from [:stroke] when Phase 4 added
       # images; the next kinds arrive with the phases that need them.
-      assert Element.kinds() == [:stroke, :image]
+      assert Element.kinds() == [:stroke, :image, :text]
     end
   end
 
