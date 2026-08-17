@@ -1308,3 +1308,123 @@ way — `Store → Assets → Paths`.
 **`mix precommit` exits 0: 4,100 tests, 352 JS tests, all eight gates.** The first
 fully green run of the evening — the earlier reds were all another session's
 in-flight work, four separate times.
+
+---
+
+# Closing the Mix tab, and a field that never did anything
+
+Four more things after the file bar landed, and the last of them ended a
+mechanism that had been running all day.
+
+## The music library manager is gone
+
+*"We don't want music in the app like that. We're focused on creative/
+constructive features in the studio."*
+
+Deleted: `MusicComponent` — upload, delete, queue, play-all — the Library menu,
+the `:library` catalog row, and the `@player` transport thread it needed.
+
+**Music itself stayed, and the line is worth stating because it is the whole
+decision:** chopping a song into a mix *is* the creative work this tab exists
+for. What went is the Studio as a place you **administer** audio rather than cut
+it. Tracks are still material; the dock player is untouched.
+
+**Three things had to be rehomed rather than deleted with it.**
+`humanize_bytes/1` was public on the deleted module and used by two survivors —
+a pure formatter surviving inside a deleted module is how a deletion becomes a
+compile error at the worst moment. *"Restore built-in sounds"* was never music
+at all (it copies bundled **chimes**) and sat in that menu by accident of
+grouping. And `Music.safe_name/1` is why the context survived: `SoundStudio`
+names imports with it and `StudioMix` names mixes with it, so deleting
+`BusterClaw.Music` would have broken the Studio's own file naming.
+
+Two guards came out with it. `addable_groups/1` rejected `kind: :library` and
+the component branched on it twice; nothing mints that kind now, and **a filter
+that can never match reads as protection and is not.**
+
+## Trim, and the field that was never doing anything
+
+Right-click a clip → **Trim clip…**. Set where it starts inside its source and
+how long it runs. The window is the mix's; the file is never touched, so the
+same source can sit in one mix twice trimmed two ways.
+
+**The feature is not the finding.** `duration_ms` did not affect the render at
+all. `Studio.Render` decoded the **whole** source and placed it at `start_ms` —
+`duration_ms` was the block's width on the ruler and nothing else. A clip that
+looked 800 ms long rendered its entire five-minute file, silently, and only the
+mixdown told you.
+
+**It was invisible for the same reason it was safe to fix.** `add_clip/5` sets
+`duration_ms` to the source's own measured length, so for every clip that had
+ever existed the window *was* the whole file — and honouring it is a no-op on
+every mix written before today. A latent bug that had been sitting behind a
+coincidence.
+
+Two silent-loss paths closed before they could bite, both the shape of the
+morning's dry-paste bug:
+
+- **`studio_copy` builds the clipboard spec by hand.** Without `offset_ms`,
+  copying a trimmed clip pasted the whole source back. **A hand-built spec is a
+  list of the fields somebody remembered.**
+- **The on-disk format dropped `offset_ms` at both ends** — the trim would not
+  have survived a reload. **Caught by the undo test, not by reading.**
+
+Both guarded, both broken on purpose to confirm they bite.
+
+## The freeze's last act, and then the freeze
+
+Clip trim needed ~70 lines of handlers in `sound_studio_component.ex`, which was
+FROZEN — so it had to be funded by an extraction. The socket-free edit block
+went to `SoundStudio.Edits`, exactly the cut the 08-13 review had named.
+**985 → 972: the file came out smaller than before the feature.**
+
+Then the operator asked why it was frozen at all, and the honest answer ended
+it. FROZEN means *"a target of an unstarted roadmap phase"* — and Phase 3, the
+phase it was frozen **for**, had been taken that morning. **A tier whose stated
+condition has been met and which nobody re-argues is how a gate stops meaning
+what it says.** `FROZEN → HELD`, 972 → 1070.
+
+**What it was worth: 1,235 → 972 while GAINING** the effect chain,
+duplicate-clip, a menu bar and clip trim. Four extractions, three of them
+producing modules that exist only because a feature could not be paid for any
+other way — `Studio.Render`, `SoundStudio.Format`, `SoundStudio.Edits`. Nobody
+set out to refactor on any of those days; the cap asked the question each time.
+
+### The pass that found the real bug was the one that nearly did not happen
+
+Unfreezing looked like a one-line tier change. It is seven, because **seven
+places assert the freeze in prose and four of them are origin stories** — they
+explain why a module exists. Those moved to past tense rather than being
+deleted: the history is the argument for the tier and outlived the claim.
+
+**One of them was load-bearing and is now correct for the first time.**
+`StudioLive`'s moduledoc said its assigns live in the LiveView *"because the
+component is FROZEN and cannot hold them."* True, and never the durable reason:
+`StudioPanel` renders it behind an `:if`, so a sub-tab switch discards the
+component along with any selection, trim or undo stack inside it. Unfreezing
+without catching that would have left a paragraph justifying the right design
+with a reason that had expired — **the exact drift this whole day was about.**
+
+The operator said "wait nvm" between asking and deciding. That pause is what
+bought the pass.
+
+## And the heading
+
+*"Remove the 'make something' heading. Lame sauce."* Then: say Studio instead.
+
+It was an eyebrow reading **Studio** above a heading reading **Make something**,
+with an action slot to the right that the menu bar had emptied hours earlier.
+Three pieces of chrome disagreeing about what to call the page. The name moved
+into the heading and the rest went — vertical room the tracks get back, which is
+what the whole Mix pass was for.
+
+## Where the Studio ended up
+
+```
+/studio    MIX · VOICE LIBRARY · SKETCH PAD
+Mix        File · Edit · Material   (no sidebar, full-width tracks)
+           right-click a clip: Trim · Duplicate · Remove
+```
+
+`sound_studio_component.ex` **1,235 → 972** across the day, gaining four
+features. `status_live.ex` **1,060 → 738**. Home is seven tabs, not eight.
