@@ -68,7 +68,7 @@ in flight for this area?" without opening anything.
 roadmaps/
 ├── SUPERMAP.md ·············· this file — the only index
 ├── shell/ ·················· Part I    TERMINAL_THEME · TERMINAL_PAINT
-├── surfaces/ ··············· Parts II–III  STUDIO · IMAGE_SHADER · APP_ICON · AGENT_APPLIED_SHADERS · WIDGET_BACKGROUND · LEFTOVERS_SURFACES
+├── surfaces/ ··············· Parts II–III  STUDIO · SKETCH · IMAGE_SHADER · APP_ICON · AGENT_APPLIED_SHADERS · WIDGET_BACKGROUND · LEFTOVERS_SURFACES
 ├── agent-core/ ············· Part V    LEFTOVERS_AGENT_CORE
 ├── integrations/ ··········· Part VI   CLINCH · BUSTERPHONE (+NUMBER_VENDING) · OUTBOUND_VOICE · SMS_DISCLOSURE · PHONE_ACCESS · GOOGLE_VERIFICATION
 ├── platform/ ··············· Part VII  APPLE · UPDATE · RELEASE_GATE · TRUST_AND_SUPPORT · QA_BACKLOG · LEFTOVERS_PLATFORM
@@ -96,7 +96,7 @@ the section tables below point at it from wherever else it applies.**
 1. **[The Clinch](#part-vi--integrations)** — **Phases 0–4 complete 08-10; Phase 5 is as far as an agent can take it.** Its preconditions are pinned (`18af12e`) and every remote-mode notice is guarded (`d26c4ad`). **What remains is the tunnel spike, and it needs a person with two machines** — the roadmap forbids the gateway and the panel until a real tunnel survives a WebSocket upgrade, an upload, a long Chat response and a laptop sleep.
 2. **[BusterPhone](#part-vi--integrations)** — the only paid thing. **Inbound is live and carrying real traffic** (verified in the app 08-14, not inferred); the gap is vending a number to someone who is not the operator.
 3. **[Apple](#part-vii--platform--release)** — **`G-1`–`G-3` DONE 08-10: a notarized, stapled DMG exists.** What is next is not code — an **Apple Silicon Mac**.
-4. **[Studio → Voice Library](#part-ii--home)** — built 08-16; **needs a person at a microphone.** Everything except capture is done and tested: banks, audition, sentence preview, and both recording paths. What has never run is V.4a — `getUserMedia` in a packaged build — and until someone clicks that dialog the recorder is honest rather than working.
+4. **[Studio → Voice Library](#part-ii-b--the-studio)** — built 08-16; **needs a person at a microphone.** Everything except capture is done and tested: banks, audition, sentence preview, and both recording paths. What has never run is V.4a — `getUserMedia` in a packaged build — and until someone clicks that dialog the recorder is honest rather than working.
 5. **[The Dialyzer gate](#part-vii--platform--release)** — **GREEN, exit 0, verified 08-16.** The baseline is a rule rather than a file list (`1d52cff`) and that fix has held; the three unreachable `refusal/2` clauses that 08-15 added were deleted 08-16 rather than baselined. Part VII records what the deletion cost.
 6. **The whole-codebase review (08-13)** — **ARCHIVED 08-15**, [`CODE_REVIEW_08-13-26.html`](../archive/CODE_REVIEW_08-13-26.html): every part with its argument, every large file diagnosed feature-sized vs overloaded, 21 ranked findings. **The top four landed same-day** — the gmail attachment fence (`1728e64`), both `chat.ex` contract bugs (`20a36a9`), the dead Trading hooks plus a both-directions hook guard (`577085e`). Everything else is **filed, not floating**: by section into the LEFTOVERS maps — [agent-core](agent-core/LEFTOVERS_AGENT_CORE.md), [platform](platform/LEFTOVERS_PLATFORM.md), [surfaces](surfaces/LEFTOVERS_SURFACES.md), and the shell's first, [`LEFTOVERS_SHELL`](shell/LEFTOVERS_SHELL.md), created for it. The review's two structural conclusions: the size gate covers no core/JS/Rust file (its §12 has the 19-file proposed inventory), and `commands/sound.ex` at 2,514 is the one file where the 08-08 "commands/ is correct" ruling no longer holds.
 
@@ -111,9 +111,26 @@ the section tables below point at it from wherever else it applies.**
    rebuild and then says the product needs usage data first, which is the
    argument against acting on it yet.
 
-Two of those wait on the operator rather than an agent: the `getUserMedia` spike
-needs a permission dialog clicked at a packaged build, and **`G-4` needs an Apple
-Silicon Mac** — a dependency this repo had recorded backwards until 08-10.
+8. **[The Sketch Pad](#part-ii-b--the-studio)** — **Phases 0–4 built 08-16, none of it walked.** The Studio's third tab became a surface the operator and the model share: strokes, images and text as addressable elements, six `sketch_*` commands, and a boundary drawn by **authorship rather than tier** — the model may change and delete what the model drew, and asking about yours. Three things only the parallel build found: **no command had ever known its caller** (`D13`), a `gated` flag would have made the feature impossible, and the gate **did not actually surface** until the refusal was wired into Sentinel.
+9. **[The update path](#part-vii--platform--release)** — **`G-42` and `G-18` shipped 08-16.** The app can finally say what version it is, and CI can publish a signed feed. **Neither has run**: the workflow is tag-only, and the minisign keypair does not exist yet. `G-19` — the button itself — is next, and its one sharp edge is already written down (the release monitor will respawn the BEAM into a bundle being swapped unless `shutting_down` is set first).
+
+**Five of those wait on the operator rather than an agent**, and the list grew
+tonight rather than shrank:
+
+- the `getUserMedia` spike needs a permission dialog clicked at a packaged build
+- **`G-4` needs an Apple Silicon Mac** — a dependency this repo had recorded
+  backwards until 08-10
+- the **minisign keypair** must be generated and **backed up offline before the
+  first signed release**. There is no revocation: the public key is compiled into
+  every shipped binary, so a rotated key is *rejected* by the installs it was
+  meant to reach
+- the update feed's endpoint needs a **rewrite in the website repo**, which
+  nothing here can add and nothing here fails without
+- the Sketch Pad needs someone to watch a model be **refused** — the one
+  behaviour its whole design exists for
+
+**Four of the five are unblockable by any amount of code**, which is the honest
+reading of where the build is: the writing is ahead of the walking.
 
 **First movement on the release path since 08-01.** `G-2` and `G-2b` both landed
 08-10: a Developer ID certificate (team `KD977J8NF6`, valid to 2031) and App Store
@@ -168,7 +185,13 @@ and zero issues in the verdict. Budget hours per release, not minutes
 
 ## Part II — Home
 
-`StatusLive` at `/`. Eight sub-tabs plus a corner widget with three of its own.
+`StatusLive` at `/`. **Seven** sub-tabs plus a corner widget with three of its own.
+
+> **The Studio left Home on 08-16** and is its own route now (`StudioLive` at
+> `/studio`), so its three tabs moved to Part II-b below. This heading said
+> "eight sub-tabs" and listed Studio here for most of a day after that stopped
+> being true — the drift a route change makes, found while filing the Sketch Pad
+> rather than by reading.
 
 | Section | Where | State | Map |
 |---|---|---|---|
@@ -177,8 +200,6 @@ and zero issues in the verdict. Budget hours per release, not minutes
 | Pockets | `PocketsPanel` | SHIPPED | [`APP_ICON`](surfaces/APP_ICON_ROADMAP.md) — a seventh Brand slot, for the macOS Dock |
 | Calendar | `CalendarComponent` | SHIPPED | — |
 | Phone | `PhoneComponent`, `Phone.CallAction` | SHIPPED — **the keypad dials as of 08-15**, gated and confirmed once before the first ring | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) |
-| **Studio → Mix** | `SoundStudioComponent` | SHIPPED | [`LEFTOVERS_AGENT_CORE`](agent-core/LEFTOVERS_AGENT_CORE.md) — `commands/sound.ex` is owed a split |
-| **Studio → Voice Library** | `Studio.VoiceLibrary`, `Status.Voice`, `Status.Recorder` | **BUILT 08-16 — one tab, sidebar over Words / Sentence / Record.** Voice banks (V.0), audition (VI.1 pane 2), sentence build-and-play through the same `Cutup.Sentence` an agent uses, and a recorder for a word *or* a whole sentence. **The microphone is unproven** — V.4a has never run, so the capability gate reports what the browser found rather than claiming | [`STUDIO`](surfaces/STUDIO_ROADMAP.md) Parts V–VI |
 | Explained | `ExplainedPanel` | SHIPPED | [`LEFTOVERS_SURFACES`](surfaces/LEFTOVERS_SURFACES.md) — two errands, five tiles |
 | Activity | `ActivityComponent` | SHIPPED | — |
 | Widget → Time & Place | `status/weather.ex` | SHIPPED | — |
@@ -190,11 +211,8 @@ and zero issues in the verdict. Budget hours per release, not minutes
 | Image-reactive shaders | `ShaderCanvas`, `Appearance.image_shader_options/0` | SHIPPED — Phase 4 (the skill) open | [`IMAGE_SHADER`](surfaces/IMAGE_SHADER_ROADMAP.md) |
 | The home screen's primary action | `StatusLive`, `ChatPanel` | **SHIPPED — and says the right thing as of 08-16.** One of four surfaces now carrying the front-door sentence; guarded by `front_door_test.exs` | [`FRONT_DOOR`](distribution/FRONT_DOOR_ROADMAP.md) `VI-a` DONE |
 
-**Every surface in Home renders something real, and Studio → Voice Library is
-now the whole loop rather than half of it**: browse the words, hear a take,
-build a sentence, hear that, record what was missing. The binding constraint is
-still measured — **144 of 237 words are single-take**, none ever hand-corrected —
-and the recorder is what changes it.
+**Every surface in Home renders something real.** *(The Voice Library sentence
+that used to close this paragraph moved to Part II-b with its subject.)*
 
 **Two things it can do that nothing else in the app could.** A word recorded on
 its own is the corpus's first `:manual` origin at confidence 1.0 (all 655
@@ -207,6 +225,29 @@ capability gate reports what the browser actually answered rather than claiming
 either way; in Chrome and `cargo tauri dev` it may work today, and a packaged
 build will name what stopped it. `Entitlements.plist` is deliberately untouched
 — see the note under Part VII on what granting it costs the embedded browser.
+
+---
+
+## Part II-b — The Studio
+
+`StudioLive` at `/studio`. Three tabs, one rail. Moved out of Home on 08-16.
+
+| Section | Where | State | Map |
+|---|---|---|---|
+| **Studio → Mix** | `SoundStudioComponent` | SHIPPED | [`LEFTOVERS_AGENT_CORE`](agent-core/LEFTOVERS_AGENT_CORE.md) — `commands/sound.ex` is owed a split |
+| **Studio → Voice Library** | `Studio.VoiceLibrary`, `Status.Voice`, `Status.Recorder` | **BUILT 08-16 — one tab, sidebar over Words / Sentence / Record.** Voice banks (V.0), audition (VI.1 pane 2), sentence build-and-play through the same `Cutup.Sentence` an agent uses, and a recorder for a word *or* a whole sentence. **The microphone is unproven** — V.4a has never run, so the capability gate reports what the browser found rather than claiming | [`STUDIO`](surfaces/STUDIO_ROADMAP.md) Parts V–VI |
+| **Studio → Sketch Pad** | `SketchComponent`, `Sketch.*`, `commands/sketch.ex` | **PHASES 0–4 COMPLETE 08-16, and UNWALKED.** A drawing the operator and the model share. Strokes, images and text as **addressable elements** — the substrate reversed from a canvas, because you cannot delete a stroke from a bitmap. Drop/paste/drag images, undo, autosave to `sketches/*.json`. Six `sketch_*` commands: the model reads a sketch as elements **and** a rendered PNG, and draws on it bounded by **authorship, not tier** | [`SKETCH`](surfaces/SKETCH_ROADMAP.md) |
+
+**Voice Library is now the whole loop rather than half of it**: browse the words,
+hear a take, build a sentence, hear that, record what was missing. The binding
+constraint is still measured — **144 of 237 words are single-take**, none ever
+hand-corrected — and the recorder is what changes it.
+
+**Two of the three are built and unwalked, for different reasons.** Voice Library
+needs a person at a microphone (`getUserMedia` has never run in a packaged
+build). The Sketch Pad needs a person to watch the one thing its whole design is
+for — a model trying to delete the operator's mark and being **gated, not
+obeyed**. Both are asserted in code; neither has been seen.
 
 ---
 
@@ -327,7 +368,7 @@ step verified here happened on the operator's own line.
 |---|---|---|---|
 | Tauri desktop shell | `desktop/tauri/` | SHIPPED | — |
 | **Apple — sign, notarize, staple** | CI, `scripts/codesign_release.sh` | **`G-1`–`G-3` DONE 08-10 (x86_64). `G-4` blocked on an arm64 Mac** | [`APPLE`](platform/APPLE_ROADMAP.md) |
-| **Updating a running install** | `main.rs` release monitor, Settings → About | **SCOPED 08-16.** Took `G-18`–`G-20` from `APPLE` §III.I intact; `G-42`–`G-44` new. **Phase 0 is an hour** — the app currently displays its version nowhere | [`UPDATE`](platform/UPDATE_ROADMAP.md) |
+| **Updating a running install** | `BuildInfo`, Settings → About, `release-desktop.yml`, `main.rs` release monitor | **`G-42` + `G-18` SHIPPED 08-16 — the app says what it is, and CI can publish a feed.** Took `G-18`–`G-20` from `APPLE` §III.I keeping their numbers; `G-42`–`G-44` new. **The pipeline has never run** (tag-only), and four things are the operator's: generate the minisign keypair, **back the private key up offline — there is no revocation**, set the two repo secrets, add the Vercel rewrite in the *website* repo. `G-19` (the button) is next | [`UPDATE`](platform/UPDATE_ROADMAP.md) |
 | **The release gate** | — | **ACTIVE** | [`RELEASE_GATE`](platform/RELEASE_GATE_ROADMAP.md) |
 | **Trust claims & support** | `Sentinel`, — | **ACTIVE** | [`TRUST_AND_SUPPORT`](platform/TRUST_AND_SUPPORT_ROADMAP.md) |
 | CI gates | `scripts/check_*.sh` | SHIPPED, **all green** — Dialyzer included, 08-16 (below) | — |
