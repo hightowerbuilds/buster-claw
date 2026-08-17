@@ -63,10 +63,7 @@ defmodule BusterClawWeb.StudioLive do
      |> assign(:studio_preview, nil)
      |> assign(:studio_clipboard, nil)
      |> assign(:studio_undo, [])
-     |> assign(:studio_redo, [])
-     # Read from Settings, because a sidebar that re-expands on restart is a
-     # preference the app keeps forgetting.
-     |> assign(:studio_collapsed, BusterClawWeb.SoundStudioComponent.collapsed_groups())}
+     |> assign(:studio_redo, [])}
   end
 
   @impl true
@@ -145,19 +142,6 @@ defmodule BusterClawWeb.StudioLive do
      |> assign(:studio_source, id)
      |> assign(:studio_trim, nil)
      |> reset_studio_history()}
-  end
-
-  # Fold a sidebar group shut, or open it. The list is the collapsed set, so a
-  # group the app adds later starts open — the right default for something new
-  # appearing, and it means this never needs to know the full group roster.
-  # Persisted on every toggle rather than on some later "save": there is no
-  # moment in this UI that would mean "commit my folds".
-  def handle_event("toggle_studio_group", %{"key" => key}, socket) when is_binary(key) do
-    collapsed = socket.assigns.studio_collapsed
-    next = if key in collapsed, do: List.delete(collapsed, key), else: [key | collapsed]
-
-    BusterClawWeb.SoundStudioComponent.put_collapsed(next)
-    {:noreply, assign(socket, :studio_collapsed, next)}
   end
 
   # ---------------------------------------------------------------------------
@@ -325,9 +309,10 @@ defmodule BusterClawWeb.StudioLive do
               Make something
             </h1>
           </div>
-          <%!-- The Mix toolbar rides in the page header rather than inside the
-                FROZEN component, exactly as it did in Home's header. --%>
-          <BusterClawWeb.SoundStudioComponent.toolbar :if={@studio_tab == "mix"} />
+          <%!-- Nothing rides here any more. The Mix toolbar's two actions (New
+                mix, Import) moved into the menu bar's File menu on 08-16, so the
+                verbs live on the surface they act on rather than in the page
+                chrome above it. --%>
         </div>
 
         <%!-- `voice_rows` and `voice_check` are derived here, never stored:
@@ -345,7 +330,6 @@ defmodule BusterClawWeb.StudioLive do
           studio_clipboard={@studio_clipboard}
           studio_undo={@studio_undo}
           studio_redo={@studio_redo}
-          studio_collapsed={@studio_collapsed}
           voice_report={@voice_report}
           voice_error={@voice_error}
           voice_query={@voice_query}

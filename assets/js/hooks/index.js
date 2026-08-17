@@ -33,6 +33,7 @@ import {Dtmf} from "./dtmf.js"
 import {Composer} from "./composer.js"
 import {NoteEditor} from "./note_editor.js"
 import SketchPad from "./sketch_pad.js"
+import StudioMenuBar from "./studio_menu_bar.js"
 import {NotesKeys} from "./notes_keys.js"
 import {NoteContextMenu, NoteTitle} from "./note_context.js"
 import {ClinchManager, ClinchAppKeys, RecoveryKey} from "./clinch.js"
@@ -78,6 +79,7 @@ export const Hooks = {
   SoundPreview,
   NoteEditor,
   SketchPad,
+  StudioMenuBar,
   NotesKeys,
   NoteContextMenu,
   NoteTitle,

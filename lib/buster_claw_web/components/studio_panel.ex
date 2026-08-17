@@ -60,7 +60,6 @@ defmodule BusterClawWeb.StudioPanel do
   attr :studio_clipboard, :any, required: true
   attr :studio_undo, :list, required: true
   attr :studio_redo, :list, required: true
-  attr :studio_collapsed, :list, required: true
 
   # Voice's, prepared by `Status.Voice`. `rows` and `check` are derived rather
   # than stored: the LiveView computes them from the loaded report so this panel
@@ -130,7 +129,6 @@ defmodule BusterClawWeb.StudioPanel do
           studio_clipboard={@studio_clipboard}
           studio_undo={@studio_undo}
           studio_redo={@studio_redo}
-          studio_collapsed={@studio_collapsed}
         />
       </div>
 

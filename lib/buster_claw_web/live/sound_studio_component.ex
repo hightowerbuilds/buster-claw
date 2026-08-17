@@ -33,14 +33,13 @@ defmodule BusterClawWeb.SoundStudioComponent do
 
   alias BusterClawWeb.SoundStudio.Arranger
   alias BusterClawWeb.SoundStudio.ClipInspector
+  alias BusterClawWeb.SoundStudio.MenuBar
   alias BusterClawWeb.SoundStudio.Overlays
-  alias BusterClawWeb.SoundStudio.Sidebar
 
   alias BusterClaw.Music
   alias BusterClaw.Notifications.Sound
   alias BusterClaw.Notifications.SoundStudio
   alias BusterClaw.Notifications.Studio.Render
-  alias BusterClaw.Notifications.StudioCatalog
   alias BusterClaw.Notifications.StudioMix
   alias BusterClawWeb.MusicComponent
 
@@ -53,10 +52,6 @@ defmodule BusterClawWeb.SoundStudioComponent do
   # Matches the music library's cap. A long recording clears it; a video does not.
   @max_import_bytes 100_000_000
   @max_import_entries 10
-
-  # `@name` inside ~H is an ASSIGN, so the limit is exposed as a function for
-  # the sidebar's error copy — one number, still owned by the allow_upload.
-  defp max_import_entries, do: @max_import_entries
 
   @impl true
   def mount(socket) do
@@ -140,10 +135,10 @@ defmodule BusterClawWeb.SoundStudioComponent do
   # an import plus a defdelegate of the same name is a compile error, and the
   # right fix is one definition rather than a qualified alias for the same thing.
   #
-  # These two are different: they are Settings-backed, not catalog reads, and
-  # `StudioLive` calls them from outside. An import would not re-export them.
-  defdelegate collapsed_groups, to: StudioCatalog
-  defdelegate put_collapsed(keys), to: StudioCatalog
+  # `collapsed_groups/0` and `put_collapsed/1` went with the sidebar on 08-16.
+  # A submenu has nothing to fold, so the setting had no reader left — and a
+  # persisted preference nothing consults is a row in Settings that outlives
+  # every surface that could honour it.
 
   # ---------------------------------------------------------------------------
   # Import
@@ -761,51 +756,6 @@ defmodule BusterClawWeb.SoundStudioComponent do
   # Render
   # ---------------------------------------------------------------------------
 
-  @doc """
-  The Studio's actions, rendered by `StatusLive` INTO the home tab bar row —
-  inline with the tabs, on the right, the way a DAW puts transport controls in
-  the chrome rather than the document.
-
-  This is a function component on purpose: it holds no state, so it can live
-  outside the live_component while still driving it. The new-mix form
-  addresses the component through a `phx-target` SELECTOR (`#studio-panel`),
-  and Import opens the component's hidden file input with a client-side
-  `JS.dispatch` — no server round trip, and the picker opens inside the
-  user's click gesture, which is what browsers require of it.
-  """
-  def toolbar(assigns) do
-    ~H"""
-    <div id="studio-toolbar" class="flex items-center gap-1.5">
-      <form
-        id="studio-new-mix"
-        phx-submit="new_mix"
-        phx-target="#studio-panel"
-        class="flex items-center gap-1"
-      >
-        <input
-          type="text"
-          name="name"
-          placeholder="name"
-          autocomplete="off"
-          aria-label="Name for the new mix"
-          class="input input-bordered input-xs w-28 font-mono text-[11px]"
-        />
-        <button type="submit" class="btn btn-primary btn-xs font-mono uppercase">
-          + New mix
-        </button>
-      </form>
-
-      <button
-        type="button"
-        phx-click={JS.dispatch("click", to: "#studio-import input[type=file]")}
-        class="btn btn-ghost btn-xs border-2 border-base-content/20 font-mono uppercase"
-      >
-        Import audio
-      </button>
-    </div>
-    """
-  end
-
   @impl true
   def render(assigns) do
     ~H"""
@@ -813,17 +763,24 @@ defmodule BusterClawWeb.SoundStudioComponent do
           (`.ic-home .ic-panel`) it goes translucent with a 10px backdrop blur —
           the same frosted treatment the chat panel gets, so the smoke shader
           reads through the Studio the way it reads through everything else. --%>
-    <div id="studio-panel" class="ic-panel flex min-h-0 flex-1 gap-3 overflow-hidden p-3">
-      <%!-- Sidebar: everything the studio can open, and the way in. --%>
-      <Sidebar.sidebar
+    <div id="studio-panel" class="ic-panel flex min-h-0 flex-1 flex-col overflow-hidden">
+      <%!-- The menu bar replaced the sidebar on 08-16. It was a permanent column
+            holding the catalog, the import form and the fold state, and the
+            tracks got what was left — so arranging, the activity this tab exists
+            for, had the least room on screen. A menu costs width only while it
+            is open. `MenuBar` records where every sidebar control went. --%>
+      <MenuBar.menu_bar
         myself={@myself}
         groups={@groups}
         selected={@selected}
-        studio_collapsed={@studio_collapsed}
-        missing_bundled={@missing_bundled}
-        note={@note}
+        mix={@mix}
         uploads={@uploads}
-        max_entries={max_import_entries()}
+        note={@note}
+        missing_bundled={@missing_bundled}
+        studio_undo={@studio_undo}
+        studio_redo={@studio_redo}
+        studio_clip={@studio_clip}
+        studio_clipboard={@studio_clipboard}
       />
 
       <%!-- The three floating surfaces live in `SoundStudio.Overlays`. They are
@@ -834,14 +791,15 @@ defmodule BusterClawWeb.SoundStudioComponent do
       <Overlays.assign_render_modal myself={@myself} assign_render={@assign_render} />
       <Overlays.info_modal myself={@myself} info={@info} />
 
-      <%!-- Detail: the selected file. --%>
-      <section class="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-y-auto">
+      <%!-- Detail: the selected file. Full width now that nothing sits beside
+            it — the point of removing the sidebar. --%>
+      <section class="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
         <div
           :if={is_nil(@selected)}
           class="flex flex-1 items-center justify-center border-2 border-dashed border-base-content/20 p-8"
         >
           <p class="max-w-prose text-center text-sm text-base-content/60">
-            Pick something on the left to open it. Chimes, voicemails, and music
+            Open something from File or Material above. Chimes, voicemails, and music
             are all just mix here — anything you select can be trimmed and
             saved back as a sound effect.
           </p>

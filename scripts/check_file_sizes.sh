@@ -525,6 +525,13 @@ check lib/buster_claw_web/live/studio_live.ex                415 HELD
 # sizes, an eraser and clear. If it grows, the question is whether SAVING
 # arrived — and that is a `sketch_*` command and a workspace path, which is a
 # roadmap rather than more markup here.
+#
+# 155 -> 165 on 08-16, and the answer to the cap's own question was NEITHER.
+# It grew for a third reason: `data-active` + `aria-pressed` on all three toggle
+# groups, replacing pressed styling that JS assembled by hand and half-applied
+# (the size buttons kept a `text-primary` nothing removed, and the eraser never
+# marked itself at all). State moved OUT of the classes and into one attribute,
+# which costs markup here and removes a whole class of bug. No control was added.
 check lib/buster_claw_web/components/studio/sketch.ex        155 HELD
 
 # The Notes vault: state in the live_component, markup in three function
@@ -581,9 +588,13 @@ check lib/buster_claw_web/components/notes/switcher.ex         134 HELD
 #
 # **The 140 lines are banked here rather than left as headroom on purpose.**
 # The Mix tab is about to gain a menu bar, and it goes in its own module beside
-# `sidebar.ex` and `arranger.ex` — which is the pattern this file already
+# `arranger.ex` and `overlays.ex` — which is the pattern this file already
 # follows and the reason FROZEN keeps producing extractions instead of growth.
-check lib/buster_claw_web/live/sound_studio_component.ex     1038 FROZEN
+#
+# 1038 -> 995 the same day, when the menu bar landed and took the tab-bar
+# toolbar with it: New mix and Import moved onto the surface they act on. The
+# sidebar (202 lines, ungated) was deleted outright.
+check lib/buster_claw_web/live/sound_studio_component.ex      995 FROZEN
 # The Studio's effect chain, capped on arrival. `effects.ex` is the registry AND
 # the DSP: adding an effect is a `@catalog` entry plus an `apply_one/2` clause,
 # and it then appears in the inspector, saves into the mix, applies on render and
@@ -604,6 +615,11 @@ check lib/buster_claw/notifications/studio/render.ex          160 HELD
 # `StatusLive` so they route through undo — and a later reader "fixing" that by
 # adding one would silently remove ⌘Z from every effect.
 check lib/buster_claw_web/components/sound_studio/clip_inspector.ex 240 HELD
+# The Mix menu bar — the file bar that replaced the sidebar on 08-16. Most of
+# its length is menu markup, and the part to watch is not the size: it is the
+# table in its moduledoc saying where each deleted sidebar control went. If a
+# control lands here with no row in that table, something was orphaned.
+check lib/buster_claw_web/components/sound_studio/menu_bar.ex     400 HELD
 
 # Phase 4 STARTED 08-15, so this stops being FROZEN and becomes HELD: 936 -> 643,
 # banked here at 708. It was frozen as "four unrelated features sharing a
@@ -1059,7 +1075,18 @@ check assets/js/hooks/note_editor.js                          600 HELD
 # day without one. It owns every pixel and the server is never told about a
 # stroke, so growth here is either persistence (which belongs behind a command)
 # or a tool, and both are worth being asked about.
+#
+# 185 -> 195 on 08-16, and again the answer was neither. The tool state moved OUT
+# to `assets/js/lib/sketch.js` (pure, 16 tests) and what stayed is DOM; the file
+# still grew, because the import block plus a real `paintToolbar` costs more
+# lines than the buggy `mark()` it replaced. An extraction that grows the file it
+# extracts from is worth saying out loud rather than looking like drift — the
+# decisions are now testable, which is the thing that was actually bought.
 check assets/js/hooks/sketch_pad.js                           185 HELD
+# The Mix menu bar's open/close behaviour and nothing else — it never writes
+# markup, which is why it needs no `phx-update="ignore"`. Growth means it started
+# owning content, and that is the thing to look at rather than the number.
+check assets/js/hooks/studio_menu_bar.js                       73 HELD
 
 # ── The Rust shell. The 07-22 shape, asserted at last. ───────────────────────
 #

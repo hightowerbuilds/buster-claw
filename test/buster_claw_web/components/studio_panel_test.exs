@@ -158,20 +158,36 @@ defmodule BusterClawWeb.StudioPanelTest do
       # the arranger silently.
       assert has_element?(view, "#studio-panel")
       assert has_element?(view, "#home-studio-tabs #studio-panel")
-      assert html =~ "Recordings"
-      assert html =~ "Music"
-      assert html =~ "Pick something on the left"
+
+      # The sidebar was replaced by a menu bar on 08-16, so the source catalog is
+      # behind File and Material rather than listed down the side. This used to
+      # assert the group HEADINGS ("Recordings", "Music") were on screen; those
+      # are submenu labels now, and an empty group is dropped rather than
+      # rendered as a headed empty list — so asserting one is asserting the test
+      # workspace has voicemails in it.
+      assert has_element?(view, "#studio-menu-bar")
+      assert has_element?(view, "#studio-menu-file")
+      assert has_element?(view, "#studio-menu-material")
+      assert html =~ "Open something from File or Material"
     end
 
-    test "the Studio toolbar belongs to Mix", %{conn: conn} do
+    # Was "the Studio toolbar belongs to Mix". The toolbar is gone: its two
+    # actions (New mix, Import) moved into the menu bar's File menu on 08-16, so
+    # the verbs now live on the surface they act on instead of in the page chrome
+    # above it. The property is unchanged — Mix's chrome must not follow you to
+    # another sub-tab — and only the element it names has moved.
+    test "the Mix menu bar belongs to Mix", %{conn: conn} do
       {view, _html} = open_studio(conn)
-      assert has_element?(view, "#studio-toolbar")
+      assert has_element?(view, "#studio-menu-bar")
 
       select_sub_tab(view, "voice")
-      refute has_element?(view, "#studio-toolbar")
+      refute has_element?(view, "#studio-menu-bar")
 
       select_sub_tab(view, "mix")
-      assert has_element?(view, "#studio-toolbar")
+      assert has_element?(view, "#studio-menu-bar")
+
+      # And the thing it replaced is really gone, not merely hidden.
+      refute has_element?(view, "#studio-toolbar")
     end
   end
 
@@ -185,7 +201,11 @@ defmodule BusterClawWeb.StudioPanelTest do
       # `phx-update="ignore"` is load-bearing rather than decorative: the hook
       # owns every pixel, and a LiveView re-render would wipe the drawing. If it
       # is ever removed, a stroke disappears on the next unrelated diff.
-      assert has_element?(view, ~s(#studio-sketch-surface[phx-hook="SketchPad"][phx-update="ignore"]))
+      assert has_element?(
+               view,
+               ~s(#studio-sketch-surface[phx-hook="SketchPad"][phx-update="ignore"])
+             )
+
       assert has_element?(view, "#studio-sketch [data-sketch-canvas]")
 
       # Clear is destructive with no undo, so it takes the house confirm. This
@@ -194,8 +214,10 @@ defmodule BusterClawWeb.StudioPanelTest do
       assert html =~ "data-claw-confirm"
 
       # The honest limit is on the surface, not buried in a tooltip. There is no
-      # save, and a dead Save button would read as a broken feature.
-      assert html =~ "nothing is saved yet"
+      # save, and a dead Save button would read as a broken feature. Asserted on
+      # the CLAIM rather than its exact wording — the sentence was sharpened once
+      # already (leaving the tab clears it too, not just a reload).
+      assert html =~ "nothing is saved"
       refute html =~ "Save"
     end
 

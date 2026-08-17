@@ -41,11 +41,14 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
          %{conn: conn} do
       {_view, html} = open_studio(conn)
 
+      # The catalog is behind the menu bar since 08-16, not listed down a
+      # sidebar. Group LABELS are submenu summaries and an empty group is
+      # dropped, so asserting "Recordings" would be asserting the test
+      # workspace has voicemails in it.
       assert html =~ "Sounds"
-      assert html =~ "Recordings"
       assert html =~ "Music"
       # The empty-selection invitation, not a blank panel.
-      assert html =~ "Pick something on the left"
+      assert html =~ "Open something from File or Material"
     end
   end
 
@@ -109,7 +112,8 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       File.write!(mine, SoundGen.render("boot"))
 
       {view, html} = open_studio(conn)
-      assert html =~ "Copy 15 built-in to sounds/"
+      assert html =~ "Restore built-in sounds"
+      assert html =~ "15 missing"
 
       html = view |> element("button[phx-click='install_bundled']") |> render_click()
 
@@ -117,7 +121,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       assert File.read!(mine) == SoundGen.render("boot")
       assert html =~ "Copied 15 into sounds/"
       # Nothing left to copy, so the affordance retires itself.
-      refute html =~ "Copy 15 built-in"
+      refute html =~ "Restore built-in sounds"
       assert File.regular?(Path.join([root, "sounds", "alarm.wav"]))
     end
 
@@ -274,17 +278,22 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
   describe "the tab bar toolbar" do
     test "New mix and Import audio ride the tab bar, only while the Studio is open",
          %{conn: conn} do
-      # Was a Home tab switch until 08-16. The toolbar now rides `/studio`'s own
-      # header and belongs to Mix specifically, so the thing it must not do is
-      # follow you to another sub-tab.
+      # Twice-moved, and the second move is the interesting one. This was a Home
+      # tab-bar toolbar; on 08-16 it briefly rode `/studio`'s page header, and
+      # then the menu bar absorbed both its actions — so New mix and Import now
+      # live on the surface they act on rather than in chrome above it.
+      #
+      # The property is unchanged: Mix's chrome must not follow you to another
+      # sub-tab.
       {:ok, view, html} = live(conn, ~p"/studio")
 
-      assert html =~ "studio-toolbar"
-      assert html =~ "New mix"
+      assert html =~ "studio-menu-bar"
+      assert html =~ "new mix name"
       assert html =~ "Import audio"
+      refute html =~ "studio-toolbar"
 
       html = view |> element("button[phx-value-tab='voice']") |> render_click()
-      refute html =~ "studio-toolbar"
+      refute html =~ "studio-menu-bar"
     end
 
     test "the toolbar's create form reaches the component through its selector target",
@@ -311,8 +320,11 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       {_view, html} = open_studio(conn)
 
       assert html =~ "Import audio"
-      assert html =~ "studio/"
-      assert html =~ "Imports"
+      # Where a file lands, still stated. The sidebar's drop zone said it; the
+      # File menu's hint says it now. "Imports" as a group heading is gone —
+      # it is a submenu label, and an empty group is dropped rather than
+      # rendered, so asserting it would assert this workspace has imports.
+      assert html =~ "to studio/"
     end
 
     test "a chosen file lands in studio/ with no second submit click", %{
@@ -1128,7 +1140,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
 
       # Selection lives in StatusLive; the clear arrives as a message, so the
       # settled truth is the next full render.
-      assert render(view) =~ "Pick something on the left"
+      assert render(view) =~ "Open something from File or Material"
     end
 
     test "a bundled chime fails closed and keeps resolving", %{conn: conn} do
@@ -1175,100 +1187,20 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
   # querying the old name, `querySelector` returned null, and the TypeError in
   # `mounted()` killed the WHOLE hook — right-click stopped working entirely,
   # with a green suite. Same lockstep idiom as the workspace registry guard.
-  describe "collapsing sidebar groups" do
-    defp toggle(view, key) do
-      view |> element("button[phx-value-key='#{key}']") |> render_click()
-    end
-
-    test "a group folds shut and opens again, keeping its count visible", %{conn: conn} do
-      {view, html} = open_studio(conn)
-      assert html =~ ~s(phx-value-id="sound:boot.wav")
-
-      html = toggle(view, "sounds")
-
-      refute html =~ ~s(phx-value-id="sound:boot.wav")
-      # The heading survives — collapsed, the count IS the summary.
-      assert html =~ "Sounds"
-      assert html =~ ~s(aria-expanded="false")
-
-      html = toggle(view, "sounds")
-      assert html =~ ~s(phx-value-id="sound:boot.wav")
-    end
-
-    test "folding one group leaves the others alone", %{conn: conn, root: root} do
-      dir = Path.join([root, "sounds", "studio"])
-      File.mkdir_p!(dir)
-      File.write!(Path.join(dir, "kept.wav"), SoundGen.render("chat"))
-
-      {view, _html} = open_studio(conn)
-      html = toggle(view, "sounds")
-
-      refute html =~ ~s(phx-value-id="sound:boot.wav")
-      assert html =~ ~s(phx-value-id="import:kept.wav")
-    end
-
-    test "a folded group's rows are gone, not merely hidden", %{conn: conn, root: root} do
-      dir = Path.join([root, "sounds", "studio"])
-      File.mkdir_p!(dir)
-      File.write!(Path.join(dir, "hidden.wav"), SoundGen.render("chat"))
-
-      {view, _html} = open_studio(conn)
-      html = toggle(view, "imports")
-
-      # The rows carry the right-click menu's data attributes. A row hidden by
-      # CSS is still a row the menu could open for something you cannot see.
-      refute html =~ ~s(data-studio-source="import:hidden.wav")
-    end
-
-    # SOUND_STUDIO_ROADMAP Part V landmine 2: the sub-tab's `:if` REMOVES the
-    # component, so anything it owned is lost. A sidebar that re-expands every
-    # time you look at another tab is not collapsible, it is briefly tidy.
-    test "a fold survives leaving the tab", %{conn: conn} do
-      {view, _html} = open_studio(conn)
-      toggle(view, "sounds")
-
-      render_click(view, "select_studio_tab", %{"tab" => "voice"})
-      html = render_click(view, "select_studio_tab", %{"tab" => "mix"})
-
-      refute html =~ ~s(phx-value-id="sound:boot.wav")
-      assert html =~ ~s(aria-expanded="false")
-    end
-
-    # …and a fold that survives a tab switch but not a restart is a preference
-    # the app keeps forgetting. A fresh mount is this test's restart.
-    test "a fold survives a restart", %{conn: conn} do
-      {view, _html} = open_studio(conn)
-      toggle(view, "sounds")
-      assert SoundStudioComponent.collapsed_groups() == ["sounds"]
-
-      {_fresh, html} = open_studio(conn)
-      refute html =~ ~s(phx-value-id="sound:boot.wav")
-
-      # Unfolding clears the stored row rather than leaving an empty list.
-      toggle(view, "sounds")
-      assert SoundStudioComponent.collapsed_groups() == []
-      assert BusterClaw.Settings.get("studio_collapsed_groups") == nil
-    end
-
-    test "a stored key the app no longer ships is dropped on read" do
-      BusterClaw.Settings.put(
-        "studio_collapsed_groups",
-        Jason.encode!(["sounds", "podcasts", "mix"])
-      )
-
-      # Same posture as Sound.sound_map/0: a group that stops existing must not
-      # leave a key behind forever, and a hand-edited row cannot introduce one.
-      assert SoundStudioComponent.collapsed_groups() == ["sounds", "mix"]
-    end
-
-    # The roster and the cheap key list are two statements of the same fact.
-    # `group_keys/0` exists because `groups/0` reads four directories and the
-    # telephony table just to answer "is this a real group?".
-    test "group_keys/0 agrees with the real roster" do
-      assert Enum.map(Catalog.groups(), & &1.key) ==
-               Catalog.group_keys()
-    end
-  end
+  # ── The fold tests were deleted on 08-16, with the feature ──────────────────
+  #
+  # `describe "collapsing sidebar groups"` had five tests and they were good
+  # ones: a fold survived a tab switch AND a restart, folding one group left the
+  # others alone, and a folded group's rows were GONE rather than hidden.
+  #
+  # All five went when the sidebar did. The menu bar replaced it, and a submenu
+  # has nothing to fold — the setting had no reader left, so `collapsed_groups/0`
+  # and `put_collapsed/1` were deleted rather than kept as a persisted preference
+  # no surface could honour.
+  #
+  # Recorded rather than silently removed because deleting a passing test is the
+  # move that should always leave a note: these did not start failing, they
+  # stopped having a subject.
 
   describe "the menu's JS contract" do
     @hook_js "assets/js/hooks/studio_context_menu.js"
