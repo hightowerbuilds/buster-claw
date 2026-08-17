@@ -156,10 +156,19 @@ defmodule BusterClawWeb.StudioLive do
         # shaped pasted it DRY — silently, and only audible on render, which is
         # the worst place to discover it. Effects arrived that morning and this
         # spec was written before they existed.
+        #
+        # `offset_ms` joined the same day and for the same reason: a hand-built
+        # spec is a list of the fields somebody remembered. Without it, copying
+        # a TRIMMED clip pasted the whole source back — the identical silent
+        # loss, one field along. Read through `window/1` so a clip predating the
+        # field still answers.
+        {offset_ms, duration_ms} = StudioMix.window(clip)
+
         {:noreply,
          assign(socket, :studio_clipboard, %{
            source: clip.source,
-           duration_ms: clip.duration_ms,
+           offset_ms: offset_ms,
+           duration_ms: duration_ms,
            effects: StudioMix.chain(clip)
          })}
     end

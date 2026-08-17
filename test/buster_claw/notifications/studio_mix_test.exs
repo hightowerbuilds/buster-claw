@@ -416,4 +416,59 @@ defmodule BusterClaw.Notifications.StudioMixTest do
       assert StudioMix.paste_track(audio, nil).id == track_id(audio, 0)
     end
   end
+
+  describe "trim_clip/4 — a clip's window into its source" do
+    setup do
+      {:ok, "trimmix"} = StudioMix.create("trimmix")
+      {:ok, mix} = StudioMix.load("trimmix")
+      [track | _] = mix.tracks
+      placed = StudioMix.add_clip(mix, track.id, "a.wav", 0, 1_000)
+      [clip] = Enum.map(StudioMix.clips(placed), fn {_t, c} -> c end)
+      %{mix: placed, clip: clip}
+    end
+
+    test "narrows what the mix uses and leaves the timeline alone", %{mix: mix, clip: clip} do
+      trimmed = StudioMix.trim_clip(mix, clip.id, 250, 400)
+      got = StudioMix.find_clip(trimmed, clip.id)
+
+      assert StudioMix.window(got) == {250.0, 400.0}
+      # Trimming changes WHAT plays, not WHEN. A trim that also moved the clip
+      # would make every edit a two-handed operation.
+      assert got.start_ms == clip.start_ms
+    end
+
+    test "a clip written before the field still answers", %{mix: mix, clip: clip} do
+      # Every mix from before 08-16 has clips with no `offset_ms` key at all and
+      # must keep opening — the same tolerance `chain/1` gives `effects`. Zero
+      # is also the right answer: those clips start at the beginning.
+      legacy = Map.delete(clip, :offset_ms)
+
+      assert StudioMix.window(legacy) == {0.0, clip.duration_ms}
+    end
+
+    test "a zero or negative length is refused rather than written", %{mix: mix, clip: clip} do
+      # A clip you cannot hear and cannot see is worse than a rejected edit.
+      assert StudioMix.trim_clip(mix, clip.id, 0, 0) == mix
+      assert StudioMix.trim_clip(mix, clip.id, 0, -5) == mix
+    end
+
+    test "a negative offset clamps rather than reaching before the file", %{mix: mix, clip: clip} do
+      trimmed = StudioMix.trim_clip(mix, clip.id, -100, 200)
+      assert StudioMix.window(StudioMix.find_clip(trimmed, clip.id)) == {0.0, 200.0}
+    end
+
+    test "a duplicate inherits the window", %{mix: mix, clip: clip} do
+      # The dry-paste bug of 08-16, one field along: a copy that silently got
+      # the whole source back would be the same silent loss.
+      trimmed = StudioMix.trim_clip(mix, clip.id, 100, 300)
+      copied = StudioMix.duplicate_clip(trimmed, clip.id)
+
+      windows =
+        copied
+        |> StudioMix.clips()
+        |> Enum.map(fn {_t, c} -> StudioMix.window(c) end)
+
+      assert windows == [{100.0, 300.0}, {100.0, 300.0}]
+    end
+  end
 end

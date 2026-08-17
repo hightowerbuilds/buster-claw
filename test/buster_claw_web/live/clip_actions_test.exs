@@ -288,4 +288,52 @@ defmodule BusterClawWeb.ClipActionsTest do
       refute has_element?(view, "#studio-clip-inspector")
     end
   end
+
+  describe "trim, from the right-click menu" do
+    test "opens on the clip's current window and the source's real length", %{conn: conn} do
+      {view, clip} = studio_with_clip(conn)
+
+      render_hook(element(view, "#studio-ctx"), "open_trim_clip", %{"id" => clip.id})
+
+      assert has_element?(view, "#studio-trim-clip")
+      html = render(view)
+
+      # It must say the file is safe, because "trim" everywhere else in this app
+      # means cutting a FILE — the source trim on the detail pane writes a new
+      # one. This one does not, and the copy is the only thing that says so.
+      assert html =~ "The file on disk is not touched"
+    end
+
+    test "trimming narrows the clip and is undoable", %{conn: conn} do
+      {view, clip} = studio_with_clip(conn)
+      render_hook(element(view, "#studio-ctx"), "open_trim_clip", %{"id" => clip.id})
+
+      view
+      |> element("#studio-trim-clip form")
+      |> render_submit(%{"offset_ms" => "20", "duration_ms" => "40"})
+
+      refute has_element?(view, "#studio-trim-clip")
+
+      {:ok, mix} = StudioMix.load("m")
+      assert StudioMix.window(StudioMix.find_clip(mix, clip.id)) == {20.0, 40.0}
+
+      # It rides the same history every other clip edit does, so ⌘Z is not a
+      # special case anyone had to remember to wire.
+      render_click(view, "studio_undo", %{})
+      {:ok, restored} = StudioMix.load("m")
+      assert StudioMix.window(StudioMix.find_clip(restored, clip.id)) == {0.0, 90.0}
+    end
+
+    test "a junk length is a no-op rather than a clip trimmed to nothing", %{conn: conn} do
+      {view, clip} = studio_with_clip(conn)
+      render_hook(element(view, "#studio-ctx"), "open_trim_clip", %{"id" => clip.id})
+
+      view
+      |> element("#studio-trim-clip form")
+      |> render_submit(%{"offset_ms" => "", "duration_ms" => "not a number"})
+
+      {:ok, mix} = StudioMix.load("m")
+      assert StudioMix.window(StudioMix.find_clip(mix, clip.id)) == {0.0, 90.0}
+    end
+  end
 end

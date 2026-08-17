@@ -596,7 +596,13 @@ check lib/buster_claw_web/components/notes/switcher.ex         134 HELD
 # sidebar (202 lines, ungated) was deleted outright.
 # 995 -> 985 when the music library manager was deleted on 08-16: its render
 # branch, the `:library` kind guards and the `@player` thread went with it.
-check lib/buster_claw_web/live/sound_studio_component.ex      985 FROZEN
+# 985 -> 972 on 08-16, and the direction is the point. Clip trim needed ~70
+# lines of handlers in here, and FROZEN means a feature is funded by an
+# EXTRACTION rather than a raised cap — so the socket-free edit block went to
+# `SoundStudio.Edits`, which the 08-13 review had already named as the better
+# second cut of the frozen Phase 3. Third time the freeze produced an extraction
+# instead of growth, and the file ended up SMALLER than before the feature.
+check lib/buster_claw_web/live/sound_studio_component.ex      972 FROZEN
 # The Studio's effect chain, capped on arrival. `effects.ex` is the registry AND
 # the DSP: adding an effect is a `@catalog` entry plus an `apply_one/2` clause,
 # and it then appears in the inspector, saves into the mix, applies on render and
@@ -611,7 +617,10 @@ check lib/buster_claw_web/live/sound_studio_component.ex      985 FROZEN
 # for source RESOLUTION appearing here: it is passed in as a function on purpose,
 # because it spans the sidebar's three groups and belongs to the surface.
 check lib/buster_claw/notifications/studio/effects.ex         400 HELD
-check lib/buster_claw/notifications/studio/render.ex          160 HELD
+# 160 -> 175: the window is now applied here, and the comment explaining why
+# doing so was SAFE (add_clip sets duration to the source's own length, so the
+# cut is a no-op on every mix written before trim) is worth more than the line.
+check lib/buster_claw/notifications/studio/render.ex          175 HELD
 # The clip inspector: remove, and the chain. Renders `Effects.catalog/0`, so a new
 # effect needs no edit here. Its controls carry NO `phx-target` — they bubble to
 # `StatusLive` so they route through undo — and a later reader "fixing" that by
@@ -621,6 +630,11 @@ check lib/buster_claw_web/components/sound_studio/clip_inspector.ex 240 HELD
 # its length is menu markup, and the part to watch is not the size: it is the
 # table in its moduledoc saying where each deleted sidebar control went. If a
 # control lands here with no row in that table, something was orphaned.
+# The Mix tab's socket-free edit operations, extracted 08-16 to pay for clip
+# trim. Two things called "trim" live near each other now and are opposites:
+# `Edits.apply_trim/2` cuts a FILE and writes a new source; `StudioMix.trim_clip/4`
+# narrows a clip's window and touches nothing on disk. Its moduledoc says so.
+check lib/buster_claw_web/components/sound_studio/edits.ex    130 HELD
 check lib/buster_claw_web/components/sound_studio/menu_bar.ex     400 HELD
 
 # Phase 4 STARTED 08-15, so this stops being FROZEN and becomes HELD: 936 -> 643,
@@ -1193,7 +1207,11 @@ check lib/buster_claw/telephony.ex                            630 HELD
 # wrong with the growth — it is the arrangement model plus a v1->v2 migration —
 # but a 31% increase in three days on a file nobody was watching is exactly the
 # rate this gate exists to make visible.
-check lib/buster_claw/notifications/studio_mix.ex             800 HELD
+# 800 -> 870 on 08-16 for the clip window: `offset_ms` on the type, `window/1`,
+# `trim_clip/4`, and both ends of the on-disk format. Most of the added lines
+# are the argument — that the window belongs to the CLIP and never to the file,
+# which is the property a later reader is most likely to "simplify" away.
+check lib/buster_claw/notifications/studio_mix.ex             870 HELD
 # sound.ex — the two-layer library + routing walk the whole surface rests on.
 check lib/buster_claw/notifications/sound.ex                  610 HELD
 # sound_studio.ex — PCM16 editing core + studio folder catalog. Mildly two jobs;

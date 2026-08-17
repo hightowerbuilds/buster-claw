@@ -74,6 +74,7 @@ defmodule BusterClaw.Notifications.StudioMix do
           id: binary(),
           source: binary(),
           start_ms: number(),
+          offset_ms: number(),
           duration_ms: number(),
           effects: [BusterClaw.Notifications.Studio.Effects.effect()]
         }
@@ -186,6 +187,7 @@ defmodule BusterClaw.Notifications.StudioMix do
       id: new_id(),
       source: source,
       start_ms: max(0.0, start_ms * 1.0),
+      offset_ms: 0.0,
       duration_ms: max(0.0, duration_ms * 1.0),
       effects: []
     }
@@ -210,6 +212,10 @@ defmodule BusterClaw.Notifications.StudioMix do
       id: new_id(),
       source: spec.source,
       start_ms: max(0.0, start_ms * 1.0),
+      # A copy inherits the ORIGINAL's window. Duplicating a trimmed clip and
+      # getting the whole source back would be the same class of silent loss as
+      # the dry-paste bug fixed on 08-16.
+      offset_ms: max(0.0, Map.get(spec, :offset_ms, 0) * 1.0),
       duration_ms: max(0.0, Map.get(spec, :duration_ms, 0) * 1.0),
       effects: Map.get(spec, :effects) || []
     }
@@ -329,6 +335,48 @@ defmodule BusterClaw.Notifications.StudioMix do
   that true everywhere at once.
   """
   def chain(clip), do: Map.get(clip, :effects) || []
+
+  @doc """
+  A clip's window into its source, as `{offset_ms, duration_ms}`.
+
+  **The window is the clip's, not the file's.** Trimming a clip narrows what the
+  mix uses; the source on disk is never touched, so the same file can appear
+  twice in one mix trimmed two different ways, and re-adding it always brings
+  the whole thing back.
+
+  Tolerant of a clip written before `offset_ms` existed, exactly as `chain/1` is
+  for `effects`: every mix from before 08-16 has no such key and must keep
+  opening. `0` is also the correct answer for those clips — they start at the
+  beginning of their source.
+  """
+  def window(clip), do: {Map.get(clip, :offset_ms) || 0.0, clip.duration_ms}
+
+  @doc """
+  Trim a clip to a window of its source.
+
+  `offset_ms` is where the clip starts INSIDE the source; `duration_ms` is how
+  much of it the mix uses. Neither can be negative — a clip reaching before the
+  start of its own file is not a thing — and a zero-length window is refused
+  rather than silently written, because a clip you cannot hear and cannot see is
+  worse than a rejected edit.
+
+  It does not move the clip on the timeline: `start_ms` is untouched. Trimming
+  changes what plays, not when.
+  """
+  def trim_clip(%__MODULE__{} = mix, clip_id, offset_ms, duration_ms)
+      when is_number(offset_ms) and is_number(duration_ms) do
+    if duration_ms <= 0 do
+      mix
+    else
+      update_clip(mix, clip_id, fn clip ->
+        clip
+        |> Map.put(:offset_ms, max(0.0, offset_ms * 1.0))
+        |> Map.put(:duration_ms, max(0.0, duration_ms * 1.0))
+      end)
+    end
+  end
+
+  def trim_clip(%__MODULE__{} = mix, _clip_id, _offset_ms, _duration_ms), do: mix
 
   @doc "The clip with `id`, wherever it sits, or `nil`."
   def find_clip(%__MODULE__{} = mix, clip_id) do
@@ -694,6 +742,10 @@ defmodule BusterClaw.Notifications.StudioMix do
                   "id" => clip.id,
                   "source" => clip.source,
                   "start_ms" => clip.start_ms,
+                  # Written through `window/1` rather than `clip.offset_ms` so a
+                  # clip loaded from a pre-08-16 file — which has no such key —
+                  # can be saved again without raising.
+                  "offset_ms" => elem(window(clip), 0),
                   "duration_ms" => clip.duration_ms,
                   "effects" =>
                     Enum.map(chain(clip), fn effect ->
@@ -744,6 +796,9 @@ defmodule BusterClaw.Notifications.StudioMix do
       id: id,
       source: source,
       start_ms: max(0.0, start * 1.0),
+      # Absent in every mix written before trim existed, and `0` is the correct
+      # reading for those: they start at the beginning of their source.
+      offset_ms: max(0.0, Map.get(clip, "offset_ms", 0) * 1.0),
       duration_ms: max(0.0, Map.get(clip, "duration_ms", 0) * 1.0),
       effects: parse_effects(Map.get(clip, "effects"))
     }

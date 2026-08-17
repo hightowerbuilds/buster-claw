@@ -30,6 +30,7 @@ export const StudioContextMenu = {
       rename: item("[data-ctx-rename]"),
       newMix: item("[data-ctx-new-mix]"),
       delete: item("[data-ctx-delete]"),
+      trimClip: item("[data-ctx-trim-clip]"),
       duplicateClip: item("[data-ctx-duplicate-clip]"),
       removeClip: item("[data-ctx-remove-clip]"),
     }
@@ -82,6 +83,13 @@ export const StudioContextMenu = {
     // No two-step. Removing a clip deletes no file and ⌘Z puts it back, so an
     // "are you sure?" here would train the reflex that makes the confirm on
     // `data-ctx-delete` — which DOES destroy a file — worth ignoring.
+    // Trim opens an overlay rather than editing in place: it needs two numbers
+    // against a length the menu does not know, and the menu is not a form.
+    this.items.trimClip.addEventListener("click", () => {
+      if (this.clipId) this.pushEventTo(this.el, "open_trim_clip", {id: this.clipId})
+      this.hide()
+    })
+
     this.items.duplicateClip.addEventListener("click", () => {
       if (this.clipId) this.pushEventTo(this.el, "duplicate_clip", {id: this.clipId})
       this.hide()
@@ -127,6 +135,7 @@ export const StudioContextMenu = {
 
     this.renameInput.hidden = true
     Object.values(this.items).forEach((el) => (el.hidden = true))
+    this.items.trimClip.hidden = false
     this.items.duplicateClip.hidden = false
     this.items.removeClip.hidden = false
 
@@ -151,6 +160,7 @@ export const StudioContextMenu = {
     this.items.delete.hidden = !owned
     this.items.removeClip.hidden = true
     this.items.duplicateClip.hidden = true
+    this.items.trimClip.hidden = true
     this.disarm(label)
 
     // Nothing this row can offer — don't flash an empty box at the user.

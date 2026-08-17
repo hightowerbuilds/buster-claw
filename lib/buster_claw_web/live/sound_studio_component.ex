@@ -29,6 +29,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
   # Imported, not aliased, so every call site in the template reads exactly as
   # it did before the extraction.
   import BusterClawWeb.SoundStudio.Catalog
+  import BusterClawWeb.SoundStudio.Edits
   import BusterClawWeb.SoundStudio.Format
 
   alias BusterClawWeb.SoundStudio.Arranger
@@ -39,7 +40,6 @@ defmodule BusterClawWeb.SoundStudioComponent do
   alias BusterClaw.Music
   alias BusterClaw.Notifications.Sound
   alias BusterClaw.Notifications.SoundStudio
-  alias BusterClaw.Notifications.Studio.Render
   alias BusterClaw.Notifications.StudioMix
 
   # Analysing a source means reading it end to end, and for anything compressed
@@ -64,6 +64,9 @@ defmodule BusterClawWeb.SoundStudioComponent do
      |> assign(:facts, nil)
      |> assign(:info, nil)
      |> assign(:assign_render, nil)
+     # The clip being trimmed, with the source length the form needs. nil when
+     # the overlay is closed, which is also how the overlay decides to render.
+     |> assign(:trim_clip, nil)
      |> assign(:note, nil)
      |> allow_upload(:import,
        # A MIME wildcard, NOT `SoundStudio.accepted_extensions/0`. LiveView's
@@ -223,6 +226,51 @@ defmodule BusterClawWeb.SoundStudioComponent do
   def handle_event("duplicate_clip", %{"id" => clip_id}, socket) do
     {:noreply, save_mix(socket, StudioMix.duplicate_clip(socket.assigns.mix, clip_id))}
   end
+
+  # Trim, in three events: open, apply, close.
+  #
+  # The overlay carries the clip's CURRENT window plus the source's total
+  # length, read once here rather than in the template — `clip_duration/1`
+  # probes a file, and a modal that probes on every re-render is a modal that
+  # touches the disk every keystroke.
+  def handle_event("open_trim_clip", %{"id" => clip_id}, socket) do
+    case StudioMix.find_clip(socket.assigns.mix, clip_id) do
+      clip when is_map(clip) ->
+        {offset_ms, duration_ms} = StudioMix.window(clip)
+
+        {:noreply,
+         assign(socket, :trim_clip, %{
+           id: clip_id,
+           source: clip.source,
+           offset_ms: offset_ms,
+           duration_ms: duration_ms,
+           # `nil` when the source cannot be measured — a file that moved, or a
+           # source the catalog no longer lists. The trim still works: the
+           # window is the clip's own and needs no source length to be valid.
+           # What is lost is the "source is N long" line, and the overlay drops
+           # it rather than printing a number nobody stands behind.
+           total_ms: measured_duration(clip.source)
+         })}
+
+      _none ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("apply_trim_clip", %{"offset_ms" => offset, "duration_ms" => duration}, socket) do
+    case socket.assigns.trim_clip do
+      %{id: clip_id} ->
+        mix = StudioMix.trim_clip(socket.assigns.mix, clip_id, to_ms(offset), to_ms(duration))
+
+        {:noreply, socket |> save_mix(mix) |> assign(:trim_clip, nil)}
+
+      _none ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("close_trim_clip", _params, socket),
+    do: {:noreply, assign(socket, :trim_clip, nil)}
 
   # Pushed by the TrackArrange hook on drop.
   def handle_event("move_clip", %{"clip_id" => id, "track_id" => track, "start_ms" => at}, socket)
@@ -476,71 +524,9 @@ defmodule BusterClawWeb.SoundStudioComponent do
   # recording to an arrangement should not decode 100 MB to learn how wide to
   # draw a rectangle. Decoding stays the fallback for anything `afinfo` cannot
   # read, which is also the path every bundled chime takes in tests.
-  defp clip_duration(source) do
-    case resolve_source(source) do
-      %{path: path} when is_binary(path) ->
-        case SoundStudio.probe(path) do
-          {:ok, %{duration_ms: ms}} -> {:ok, ms}
-          {:error, _reason} -> decoded_duration(path)
-        end
-
-      # No source, or one with no file behind it (an arrangement).
-      _other ->
-        {:error, :enoent}
-    end
-  end
-
-  defp decoded_duration(path) do
-    case SoundStudio.import_source(path) do
-      {:ok, clip} -> {:ok, SoundStudio.duration_ms(clip)}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  # The mixdown and the effect chain live in `Studio.Render` — this file is
-  # FROZEN and could not hold them, which is the size gate earning its keep.
-  #
-  # **The catalog is read ONCE and closed over**, not per clip. It used to pass
-  # `&resolve_source/1`, which calls `groups/0` fresh every time Render asks —
-  # and `groups/0` is four directory listings plus a database query. An n-clip
-  # mixdown therefore did n of them. Filed by the 08-13 review, fixed here
-  # because the extraction is what made the two costs visible as different
-  # things: `groups/0` is the expensive read, `find_source/2` is the cheap
-  # lookup over a result you already have.
-  defp render_mix(%StudioMix{} = mix) do
-    catalog = groups()
-    Render.install(mix, &find_source(catalog, &1))
-  end
-
-  defp apply_trim(nil, _trim), do: {:error, :no_selection}
-  defp apply_trim(_selected, nil), do: {:error, :no_selection}
-  defp apply_trim(%{path: nil}, _trim), do: {:error, :enoent}
-
-  defp apply_trim(%{path: path, name: name}, %{from_ms: from, to_ms: to}) do
-    with {:ok, clip} <- SoundStudio.import_source(path),
-         {:ok, cut} <- SoundStudio.splice(clip, from, to) do
-      # A cut from the middle of a file starts and ends mid-waveform, and a
-      # mid-waveform edge is a step from silence to full amplitude — the loudest
-      # click a sound can have. These two ramps are DE-CLICKING, not shaping;
-      # the fade tool (next) is the one that shapes.
-      cut
-      |> SoundStudio.fade(in_ms: 2, out_ms: 6)
-      |> SoundStudio.save(Path.rootname(name) <> "-trim")
-    end
-  end
-
-  defp trim_error(:empty_selection), do: "That selection is empty."
-  defp trim_error(:no_selection), do: "Select part of the waveform first."
-  defp trim_error(:unsupported_source), do: "Couldn't decode this file to trim it."
-  defp trim_error(:no_decoder), do: "The system decoder is unavailable."
-  defp trim_error(_other), do: "Couldn't save the trim."
-
-  # A rejected file that does not say WHY is a support question, and "we tried
-  # to decode it and could not" is a real answer.
-  defp import_error(:unsupported_format), do: "Audio files only (MP3, M4A, AAC, WAV, OGG, FLAC)."
-  defp import_error(:not_audio), do: "That file couldn't be decoded, whatever it is named."
-  defp import_error(:enoent), do: "The upload didn't arrive."
-  defp import_error(_other), do: "Couldn't import that file."
+  # Form values arrive as strings. A blank or junk field is 0, which
+  # `trim_clip/4` refuses for the duration — so a bad edit is a no-op rather
+  # than a clip trimmed to nothing.
 
   # ---------------------------------------------------------------------------
   # The sidebar's right-click menu
@@ -787,6 +773,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
             arranger's sizing, so moving them changed no class on the surface
             underneath. Their attrs are the whole of what they read. --%>
       <Overlays.context_menu myself={@myself} />
+      <Overlays.trim_clip_modal myself={@myself} trim_clip={@trim_clip} />
       <Overlays.assign_render_modal myself={@myself} assign_render={@assign_render} />
       <Overlays.info_modal myself={@myself} info={@info} />
 

@@ -124,17 +124,36 @@ defmodule BusterClaw.Notifications.Studio.Render do
     end
   end
 
-  # One clip, decoded and effected, paired with where it starts.
+  # One clip, windowed, effected, paired with where it starts.
   #
   # NOTE the offset is the clip's declared `start_ms` and nothing here adjusts
   # it for length changes. An effect may make the audio longer or shorter than
   # the block on the timeline (`Studio.Effects` says why), and `SoundStudio.mixdown/1`
   # sums overlaps — so a reverb tail bleeding into the next clip is correct
   # rather than a bug to correct.
+  #
+  # ## The window is applied here, and until 08-16 it was not applied anywhere
+  #
+  # This decoded the WHOLE source and placed it at `start_ms`; `duration_ms` was
+  # the block's width on the ruler and nothing else. A clip that looked 800 ms
+  # long rendered its entire five-minute file, silently, and only the mixdown
+  # told you.
+  #
+  # It was invisible because `add_clip/5` sets `duration_ms` to the source's own
+  # measured length, so for every clip that existed the window was the whole
+  # file and cutting to it changes nothing. **That is what made honouring it
+  # safe** — the fix is a no-op on every mix written before trim existed.
+  #
+  # The window is cut BEFORE effects, which is the ordering that matches what
+  # the operator sees: they trimmed a clip and then shaped it. Effecting first
+  # and cutting after would mean a reverb applied to audio the mix never uses.
   defp placement(clip, resolve) do
+    {offset_ms, duration_ms} = StudioMix.window(clip)
+
     with %{path: path} when is_binary(path) <- resolve.(clip.source),
-         {:ok, decoded} <- SoundStudio.import_source(path) do
-      {:ok, {Effects.apply_chain(decoded, StudioMix.chain(clip)), clip.start_ms}}
+         {:ok, decoded} <- SoundStudio.import_source(path),
+         {:ok, windowed} <- SoundStudio.splice(decoded, offset_ms, offset_ms + duration_ms) do
+      {:ok, {Effects.apply_chain(windowed, StudioMix.chain(clip)), clip.start_ms}}
     else
       _ -> {:error, clip.source}
     end

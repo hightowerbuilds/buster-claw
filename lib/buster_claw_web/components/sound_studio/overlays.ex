@@ -42,9 +42,12 @@ defmodule BusterClawWeb.SoundStudio.Overlays do
       hidden
       class="fixed z-50 min-w-40 border-2 border-base-content/30 bg-base-100 shadow-lg"
     >
-      <%!-- Clips get exactly one item. Removing a clip takes nothing off disk —
-            the source stays in the sidebar — and it is undoable with ⌘Z, so it
-            needs no two-step confirm the way deleting a FILE does. --%>
+      <%!-- Clip items. None of them touches a file — the source is untouched
+            and ⌘Z puts any of them back — so none takes the two-step confirm
+            that deleting a FILE does. --%>
+      <button type="button" data-ctx-trim-clip hidden class={menu_item_class()}>
+        Trim clip…
+      </button>
       <button type="button" data-ctx-duplicate-clip hidden class={menu_item_class()}>
         Duplicate clip
       </button>
@@ -82,12 +85,120 @@ defmodule BusterClawWeb.SoundStudio.Overlays do
   end
 
   attr :myself, :any, required: true
-  attr :assign_render, :any, required: true, doc: "the render awaiting a routing choice, or nil"
+
+  attr :trim_clip, :any,
+    required: true,
+    doc: "%{id, source, offset_ms, duration_ms, total_ms} being trimmed, or nil"
+
+  @doc """
+  Trim a clip to a window of its source.
+
+  **Non-destructive, and the copy says so where it is read rather than only
+  here.** The window belongs to the clip: the file on disk is untouched, the
+  same source can sit in one mix twice trimmed two different ways, and re-adding
+  it brings the whole thing back.
+
+  Two numbers rather than a waveform region for the first version. The source
+  trim on the detail pane has a draggable waveform (`wave_trim.js`) and this
+  deliberately does not reuse it yet: that hook is bound to the selected
+  SOURCE's canvas, and pointing it at a clip means teaching it a second subject.
+  Numbers are honest, testable, and wrong for nobody — a region selector is the
+  upgrade, not the requirement.
+  """
+  def trim_clip_modal(assigns) do
+    ~H"""
+    <div
+      :if={@trim_clip}
+      class="fixed inset-0 z-50"
+      phx-window-keydown="close_trim_clip"
+      phx-key="escape"
+      phx-target={@myself}
+    >
+      <button
+        type="button"
+        phx-click="close_trim_clip"
+        phx-target={@myself}
+        aria-label="Close"
+        class="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
+      >
+      </button>
+
+      <div
+        id="studio-trim-clip"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Trim clip"
+        class="ic-panel absolute left-1/2 top-1/2 w-80 max-w-[90vw] -translate-x-1/2 -translate-y-1/2 p-5"
+      >
+        <p class="ic-eyebrow">Trim clip</p>
+        <h2 class="mt-1 truncate font-display text-lg font-black tracking-tight">
+          {@trim_clip.source}
+        </h2>
+
+        <form phx-submit="apply_trim_clip" phx-target={@myself} class="mt-4 flex flex-col gap-3">
+          <label class="flex flex-col gap-1">
+            <span class="font-mono text-[10px] uppercase tracking-widest text-base-content/45">
+              Start into the source (ms)
+            </span>
+            <input
+              type="number"
+              name="offset_ms"
+              min="0"
+              step="1"
+              value={round(@trim_clip.offset_ms)}
+              class="input input-bordered input-sm font-mono text-xs"
+            />
+          </label>
+
+          <label class="flex flex-col gap-1">
+            <span class="font-mono text-[10px] uppercase tracking-widest text-base-content/45">
+              Length (ms)
+            </span>
+            <input
+              type="number"
+              name="duration_ms"
+              min="1"
+              step="1"
+              value={round(@trim_clip.duration_ms)}
+              class="input input-bordered input-sm font-mono text-xs"
+            />
+          </label>
+
+          <p :if={@trim_clip.total_ms} class="font-mono text-[10px] text-base-content/45">
+            Source is {ms(@trim_clip.total_ms)} long.
+          </p>
+
+          <%!-- Said here because it is the question the control raises: people
+                expect a trim to cut a file. This one does not. --%>
+          <p class="border-l-2 border-primary pl-2 text-[11px] leading-snug text-base-content/60">
+            The file on disk is not touched. Only this clip's slice of it changes,
+            and ⌘Z puts it back.
+          </p>
+
+          <div class="flex justify-end gap-2">
+            <button
+              type="button"
+              phx-click="close_trim_clip"
+              phx-target={@myself}
+              class="btn btn-ghost btn-xs font-mono uppercase"
+            >
+              Cancel
+            </button>
+            <button type="submit" class="btn btn-primary btn-xs font-mono uppercase">Trim</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    """
+  end
 
   @doc """
   Assign-on-render: offered rather than imposed, because the render is already
   in the library either way.
   """
+  attr :myself, :any, required: true
+  attr :assign_render, :any, required: true, doc: "the render awaiting a routing choice, or nil"
+
   def assign_render_modal(assigns) do
     ~H"""
     <%!-- Assign-on-render. Offered rather than imposed: the render is already
