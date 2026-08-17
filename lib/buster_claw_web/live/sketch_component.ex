@@ -40,7 +40,7 @@ defmodule BusterClawWeb.SketchComponent do
 
   require Logger
 
-  alias BusterClaw.Sketch.{Assets, Document, Element, Store}
+  alias BusterClaw.Sketch.{Assets, Document, Element, Placement, Store}
   alias BusterClawWeb.Studio.{Sketch, SketchSvg}
 
   @history_limit 50
@@ -49,9 +49,6 @@ defmodule BusterClawWeb.SketchComponent do
 
   # More than a handful at once is a folder someone dragged by accident.
   @max_images_at_once 5
-
-  # The longest side a placed image is scaled to fit.
-  @max_placed 420
 
   @impl true
   def mount(socket) do
@@ -238,7 +235,7 @@ defmodule BusterClawWeb.SketchComponent do
   # sentence comes back however the file was refused.
   def handle_event("drop_refused", %{"reason" => reason} = params, socket) do
     name = Map.get(params, "filename", "That file")
-    {:noreply, assign(socket, :notice, "#{name} was not added — #{humanize(reason)}.")}
+    {:noreply, assign(socket, :notice, "#{name} was not added — #{refusal(reason)}.")}
   end
 
   def handle_event("undo", _params, socket) do
@@ -278,17 +275,15 @@ defmodule BusterClawWeb.SketchComponent do
   defp place_image(socket, store, label) do
     case store.() do
       {:ok, asset} ->
-        {x, y} = socket.assigns.drop_point || {24, 24}
-        {w, h} = fit(asset.width, asset.height)
+        {w, h} = Placement.fit(asset.width, asset.height)
+        {x, y} = Placement.origin(socket.assigns.drop_point || {24, 24}, {w, h})
 
         attrs = %{
           "kind" => "image",
           "author" => "operator",
           "source" => asset.source,
-          # Centred on the drop, not corner-anchored there: you point at where
-          # you want the picture, not at where its top-left should be.
-          "x" => max(x - w / 2, 0),
-          "y" => max(y - h / 2, 0),
+          "x" => x,
+          "y" => y,
           "w" => w,
           "h" => h
         }
@@ -305,35 +300,11 @@ defmodule BusterClawWeb.SketchComponent do
         end
 
       {:error, reason} ->
-        assign(socket, :notice, "#{label} was not added — #{humanize(reason)}.")
+        assign(socket, :notice, "#{label} was not added — #{refusal(reason)}.")
     end
   end
 
-  # A phone screenshot is 1179px wide and the panel is not. Scale to fit a
-  # sensible box while keeping the aspect ratio; a distorted image is worse than
-  # a small one, and the operator can resize once Phase 5 gives them handles.
-  defp fit(width, height) do
-    scale = min(1.0, min(@max_placed / width, @max_placed / height))
-    {Float.round(width * scale, 1), Float.round(height * scale, 1)}
-  end
-
-  defp humanize(:too_large), do: "it is bigger than #{div(Assets.max_bytes(), 1024 * 1024)} MB"
-  defp humanize(:unsupported), do: "it is not a PNG, JPEG, GIF or WebP"
-  defp humanize(:empty), do: "it is empty"
-  defp humanize(:not_found), do: "the file could not be found"
-  defp humanize(:not_a_file), do: "it is not a file"
-  defp humanize(:too_many), do: "only #{@max_images_at_once} at a time"
-  defp humanize(reason) when is_binary(reason), do: humanize(safe_atom(reason))
-  defp humanize(_reason), do: "it could not be read"
-
-  # The hook sends the server's own vocabulary back. Converted with
-  # `to_existing_atom` so a crafted payload cannot mint atoms, and anything
-  # unrecognised falls through to the generic sentence.
-  defp safe_atom(value) do
-    String.to_existing_atom(value)
-  rescue
-    ArgumentError -> :unknown
-  end
+  defp refusal(reason), do: Placement.humanize(reason, Assets.max_bytes(), @max_images_at_once)
 
   # ------------------------------------------------------------------ internals
 

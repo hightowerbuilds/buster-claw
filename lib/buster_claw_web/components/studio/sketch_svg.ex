@@ -182,14 +182,13 @@ defmodule BusterClawWeb.Studio.SketchSvg do
   # Elements store floats, so a whole number is `0.0` here and `0` in JavaScript.
   # Printing it as `0.0` would be a valid path and a mismatched string, which is
   # exactly the drift the agreement test exists to catch.
-  @doc false
-  def num(n) when is_float(n) do
+  defp num(n) when is_float(n) do
     if n == Float.round(n),
       do: Integer.to_string(trunc(n)),
       else: :erlang.float_to_binary(n, [:short])
   end
 
-  def num(n) when is_integer(n), do: Integer.to_string(n)
+  defp num(n) when is_integer(n), do: Integer.to_string(n)
 
   @doc false
   def hit_width, do: @hit_width

@@ -87,21 +87,6 @@ defmodule BusterClaw.Sketch.DocumentTest do
     end
   end
 
-  describe "authorship" do
-    test "elements can be filtered by who made them" do
-      # The query D6's permission boundary is built on: the model may change what
-      # the model made, and nothing else.
-      doc =
-        Document.new()
-        |> Document.add(element!())
-        |> Document.add(element!(%{"author" => "model"}))
-        |> Document.add(element!(%{"author" => "model"}))
-
-      assert length(Document.authored_by(doc, :model)) == 2
-      assert length(Document.authored_by(doc, :operator)) == 1
-    end
-  end
-
   describe "clear" do
     test "empties the elements but keeps the document's identity" do
       # Clearing a sketch is not starting a different one, and undo has to be

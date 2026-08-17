@@ -568,13 +568,14 @@ check lib/buster_claw/sketch/assets.ex                        190 HELD
 check lib/buster_claw/sketch/image_info.ex                    180 HELD
 check lib/buster_claw/sketch/document.ex                      140 HELD
 check lib/buster_claw/sketch/paths.ex                          80 HELD
+check lib/buster_claw/sketch/placement.ex                      90 HELD
 
 # The Sketch Pad's state and its surface, split from `studio/sketch.ex` when the
 # document arrived. The component owns loading, saving, undo, uploads and the
 # event handlers; the renderer owns drawing and nothing else. Growth in the
 # component is a new tool or a new phase; growth in the renderer is a new
 # element kind.
-check lib/buster_claw_web/live/sketch_component.ex            440 HELD
+check lib/buster_claw_web/live/sketch_component.ex            410 HELD
 check lib/buster_claw_web/components/studio/sketch_svg.ex     215 HELD
 
 # The Notes vault: state in the live_component, markup in three function

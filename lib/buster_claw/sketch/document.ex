@@ -92,11 +92,6 @@ defmodule BusterClaw.Sketch.Document do
 
   def move(_doc, _id, _delta), do: :error
 
-  @doc "Every element authored by `author`."
-  def authored_by(%__MODULE__{} = doc, author) when is_atom(author) do
-    Enum.filter(doc.elements, &(&1.author == author))
-  end
-
   @doc "How many elements are on this document."
   def size(%__MODULE__{elements: elements}), do: length(elements)
 
