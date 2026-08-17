@@ -1,9 +1,9 @@
-defmodule BusterClawWeb.Status.Recorder do
+defmodule BusterClawWeb.Studio.RecorderState do
   @moduledoc """
   Recording state for the **Voice Library** — the in-app recorder
   (`STUDIO_ROADMAP` V.6–V.8) and the voice banks it records into (V.0).
 
-  A sibling of `Status.Voice` rather than part of it. They back one tab and are
+  A sibling of `Studio.VoiceState` rather than part of it. They back one tab and are
   two modules on purpose: this one owns a microphone, a device list and a bank
   roster; that one owns a corpus report and a phrase. Nothing is shared but the
   bank they both read, and merging them would produce a ~400-line module whose
@@ -12,7 +12,7 @@ defmodule BusterClawWeb.Status.Recorder do
   ## One assign, not eight
 
   Everything here lives under a single `:contribute` map. That is a departure
-  from `Status.Voice`, which assigns six independent scalars, and it is
+  from `Studio.VoiceState`, which assigns six independent scalars, and it is
   deliberate on two grounds: this state is genuinely one cohesive thing (a
   bank, a device, a word, a pending take), and `status_live.ex` sits at 959 lines
   against a 970 cap that exists because a 1,460-line LiveView was decomposed
@@ -45,7 +45,7 @@ defmodule BusterClawWeb.Status.Recorder do
   alias BusterClaw.Notifications.Capture.Devices
   alias BusterClaw.Notifications.Capture.Take
   alias BusterClaw.Notifications.Cutup.Bank
-  alias BusterClawWeb.Status.Voice
+  alias BusterClawWeb.Studio.VoiceState, as: Voice
 
   @doc "Mount defaults. Reads the bank roster; touches no hardware and no audio."
   def assign_recorder(socket) do
@@ -65,7 +65,7 @@ defmodule BusterClawWeb.Status.Recorder do
   Load what the tab needs when it is opened. Idempotent.
 
   Device enumeration is a `system_profiler` call, so it waits for the tab rather
-  than running at mount — the same laziness `Status.Voice` applies to the corpus.
+  than running at mount — the same laziness `Studio.VoiceState` applies to the corpus.
   """
   def ensure_loaded(%{assigns: %{recorder: %{devices: [_ | _]}}} = socket), do: socket
   def ensure_loaded(socket), do: load_devices(socket)

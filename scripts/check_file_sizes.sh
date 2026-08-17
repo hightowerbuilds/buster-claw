@@ -386,7 +386,7 @@ check lib/buster_claw_web/live/status/comms.ex               125 HELD
 # The seam if it grows again: the ARRANGER half (history, open mix, selection)
 # and the CLIP half (effects, preview) share only `mutate_open_mix/2`. Splitting
 # there is clean; splitting anywhere else is not.
-check lib/buster_claw_web/live/status/studio.ex              240 HELD
+check lib/buster_claw_web/live/studio/mix_state.ex            240 HELD
 check lib/buster_claw_web/live/status/weather.ex              97 HELD
 
 # The Studio tab's sub-tab rail (STUDIO_ROADMAP VI.0b, 08-09): Mix is the
@@ -410,7 +410,7 @@ check lib/buster_claw_web/live/status/weather.ex              97 HELD
 # so it says what it bought: an `alias`, a six-attr block, and a 12-line
 # dispatch that renders `Studio.Voice.voice/1` and nothing else. The SURFACE is
 # 220 lines in `components/studio/voice.ex` and its state is 166 in
-# `live/status/voice.ex`, both created for it. If a later reader finds pane
+# `live/studio/voice_state.ex`, both created for it. If a later reader finds pane
 # markup, filtering, or corpus reads in this file, this raise was wrong and the
 # cut is owed.
 # Raised 08-16, 170 -> 185 and 75 -> 85, for the THIRD sub-tab: Contribute, the
@@ -494,7 +494,7 @@ check lib/buster_claw_web/components/studio/sentence.ex      185 HELD
 # one to question first in this area: it is the Library's whole non-hardware
 # state, and the seam if it grows again is the TAKE half (selection, preference,
 # deletion) splitting from the CORPUS half (report, query, phrase, preview).
-check lib/buster_claw_web/live/status/voice.ex               400 HELD
+check lib/buster_claw_web/live/studio/voice_state.ex          400 HELD
 
 # The recorder — the Library's Record section (V.6-V.8). Its meter subtree is
 # `phx-update="ignore"` and its interior belongs to `voice_recorder.js`: the
@@ -510,7 +510,7 @@ check lib/buster_claw_web/live/status/voice.ex               400 HELD
 # unreachable (a Dialyzer `pattern_match_cov` finding) and deleting the
 # catch-all to satisfy it makes the function partial.
 check lib/buster_claw_web/components/studio/recorder.ex      280 HELD
-check lib/buster_claw_web/live/status/recorder.ex            265 HELD
+check lib/buster_claw_web/live/studio/recorder_state.ex       265 HELD
 
 # --- The Studio, on its own route (08-16) ------------------------------------
 #

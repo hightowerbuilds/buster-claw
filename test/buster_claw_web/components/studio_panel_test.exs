@@ -154,7 +154,7 @@ defmodule BusterClawWeb.StudioPanelTest do
       html = select_sub_tab(view, "mix")
 
       # `#studio-panel` is SoundStudioComponent's own root, and `home-studio` is
-      # the id `Status.Studio.send_update/2` addresses — a rename here would break
+      # the id `Studio.MixState.send_update/2` addresses — a rename here would break
       # the arranger silently.
       assert has_element?(view, "#studio-panel")
       assert has_element?(view, "#home-studio-tabs #studio-panel")

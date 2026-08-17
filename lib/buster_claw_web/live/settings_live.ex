@@ -21,7 +21,7 @@ defmodule BusterClawWeb.SettingsLive do
   next cut and the awkward one — it is 12 of the remaining `handle_event`
   clauses and the only section whose refresh arrives as a `handle_info`, so
   moving it means reaching it with `send_update/2` the way
-  `BusterClawWeb.Status.Studio` does.
+  `BusterClawWeb.Studio.MixState` does.
 
   The rail does not write the URL; see `BusterClawWeb.Settings.Rail` for why.
   `?tab=` is read at mount so a link or a test can open one directly.

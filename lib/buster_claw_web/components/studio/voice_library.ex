@@ -31,8 +31,8 @@ defmodule BusterClawWeb.Studio.VoiceLibrary do
 
   ## Presentation only
 
-  Every assign belongs to `StatusLive`, prepared by `Status.Voice` (corpus,
-  phrase, selection, preview) and `Status.Recorder` (microphone, devices, banks).
+  Every assign belongs to `StatusLive`, prepared by `Studio.VoiceState` (corpus,
+  phrase, selection, preview) and `Studio.RecorderState` (microphone, devices, banks).
   The panel renders behind `:if`, so state held here would not survive a glance
   at Chat.
   """

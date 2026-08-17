@@ -1,4 +1,4 @@
-defmodule BusterClawWeb.Status.Voice do
+defmodule BusterClawWeb.Studio.VoiceState do
   @moduledoc """
   State for the Studio's **Voice** sub-tab — the Ramshackle surface
   (`STUDIO_ROADMAP` VI.1).
@@ -7,10 +7,10 @@ defmodule BusterClawWeb.Status.Voice do
   reason every home panel's state does: the panel renders behind `:if`, so
   anything the component held is discarded on a tab switch. A half-typed
   sentence that empties when you glance at Chat reads as the feature being
-  broken, not as a tab switch — the same argument `Status.Studio` makes for the
+  broken, not as a tab switch — the same argument `Studio.MixState` makes for the
   undo stack.
 
-  A sibling of `Status.Studio` rather than part of it: that module is the
+  A sibling of `Studio.MixState` rather than part of it: that module is the
   arranger's state and is near its cap, and these two share nothing but the tab
   they sit under.
 
@@ -76,7 +76,7 @@ defmodule BusterClawWeb.Status.Voice do
   @doc """
   Switch the Library's main pane. Refuses a section the sidebar never offered.
 
-  Same posture as `Status.Studio.select_studio_tab/2`: a forged value is a no-op
+  Same posture as `Studio.MixState.select_studio_tab/2`: a forged value is a no-op
   rather than a crash, and the whitelist is one literal so the sidebar and this
   cannot disagree.
   """
@@ -269,7 +269,7 @@ defmodule BusterClawWeb.Status.Voice do
   voice (`Cutup.Bank`). A word another bank has thirty takes of is still missing
   here, and saying so is the point.
 
-  `Status.Recorder` calls this whenever the bank changes or a take lands, so
+  `Studio.RecorderState` calls this whenever the bank changes or a take lands, so
   the two tabs never disagree about whose corpus is on screen.
   """
   def load_report(socket) do

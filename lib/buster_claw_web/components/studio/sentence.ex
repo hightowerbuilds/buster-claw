@@ -15,7 +15,7 @@ defmodule BusterClawWeb.Studio.Sentence do
 
   ## Building goes through the same code an agent uses
 
-  `Status.Voice.build_preview/1` calls `Cutup.Sentence.build/2`, which is what
+  `Studio.VoiceState.build_preview/1` calls `Cutup.Sentence.build/2`, which is what
   `sound_sentence` calls. There is no web-layer splicer: two builders would have
   drifted on padding, fades and take choice, which are exactly the things that
   decide whether the result is audible.
@@ -33,7 +33,7 @@ defmodule BusterClawWeb.Studio.Sentence do
 
   def sentence(assigns) do
     assigns =
-      assign(assigns, :summary, BusterClawWeb.Status.Voice.sentence_summary(assigns.check))
+      assign(assigns, :summary, BusterClawWeb.Studio.VoiceState.sentence_summary(assigns.check))
 
     ~H"""
     <section id="voice-sentence" phx-hook="VoiceAudition" class="flex min-h-0 flex-1 flex-col gap-2">

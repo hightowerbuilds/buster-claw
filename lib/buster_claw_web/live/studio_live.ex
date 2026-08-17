@@ -32,17 +32,17 @@ defmodule BusterClawWeb.StudioLive do
   durable reason is `StudioPanel`'s `:if`** — switching sub-tabs removes the
   component from the DOM and discards it, so a selection, a trim or an undo
   stack held inside it would not survive a look at Voice.
-  `Status.Studio` / `Status.Voice` / `Status.Recorder` remain the socket-in /
+  `Studio.MixState` / `Studio.VoiceState` / `Studio.RecorderState` remain the socket-in /
   socket-out modules that do the work. They moved surface, not shape — every
   clause below still delegates one line deep, exactly as it did in `StatusLive`.
   """
   use BusterClawWeb, :live_view
 
-  import BusterClawWeb.Status.Studio
+  import BusterClawWeb.Studio.MixState
 
   alias BusterClaw.Notifications.StudioMix
-  alias BusterClawWeb.Status.Recorder
-  alias BusterClawWeb.Status.Voice
+  alias BusterClawWeb.Studio.RecorderState, as: Recorder
+  alias BusterClawWeb.Studio.VoiceState, as: Voice
 
   @impl true
   def mount(_params, _session, socket) do
@@ -67,12 +67,12 @@ defmodule BusterClawWeb.StudioLive do
 
   @impl true
   # The Studio's sub-tab rail (Mix | Voice). Whitelisted through
-  # `StudioPanel.tab_keys/0` inside `Status.Studio.select_studio_tab/2`.
+  # `StudioPanel.tab_keys/0` inside `Studio.MixState.select_studio_tab/2`.
   def handle_event("select_studio_tab", %{"tab" => tab}, socket) do
     {:noreply, select_studio_tab(socket, tab)}
   end
 
-  # Voice (Ramshackle). Every clause delegates in full to `Status.Voice`; the
+  # Voice (Ramshackle). Every clause delegates in full to `Studio.VoiceState`; the
   # corpus read is lazy, so opening the tab is what loads it and switching away
   # and back does not re-read ten files.
   def handle_event("voice_search", %{"query" => query}, socket),
@@ -86,7 +86,7 @@ defmodule BusterClawWeb.StudioLive do
 
   # The Voice Library's own navigation, and the recorder inside it. ONE clause
   # for the recorder's six sub-actions rather than six clauses: they share a
-  # shape, `Status.Recorder` owns the dispatch, and this file is at its cap for a
+  # shape, `Studio.RecorderState` owns the dispatch, and this file is at its cap for a
   # reason. The take arrives separately because it carries audio.
   def handle_event("voice_section", %{"section" => section}, socket),
     do: {:noreply, Voice.put_section(socket, section)}
@@ -207,7 +207,7 @@ defmodule BusterClawWeb.StudioLive do
     end
   end
 
-  # The selected clip's effect chain. Each is one line into `Status.Studio`,
+  # The selected clip's effect chain. Each is one line into `Studio.MixState`,
   # which routes through `mutate_open_mix/2` so every one of them is undoable.
   # A hook's `pushEvent` reaches the LIVEVIEW, not the component — `pushEventTo`
   # is what targets a component, which is why `move_clip` two lines below it in
@@ -312,7 +312,7 @@ defmodule BusterClawWeb.StudioLive do
         <h1 class="font-display text-2xl font-black uppercase tracking-tight">Studio</h1>
 
         <%!-- `voice_rows` and `voice_check` are derived here, never stored:
-              `Status.Voice` computes both from the loaded report, which keeps
+              `Studio.VoiceState` computes both from the loaded report, which keeps
               the panel presentation-only and stops a stale filter outliving a
               report reload. --%>
         <BusterClawWeb.StudioPanel.studio_panel

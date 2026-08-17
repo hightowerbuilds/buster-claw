@@ -1335,14 +1335,18 @@ Mirror it:
 `components/studio_panel.ex` | The rail and the dispatch. `tab_keys/0` feeds the parent's whitelist. Mix dispatches to the existing `SoundStudioComponent`; Voice to the new module. |
 `components/studio/voice.ex` (and siblings) | The Voice tab's surfaces, as they land. |
 
-### The sub-tab assign belongs to `StatusLive`, not the panel
+### The sub-tab assign belongs to the LiveView, not the panel
 
-Not a style choice — both existing modules state the reason. `Status.Studio`:
-*"home panels render behind `:if`, so the component — and any state it held — is
-discarded on every tab switch. An undo stack that empties when you glance at Chat
-does not read as a tab switch; it reads as the feature being broken."*
-`ExplorePanel` says the same about its sub-tab. So `:studio_tab` is a `StatusLive`
-assign, exactly like `:explore_tab`.
+Not a style choice — both existing modules state the reason. `Studio.MixState`:
+*"sub-tabs render behind `:if`, so the component — and any state it held — is
+discarded on every tab switch. An undo stack that empties when you look at the
+Voice Library does not read as a tab switch; it reads as the feature being
+broken."* `ExplorePanel` says the same about its sub-tab. So `:studio_tab` is a
+`StudioLive` assign, exactly like `:explore_tab`.
+
+> *Written when the Studio was a Home tab and the module was `Status.Studio`,
+> quoting a sentence about glancing at Chat. Both the owner and the module were
+> renamed on 08-16/17; the argument was never about Home, only about `:if`.*
 
 **But `status_live.ex` is at its cap exactly (929/929 HELD).** The chat-skins work
 hit this and the answer is the same: **push the wiring down into

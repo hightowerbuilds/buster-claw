@@ -13,7 +13,7 @@ defmodule BusterClawWeb.Settings.ModelsComponent do
 
   Configuration is a **route** (`live "/settings"`), not an `:if`-gated home
   panel. Home panels are discarded on every tab switch, which is why
-  `BusterClawWeb.Status.Studio` holds the arranger's undo stack in the LiveView
+  `BusterClawWeb.Studio.MixState` holds the arranger's undo stack in the LiveView
   instead of in the component. Nothing here needs to outlive a sub-tab switch:
   every value is re-read from `ModelPolicy` in `update/2`, and `:model_note` —
   the one piece of genuinely transient state — *should* clear when you leave.

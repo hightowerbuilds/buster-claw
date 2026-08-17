@@ -4,7 +4,7 @@ defmodule BusterClawWeb.Studio.Recorder do
   voice bank (`STUDIO_ROADMAP` V.6–V.8).
 
   Presentation only. Every assign belongs to `StatusLive` and is prepared by
-  `BusterClawWeb.Status.Recorder`, for the reason the whole home tab works that
+  `BusterClawWeb.Studio.RecorderState`, for the reason the whole home tab works that
   way: this renders behind `:if`, so a half-set-up recording session would empty
   the moment the operator glanced at Chat.
 
@@ -35,7 +35,14 @@ defmodule BusterClawWeb.Studio.Recorder do
   """
   use BusterClawWeb, :html
 
-  alias BusterClawWeb.Status.Recorder, as: State
+  # Aliased short because this module is `Studio.Recorder` (the markup) and that
+  # one is `Studio.RecorderState` (the socket-in/socket-out half) — `State.x()`
+  # reads better here than the full name repeated down the file.
+  #
+  # It was `Status.Recorder` until 08-17, and the `as:` existed to keep the two
+  # `Recorder`s apart. The rename removed the collision; the alias stayed because
+  # it is still the clearer call site.
+  alias BusterClawWeb.Studio.RecorderState, as: State
 
   attr :recorder, :map, required: true
 

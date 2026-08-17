@@ -1,4 +1,4 @@
-defmodule BusterClawWeb.Status.Studio do
+defmodule BusterClawWeb.Studio.MixState do
   @moduledoc """
   The Sound Studio's arranger state, as socket-in / socket-out functions.
 
@@ -12,7 +12,7 @@ defmodule BusterClawWeb.Status.Studio do
   the open source, the in-progress trim, the selected clip, the clipboard, and
   the undo/redo stacks — lives here.
 
-  ## Why this is `Status.Studio` when its LiveView is `StudioLive`
+  ## Why this is `Studio.MixState` when its LiveView is `StudioLive`
 
   It was `StatusLive`'s: the Studio was a Home sub-tab until 08-16, when it
   became its own route and took every assign with it. `StatusLive` now holds
@@ -42,9 +42,9 @@ defmodule BusterClawWeb.Status.Studio do
   alias BusterClaw.Notifications.Studio.Render
   alias BusterClaw.Notifications.StudioMix
   alias BusterClawWeb.SoundStudio.Catalog
-  alias BusterClawWeb.Status.Recorder
-  alias BusterClawWeb.Status.Voice
   alias BusterClawWeb.Studio.Preview
+  alias BusterClawWeb.Studio.RecorderState, as: Recorder
+  alias BusterClawWeb.Studio.VoiceState, as: Voice
   alias BusterClawWeb.StudioPanel
 
   # ---------------------------------------------------------------------------

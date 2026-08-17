@@ -6,7 +6,7 @@ defmodule BusterClawWeb.StudioPanel do
   Presentation only. `select_studio_tab` is handled by the parent LiveView
   (`StudioLive`), which owns the `:studio_tab` assign for the same reason it
   always did: this panel renders behind `:if`, so state kept here would not
-  survive a tab switch. `BusterClawWeb.Status.Studio` puts it at length, and the
+  survive a tab switch. `BusterClawWeb.Studio.MixState` puts it at length, and the
   wiring lives there.
 
   > **This said "the home Studio tab" and named `StatusLive` until 08-17.** Both
@@ -69,7 +69,7 @@ defmodule BusterClawWeb.StudioPanel do
   attr :studio_undo, :list, required: true
   attr :studio_redo, :list, required: true
 
-  # Voice's, prepared by `Status.Voice`. `rows` and `check` are derived rather
+  # Voice's, prepared by `Studio.VoiceState`. `rows` and `check` are derived rather
   # than stored: the LiveView computes them from the loaded report so this panel
   # stays presentation-only and does no filtering of its own.
   attr :voice_report, :any, required: true
@@ -89,7 +89,7 @@ defmodule BusterClawWeb.StudioPanel do
   # The recorder's whole state, as ONE assign. Deliberately unlike Voice's
   # scalars above: this is one cohesive thing (a bank, a device, a word, a
   # pending notice), and `status_live.ex` is at its cap for a reason worth not
-  # spending on six more attr threads. See `Status.Recorder`.
+  # spending on six more attr threads. See `Studio.RecorderState`.
   attr :recorder, :map, required: true
 
   def studio_panel(assigns) do
@@ -140,7 +140,7 @@ defmodule BusterClawWeb.StudioPanel do
       </div>
 
       <%!-- Voice Library: browse, build, record. Its assigns are StatusLive's
-            for the same reason Mix's are — see `Status.Voice`. --%>
+            for the same reason Mix's are — see `Studio.VoiceState`. --%>
       <div :if={@tab == "voice"} data-studio-tab="voice" class="flex min-h-0 flex-1 flex-col">
         <VoiceLibrary.library
           report={@voice_report}

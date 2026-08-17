@@ -19,7 +19,7 @@ defmodule BusterClawWeb.SoundStudio.ClipInspector do
 
   Every control here is a plain `phx-click` with **no** `phx-target`, so the
   event reaches the parent LiveView rather than the component. That is not an
-  oversight: `Status.Studio.mutate_open_mix/2` is the one path every arrangement
+  oversight: `Studio.MixState.mutate_open_mix/2` is the one path every arrangement
   change goes through, and it is what records the previous state for ⌘Z. An
   effect added through the component would have been the first mix change in the
   Studio that could not be undone.

@@ -1,4 +1,4 @@
-defmodule BusterClawWeb.Status.VoiceTest do
+defmodule BusterClawWeb.Studio.VoiceStateTest do
   # async: false — points the global :workspace_root at a tmp dir, and writes
   # index files there. Same pattern as Cutup.GapsTest, which these read through.
   #
@@ -9,7 +9,7 @@ defmodule BusterClawWeb.Status.VoiceTest do
   use BusterClaw.DataCase, async: false
 
   alias BusterClaw.Notifications.Cutup.Index
-  alias BusterClawWeb.Status.Voice
+  alias BusterClawWeb.Studio.VoiceState, as: Voice
 
   setup do
     root = Path.join(System.tmp_dir!(), "bc_voice_#{System.unique_integer([:positive])}")
@@ -46,7 +46,7 @@ defmodule BusterClawWeb.Status.VoiceTest do
 
   # A socket is a map with assigns as far as these functions are concerned, and
   # building one by hand keeps this file free of LiveView plumbing — the point
-  # of `Status.Voice` being socket-in/socket-out.
+  # of `Studio.VoiceState` being socket-in/socket-out.
   defp loaded do
     corpus()
     socket = Voice.load_report(%Phoenix.LiveView.Socket{})
