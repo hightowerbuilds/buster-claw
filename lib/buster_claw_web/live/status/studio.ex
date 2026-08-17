@@ -2,25 +2,39 @@ defmodule BusterClawWeb.Status.Studio do
   @moduledoc """
   The Sound Studio's arranger state, as socket-in / socket-out functions.
 
-  Every one of these assigns lives in `StatusLive` rather than in
-  `SoundStudioComponent`, and that is deliberate: home panels render behind
-  `:if`, so the component — and any state it held — is discarded on every tab
-  switch. An undo stack that empties when you glance at Chat does not read as a
-  tab switch; it reads as the feature being broken.
+  Every one of these assigns lives in the **LiveView** rather than in
+  `SoundStudioComponent`, and that is deliberate: sub-tabs render behind `:if`,
+  so the component — and any state it held — is discarded on every tab switch.
+  An undo stack that empties when you look at the Voice Library does not read as
+  a tab switch; it reads as the feature being broken.
 
-  So the component renders, and the ownership of what must outlive a glance —
+  So the component renders, and the ownership of what must outlive a switch —
   the open source, the in-progress trim, the selected clip, the clipboard, and
   the undo/redo stacks — lives here.
+
+  ## Why this is `Status.Studio` when its LiveView is `StudioLive`
+
+  It was `StatusLive`'s: the Studio was a Home sub-tab until 08-16, when it
+  became its own route and took every assign with it. `StatusLive` now holds
+  none of them.
+
+  **The name is a leftover, and it is left deliberately rather than swept.** A
+  rename here is nine references across three sibling modules and their tests —
+  mechanical, but a sweep, and this repo has paid for a rename that looked
+  mechanical and severed a contract the suite could not see. It deserves its own
+  commit and its own verification, not a paragraph's worth of collateral in a
+  drift fix. Until then this line is the answer to "why is Studio state under
+  `status/`?" — because it used to be, and moving the file is a separate change
+  from moving the feature.
 
   `mutate_open_mix/2` is the single path every keyboard-driven arrangement
   change goes through: load, apply, save, record the previous state for undo,
   and tell the component to re-read.
 
-  The Studio's own sub-tab (`Mix` | `Voice`) is assigned here too, and for the
-  same reason as everything above — plus a second one: `StatusLive` sits at its
-  file-size cap, so the wiring a sub-tab needs lands in this module and the
+  The Studio's own sub-tab (`Mix` | `Voice Library` | `Sketch Pad`) is assigned
+  here too, and for the same reason as everything above — plus a second one: the
   LiveView keeps only the mount assign, one `handle_event` clause and one
-  condition.
+  condition, so the wiring a sub-tab needs lands in this module.
   """
   import Phoenix.Component
   import Phoenix.LiveView

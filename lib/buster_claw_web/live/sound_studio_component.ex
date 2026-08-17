@@ -10,11 +10,11 @@ defmodule BusterClawWeb.SoundStudioComponent do
 
   ## Selection lives in the parent, on purpose
 
-  Home sub-tabs render behind `:if`, which **removes** the DOM and discards the
+  Studio sub-tabs render behind `:if`, which **removes** the DOM and discards the
   live_component along with it (MUSIC_ROADMAP Finding 2, inherited as
   SOUND_STUDIO_ROADMAP Part V landmine 2). A selection held here would be lost
-  every time you glanced at Chat. So `StatusLive` owns `@studio_source` and
-  passes it down; this component holds only *derived* state (the analysis of
+  every time you switched to Voice Library. So `StudioLive` owns `@studio_source`
+  and passes it down; this component holds only *derived* state (the analysis of
   whatever is selected), which is cheap to recompute on remount.
 
   ## Preview is served from a route, never a blob

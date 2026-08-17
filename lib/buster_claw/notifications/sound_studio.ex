@@ -672,7 +672,7 @@ defmodule BusterClaw.Notifications.SoundStudio do
     """
     # Studio
 
-    Audio you are working on, from the Studio tab on the home page.
+    Audio you are working on, from the Studio (the Studio icon in the dock).
 
     Import a file here and you can trim it, shape it, and save the result as a
     notification sound effect. Anything you drop into this folder from Finder

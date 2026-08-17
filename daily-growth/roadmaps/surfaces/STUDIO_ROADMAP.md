@@ -95,8 +95,10 @@ written.
 
 **But the GUI's *working* state is deliberately not addressable.** `:studio_source`,
 `:studio_trim`, `:studio_clip`, `:studio_clipboard`, `:studio_undo` and
-`:studio_redo` live in `StatusLive` assigns, held there because the tab's `:if`
-discards the component on every tab switch. **There is no "currently open mix"
+`:studio_redo` live in **`StudioLive`** assigns, held there because the tab's `:if`
+discards the component on every tab switch. *(They were `StatusLive`'s until
+08-16, when the Studio became its own route and took them with it. The reason
+they live in a LiveView rather than the component never changed.)* **There is no "currently open mix"
 the agent can reach, and there should not be.** See decision 1.
 
 **The command surface has a fixed shape, in four places.** A verb is: an entry in
@@ -1295,6 +1297,13 @@ LiveView plus existing hooks over verbs that already ship. So spike V.4a on day 
 then build VI.1 while the packaging clears.
 
 ## VI.0b Where it lives — ANSWERED 08-09 by the operator
+
+> **Superseded in placement, not in substance (08-16).** The Studio is no longer
+> a Home sub-tab — it is its own route, `StudioLive` at `/studio`, with three
+> tabs rather than two (`Mix` · `Voice Library` · `Sketch Pad`). The decision
+> below is kept as written because it was true when made and the *reasoning* —
+> a rail over sibling surfaces, sidestepping the frozen component — is what
+> actually got built. Only the surface it sits on moved.
 
 **Two sub-tabs inside the home Studio tab: `Mix` and `Voice`.** Mix is the
 existing cutting-and-arranging studio. **Voice** is voice training and ramshackle

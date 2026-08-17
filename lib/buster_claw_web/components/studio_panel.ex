@@ -1,13 +1,19 @@
 defmodule BusterClawWeb.StudioPanel do
   @moduledoc """
-  The home Studio tab: `Mix` — the cutting-and-arranging studio that exists —
-  and `Voice`, voice training and ramshackle audio creation.
+  The Studio's three tabs: `Mix` — the cutting-and-arranging studio — `Voice
+  Library`, and the `Sketch Pad`.
 
   Presentation only. `select_studio_tab` is handled by the parent LiveView
-  (`StatusLive`), which owns the `:studio_tab` assign for the usual home-tab
-  reason: this panel renders behind `:if`, so state kept here would not survive
-  a glance at Chat. `BusterClawWeb.Status.Studio` puts it at length, and the
+  (`StudioLive`), which owns the `:studio_tab` assign for the same reason it
+  always did: this panel renders behind `:if`, so state kept here would not
+  survive a tab switch. `BusterClawWeb.Status.Studio` puts it at length, and the
   wiring lives there.
+
+  > **This said "the home Studio tab" and named `StatusLive` until 08-17.** Both
+  > were true until the Studio became its own route (`/studio`) on 08-16 and took
+  > its assigns with it — `StatusLive` now holds none of them. The reasoning
+  > never changed; only the surface it applies to did, which is exactly the drift
+  > a route change leaves behind.
 
   ## What lives where
 
