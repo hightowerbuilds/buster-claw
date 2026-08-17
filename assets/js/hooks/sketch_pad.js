@@ -1,166 +1,168 @@
-// The Sketch Pad's canvas. The hook owns every pixel; the server is never told
-// about a stroke.
+// The Sketch Pad's pointer handling.
 //
-// Same rule the note editor arrived at after two failed designs: do not build a
-// parallel model beside the DOM. A sketch is pixels, and sending them to Elixir
-// sixty times a second to prove it would buy nothing.
+// SKETCH_ROADMAP Phase 1 moved the document to the server, so this no longer
+// owns the drawing — it owns one stroke, for as long as that stroke is being
+// made. `pointermove` fires per pixel and a round trip per point would be
+// visible lag on the one interaction that has to feel immediate, so the finished
+// points are pushed once, on `pointerup`.
 //
-// Its element carries `phx-update="ignore"`, so LiveView never re-renders the
-// canvas out from under us. The cost is stated on the surface itself: a reload
-// loses the drawing, because there is nowhere to save it yet.
+// At any moment a stroke is exactly one of two things: in-flight and drawn here,
+// or committed and drawn by LiveView. Never both, so there is no parallel model.
+//
+// All three tools live here rather than being split with `phx-click` on the
+// elements, because a click handler and a pointerdown handler on the same node
+// race each other and the loser is whichever the browser dispatches second.
 
-const DEFAULT_COLOR = "#F4F1EA"
-const DEFAULT_SIZE = 2
-
-// The eraser paints the panel's own ground rather than using
-// `globalCompositeOperation = "destination-out"`. Destination-out would punch a
-// hole through to whatever is behind the canvas, and on the homepage that is a
-// live shader — so an "erased" stroke would reveal the background instead of the
-// paper. Painting the ground colour is the honest version of erase for an opaque
-// surface, and it is why this matches the `bg-base-200` on the wrapper.
-const GROUND = () =>
-  getComputedStyle(document.documentElement).getPropertyValue("--color-base-200").trim() ||
-  "#1a1a1a"
+import {extend, pathData, toPoint} from "../lib/sketch.js"
 
 export default {
   mounted() {
-    this.canvas = this.el.querySelector("[data-sketch-canvas]")
-    this.ctx = this.canvas.getContext("2d")
-    this.color = DEFAULT_COLOR
-    this.size = DEFAULT_SIZE
-    this.erasing = false
+    this.points = []
     this.drawing = false
+    this.dragging = null
 
-    this.resize()
+    this.onDown = (e) => this.down(e)
+    this.onMove = (e) => this.move(e)
+    this.onUp = (e) => this.up(e)
 
-    // A ResizeObserver rather than a window `resize` listener, and rather than
-    // measuring per frame: the panel can change size without the window doing
-    // so (the dock, a sub-tab switch), and `getBoundingClientRect()` in a draw
-    // loop is the forced-layout mistake `shader_preview.js` was pulled up for.
-    this.observer = new ResizeObserver(() => this.resize())
-    this.observer.observe(this.el)
-
-    this.onDown = (e) => this.start(e)
-    this.onMove = (e) => this.stroke(e)
-    this.onUp = () => this.stop()
-
-    this.canvas.addEventListener("pointerdown", this.onDown)
-    this.canvas.addEventListener("pointermove", this.onMove)
-    // `pointerup` on the window, not the canvas: releasing outside the element
-    // must still end the stroke, or the next hover draws a line the user never
-    // asked for.
+    this.el.addEventListener("pointerdown", this.onDown)
+    this.el.addEventListener("pointermove", this.onMove)
+    // On the window, not the element: releasing outside must still end the
+    // stroke, or the next hover continues a line the user thought was finished.
     window.addEventListener("pointerup", this.onUp)
-    this.canvas.addEventListener("pointerleave", this.onUp)
-
-    this.wireToolbar()
+    window.addEventListener("pointercancel", this.onUp)
   },
 
   destroyed() {
-    this.observer?.disconnect()
     window.removeEventListener("pointerup", this.onUp)
+    window.removeEventListener("pointercancel", this.onUp)
   },
 
-  // Toolbar buttons live in the LiveView-rendered header, OUTSIDE this hook's
-  // `phx-update="ignore"` element, so they are addressed by walking up to the
-  // shared section rather than querying inside `this.el`.
-  wireToolbar() {
-    const root = this.el.closest("#studio-sketch") || document
-    const mark = (nodes, active) =>
-      nodes.forEach((n) => {
-        n.classList.toggle("border-primary", n === active)
-        n.classList.toggle("border-base-content/25", n !== active)
-      })
-
-    const colors = [...root.querySelectorAll("[data-sketch-color]")]
-    colors.forEach((b) =>
-      b.addEventListener("click", () => {
-        this.color = b.dataset.sketchColor
-        this.erasing = false
-        mark(colors, b)
-      }),
-    )
-
-    const sizes = [...root.querySelectorAll("[data-sketch-size]")]
-    sizes.forEach((b) =>
-      b.addEventListener("click", () => {
-        this.size = parseInt(b.dataset.sketchSize, 10)
-        mark(sizes, b)
-      }),
-    )
-
-    root.querySelector("[data-sketch-eraser]")?.addEventListener("click", () => {
-      this.erasing = true
-    })
-
-    // The click arrives only after `claw_confirm` re-dispatches it, because the
-    // button carries `data-claw-confirm`. Nothing here needs to know that.
-    root.querySelector("[data-sketch-clear]")?.addEventListener("click", () => this.clear())
+  tool() {
+    return this.el.dataset.sketchTool || "draw"
   },
 
-  // Size the backing store in device pixels so strokes are not blurry on a
-  // retina display, then scale the context so drawing code stays in CSS pixels.
-  // The existing image is re-drawn rather than dropped: a resize is not an erase.
-  resize() {
-    const rect = this.el.getBoundingClientRect()
-    if (rect.width === 0 || rect.height === 0) return
+  // The element under the pointer, if it is one of ours. In draw mode the
+  // committed paths carry `pointer-events="none"` and their hit targets are not
+  // rendered at all, so this is always null and a stroke can start anywhere.
+  elementAt(e) {
+    const hit = document.elementFromPoint(e.clientX, e.clientY)
+    return hit && hit.dataset ? hit.dataset.sketchElement || null : null
+  },
 
-    const dpr = window.devicePixelRatio || 1
-    const w = Math.round(rect.width * dpr)
-    const h = Math.round(rect.height * dpr)
-    if (this.canvas.width === w && this.canvas.height === h) return
+  down(e) {
+    // Secondary buttons are for menus, and a right-drag that drew a line would
+    // be a surprise in both directions.
+    if (e.button !== 0) return
 
-    const previous = this.canvas.width > 0 ? this.canvas : null
-    const carried = previous && document.createElement("canvas")
-    if (carried) {
-      carried.width = this.canvas.width
-      carried.height = this.canvas.height
-      carried.getContext("2d").drawImage(this.canvas, 0, 0)
+    const tool = this.tool()
+    const id = this.elementAt(e)
+
+    if (tool === "draw") return this.startStroke(e)
+    if (tool === "erase") return this.erase(id)
+
+    if (tool === "select") {
+      this.pushEventTo(this.el, "select", {id})
+      // A drag is only armed on something real, so dragging empty space cannot
+      // move whatever happened to be selected a moment ago.
+      this.dragging = id ? {id, from: toPoint(e, this.rect())} : null
     }
-
-    this.canvas.width = w
-    this.canvas.height = h
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    this.ctx.lineCap = "round"
-    this.ctx.lineJoin = "round"
-
-    if (carried) this.ctx.drawImage(carried, 0, 0, rect.width, rect.height)
   },
 
-  point(e) {
-    const rect = this.canvas.getBoundingClientRect()
-    return {x: e.clientX - rect.left, y: e.clientY - rect.top}
+  move(e) {
+    if (this.drawing) return this.extendStroke(e)
+    if (this.tool() === "erase" && e.buttons === 1) return this.erase(this.elementAt(e))
   },
 
-  start(e) {
+  up(e) {
+    if (this.drawing) return this.endStroke()
+    if (this.dragging) return this.endDrag(e)
+  },
+
+  // Queried rather than cached. LiveView patches this component on every commit,
+  // and a reference captured in `mounted` is only valid until morphdom decides
+  // to replace the node it points at — a staleness that shows up as a stroke
+  // that silently stops drawing, long after the change that caused it.
+  svg() {
+    return this.el.querySelector("[data-sketch-svg]")
+  },
+
+  liveLayer() {
+    return this.el.querySelector("[data-sketch-live]")
+  },
+
+  rect() {
+    return this.svg().getBoundingClientRect()
+  },
+
+  // ------------------------------------------------------------------ drawing
+
+  startStroke(e) {
+    const live = this.liveLayer()
+
     this.drawing = true
-    this.canvas.setPointerCapture?.(e.pointerId)
-    const p = this.point(e)
-    this.ctx.beginPath()
-    this.ctx.moveTo(p.x, p.y)
-    // A tap with no movement should leave a dot rather than nothing.
-    this.stroke(e)
+    this.points = [toPoint(e, this.rect())]
+
+    live.setAttribute("stroke", this.currentColor())
+    live.setAttribute("stroke-width", this.currentWidth())
+    live.setAttribute("d", pathData(this.points))
   },
 
-  stroke(e) {
-    if (!this.drawing) return
-    const p = this.point(e)
-    this.ctx.strokeStyle = this.erasing ? GROUND() : this.color
-    // The eraser is wider than the brush at the same setting, which is what
-    // people expect from an eraser and cheaper than a second size control.
-    this.ctx.lineWidth = this.erasing ? this.size * 3 : this.size
-    this.ctx.lineTo(p.x, p.y)
-    this.ctx.stroke()
-    this.ctx.beginPath()
-    this.ctx.moveTo(p.x, p.y)
+  extendStroke(e) {
+    const next = extend(this.points, toPoint(e, this.rect()))
+    // `extend` returns the same array when the point was too close to keep, so
+    // an unchanged stroke costs no attribute write.
+    if (next === this.points) return
+
+    this.points = next
+    this.liveLayer().setAttribute("d", pathData(this.points))
   },
 
-  stop() {
+  endStroke() {
     this.drawing = false
+    const points = this.points
+    this.points = []
+
+    if (points.length === 0) return
+
+    // Clearing the in-flight layer BEFORE the server answers would blank the
+    // stroke for one round trip. Clearing it once LiveView has painted the
+    // committed element is what makes the handoff invisible.
+    this.pushEventTo(this.el, "stroke", {points}, () =>
+      this.liveLayer().setAttribute("d", ""),
+    )
   },
 
-  clear() {
-    const rect = this.el.getBoundingClientRect()
-    this.ctx.fillStyle = GROUND()
-    this.ctx.fillRect(0, 0, rect.width, rect.height)
+  // The toolbar is server state; the hook reads what is currently pressed rather
+  // than tracking its own copy, which is what stops the two from disagreeing.
+  currentColor() {
+    const pressed = document.querySelector("#studio-sketch [data-sketch-color][data-active]")
+    return pressed ? pressed.dataset.sketchColor : "#F4F1EA"
+  },
+
+  currentWidth() {
+    const pressed = document.querySelector("#studio-sketch [data-sketch-size][data-active]")
+    return pressed ? pressed.dataset.sketchSize : "2"
+  },
+
+  // ------------------------------------------------------------ erase and drag
+
+  erase(id) {
+    if (id) this.pushEventTo(this.el, "erase", {id})
+  },
+
+  endDrag(e) {
+    const {id, from} = this.dragging
+    this.dragging = null
+
+    const to = toPoint(e, this.rect())
+    const dx = to[0] - from[0]
+    const dy = to[1] - from[1]
+
+    // A click is a selection, not a zero-length move. Without this every select
+    // would also push a move, costing a history entry that undoes nothing.
+    if (dx === 0 && dy === 0) return
+
+    this.pushEventTo(this.el, "move", {id, dx, dy})
   },
 }

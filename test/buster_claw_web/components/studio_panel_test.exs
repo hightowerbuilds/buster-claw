@@ -192,33 +192,42 @@ defmodule BusterClawWeb.StudioPanelTest do
   end
 
   describe "the Sketch Pad" do
-    test "renders a canvas the browser owns, and no controls that lie", %{conn: conn} do
+    # REWRITTEN for SKETCH_ROADMAP Phase 1, which replaced the canvas with a
+    # server-owned document rendered as SVG. Every assertion below used to say
+    # the opposite and was right to: the pad really was a canvas the browser
+    # owned, and it really did lose your drawing. Behaviour now lives in
+    # `SketchComponentTest`; this stays a wiring check.
+    test "renders a document surface the component owns", %{conn: conn} do
       {view, _html} = open_studio(conn)
       html = select_sub_tab(view, "sketch")
 
       assert has_element?(view, "#studio-sketch")
+      assert has_element?(view, ~s(#studio-sketch-surface[phx-hook="SketchPad"]))
 
-      # `phx-update="ignore"` is load-bearing rather than decorative: the hook
-      # owns every pixel, and a LiveView re-render would wipe the drawing. If it
-      # is ever removed, a stroke disappears on the next unrelated diff.
-      assert has_element?(
-               view,
-               ~s(#studio-sketch-surface[phx-hook="SketchPad"][phx-update="ignore"])
-             )
+      # `phx-update="ignore"` moved INWARD, and the move is the architecture.
+      # The surface must re-render — that is how a committed stroke appears at
+      # all — so only the hook's in-flight layer is held back from LiveView.
+      # Ignoring the whole surface again would freeze the drawing at whatever it
+      # showed when the tab opened.
+      refute has_element?(view, ~s(#studio-sketch-surface[phx-update="ignore"]))
+      assert has_element?(view, ~s(#studio-sketch-live[phx-update="ignore"]))
 
-      assert has_element?(view, "#studio-sketch [data-sketch-canvas]")
+      # There is no canvas any more. An element has to be addressable to be
+      # selected, moved or deleted, and on a bitmap there is nothing to address.
+      refute has_element?(view, "#studio-sketch [data-sketch-canvas]")
+      assert has_element?(view, "#studio-sketch [data-sketch-svg]")
 
-      # Clear is destructive with no undo, so it takes the house confirm. This
-      # is the opposite call from the dock's Stand down, which deliberately does
-      # NOT confirm — the difference is whether hesitating is expensive.
+      # Clear still takes the house confirm even though undo now exists: undo is
+      # one step and Clear is all of them at once.
       assert html =~ "data-claw-confirm"
 
-      # The honest limit is on the surface, not buried in a tooltip. There is no
-      # save, and a dead Save button would read as a broken feature. Asserted on
-      # the CLAIM rather than its exact wording — the sentence was sharpened once
-      # already (leaving the tab clears it too, not just a reload).
-      assert html =~ "nothing is saved"
-      refute html =~ "Save"
+      # The honest limit is still on the surface — but the limit changed, so the
+      # claim did. It used to say the drawing was never saved, which was true.
+      # Asserting the old sentence now would hold the surface to a promise the
+      # code has stopped making, and scare people about something that does not
+      # happen.
+      assert html =~ "saved as you draw"
+      refute html =~ "nothing is saved"
     end
 
     test "it is not the frozen studio wearing a different hat", %{conn: conn} do

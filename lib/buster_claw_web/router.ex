@@ -171,6 +171,17 @@ defmodule BusterClawWeb.Router do
     get "/:pocket/:file", PocketAssetController, :show
   end
 
+  # One image out of one sketch's sidecar. Only `:media` — these are raw image
+  # bytes for an `<image>` inside the drawing, not an HTML page. Every read is
+  # fenced by `Sketch.Assets.resolve/2`, whose names are content hashes with a
+  # known extension and nothing else; the controller adds no path handling of its
+  # own. Loopback-only.
+  scope "/sketches", BusterClawWeb do
+    pipe_through :media
+
+    get "/:sketch/:file", SketchAssetController, :show
+  end
+
   # The Agent Mode mirror: an MJPEG stream of a run's viewport, rendered by an
   # <img> in the browse tab (Phase 7). Only `:media` — this is a long-lived chunked
   # media response, not an HTML page, so `accepts` would be wrong. Loopback-only; the frames show a page the

@@ -526,13 +526,56 @@ check lib/buster_claw_web/live/studio_live.ex                415 HELD
 # arrived — and that is a `sketch_*` command and a workspace path, which is a
 # roadmap rather than more markup here.
 #
-# 155 -> 165 on 08-16, and the answer to the cap's own question was NEITHER.
+# 155 -> 190 on 08-16, in two steps. The first was NEITHER of the things the cap
+# asks about.
 # It grew for a third reason: `data-active` + `aria-pressed` on all three toggle
 # groups, replacing pressed styling that JS assembled by hand and half-applied
 # (the size buttons kept a `text-primary` nothing removed, and the eraser never
 # marked itself at all). State moved OUT of the classes and into one attribute,
 # which costs markup here and removes a whole class of bug. No control was added.
-check lib/buster_claw_web/components/studio/sketch.ex        155 HELD
+#
+# The second step answers the cap's question YES: **SAVING ARRIVED**
+# (SKETCH_ROADMAP Phase 1). It came as the roadmap said it would — a workspace
+# path and a document, not more markup — but the toolbar grew with it, because a
+# document has Undo, a Delete for the selection, and tools that only mean
+# something once marks are addressable. The file also stopped being
+# markup-for-a-canvas: it is now the toolbar and status line for a surface whose
+# state lives in `SketchComponent`, and the drawing moved to `Studio.SketchSvg`.
+# Three files where there was one, and this is the smallest of them.
+check lib/buster_claw_web/components/studio/sketch.ex        190 HELD
+
+# The Sketch Pad's document (SKETCH_ROADMAP Phase 1) and its images (Phase 4).
+# Capped on arrival, the rule this repo adopted on 08-16. This is the substrate a
+# model will write through in Phase 3, so growth in any of them is a question
+# about what a sketch IS rather than about markup.
+#
+# `element.ex` is the validation boundary and the one most likely to grow
+# legitimately — it holds two kinds today and the roadmap adds text and shapes
+# later. Each new kind is a `build/2` clause plus its field validators; raise this
+# when one lands, and say which.
+#
+# `paths.ex` exists to BREAK A CYCLE rather than to hold logic: `Store.delete/1`
+# removes a sketch's sidecar and `Assets` needed the sketch's path, so the two
+# called each other and check_cycles.sh caught a third cycle in a repo that
+# accepts two. It should stay small — if it grows, something has moved into it
+# that belongs in one of its two callers.
+#
+# `image_info.ex` is a header parser, not a decoder. It grows only when a format
+# is added, which is a decision rather than maintenance.
+check lib/buster_claw/sketch/element.ex                       275 HELD
+check lib/buster_claw/sketch/store.ex                         235 HELD
+check lib/buster_claw/sketch/assets.ex                        190 HELD
+check lib/buster_claw/sketch/image_info.ex                    180 HELD
+check lib/buster_claw/sketch/document.ex                      140 HELD
+check lib/buster_claw/sketch/paths.ex                          80 HELD
+
+# The Sketch Pad's state and its surface, split from `studio/sketch.ex` when the
+# document arrived. The component owns loading, saving, undo, uploads and the
+# event handlers; the renderer owns drawing and nothing else. Growth in the
+# component is a new tool or a new phase; growth in the renderer is a new
+# element kind.
+check lib/buster_claw_web/live/sketch_component.ex            440 HELD
+check lib/buster_claw_web/components/studio/sketch_svg.ex     215 HELD
 
 # The Notes vault: state in the live_component, markup in three function
 # components. Split at ~810 lines during the Home Activity + Notes roadmap's
@@ -1110,13 +1153,22 @@ check assets/js/hooks/note_editor.js                          600 HELD
 # stroke, so growth here is either persistence (which belongs behind a command)
 # or a tool, and both are worth being asked about.
 #
-# 185 -> 195 on 08-16, and again the answer was neither. The tool state moved OUT
+# 185 -> 180 on 08-16 — ratcheted DOWN, which this gate also fails on. The tool
+# state moved OUT
 # to `assets/js/lib/sketch.js` (pure, 16 tests) and what stayed is DOM; the file
-# still grew, because the import block plus a real `paintToolbar` costs more
-# lines than the buggy `mark()` it replaced. An extraction that grows the file it
-# extracts from is worth saying out loud rather than looking like drift — the
-# decisions are now testable, which is the thing that was actually bought.
-check assets/js/hooks/sketch_pad.js                           185 HELD
+# briefly grew anyway, because the import block plus a real `paintToolbar` cost
+# more lines than the buggy `mark()` it replaced. Then Phase 1 took the toolbar
+# off this hook entirely (it is LiveView state now) and the canvas with it,
+# leaving pointer handling and one in-flight path — so the cap comes down rather
+# than staying stale over a file two-thirds its size.
+check assets/js/hooks/sketch_pad.js                           180 HELD
+
+# The Sketch Pad's dropzone. TWO transports and a paste, which is most of its
+# size: macOS WKWebView does not hand file contents to the DOM on an OS drag, so
+# the packaged app takes a path from Tauri and a dev browser takes bytes through
+# LiveView's upload. The accept/refuse judgement is NOT here — it is
+# `lib/attachments.js`, shared with the chat and under bun test.
+check assets/js/hooks/sketch_dropzone.js                      240 HELD
 # The Mix menu bar's open/close behaviour and nothing else — it never writes
 # markup, which is why it needs no `phx-update="ignore"`. Growth means it started
 # owning content, and that is the thing to look at rather than the number.
