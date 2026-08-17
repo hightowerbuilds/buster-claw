@@ -44,10 +44,16 @@ Three rules keep that from recurring —
    wording through both splits. Scripts and CI cite `III.E/F/G/J` by name
    (`codesign_release.sh`, `build_desktop.sh`, `Entitlements.plist`,
    `release-desktop.yml`); commits cite `G-n`. **Nothing was renumbered.**
-2. **Each number lives in exactly one map.** `G-1`–`G-20` in Apple, `G-21`–`G-24`
-   in Website, `G-25`–`G-35` in Trust and Support, `G-36`–`G-41` in Release Gate.
-   A number in two places is precisely the old failure mode — check before adding
-   one.
+2. **Each number lives in exactly one map.** `G-1`–`G-17` in Apple, `G-21`–`G-24`
+   in Website, `G-25`–`G-35` in Trust and Support, `G-36`–`G-41` in Release Gate,
+   and **`G-18`–`G-20` plus `G-42`–`G-44` in Update**. A number in two places is
+   precisely the old failure mode — check before adding one.
+
+   > **`G-18`–`G-20` moved from Apple to Update on 08-16, keeping their numbers.**
+   > That is rule 1 and rule 2 working together rather than against each other:
+   > a gate may change *home* when its subject does, but it never changes
+   > *name* — commits and checklists cite `G-n`, and renumbering would break
+   > every one of them. **Next free number: `G-45`.**
 3. **Status has one home, and this is it.** What disagreed last time was *what
    state we are in*. Every map states its own phase; this page states which of
    them is next.
@@ -65,7 +71,7 @@ roadmaps/
 ├── surfaces/ ··············· Parts II–III  STUDIO · IMAGE_SHADER · APP_ICON · AGENT_APPLIED_SHADERS · WIDGET_BACKGROUND · LEFTOVERS_SURFACES
 ├── agent-core/ ············· Part V    LEFTOVERS_AGENT_CORE
 ├── integrations/ ··········· Part VI   CLINCH · BUSTERPHONE (+NUMBER_VENDING) · OUTBOUND_VOICE · SMS_DISCLOSURE · PHONE_ACCESS · GOOGLE_VERIFICATION
-├── platform/ ··············· Part VII  APPLE · RELEASE_GATE · TRUST_AND_SUPPORT · QA_BACKLOG · LEFTOVERS_PLATFORM
+├── platform/ ··············· Part VII  APPLE · UPDATE · RELEASE_GATE · TRUST_AND_SUPPORT · QA_BACKLOG · LEFTOVERS_PLATFORM
 ├── distribution/ ··········· Part VIII DISTRIBUTION · FRONT_DOOR
 └── website/ ················ Part IX   WEBSITE
 ```
@@ -321,6 +327,7 @@ step verified here happened on the operator's own line.
 |---|---|---|---|
 | Tauri desktop shell | `desktop/tauri/` | SHIPPED | — |
 | **Apple — sign, notarize, staple** | CI, `scripts/codesign_release.sh` | **`G-1`–`G-3` DONE 08-10 (x86_64). `G-4` blocked on an arm64 Mac** | [`APPLE`](platform/APPLE_ROADMAP.md) |
+| **Updating a running install** | `main.rs` release monitor, Settings → About | **SCOPED 08-16.** Took `G-18`–`G-20` from `APPLE` §III.I intact; `G-42`–`G-44` new. **Phase 0 is an hour** — the app currently displays its version nowhere | [`UPDATE`](platform/UPDATE_ROADMAP.md) |
 | **The release gate** | — | **ACTIVE** | [`RELEASE_GATE`](platform/RELEASE_GATE_ROADMAP.md) |
 | **Trust claims & support** | `Sentinel`, — | **ACTIVE** | [`TRUST_AND_SUPPORT`](platform/TRUST_AND_SUPPORT_ROADMAP.md) |
 | CI gates | `scripts/check_*.sh` | SHIPPED, **all green** — Dialyzer included, 08-16 (below) | — |

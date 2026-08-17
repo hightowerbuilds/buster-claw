@@ -493,51 +493,30 @@ CI relies on. The ERTS tree is already pre-signed by then.
 built to make all five impossible, but it has never run. **Plan two or three rounds and be
 pleasantly surprised.**
 
-### III.I — The updater
+### III.I — The updater · **MOVED 2026-08-16 → [`UPDATE_ROADMAP`](UPDATE_ROADMAP.md)**
 
-**Status: not started. P0 for a public download.**
+**`G-18`, `G-19` and `G-20` now live in [`UPDATE_ROADMAP`](UPDATE_ROADMAP.md), carrying
+their original numbers.** They are not duplicated here — a number in two maps is the
+failure mode the Supermap's rule 2 exists to prevent.
 
-This item was deferrable when the target was a private cohort. It is not now. A public
-download with no patch channel means a security fix requires every user to notice, return,
-and re-download.
+**Why it moved.** This section is about *Apple* — signing, notarization, Gatekeeper. What
+the updater turned out to need is a product surface (a button, a notice, a refusal while a
+shift runs), a release cadence, a database backup, and a fix for seeded defaults that never
+upgrade. One of those five is Apple's. Keeping it here would have made this map something
+other than the signing map.
 
-**Two signatures, not one** — the most-missed fact about Tauri's updater:
+**What Apple still owns, and what this map's other sections still constrain:**
 
-| Signature | Protects | Verified by |
-|---|---|---|
-| Apple Developer ID | Gatekeeper / notarization | macOS, at every exec |
-| **Minisign (Ed25519)** | Update authenticity | The updater, before it installs |
+| Fact | Section |
+|---|---|
+| The bundle an update ships **must be signed, notarized and stapled** like any other | III.E–III.H |
+| **Notarization was measured at ~5½ hours** and is structural, so a release costs a working day of wall-clock | III.H |
+| **Two single-arch builds, never a lipo'd ERTS** — which is why the update feed must be per-architecture | III.G |
+| Apple Developer ID and minisign are **unrelated signatures**; neither satisfies the other | moved, kept in full in `UPDATE_ROADMAP` |
 
-They are unrelated. Apple's certificate does not satisfy the updater; the minisign key does
-not satisfy Gatekeeper. Verification cannot be turned off.
-
-- [ ] Add `tauri-plugin-updater`, generate a minisign keypair, set
-      `createUpdaterArtifacts: true`, publish a static `latest.json` on GitHub Releases.
-- [ ] **Back up the minisign private key offline, before the first signed release.** Anyone
-      holding it can push arbitrary code to every install. There is **no revocation**: the
-      public key is compiled into every shipped binary, so a rotated key is *rejected* by
-      existing installs. Dangerous to leak and dangerous to lose. See **R6**.
-- [ ] **Accept full downloads.** Tauri has no delta updates on macOS, and the Sparkle bridge
-      is a signing tarpit whose failures surface at notarization. Full downloads over free
-      GitHub Releases bandwidth, a few times a year, is the correct trade.
-- [ ] **`latest.json` must be per-architecture.** Two single-arch DMGs means the updater
-      must not hand an Intel build to an arm64 install. This is a new failure mode that a
-      universal build would not have had.
-
-> **The BEAM gotcha — undocumented, and the one place to diverge from Livebook.**
->
-> Tauri's updater renames the running `.app` out from under the live Erlang VM, drops the
-> new bundle at the same path, and `rm -rf`s the old one. Open file descriptors survive
-> that, so `beam.smp` keeps running — which is what makes it dangerous. **The BEAM loads
-> modules lazily, from absolute paths into the bundle.** After the swap, any not-yet-loaded
-> module resolves against the *new* release: mixed-version code loading inside a live VM,
-> and the same hazard for lazily `dlopen`ed NIFs.
->
-> Use the split API, never `download_and_install()`:
-> **`download()` and verify → cleanly stop the OTP release and wait for the child to
-> actually exit → `install()` → `restart()`.** Make sure the child is *reaped*, not
-> orphaned — an orphaned `beam.smp` still holding the SQLite file makes the relaunched app
-> fail in a deeply confusing way.
+The BEAM-swap hazard written here has moved with the gates, and **two of its
+assumptions were checked against the code on 08-16 and one of them was wrong in our
+favour** — see `UPDATE_ROADMAP` F2–F4.
 
 ### III.J — Exit tests: the definition of "Apple is done"
 
@@ -774,20 +753,24 @@ The lesson of BLOCKER-1: five green CI jobs on a tree that could not produce a w
 **A wrong floor is the most expensive cheap mistake here** — it is discovered by strangers,
 one refund at a time, and it was an hour's work to measure.
 
-### G-18 — Updatable (III.I) **[R2]**
+### G-18 — Updatable **[R2]** · **MOVED → [`UPDATE_ROADMAP`](UPDATE_ROADMAP.md)**
 
-- [ ] **G-18.** `tauri-plugin-updater` wired, minisign keypair generated, **private key
-      backed up offline**, `latest.json` published and **per-architecture**.
-- [ ] **G-19.** The BEAM-safe update sequence implemented — `download()` → verify → stop the
-      release and reap the child → `install()` → `restart()`. Never `download_and_install()`.
-- [ ] **G-20.** An actual 0.1.0 → 0.1.1 update tested end to end, preserving workspace,
-      settings, database, and Google connection. **Tested, not assumed.**
+`G-18`, `G-19` and `G-20` are **tracked in [`UPDATE_ROADMAP`](UPDATE_ROADMAP.md)** as of
+2026-08-16, with the same numbers and the same wording, alongside three new gates
+(`G-42`–`G-44`) that the surface turned out to need. **Do not restate them here** — check
+them off there.
+
+They remain **`[R2]`**: a new link is an email, so the updater still does not block
+Release 1.
 
 
 ---
 
 ## What this map does not cover
 
+- **Updating an install that already exists** — [`UPDATE_ROADMAP`](UPDATE_ROADMAP.md)
+  (`G-18`–`G-20`, `G-42`–`G-44`). It consumes a notarized bundle from this map and owns
+  everything after it.
 - **The website, download page, privacy policy** — [`WEBSITE_ROADMAP`](../website/WEBSITE_ROADMAP.md) (`G-21`–`G-24`).
 - **Telemetry, error surface, uninstall, diagnostics, the trust claims** — [`TRUST_AND_SUPPORT_ROADMAP`](TRUST_AND_SUPPORT_ROADMAP.md) (`G-25`–`G-35`).
 - **The human walkthrough, the dock, the repeatable checklist** — [`RELEASE_GATE_ROADMAP`](RELEASE_GATE_ROADMAP.md) (`G-36`–`G-41`).

@@ -95,6 +95,24 @@ defmodule BusterClawWeb.SettingsLiveTest do
       assert html =~ "ic-panel"
     end
 
+    # The rail loop above proves "about" opens *a* panel. This proves the panel
+    # says the two things it exists to say. Until 08-16 the app displayed its own
+    # version nowhere (UPDATE_ROADMAP F5, G-42), and a "Restart and update" button
+    # beside an unknown current version tells the operator nothing.
+    test "About shows the running version and which build it is", %{conn: conn} do
+      {:ok, _view, html} = live(conn, ~p"/settings?tab=about")
+
+      assert html =~ BusterClaw.BuildInfo.version()
+      assert html =~ BusterClaw.BuildInfo.architecture_label()
+
+      # Both assertions above are self-referential on the VALUE — they compare the
+      # page against the same function that filled it, so they prove it reached
+      # the page and nothing about whether it is right. `build_info_test.exs`
+      # pins the value against the VERSION file; this line is what stops the pair
+      # from passing vacuously on a build where the spec cannot be read.
+      refute html =~ "unknown"
+    end
+
     test "?tab= opens that tab, and an unknown one still lands somewhere real", %{conn: conn} do
       {:ok, _view, html} = live(conn, ~p"/settings?tab=credentials")
       assert html =~ "Recovery key"

@@ -55,6 +55,14 @@ defmodule BusterClawWeb.Settings.Registry do
       key: "credentials",
       label: "Credentials",
       blurb: "Service keys, stored sign-ins, and the recovery key."
+    },
+    # Last on the rail on purpose: it is the tab you visit when something is
+    # wrong, not one you configure. It is also where the update surface lands
+    # (UPDATE_ROADMAP Phase 2), which is why it is "About" rather than "Version".
+    %{
+      key: "about",
+      label: "About",
+      blurb: "Which version and which build of Buster Claw you are running."
     }
   ]
 

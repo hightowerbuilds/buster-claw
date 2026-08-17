@@ -18,9 +18,24 @@
 #   OR:
 #     APPLE_ID / APPLE_PASSWORD (app-specific) / APPLE_TEAM_ID
 #
+# And the SECOND, unrelated signature — the updater's (UPDATE_ROADMAP G-18):
+#   TAURI_SIGNING_PRIVATE_KEY           minisign private key (the file's contents)
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  the password it was generated with
+#
+# Generate the pair once, with:
+#   cargo tauri signer generate -w ~/.buster-claw/updater.key
+#
+# Then BACK THE PRIVATE KEY UP OFFLINE BEFORE THE FIRST RELEASE. Anyone holding
+# it can push arbitrary code to every install, and there is no revocation — the
+# public key is compiled into every shipped binary, so a rotated key is REJECTED
+# by the installs you were trying to reach. Dangerous to leak, dangerous to lose.
+#
 # Deliberately absent: any step that signs the OTP tree. That lives in
 # scripts/codesign_release.sh, called by build_desktop.sh, so local and CI
 # builds sign identically rather than CI keeping a second copy that drifts.
+#
+# Also deliberately absent: the feed assembly. That lives in
+# scripts/build_update_feed.sh, for the same reason.
 name: Release Desktop
 
 on:
@@ -52,6 +67,13 @@ jobs:
       MIX_ENV: prod
       # Flips true when the Developer ID cert secret exists (payday).
       HAVE_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
+      # The OTHER signature (UPDATE_ROADMAP G-18). Unrelated to Apple's: this one
+      # proves an update came from us, and the updater checks it before installing.
+      # build_desktop.sh turns on updater artifacts only when this is present, so
+      # a keyless verification run still produces a working unsigned bundle.
+      HAVE_SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
@@ -207,6 +229,28 @@ jobs:
             exit 1
           fi
 
+      # Fail CLOSED, before anything is built. A tag is a release, and a release
+      # with no minisign key produces a bundle no installed copy can ever update
+      # to — which is not discovered at build time, or at install time, but months
+      # later when a security fix does not reach anyone. workflow_dispatch stays
+      # keyless-friendly on purpose: that is the verification path.
+      - name: A tagged release must be updatable
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          if [ "${HAVE_SIGNING_KEY}" != "true" ]; then
+            echo "FATAL: tagged release with no TAURI_SIGNING_PRIVATE_KEY." >&2
+            echo "" >&2
+            echo "Every install checks a minisign signature before applying an update," >&2
+            echo "and the public key is compiled into every shipped binary. A release" >&2
+            echo "built without the key cannot be updated to, ever, by anyone." >&2
+            echo "" >&2
+            echo "Set TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD," >&2
+            echo "or build with workflow_dispatch if you only want a verification run." >&2
+            exit 1
+          fi
+          echo "update signing key present"
+
       - name: Build DMG
         run: ./scripts/build_desktop.sh
 
@@ -293,6 +337,42 @@ jobs:
           if-no-files-found: error
           path: desktop/tauri/target/release/bundle/dmg/*.dmg
 
+      # Rename to a canonical, URL-safe name before anything downstream sees it.
+      # The product name has a space in it ("Buster Claw.app.tar.gz"), and this
+      # name becomes a URL inside latest.json that every installed app fetches —
+      # so the renaming is not cosmetic. Found by GLOB rather than by assuming
+      # Tauri's exact output name, because that name is the bundler's to change
+      # and a wrong literal here fails at release time, not at build time.
+      - name: Stage the updater artifacts
+        if: env.HAVE_SIGNING_KEY == 'true'
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          SRC="desktop/tauri/target/release/bundle/macos"
+
+          tarball="$(find "$SRC" -name '*.app.tar.gz' -print -quit)"
+          if [ -z "$tarball" ]; then
+            echo "FATAL: build_desktop.sh ran with a signing key but produced no" >&2
+            echo "       .app.tar.gz under $SRC" >&2
+            ls -A "$SRC" >&2 || true
+            exit 1
+          fi
+          [ -f "$tarball.sig" ] || { echo "FATAL: $tarball has no .sig" >&2; exit 1; }
+
+          mkdir -p update-artifacts
+          dest="update-artifacts/BusterClaw_${VERSION}_${{ matrix.arch }}.app.tar.gz"
+          cp "$tarball" "$dest"
+          cp "$tarball.sig" "$dest.sig"
+          ls -l update-artifacts
+
+      - name: Upload updater artifacts
+        if: env.HAVE_SIGNING_KEY == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: buster-claw-update-${{ matrix.arch }}
+          if-no-files-found: error
+          path: update-artifacts/*
+
       # always(): a failed build must not leave a private key sitting on shared
       # infrastructure. This is the step whose absence nobody notices.
       - name: Tear down the signing keychain
@@ -300,3 +380,90 @@ jobs:
         run: |
           security delete-keychain "$RUNNER_TEMP/busterclaw-signing.keychain-db" || true
           rm -f "$RUNNER_TEMP/AuthKey.p8" "$RUNNER_TEMP/cert.p12" || true
+
+  # The join. Neither arch runner can build the feed: latest.json carries BOTH
+  # signatures, and each runner only ever holds its own. This job is the one
+  # place both halves exist at once (UPDATE_ROADMAP G-18).
+  #
+  # Tag-only. A workflow_dispatch run is a verification build — it must be able
+  # to prove the pipeline works without publishing anything to the world.
+  release:
+    name: Publish release + update feed
+    needs: dmg
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    # Narrower than the workflow default (contents: read) is not possible here —
+    # creating a release is a write. Scoped to this job so the two build jobs,
+    # which handle the signing keys, keep the read-only token they have now.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Collect every architecture's artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Gather the bundles into one directory
+        run: |
+          set -euo pipefail
+          mkdir -p feed dist
+          # download-artifact nests each upload under its own name; the feed
+          # script wants them flat, and the DMGs are uploaded alongside.
+          find artifacts -name '*.app.tar.gz' -exec cp {} feed/ \;
+          find artifacts -name '*.app.tar.gz.sig' -exec cp {} feed/ \;
+          find artifacts -name '*.dmg' -exec cp {} dist/ \;
+          echo "== update bundles ==" && ls -l feed
+          echo "== disk images ==" && ls -l dist
+
+      # Fails closed if either architecture is missing or unsigned. A feed that
+      # describes one arch is not a partial success — it is an update that never
+      # arrives for everyone on the other one, with no error on their end.
+      - name: Build the update feed
+        run: |
+          set -euo pipefail
+          ./scripts/build_update_feed.sh \
+            --tag "${GITHUB_REF_NAME}" \
+            --dir feed \
+            --out feed/latest.json \
+            --repo "${GITHUB_REPOSITORY}"
+          cat feed/latest.json
+
+      # latest.json is what https://busterclaw.lol/updates/latest.json rewrites
+      # to, so it must be an asset on the release marked `latest`. The DMGs are
+      # the first-install path; the tarballs are what the updater downloads.
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "Buster Claw ${GITHUB_REF_NAME}" \
+            --generate-notes \
+            dist/*.dmg \
+            feed/*.app.tar.gz \
+            feed/*.app.tar.gz.sig \
+            feed/latest.json
+
+      # The endpoint is compiled into every shipped binary and cannot be changed
+      # for installs already in the wild (UPDATE_ROADMAP D5). It resolves through
+      # a Vercel rewrite in the SEPARATE website repo, which this pipeline cannot
+      # see — so it is checked here, after publishing, where a failure is a loud
+      # warning rather than a silent 404 on every user's machine months from now.
+      - name: Check the public endpoint resolves
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          URL="https://busterclaw.lol/updates/latest.json"
+          echo "==> GET $URL"
+          code="$(curl -sSL -o /tmp/feed.json -w '%{http_code}' "$URL" || echo 000)"
+          if [ "$code" != "200" ]; then
+            echo "::warning title=Update endpoint unreachable::$URL returned $code."
+            echo "The release published fine, but no installed app can SEE it until"
+            echo "the website repo rewrites /updates/latest.json to this release."
+            exit 0
+          fi
+          published="$(grep -o '\"version\"[^,]*' /tmp/feed.json | head -1 || true)"
+          echo "endpoint serving: $published"

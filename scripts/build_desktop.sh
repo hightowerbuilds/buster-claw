@@ -126,7 +126,30 @@ echo "==> Building Tauri bundle"
 # resources are restaged here.
 rm -rf desktop/tauri/target/release/release desktop/tauri/target/debug/release
 cd desktop/tauri
-cargo tauri build
+
+# UPDATE_ROADMAP G-18 — the updater tarball and its minisign signature.
+#
+# Secret-gated, exactly like the codesign pass above is gated on
+# APPLE_SIGNING_IDENTITY: with no key the path is skipped and this script still
+# produces a working unsigned bundle, which is what keeps local builds and
+# keyless CI verification runs unchanged.
+#
+# It is a --config override rather than a committed `createUpdaterArtifacts: true`
+# because Tauri FAILS the build outright when the flag is set and no signing key
+# is available. Committing `true` would turn every keyless build into a hard
+# error — the opposite of gating, and it would break the one CI job whose whole
+# job is to verify the tree without secrets.
+#
+# The two signatures remain unrelated (APPLE_ROADMAP III.I): this produces the
+# minisign one, which proves the update is ours. Apple's, applied above and by
+# the bundler, is what Gatekeeper checks. Neither substitutes for the other.
+if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+  echo "    updater artifacts: ON (TAURI_SIGNING_PRIVATE_KEY present)"
+  cargo tauri build --config '{"bundle":{"createUpdaterArtifacts":true}}'
+else
+  echo "    updater artifacts: off (no TAURI_SIGNING_PRIVATE_KEY)"
+  cargo tauri build
+fi
 
 BUNDLE_DIR="$REPO_ROOT/desktop/tauri/target/release/bundle/macos"
 

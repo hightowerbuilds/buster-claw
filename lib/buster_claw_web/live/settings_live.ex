@@ -40,6 +40,7 @@ defmodule BusterClawWeb.SettingsLive do
   """
   use BusterClawWeb, :live_view
 
+  alias BusterClaw.BuildInfo
   alias BusterClaw.Clinch
   alias BusterClaw.Clinch.AppKeys
   alias BusterClaw.Clinch.Rekey
@@ -90,6 +91,12 @@ defmodule BusterClawWeb.SettingsLive do
      |> assign(:clinch_entries, Clinch.list())
      |> assign(:app_keys, app_keys())
      |> assign(:unreadable, Rekey.unreadable())
+     # --- about ---
+     # Both are constant for the life of the VM, so they are read once at mount
+     # rather than on every render. See `BusterClaw.BuildInfo` for why they are
+     # derived rather than stored.
+     |> assign(:build_version, BuildInfo.version())
+     |> assign(:build_architecture, BuildInfo.architecture_label())
      |> assign_status()}
   end
 
@@ -527,6 +534,24 @@ defmodule BusterClawWeb.SettingsLive do
           />
           <BusterClawWeb.ClinchPanels.recovery_panel restore_path={@restore_path} />
         </div>
+
+        <section :if={@settings_tab == "about"} class="ic-panel space-y-4 p-6">
+          <h2 class="ic-eyebrow">About</h2>
+          <dl class="grid gap-3 sm:grid-cols-2">
+            <div>
+              <dt class="ic-eyebrow">Version</dt>
+              <dd class="mt-1 font-mono text-lg">{@build_version}</dd>
+            </div>
+            <div>
+              <dt class="ic-eyebrow">Build</dt>
+              <dd class="mt-1 font-mono text-lg">{@build_architecture}</dd>
+            </div>
+          </dl>
+          <p class="text-sm text-base-content/60">
+            Buster Claw ships one build per processor architecture — never a universal
+            binary. Quote both lines when reporting a problem.
+          </p>
+        </section>
       </section>
     </Layouts.app>
     """

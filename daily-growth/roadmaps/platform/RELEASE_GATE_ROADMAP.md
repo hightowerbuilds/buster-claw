@@ -305,6 +305,11 @@ Everything above is one-time. This runs every release, forever.
 - [ ] Update from the previous release tested, not assumed
 - [ ] `VERSION` bumped, changelog written, per-arch `latest.json` published
 - [ ] **Minisign key backup confirmed to still exist**
+- [ ] **`https://busterclaw.lol/updates/latest.json` returns 200** — the rewrite
+      lives in the **separate website repo**, and nothing in this repo fails
+      without it. The release job warns; it deliberately does not block, because
+      the artifacts are fine and the fix is one line elsewhere
+      ([`UPDATE`](UPDATE_ROADMAP.md) `D5`)
 - [ ] Apple Developer Program License Agreement still accepted (it stalls silently)
 
 > **A gate that can be skipped is not a gate.** `mix precommit | tail && git push` shipped a
@@ -412,7 +417,7 @@ inherits.*
 
 | # | Task | Cost |
 |---|---|---|
-| 3a | **G-18–G-20: the updater.** Minisign keypair, **offline key backup**, per-arch `latest.json`, the BEAM-safe swap | **Days. The subtle part is III.I, not the plumbing** |
+| 3a | **G-18–G-20: the updater** ([`UPDATE`](UPDATE_ROADMAP.md), moved out of Apple 08-16). Minisign keypair, **offline key backup**, per-arch `latest.json`, the BEAM-safe swap | **Days. The subtle part is the respawn race, not the plumbing** |
 | 3b | G-21–G-24: download page, `/privacy`, `/terms`, the stated floor and Claude requirement | Hours to a day |
 | 3c | G-25–G-28: telemetry, user-facing error surface, uninstall, diagnostic bundle | Days |
 | 3d | G-29–G-33: the trust claims — approval gate, kill switch, disclosure, Security tab | Days |
