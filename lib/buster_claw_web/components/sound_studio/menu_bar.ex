@@ -13,9 +13,23 @@ defmodule BusterClawWeb.SoundStudio.MenuBar do
   |---|---|
   | Sidebar source list | **Open** (mixes) and **Material** (everything else) |
   | Sidebar import form + drop zone | **File → Import audio**, and the status strip below the bar |
-  | Sidebar `install_bundled` | **Library → Restore built-in sounds** |
+  | Sidebar `install_bundled` | **File → Restore built-in sounds** |
   | Sidebar group folding | **deleted** — a submenu has nothing to fold |
+  | Music library manager | **deleted 08-16** — see below |
   | Tab-bar `New mix` / `Import` | **File**, so one surface owns the verbs |
+
+  ## There is no Library menu, and that was a product decision
+
+  It held two rows. `Manage music library` opened `MusicComponent` — upload,
+  delete, queue, play-all — and that whole surface was deleted on 08-16: the
+  Studio is for making things, and maintaining a collection is not making
+  something. `Restore built-in sounds` was never music at all (it copies bundled
+  *chimes* into the workspace), so it moved to File and the menu went.
+
+  **Music itself did not go.** Tracks are still in `Material` as clip sources,
+  because chopping a song into a mix IS the creative work this tab is for. The
+  dock player is untouched. What went is the Studio as a place you *administer*
+  audio rather than cut it.
 
   ## Render and Delete are NOT here, and that is the interesting omission
 
@@ -141,6 +155,17 @@ defmodule BusterClawWeb.SoundStudio.MenuBar do
             hint="to studio/"
             click={JS.dispatch("click", to: "#studio-import input[type=file]")}
           />
+          <%!-- Chimes, not music, which is why it survived the music library's
+                deletion and moved here rather than going with it. A one-off
+                workspace repair, and it retires itself once nothing is
+                missing. --%>
+          <.item
+            :if={@missing_bundled > 0}
+            label="Restore built-in sounds"
+            hint={"#{@missing_bundled} missing"}
+            click="install_bundled"
+            target={@myself}
+          />
         </.menu>
 
         <.menu id="studio-menu-edit" label="Edit">
@@ -173,21 +198,6 @@ defmodule BusterClawWeb.SoundStudio.MenuBar do
               value={item.id}
             />
           </.submenu>
-        </.menu>
-
-        <.menu id="studio-menu-library" label="Library">
-          <.item
-            label="Manage music library"
-            click="select_studio_source"
-            value={Catalog.music_library_id()}
-          />
-          <.item
-            :if={@missing_bundled > 0}
-            label="Restore built-in sounds"
-            hint={"#{@missing_bundled} missing"}
-            click="install_bundled"
-            target={@myself}
-          />
         </.menu>
       </div>
 

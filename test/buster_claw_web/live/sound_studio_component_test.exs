@@ -1097,12 +1097,29 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
   end
 
   describe "the music library manager" do
-    test "keeps a home inside the Studio", %{conn: conn} do
-      {view, _html} = open_studio(conn)
-      html = select(view, Catalog.music_library_id())
+    # Was "keeps a home inside the Studio". It does not have one any more: the
+    # manager (upload / delete / queue / play-all) was deleted on 08-16 because
+    # the Studio is for making things and administering a collection is not
+    # making something.
+    #
+    # **Music itself stayed**, which is the half worth asserting — chopping a
+    # song into a mix is exactly the creative work this tab is for. So the
+    # tracks remain material and only the management surface went.
+    test "is gone, and music is still material", %{conn: conn} do
+      {_view, html} = open_studio(conn)
 
-      # Upload/queue/delete did not disappear with the tab rename.
-      assert html =~ "Add music"
+      refute html =~ "Add music"
+      refute html =~ "Manage music library"
+
+      # The group survives in the menu bar's Material submenu.
+      assert html =~ "Music"
+      assert Enum.any?(Catalog.groups(), &(&1.key == "music"))
+
+      # And nothing mints the manager's row any more.
+      refute Enum.any?(
+               Catalog.groups() |> Enum.flat_map(& &1.items),
+               &(&1.kind == :library)
+             )
     end
   end
 

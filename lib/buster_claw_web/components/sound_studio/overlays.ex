@@ -18,7 +18,6 @@ defmodule BusterClawWeb.SoundStudio.Overlays do
   import BusterClawWeb.SoundStudio.Format
 
   alias BusterClaw.Notifications.Sound
-  alias BusterClawWeb.MusicComponent
 
   attr :myself, :any, required: true, doc: "the component's phx-target"
 
@@ -216,7 +215,7 @@ defmodule BusterClawWeb.SoundStudio.Overlays do
             <div class="grid grid-cols-3 gap-3">
               <div>
                 <dt class="text-base-content/40">Size</dt>
-                <dd class="mt-0.5">{MusicComponent.humanize_bytes(@info.size)}</dd>
+                <dd class="mt-0.5">{humanize_bytes(@info.size)}</dd>
               </div>
               <div>
                 <dt class="text-base-content/40">Length</dt>

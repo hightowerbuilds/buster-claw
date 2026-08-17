@@ -43,17 +43,12 @@ defmodule BusterClawWeb.StudioLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket), do: BusterClaw.Music.Player.subscribe_state()
-
     {:ok,
      socket
      |> assign(:page_title, "Studio")
      |> assign_studio_tab()
      |> Voice.assign_voice()
      |> Recorder.assign_recorder()
-     # Transport for the Studio's music library. nil until the dock player
-     # announces — it renders a library with no transport rather than guessing.
-     |> assign(:music_player, nil)
      # Which source the Studio has open, the in-progress trim, the arranger's
      # selection/clipboard/undo — all still assigns of the LiveView rather than
      # the component, because the component is FROZEN and cannot hold them.
@@ -261,11 +256,6 @@ defmodule BusterClawWeb.StudioLive do
   end
 
   @impl true
-  # The dock player announced new transport state; the Music tab renders it.
-  def handle_info({:music_state, player}, socket) do
-    {:noreply, assign(socket, :music_player, player)}
-  end
-
   # The Studio finished an edit and wants the result opened. The component does
   # the work; only the parent can change the selection, because only the parent
   # holds it. The trim clears with it — its in/out points describe the source,
@@ -321,7 +311,6 @@ defmodule BusterClawWeb.StudioLive do
               report reload. --%>
         <BusterClawWeb.StudioPanel.studio_panel
           tab={@studio_tab}
-          player={@music_player}
           studio_source={@studio_source}
           studio_trim={@studio_trim}
           studio_clip={@studio_clip}

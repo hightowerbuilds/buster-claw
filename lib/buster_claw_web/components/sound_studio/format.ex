@@ -29,6 +29,26 @@ defmodule BusterClawWeb.SoundStudio.Format do
   def dbfs(peak), do: "#{Float.round(20 * :math.log10(peak), 1)} dBFS"
 
   @doc """
+  A byte count a person can read.
+
+  Moved here from `MusicComponent` on 08-16, when the music library manager was
+  deleted: two survivors used it — the detail pane's facts row and the info
+  modal — and a pure formatter surviving inside a deleted module is how a
+  deletion turns into a compile error at the worst moment. This module is
+  already where the rest of this tab's pure presentation lives.
+  """
+  def humanize_bytes(nil), do: "—"
+  def humanize_bytes(bytes) when bytes < 1_024, do: "#{bytes} B"
+
+  def humanize_bytes(bytes) when bytes < 1_048_576,
+    do: "#{Float.round(bytes / 1_024, 1)} KB"
+
+  def humanize_bytes(bytes) when bytes < 1_073_741_824,
+    do: "#{Float.round(bytes / 1_048_576, 1)} MB"
+
+  def humanize_bytes(bytes), do: "#{Float.round(bytes / 1_073_741_824, 2)} GB"
+
+  @doc """
   A clip's display label, derived from its source id rather than stored.
 
   Deriving it renames nothing and stays correct when the catalog changes

@@ -41,7 +41,6 @@ defmodule BusterClawWeb.SoundStudioComponent do
   alias BusterClaw.Notifications.SoundStudio
   alias BusterClaw.Notifications.Studio.Render
   alias BusterClaw.Notifications.StudioMix
-  alias BusterClawWeb.MusicComponent
 
   # Analysing a source means reading it end to end, and for anything compressed
   # it means a decoder round trip. Fine for a chime; not something to do on
@@ -135,10 +134,11 @@ defmodule BusterClawWeb.SoundStudioComponent do
   # an import plus a defdelegate of the same name is a compile error, and the
   # right fix is one definition rather than a qualified alias for the same thing.
   #
-  # `collapsed_groups/0` and `put_collapsed/1` went with the sidebar on 08-16.
-  # A submenu has nothing to fold, so the setting had no reader left — and a
-  # persisted preference nothing consults is a row in Settings that outlives
-  # every surface that could honour it.
+  # Two things that used to be re-exported here are gone. `collapsed_groups/0`
+  # and `put_collapsed/1` went with the sidebar on 08-16 — a submenu has nothing
+  # to fold — and `music_library_id/0` went with the music library manager the
+  # same day. Both were deleted rather than kept: a persisted preference nothing
+  # consults, and an id for a surface that no longer exists, are the same bug.
 
   # ---------------------------------------------------------------------------
   # Import
@@ -671,7 +671,6 @@ defmodule BusterClawWeb.SoundStudioComponent do
   # ---------------------------------------------------------------------------
 
   defp analyze(nil), do: nil
-  defp analyze(%{kind: :library}), do: nil
   defp analyze(%{path: nil}), do: nil
 
   defp analyze(%{path: path}) do
@@ -805,15 +804,6 @@ defmodule BusterClawWeb.SoundStudioComponent do
           </p>
         </div>
 
-        <%!-- The library manager keeps its own surface; a music track selected
-              individually opens in the editor below instead. --%>
-        <.live_component
-          :if={@selected && @selected.kind == :library}
-          module={MusicComponent}
-          id="studio-music-library"
-          player={@player}
-        />
-
         <Arranger.arranger
           myself={@myself}
           mix={@mix}
@@ -832,7 +822,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
         />
 
         <div
-          :if={@selected && @selected.kind not in [:library, :mix]}
+          :if={@selected && @selected.kind != :mix}
           class="flex min-h-0 flex-1 flex-col gap-3"
         >
           <header class="flex flex-wrap items-baseline justify-between gap-2">
@@ -926,7 +916,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
             </div>
             <div>
               <dt class="text-base-content/40">Size</dt>
-              <dd>{MusicComponent.humanize_bytes(@facts && @facts.size)}</dd>
+              <dd>{humanize_bytes(@facts && @facts.size)}</dd>
             </div>
           </dl>
 

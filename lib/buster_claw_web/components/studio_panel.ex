@@ -51,7 +51,6 @@ defmodule BusterClawWeb.StudioPanel do
   # Mix's assigns, passed straight through to the frozen component. They are
   # `StatusLive`'s, not this panel's: every one of them must outlive the `:if`
   # that discards the component on a home-tab switch.
-  attr :player, :any, required: true
   attr :studio_source, :any, required: true
   attr :studio_trim, :any, required: true
   attr :studio_clip, :any, required: true
@@ -120,7 +119,6 @@ defmodule BusterClawWeb.StudioPanel do
         <.live_component
           module={BusterClawWeb.SoundStudioComponent}
           id="home-studio"
-          player={@player}
           studio_source={@studio_source}
           studio_trim={@studio_trim}
           studio_clip={@studio_clip}

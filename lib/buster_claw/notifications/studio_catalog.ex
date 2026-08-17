@@ -47,11 +47,7 @@ defmodule BusterClaw.Notifications.StudioCatalog do
   alias BusterClaw.Settings
   alias BusterClaw.Telephony
 
-  @music_library_id "music:__library__"
   @collapsed_key "studio_collapsed_groups"
-
-  @doc "The sidebar id that opens the music library manager."
-  def music_library_id, do: @music_library_id
 
   @doc """
   Every source the studio can open, grouped for the sidebar.
@@ -199,32 +195,25 @@ defmodule BusterClaw.Notifications.StudioCatalog do
     end)
   end
 
+  # Tracks only. A `:library` row used to ride at the top of this group and open
+  # the music library manager (upload / delete / queue / play-all); both went on
+  # 08-16, because the Studio is for making things and administering a collection
+  # is not making something.
+  #
+  # **The tracks stayed on purpose.** Chopping a song into a mix is exactly the
+  # creative work this tab exists for, so music remains raw material — it simply
+  # stopped being a thing you manage from here.
   defp music_items do
-    tracks =
-      Enum.map(Music.tracks(), fn track ->
-        %{
-          id: "music:" <> track.name,
-          kind: :music,
-          name: track.name,
-          label: track.title,
-          sub: track.artist,
-          path: Music.path_for(track.name)
-        }
-      end)
-
-    # The manager rides at the top of its own group so uploading, queueing, and
-    # deleting keep a home after the Music tab became the Studio.
-    [
+    Enum.map(Music.tracks(), fn track ->
       %{
-        id: @music_library_id,
-        kind: :library,
-        name: "library",
-        label: "Manage library",
-        sub: "#{length(tracks)} tracks",
-        path: nil
+        id: "music:" <> track.name,
+        kind: :music,
+        name: track.name,
+        label: track.title,
+        sub: track.artist,
+        path: Music.path_for(track.name)
       }
-      | tracks
-    ]
+    end)
   end
 
   defp occurred(nil), do: nil

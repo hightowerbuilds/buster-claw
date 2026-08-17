@@ -594,7 +594,9 @@ check lib/buster_claw_web/components/notes/switcher.ex         134 HELD
 # 1038 -> 995 the same day, when the menu bar landed and took the tab-bar
 # toolbar with it: New mix and Import moved onto the surface they act on. The
 # sidebar (202 lines, ungated) was deleted outright.
-check lib/buster_claw_web/live/sound_studio_component.ex      995 FROZEN
+# 995 -> 985 when the music library manager was deleted on 08-16: its render
+# branch, the `:library` kind guards and the `@player` thread went with it.
+check lib/buster_claw_web/live/sound_studio_component.ex      985 FROZEN
 # The Studio's effect chain, capped on arrival. `effects.ex` is the registry AND
 # the DSP: adding an effect is a `@catalog` entry plus an `apply_one/2` clause,
 # and it then appears in the inspector, saves into the mix, applies on render and
