@@ -4,6 +4,7 @@ defmodule BusterClawWeb.Studio.SketchSvgTest do
   import Phoenix.LiveViewTest, only: [render_component: 2]
 
   alias BusterClaw.Sketch.Element
+  alias BusterClaw.Sketch.Svg
   alias BusterClawWeb.Studio.SketchSvg
 
   defp element!(overrides \\ %{}) do
@@ -52,27 +53,27 @@ defmodule BusterClawWeb.Studio.SketchSvgTest do
     # end of every stroke. Two implementations exist because one runs in each
     # place — this is what keeps them one behaviour.
     test "the shared cases produce byte-identical strings" do
-      assert SketchSvg.path_data([[1.5, 2.5]]) == "M 1.5 2.5 L 1.5 2.5"
-      assert SketchSvg.path_data([[0.0, 0.0], [1.1, 2.2]]) == "M 0 0 L 1.1 2.2"
+      assert Svg.path_data([[1.5, 2.5]]) == "M 1.5 2.5 L 1.5 2.5"
+      assert Svg.path_data([[0.0, 0.0], [1.1, 2.2]]) == "M 0 0 L 1.1 2.2"
 
-      assert SketchSvg.path_data([[-5.0, 10.0], [0.0, 0.0], [5.5, -10.5]]) ==
+      assert Svg.path_data([[-5.0, 10.0], [0.0, 0.0], [5.5, -10.5]]) ==
                "M -5 10 L 0 0 L 5.5 -10.5"
 
-      assert SketchSvg.path_data([[7.0, 3.0]]) == "M 7 3 L 7 3"
-      assert SketchSvg.path_data([]) == ""
+      assert Svg.path_data([[7.0, 3.0]]) == "M 7 3 L 7 3"
+      assert Svg.path_data([]) == ""
     end
 
     test "a whole number prints without a trailing .0" do
       # Elements store floats, so every whole coordinate is `0.0` here and `0` in
       # JavaScript. Both are valid SVG and the strings differ, which is exactly
       # the drift this file exists to catch.
-      assert SketchSvg.path_data([[0.0, 0.0], [16.0, 16.0]]) == "M 0 0 L 16 16"
-      refute SketchSvg.path_data([[0.0, 0.0]]) =~ "0.0"
+      assert Svg.path_data([[0.0, 0.0], [16.0, 16.0]]) == "M 0 0 L 16 16"
+      refute Svg.path_data([[0.0, 0.0]]) =~ "0.0"
     end
 
     test "a malformed point list renders nothing rather than a broken path" do
-      assert SketchSvg.path_data(nil) == ""
-      assert SketchSvg.path_data("nope") == ""
+      assert Svg.path_data(nil) == ""
+      assert Svg.path_data("nope") == ""
     end
   end
 

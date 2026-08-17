@@ -36,11 +36,11 @@ defmodule BusterClawWeb.Explained.Registry do
   # four `voice_bank_*` verbs — `list` is a :safe read, `create` and `select` are
   # :restricted, `delete` is :restricted + gated.
   @command_stats %{
-    total: 211,
-    read: 86,
+    total: 213,
+    read: 88,
     trigger: 17,
     mutate: 108,
-    safe: 89,
+    safe: 91,
     restricted: 122,
     gated: 25
   }

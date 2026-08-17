@@ -26,6 +26,8 @@ defmodule BusterClawWeb.Studio.SketchSvg do
   """
   use BusterClawWeb, :html
 
+  import BusterClaw.Sketch.Svg, only: [path_data: 1, num: 1]
+
   # A bare stroke is a few pixels wide and nearly impossible to click. In the
   # modes where pointing at one matters, each gets an invisible companion with a
   # usable hit area. Only in those modes — it doubles the nodes.
@@ -158,37 +160,12 @@ defmodule BusterClawWeb.Studio.SketchSvg do
     """
   end
 
-  @doc """
-  Points to an SVG path.
-
-  **Must agree byte-for-byte with `pathData` in `assets/js/lib/sketch.js`.** The
-  hook draws a stroke while it is being made and this draws it the instant it
-  commits; a disagreement is not a rendering bug, it is a visible jump at the end
-  of every stroke. Both are tested against the same cases.
-  """
-  def path_data([]), do: ""
-
-  # A tap with no movement is a dot, not nothing — a zero-length path does not
-  # render even with a round linecap.
-  def path_data([[x, y]]), do: "M #{num(x)} #{num(y)} L #{num(x)} #{num(y)}"
-
-  def path_data([[x, y] | rest]) do
-    "M #{num(x)} #{num(y)} " <>
-      Enum.map_join(rest, " ", fn [px, py] -> "L #{num(px)} #{num(py)}" end)
-  end
-
-  def path_data(_points), do: ""
-
-  # Elements store floats, so a whole number is `0.0` here and `0` in JavaScript.
-  # Printing it as `0.0` would be a valid path and a mismatched string, which is
-  # exactly the drift the agreement test exists to catch.
-  defp num(n) when is_float(n) do
-    if n == Float.round(n),
-      do: Integer.to_string(trunc(n)),
-      else: :erlang.float_to_binary(n, [:short])
-  end
-
-  defp num(n) when is_integer(n), do: Integer.to_string(n)
+  # `path_data/1` and `num/1` moved to `BusterClaw.Sketch.Svg` when Phase 2 needed
+  # to render a sketch headlessly — a command runs with no socket, and reaching
+  # into `BusterClawWeb` from a command module points the dependency the wrong
+  # way. Imported rather than re-exported so the call sites in the template above
+  # stay byte-identical, which is the pattern this repo already uses for
+  # extractions (TradingLive, 08-02).
 
   @doc false
   def hit_width, do: @hit_width

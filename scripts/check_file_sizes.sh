@@ -570,13 +570,27 @@ check lib/buster_claw/sketch/document.ex                      140 HELD
 check lib/buster_claw/sketch/paths.ex                          80 HELD
 check lib/buster_claw/sketch/placement.ex                      90 HELD
 
+# Phase 2's two. `svg.ex` holds the geometry the WEB renderer and the HEADLESS
+# one both need — it moved out of `Studio.SketchSvg` because a command runs with
+# no socket and a command module reaching into BusterClawWeb points the
+# dependency the wrong way. `preview.ex` is the one place that shells out to a
+# rasteriser; if it grows, the question is whether a second renderer arrived,
+# which is a decision rather than maintenance.
+check lib/buster_claw/sketch/svg.ex                           175 HELD
+check lib/buster_claw/sketch/preview.ex                       190 HELD
+
+# The sketch command surface — READS ONLY until Phase 3. Growth here is either
+# the write half arriving (which belongs behind D6) or a richer representation,
+# and both are worth being asked about.
+check lib/buster_claw/commands/sketch.ex                      175 HELD
+
 # The Sketch Pad's state and its surface, split from `studio/sketch.ex` when the
 # document arrived. The component owns loading, saving, undo, uploads and the
 # event handlers; the renderer owns drawing and nothing else. Growth in the
 # component is a new tool or a new phase; growth in the renderer is a new
 # element kind.
 check lib/buster_claw_web/live/sketch_component.ex            410 HELD
-check lib/buster_claw_web/components/studio/sketch_svg.ex     215 HELD
+check lib/buster_claw_web/components/studio/sketch_svg.ex     190 HELD
 
 # The Notes vault: state in the live_component, markup in three function
 # components. Split at ~810 lines during the Home Activity + Notes roadmap's

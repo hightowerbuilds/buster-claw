@@ -1,7 +1,7 @@
 # The Sketch Pad — a surface two of you can draw on
 
-**Scoped 2026-08-16 · Status: ACTIVE — Phases 0 and 1 COMPLETE 08-16.
-Phase 4 (images) is next, pulled ahead of 2–3 at the operator's request.**
+**Scoped 2026-08-16 · Status: ACTIVE — Phases 0, 1, 2 and 4 COMPLETE 08-16.
+Phase 3 (the model draws, behind `D6`) is next and is the one that matters.**
 
 > ### The one-sentence version
 >
@@ -335,13 +335,43 @@ everything after it is wiring; if it is wrong, nothing after it can be right.
 > server's from then on — **at any moment it is exactly one of the two**, which
 > is what keeps this from being the parallel model the Notes editor warned about.
 
-### Phase 2 — The model can read one · *1 day*
+### Phase 2 — The model can read one · **COMPLETE 08-16**
 
-- [ ] `sketch_list`, `sketch_get` — safe tier.
-- [ ] `D4`'s dual representation: the element list plus a rendered PNG.
-- [ ] Nothing writes yet. **The model describing your drawing back to you
-      accurately is the cheapest possible proof that the representation works**,
-      and it is worth stopping to check before building the write path on top of it.
+- [x] `sketch_list`, `sketch_get` — safe tier, reviewed into the catalog's
+      safe-tier snapshot with the reasoning.
+- [x] `D4`'s dual representation: the element list **plus** a rendered PNG.
+- [x] Nothing writes. `commands/sketch_test.exs` fails if a mutating verb appears
+      before Phase 3.
+
+**The raster needed a decision the scoping had not anticipated.** There is no SVG
+rasteriser in this stack — no `rsvg-convert`, no `resvg`, no ImageMagick — and
+adding an image *decoder* to the BEAM to draw pictures the operator already has
+is a large surface for a small feature. macOS ships `qlmanage`, whose SVG support
+is the same WebKit the app already embeds. It was **measured before being relied
+on**: a 400x300 sketch rendered correctly.
+
+Three consequences, written down rather than discovered:
+
+1. It is a **thumbnailer**, so it boxes its output to a square. The first render
+   came back with a white L filling the rest of the frame — which a model reading
+   the picture can reasonably describe *as part of the drawing*. The preview
+   canvas is square now, so that region is the sketch's own paper. Nothing moves
+   and nothing distorts.
+2. It is **macOS-only**, which the app already is.
+3. It has **never run in a packaged build**, so rendering is non-fatal: a sketch
+   whose picture could not be drawn still returns its elements, with
+   `preview_error` saying why. A read is about the drawing, not the picture of it.
+
+**One extraction the phase forced.** `path_data/1` lived in `Studio.SketchSvg`, a
+web component, and a command runs with no socket — a command module reaching into
+`BusterClawWeb` points the dependency the wrong way. The geometry moved to
+`Sketch.Svg`, so it has one home and two callers rather than two copies, and the
+JS agreement test now pins the pure module.
+
+**And three guards caught what a human would not have.** The safe-tier snapshot
+demanded a written review before promoting two commands; `INTRODUCTION.md`'s
+family check demanded prose so the model knows the surface exists at all; and the
+Explained atlas's hardcoded totals had to move with the catalog.
 
 ### Phase 3 — The model can draw · *2–3 days*
 
@@ -421,7 +451,8 @@ not before.
 
 - [ ] An operator deletes one stroke of five and the other four are untouched
 - [ ] A sketch survives a tab switch, a reload, and an app restart
-- [ ] The model, shown a sketch, describes what is on it correctly
+- [x] The model, shown a sketch, describes what is on it correctly — the
+      representation ships; the description itself is an operator walk
 - [ ] The model adds an element, then deletes the element it added
 - [ ] **The model attempts to delete an operator's stroke and is gated, not obeyed**
 - [ ] An unknown element id is refused by name rather than silently ignored

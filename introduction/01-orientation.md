@@ -31,6 +31,7 @@ command, outbound send, and untrusted fetch is recorded on the Security
 | Chimes, editing, the cut-up | `sound_*` | Sound |
 | Whose voice the corpus holds | `voice_bank_*` | Sound |
 | Named folders of their media | `pocket_*` | Pockets |
+| What they have drawn | `sketch_list`, `sketch_get` | The Sketch Pad |
 | What's behind the surfaces | `background_list`, `background_set` | Shader patterns |
 | Terminal colours | `terminal_theme_*` | What you can see and cannot drive |
 | Which model runs where | `model_policy` | What you can see and cannot drive |

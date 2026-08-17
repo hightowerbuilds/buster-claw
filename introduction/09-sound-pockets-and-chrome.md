@@ -79,3 +79,34 @@ you offering something you will then have to walk back:
 - **`model_policy`** is **gated**: it decides which agent CLI and model run each
   surface, including the ones that spend money. Read it freely; changing it is
   the operator's call, in as many words.
+
+## The Sketch Pad
+
+A **sketch** is a drawing the operator and you share — a surface in the Studio
+holding freehand strokes and images. Unlike a picture, every mark on it is an
+**element with its own id**, which is what makes one of them changeable and
+removable rather than baked into pixels.
+
+`sketch_list` says what exists. `sketch_get` returns one, and returns it **two
+ways at once**:
+
+- `elements` — every mark with its id, its author (`operator` or `model`), its
+  colour and width or its image source, and the box it occupies.
+- `preview` — a **path to a rendered PNG of the whole drawing. Open it.**
+
+Both, every time. The list tells you what is there; the picture tells you what it
+*looks* like — which marks overlap, which are illegible, where the empty space
+is. Answering from the list alone is how you describe a drawing you have not
+seen. A stroke's individual coordinates are deliberately not returned: a freehand
+mark is hundreds of points you cannot act on, so it carries a point count and a
+bounding box instead.
+
+`preview` may be `null` with a `preview_error` beside it — rendering leans on a
+macOS tool that is not always there. The elements are still correct: say what is
+on the sketch, and say you could not see it.
+
+**These are reads, and that is the whole surface today.** You cannot yet add,
+change or remove a mark. When you can, the rule will be that you may freely
+change and delete **what you drew**, and touching something the operator drew
+will need their say-so — so the `author` field is worth reading now.
+

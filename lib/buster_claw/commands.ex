@@ -588,6 +588,13 @@ defmodule BusterClaw.Commands do
   defdelegate pocket_list(args \\ %{}), to: BusterClaw.Commands.Pocket
   defdelegate pocket_describe(args), to: BusterClaw.Commands.Pocket
   defdelegate pocket_read(args), to: BusterClaw.Commands.Pocket
+  # Sketch Pad — READS ONLY (SKETCH_ROADMAP Phase 2). There is deliberately no
+  # verb here that adds, changes or removes an element: Phase 3 brings those
+  # behind `D6`'s authorship boundary, where the model may touch what the model
+  # made and an operator's mark is gated. `commands/sketch_test.exs` fails if a
+  # mutating verb appears before then.
+  defdelegate sketch_list(args \\ %{}), to: BusterClaw.Commands.Sketch
+  defdelegate sketch_get(args), to: BusterClaw.Commands.Sketch
   # Terminal colours — the model repaints the terminal it is running in. The
   # writes reach the agent's OWN theme slot only: nothing here calls
   # `TerminalTheme.set_custom/3`, so the operator's saved palette survives
