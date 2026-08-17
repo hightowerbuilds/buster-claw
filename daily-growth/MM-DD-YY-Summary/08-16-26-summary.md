@@ -1428,3 +1428,94 @@ Mix        File · Edit · Material   (no sidebar, full-width tracks)
 
 `sound_studio_component.ex` **1,235 → 972** across the day, gaining four
 features. `status_live.ex` **1,060 → 738**. Home is seven tabs, not eight.
+
+---
+
+# Backfill: the sketch pad's last three phases, written the next morning
+
+*Appended 08-17. Phases 2 and 3 and the quality pass landed between 21:47 and
+22:53 and went unrecorded — the summary was written after Phase 1 and never
+caught up. Recording it late rather than not is the only honest option; the gap
+is noted because a summary with a silent hole is worse than one with a seam.*
+
+## The quality pass, and a grep that was wrong thirteen times
+
+Before Phase 2, a sweep for dead code in the Studio. Three real items:
+`Document.authored_by/2` deleted (built for `D6`, called by nothing but its own
+test — an API whose only consumer is its test has never had its contract
+exercised), `SketchSvg.num/1` narrowed back to `defp` after being widened on a
+mistaken belief that a HEEx template needs it public, and `Sketch.Placement`
+extracted because Phase 3's `sketch_import` would place an image the same way a
+drop does.
+
+**And thirteen false positives, which is the part worth keeping.** The sweep
+flagged every public function in `sound_studio`'s `edits.ex`, `format.ex` and
+`catalog.ex`. All are `import`ed and called unqualified — this repo's own
+extraction pattern, and precisely why its dead-code notes say a grep inventory is
+a **lower bound**. Nothing there was touched.
+
+Two of my own tests were wrong, both about tolerance rather than behaviour: one
+compared aspect ratios with an ABSOLUTE delta and failed at 3000x17 (coordinates
+round to one decimal, so the error scales with the ratio and the tolerance must
+too), and one asserted a global atom count in an async suite.
+
+## Phase 2 — and a decision the scoping had not anticipated
+
+`sketch_list` and `sketch_get`, both `:safe`. `D4` says the model gets the
+element list *and* a picture, so the picture had to exist — and **there is no SVG
+rasteriser in this stack.** No `rsvg-convert`, no `resvg`, no ImageMagick, and
+adding an image *decoder* to the BEAM to draw pictures the operator already has
+is a large surface for a small feature.
+
+macOS ships `qlmanage`, whose SVG support is the same WebKit the app embeds. It
+was **measured before being relied on**, and the measurement changed the design
+twice: it is a *thumbnailer*, so it boxes output to a square, and the first
+render came back with a white L filling the frame — **which a model reading the
+picture can reasonably describe as part of the drawing.** The preview canvas is
+square now, so that region is the sketch's own paper.
+
+It has never run in a packaged build, so rendering is non-fatal: a sketch whose
+picture could not be drawn still returns its elements with `preview_error`.
+
+One extraction the phase forced: `path_data/1` lived in a *web* component, and a
+command runs with no socket. Geometry moved to `Sketch.Svg` — one home, two
+callers.
+
+## Phase 3 — two agents, a pinned contract, and three findings
+
+Built by two agents against a contract pinned first (`Element`'s `:text` kind,
+`Document`, `Authorship`), disjoint file scopes, and the end-to-end walk written
+by neither of them. That arrangement is the repo's own recorded lesson, and it
+paid for itself three times:
+
+**1. No command had ever known its caller.** Authorization was entirely the
+`PolicyEngine`'s, decided from the command's *name* before it ran. `D6` is the
+first rule that cannot be expressed that way — the same `sketch_delete` is fine
+or gated depending on **which element it names**. `dispatch/3` now hands the
+caller to any command declaring arity 2. Opt-in by arity rather than a registry
+(goes stale silently) or a reserved args key (invisible in the signature). `D13`.
+
+**2. `gated: true` made the feature impossible, and the agent refused to decide
+it alone.** `gated` is denied to `:agent_untrusted` — the *only* caller both
+allowed a `:restricted` command and treated as the model. So no caller could ever
+delete its own mark. It flagged the contradiction between two decisions and left
+both sides commented pointing at each other.
+
+> The resolution is not a compromise. **`gated` is a statement about a VERB; `D6`
+> is a statement about the DATA**, and here the data rule strictly dominates: it
+> protects the operator's marks — everything the gate would have done — while
+> leaving the model's own false starts removable, which the gate prevented. A
+> blanket gate was the weaker protection wearing the stronger word.
+
+**3. The gate did not actually surface.** The command returned
+`requires_confirmation` and recorded **nothing** — no `Sentinel.Pending`, no
+security event. "Gated, surfaced for approval" was a string the caller saw and
+the operator never did. `surface_confirmation/4` now records any command's own
+refusal the way a policy refusal is recorded.
+
+Two contract gaps were fixed at the right layer rather than worked around:
+`Document.move/3` translated `points` only and returned `{:ok, doc}` for every
+other kind — a write reporting success while doing nothing. The agent detected it
+by comparing before and after, because the file was pinned; the fix belonged one
+layer down. The compiler then caught the follow-on: with every kind movable, the
+`:not_movable` branch was unreachable, so it was deleted rather than kept.
