@@ -1,3 +1,15 @@
+> ## ARCHIVED 2026-08-17 — complete, all five phases
+>
+> Scoped and finished 08-15. The Time & Place card is a background surface like
+> any other, for the operator and for the model.
+>
+> **The model needed no new code, and that was the point:** `background_set`
+> reached the widget because `fetch_surface/1` matches `Appearance.surfaces/0`,
+> so making it a surface was the whole feature. The exception found a real defect
+> — `default` was reserved in `Appearance` but the command layer ran
+> `refuse_authored_shader/1` in *front* of `set_background/2`, so an unapproved
+> `shaders/default.wgsl` could shadow the reserved name.
+
 # The widget's sky — making the corner card a third background surface
 
 **Scoped 08-15-26 · Status: COMPLETE 08-15. All five phases, D1–D3 decided and

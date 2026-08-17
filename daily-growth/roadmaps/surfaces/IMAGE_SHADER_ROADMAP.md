@@ -338,7 +338,7 @@ once themselves, and existing shaders were backfilled, so `nebula` works. The
 paragraph above therefore overstates the refusal: what a command cannot apply is
 a shader **no human has looked at**, not every workspace shader. Relaxing that to
 "anything the operator has clicked once" is scoped and decided in
-[`AGENT_APPLIED_SHADERS_ROADMAP`](AGENT_APPLIED_SHADERS_ROADMAP.md) (Phase 0
+[`AGENT_APPLIED_SHADERS`](../../archive/08-17-26-agent-applied-shaders.md) (archived 08-17) (Phase 0
 decided 08-15, unbuilt). Until it ships, the sentence below stands.
 
 What remains true as scoped:

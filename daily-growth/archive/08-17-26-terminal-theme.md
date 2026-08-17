@@ -1,3 +1,18 @@
+> ## ARCHIVED 2026-08-17 — shipped 08-09; the walk lives in the release gate
+>
+> Phases 0–2 shipped 08-09. Elixir owns the palette list (it was two copies, a
+> comment and no tests), three presets replaced nine, and a custom theme is
+> **generated from a hue slider** — all twenty-one colours at once, so it can
+> never be half-applied. `industrial` is token-derived and the only preset that
+> follows the app's light/dark; do not flatten it.
+>
+> **Phase 3 closed decided-against rather than deferred silently**, and the
+> reasons are in the body.
+>
+> **The operator walk is not done and is not lost:**
+> [`RELEASE_GATE`](../roadmaps/platform/RELEASE_GATE_ROADMAP.md) carries it —
+> pick each preset and one you made, in a packaged build.
+
 # Terminal themes — one source of truth, three presets, and a custom palette
 
 **Scoped 08-09-26 · Status: Phases 0–2 SHIPPED 08-09. Only the operator walk

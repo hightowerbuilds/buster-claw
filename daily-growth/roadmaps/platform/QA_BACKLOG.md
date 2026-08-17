@@ -292,7 +292,7 @@ surface itself; what they taught is recorded here.
 
 ### The Dock icon has never been seen to change — **packaged walk owed**
 
-`APP_ICON_ROADMAP` shipped 08-15 with every layer tested except the one that
+`APP_ICON_ROADMAP` (archived 08-17) shipped 08-15 with every layer tested except the one that
 talks to macOS. `app_icon_set` has unit tests for path validation; **nothing has
 watched a Dock tile change**, because there is no Dock in `mix test` and none in
 a browser.

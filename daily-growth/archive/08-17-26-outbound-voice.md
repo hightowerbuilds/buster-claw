@@ -1,3 +1,14 @@
+> ## ARCHIVED 2026-08-17 — complete, and one phase deleted by the build
+>
+> Scoped and finished 08-15. Phases 1, 3 and 4 shipped with the cost back-fill;
+> Phase 0 was the operator's call. **Nothing was open when this closed.**
+>
+> **Phase 2 was deleted rather than skipped, and that is the reusable part.** It
+> scoped a Supabase function serving `<Dial>` TwiML behind a signature check and
+> an opaque id — none of which was needed, because Twilio's Calls API takes the
+> document inline. The phase and its headline risk went together: there is no
+> public endpoint to abuse because there is no public endpoint.
+
 # Outbound voice — making the rotary dial real
 
 **Scoped 08-15-26 · Status: COMPLETE 08-15. Phases 1, 3 and 4 shipped with the

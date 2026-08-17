@@ -67,10 +67,10 @@ in flight for this area?" without opening anything.
 ```
 roadmaps/
 ├── SUPERMAP.md ·············· this file — the only index
-├── shell/ ·················· Part I    TERMINAL_THEME · TERMINAL_PAINT
-├── surfaces/ ··············· Parts II–III  STUDIO · SKETCH · IMAGE_SHADER · APP_ICON · AGENT_APPLIED_SHADERS · WIDGET_BACKGROUND · LEFTOVERS_SURFACES
+├── shell/ ·················· Part I    TERMINAL_PAINT
+├── surfaces/ ··············· Parts II–III  STUDIO · SKETCH · IMAGE_SHADER · LEFTOVERS_SURFACES
 ├── agent-core/ ············· Part V    LEFTOVERS_AGENT_CORE
-├── integrations/ ··········· Part VI   CLINCH · BUSTERPHONE (+NUMBER_VENDING) · OUTBOUND_VOICE · SMS_DISCLOSURE · PHONE_ACCESS · GOOGLE_VERIFICATION
+├── integrations/ ··········· Part VI   CLINCH · BUSTERPHONE (+NUMBER_VENDING) · SMS_DISCLOSURE · PHONE_ACCESS · GOOGLE_VERIFICATION
 ├── platform/ ··············· Part VII  APPLE · UPDATE · RELEASE_GATE · TRUST_AND_SUPPORT · QA_BACKLOG · LEFTOVERS_PLATFORM
 ├── distribution/ ··········· Part VIII DISTRIBUTION · FRONT_DOOR
 └── website/ ················ Part IX   WEBSITE
@@ -177,8 +177,8 @@ and zero issues in the verdict. Budget hours per release, not minutes
 | **The visible brake** | `DutyLive`, `Orchestration.stand_down/1` | **SHIPPED 08-16 — `G-30`, promoted R2 → R1.** A fourth sticky dock LiveView: invisible when idle, a **Stand down** button whenever a shift runs. Stops new work at once; a run in flight finishes, and the surface says so | [`TRUST_AND_SUPPORT`](platform/TRUST_AND_SUPPORT_ROADMAP.md) `G-30` |
 | First-run onboarding | `SetupLive` `/setup` | SHIPPED | [`FRONT_DOOR`](distribution/FRONT_DOOR_ROADMAP.md) — the wizard is one of four surfaces that must agree |
 | Appearance — skins, text size, backgrounds | `AppearanceLive` `/appearance` | SHIPPED | — |
-| **The macOS Dock icon** | `Pockets.AppIcon`, `app_icon_set` | **BUILT 08-15** — drop an image in `pockets/app-icon/` and apply it; keyed to the file's bytes, so replacing it reverts to the shipped icon. The bundle icon stays sealed by the signature. **The native half is unwalked** — see [`QA_BACKLOG`](platform/QA_BACKLOG.md) | [`APP_ICON`](surfaces/APP_ICON_ROADMAP.md) |
-| Terminal themes | `TerminalTheme` | SHIPPED · operator walk open | [`TERMINAL_THEME`](shell/TERMINAL_THEME_ROADMAP.md), gate `G-40` |
+| **The macOS Dock icon** | `Pockets.AppIcon`, `app_icon_set` | **BUILT 08-15** — drop an image in `pockets/app-icon/` and apply it; keyed to the file's bytes, so replacing it reverts to the shipped icon. The bundle icon stays sealed by the signature. **The native half is unwalked** — see [`QA_BACKLOG`](platform/QA_BACKLOG.md) | archived 08-17 · the unwalked native half is [`QA_BACKLOG`](platform/QA_BACKLOG.md)'s |
+| Terminal themes | `TerminalTheme` | SHIPPED · operator walk open | archived 08-17 · the walk is [`RELEASE_GATE`](platform/RELEASE_GATE_ROADMAP.md)'s, gate `G-40` |
 | Terminal paint — the agent recolours itself | — | **SCOPED** | [`TERMINAL_PAINT`](shell/TERMINAL_PAINT_ROADMAP.md) |
 
 ---
@@ -197,7 +197,7 @@ and zero issues in the verdict. Budget hours per release, not minutes
 |---|---|---|---|
 | Chat | `ChatPanel`, `status/chat.ex` | SHIPPED | [`LEFTOVERS_SURFACES`](surfaces/LEFTOVERS_SURFACES.md) — the live-CLI attachment walk |
 | Notes | `NotesComponent` | SHIPPED | [`LEFTOVERS_SURFACES`](surfaces/LEFTOVERS_SURFACES.md) — renaming orphans `[[wiki links]]` |
-| Pockets | `PocketsPanel` | SHIPPED | [`APP_ICON`](surfaces/APP_ICON_ROADMAP.md) — a seventh Brand slot, for the macOS Dock |
+| Pockets | `PocketsPanel` | SHIPPED | archived 08-17 — the Dock walk is [`QA_BACKLOG`](platform/QA_BACKLOG.md)'s |
 | Calendar | `CalendarComponent` | SHIPPED | — |
 | Phone | `PhoneComponent`, `Phone.CallAction` | SHIPPED — **the keypad dials as of 08-15**, gated and confirmed once before the first ring | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) |
 | Explained | `ExplainedPanel` | SHIPPED | [`LEFTOVERS_SURFACES`](surfaces/LEFTOVERS_SURFACES.md) — two errands, five tiles |
@@ -206,8 +206,8 @@ and zero issues in the verdict. Budget hours per release, not minutes
 | Widget → Contacts | `BusterClaw.Contacts` | SHIPPED | — |
 | Widget → Notify | `NotifyLive` | SHIPPED | [`LEFTOVERS_AGENT_CORE`](agent-core/LEFTOVERS_AGENT_CORE.md) — the chime designer |
 | Background shader | `Shaders` | SHIPPED | — |
-| **Agent-applied shaders** | `Appearance.ShaderApproval` | **COMPLETE 08-15** — a workspace shader applies by command once the operator has applied its exact bytes themselves; editing withdraws it. Existing shaders backfilled. The property kept: GPU code no human has looked at cannot reach the screen from a command | [`AGENT_APPLIED_SHADERS`](surfaces/AGENT_APPLIED_SHADERS_ROADMAP.md) |
-| **The corner widget's sky** | `Widget.PlacePanel`, `Appearance` surface `:widget` | **COMPLETE 08-15, all five phases** — `home_widget.ex` decomposed 699 → 135 (FROZEN → HELD), `:widget` is a real surface with `daycycle` as a default nothing can select, the panel follows it live, and `data-daylight` derives from the SHADER so daycycle keeps its clock anywhere. `default` is a mode on every surface and the only way back to the sky | [`WIDGET_BACKGROUND`](surfaces/WIDGET_BACKGROUND_ROADMAP.md) |
+| **Agent-applied shaders** | `Appearance.ShaderApproval` | **COMPLETE 08-15** — a workspace shader applies by command once the operator has applied its exact bytes themselves; editing withdraws it. Existing shaders backfilled. The property kept: GPU code no human has looked at cannot reach the screen from a command | archived 08-17 |
+| **The corner widget's sky** | `Widget.PlacePanel`, `Appearance` surface `:widget` | **COMPLETE 08-15, all five phases** — `home_widget.ex` decomposed 699 → 135 (FROZEN → HELD), `:widget` is a real surface with `daycycle` as a default nothing can select, the panel follows it live, and `data-daylight` derives from the SHADER so daycycle keeps its clock anywhere. `default` is a mode on every surface and the only way back to the sky | archived 08-17 |
 | Image-reactive shaders | `ShaderCanvas`, `Appearance.image_shader_options/0` | SHIPPED — Phase 4 (the skill) open | [`IMAGE_SHADER`](surfaces/IMAGE_SHADER_ROADMAP.md) |
 | The home screen's primary action | `StatusLive`, `ChatPanel` | **SHIPPED — and says the right thing as of 08-16.** One of four surfaces now carrying the front-door sentence; guarded by `front_door_test.exs` | [`FRONT_DOOR`](distribution/FRONT_DOOR_ROADMAP.md) `VI-a` DONE |
 
@@ -308,7 +308,7 @@ Not surfaces. The machinery every surface sits on.
 | **Twilio / BusterPhone** | `Telephony` | **ACTIVE — the money leg. Inbound LIVE (verified in the app 08-14) and outbound CALLING shipped 08-15, so the only thing this phone cannot do is send a text. What remains is vending a number to somebody else** | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) |
 | Outgoing texts | `sms_send`, kill-switched | **BUILT, BLOCKED ON PAPERWORK — and the paperwork changed 08-15.** 10DLC was abandoned mid-flight (campaign deleted before its $15 vetting fee, local number released); the live path is **toll-free verification**, `HH0fb442c8…` IN_REVIEW, free, 3–5 business days. Nothing in the code changed | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) Phase 2 · [`SMS_DISCLOSURE`](integrations/SMS_DISCLOSURE_ROADMAP.md) |
 | **The SMS consent story** | `Explained.Phone` | **SCOPED 08-15, no code.** The Phone tab still names A2P 10DLC as the blocker, which went false the night the path changed — a correctness bug, not staleness. The disclosure toll-free verification requires is publicly fetchable on the website and the operator wants it in the app | [`SMS_DISCLOSURE`](integrations/SMS_DISCLOSURE_ROADMAP.md) |
-| Outgoing calls | `phone_call`, `Phone.CallAction` | **SHIPPED 08-15, roadmap COMPLETE** — needed no A2P at all. A bridge: your own phone rings first, so no audio touches the Mac. Gated, capped at 5/recipient/day, off until `BUSTER_CLAW_VOICE_ENABLED` | [`OUTBOUND_VOICE`](integrations/OUTBOUND_VOICE_ROADMAP.md) |
+| Outgoing calls | `phone_call`, `Phone.CallAction` | **SHIPPED 08-15, roadmap COMPLETE** — needed no A2P at all. A bridge: your own phone rings first, so no audio touches the Mac. Gated, capped at 5/recipient/day, off until `BUSTER_CLAW_VOICE_ENABLED` | archived 08-17 |
 | The relay (Supabase) | `telephony/relay.ex` | SHIPPED — **now erases, 08-10** | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) — pre-08-10 backlog sweep · [`LEFTOVERS_PLATFORM`](platform/LEFTOVERS_PLATFORM.md) — rotated DB password |
 | Google Workspace | `Google` (16 modules) | SHIPPED | [`GOOGLE_VERIFICATION`](integrations/GOOGLE_VERIFICATION_ROADMAP.md) — restricted scopes, CASA |
 | Operational — GitHub | `Integrations` | SHIPPED | — |
@@ -336,7 +336,7 @@ weeks describing as pending.
 **What that does and does not prove.** It proves inbound voice, inbound SMS and
 cost sync. It does **not** prove the product: **nobody has ever been vended a
 number**. (Outbound calling was unbuilt when this was written; `phone_call` and
-the keypad's Call button both shipped 08-15 — see `OUTBOUND_VOICE_ROADMAP.md`.
+the keypad's Call button both shipped 08-15 — see `archive/08-17-26-outbound-voice.md`.
 Outbound *SMS* is still blocked on A2P, which is a different registration and a
 different problem.) The
 paid tier is "we are the phone company for someone who is not you," and every

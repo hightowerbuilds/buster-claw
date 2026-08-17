@@ -1,3 +1,17 @@
+> ## ARCHIVED 2026-08-17 — built whole; the native half is owed a walk
+>
+> Scoped and built 08-15, Phases 0–4. Drop an image in `pockets/app-icon/` and
+> apply it; keyed to the file's bytes, so replacing it reverts to the shipped
+> icon. The bundle icon stays sealed by the signature.
+>
+> **Closed with one item OPEN and FILED, not resolved.** Every layer is tested
+> except the one that talks to macOS: nothing has watched a Dock icon change,
+> because there is no Dock in `mix test` and none in a browser. That needs a
+> packaged walk and it lives in
+> [`QA_BACKLOG`](../roadmaps/platform/QA_BACKLOG.md) — *"The Dock icon has never
+> been seen to change"*. Archiving the map does not close that; it moves it to
+> the list that tracks unwalked things.
+
 # The app icon — the one piece of chrome that isn't ours
 
 **Scoped 08-15-26 · Status: BUILT 08-15, Phases 0–4. One thing is unverified and

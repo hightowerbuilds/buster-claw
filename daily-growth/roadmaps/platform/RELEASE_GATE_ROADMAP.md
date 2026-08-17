@@ -181,7 +181,7 @@ logged-in checkout.
       on 08-09 — so none of them should look out of place beside the other tabs.
 
 - [ ] **Terminal themes, including one you made.** Inherited 08-09 from
-      `TERMINAL_THEME_ROADMAP.md`, whose acceptance section this is. Settings →
+      `archive/08-17-26-terminal-theme.md` (archived 08-17), whose acceptance section this is. Settings →
       Appearance → Terminal theme: pick each of Industrial, Nord and Monokai with a
       terminal **already open** and confirm it restyles. Then build a custom theme:
       **drag the hue slider** and confirm the open terminal follows the drag live,

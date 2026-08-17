@@ -1,3 +1,15 @@
+> ## ARCHIVED 2026-08-17 — complete; the property outlived the rule
+>
+> Scoped and finished 08-15, Phases 0–5. `background_set` accepts a workspace
+> shader whose **current bytes** the operator has approved by applying it once
+> themselves; editing the file withdraws that.
+>
+> **What to remember:** "never apply a workspace shader" was only ever a proxy
+> for *GPU code no human has looked at cannot reach the screen from a command* —
+> and a crude one, since it refused the operator's own files too. The property
+> survived; the rule was replaced. Approvals live in `app_settings`, outside the
+> workspace, so nothing with file write can forge one.
+
 # Agent-applied shaders — letting the model put a workspace pattern on screen
 
 **Scoped 08-15-26 · Status: COMPLETE 08-15. Phase 0 decided by the operator,

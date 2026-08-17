@@ -1,6 +1,8 @@
 # The Update — how a running install becomes the next one
 
-**Scoped 2026-08-16 · Status: SCOPED, no code.**
+**Scoped 2026-08-16 · Status: ACTIVE — `G-42` and `G-18` SHIPPED 08-16.
+`G-19` (the button) is next. The pipeline has never run: it fires on `v*` tags
+only, and the minisign keypair does not exist yet.**
 
 > ### The one-sentence version
 >

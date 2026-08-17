@@ -20,7 +20,7 @@
 > ### Read this before planning around it
 >
 > **This roadmap sits on top of code that shipped hours ago.**
-> `TERMINAL_THEME_ROADMAP` landed `d0d1363`, `8634308`, `876a7f4` on 08-09 in a
+> `TERMINAL_THEME_ROADMAP` (archived 08-17) landed `d0d1363`, `8634308`, `876a7f4` on 08-09 in a
 > concurrent session. Everything in Part I was read from that code as committed.
 > If that roadmap is still moving, **Phase 0 is where the two meet** — and
 > [I.3](#i3--terminaltheme-broadcasts-into-an-empty-room) is a finding its author
