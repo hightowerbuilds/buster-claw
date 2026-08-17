@@ -959,6 +959,172 @@ check lib/buster_claw/appearance.ex                           895 HELD
 check lib/buster_claw/appearance/shader_approval.ex           160 HELD
 check lib/buster_claw/appearance/migration.ex                 170 HELD
 
+# --- The JS and Rust layers enter, and the core's last stragglers (08-16) -----
+#
+# CODE_REVIEW_08-13-26 ranked this action #5 and called it "the cheapest thing
+# that stops this review's findings from being undone". Three days later the
+# core layer had entered piecemeal (capped by the commits that cut each file)
+# and the other two layers had not moved at all:
+#
+#   assets/js         14,202 lines   ZERO capped
+#   desktop/tauri/src  4,681 lines   ONE capped (app_icon.rs)
+#
+# Measured 08-16 rather than copied from the review, which matters twice: three
+# of the review's proposed files no longer needed an entry (gmail.ex was split
+# to 301, integrations.ex deduped to 494, scene3d.ex was deleted whole), and
+# `studio_mix.ex` had grown 595 -> 781 in the interval with nothing to notice.
+#
+# Every cap below is today's size plus roughly 10% (HELD), or exactly today's
+# size where the file is already too big and owes a cut (FROZEN). The verdicts
+# are the review's own, per file — this pass measured and filed them, it did not
+# re-diagnose them.
+
+# ── JavaScript. The first entries this layer has ever had. ───────────────────
+#
+# The review's verdict on the layer was good: a real functional-core/imperative-
+# shell split, pure logic in `lib/*` with sibling `.test.js` files under `bun
+# test`, hooks kept thin. These three are the exceptions it named.
+#
+# chrome.js and tab_strip.js are FROZEN because both are OVERLOADED, not merely
+# large. chrome.js is three UIs sharing one bar (bookmarks, omnibox suggestions,
+# find bar) coordinating through flags. tab_strip.js is three jobs, one of which
+# is the JS half of the Rust surface lifecycle — the app's most fragile
+# cross-language seam, and the only part of the JS layer with no test at all.
+# Frozen means the next feature either fits or takes the extraction.
+check assets/js/chrome.js                                     864 FROZEN
+check assets/js/hooks/tab_strip.js                            664 FROZEN
+# note_editor.js is the opposite case and is capped as a regrowth alarm only:
+# all parsing and commands are already extracted and tested, and ~120 lines are
+# the design essay guarding against rebuilding the two editors that shipped
+# green and were unusable. That essay is load-bearing — do not "clean it up" to
+# get under a cap.
+check assets/js/hooks/note_editor.js                          600 HELD
+
+# ── The Rust shell. The 07-22 shape, asserted at last. ───────────────────────
+#
+# Decisions live in pure, textually-guarded modules (js.rs, state.rs, labels.rs,
+# geometry.rs — asserted tauri-free); effects live in shells too dumb to be
+# wrong. The ACL lockstep test already covers all 40 commands. What none of it
+# covered was size.
+check desktop/tauri/src/browser/mod.rs                       1000 HELD
+check desktop/tauri/src/main.rs                               850 HELD
+# js.rs is the security-critical one: ~350 lines of injected payload and ~140 of
+# escaping tests, which is the ratio wanted. Growth here should mean a new
+# script WITH new tests in the same file, never a payload that skipped them.
+check desktop/tauri/src/browser/js.rs                         650 HELD
+check desktop/tauri/src/browser/state.rs                      520 HELD
+
+# ── The core's largest ungoverned file, and it is not close. ─────────────────
+#
+# FROZEN at exactly today's size. 24 verbs, zero DSP, at least four verb
+# families sharing ~50 lines of coercion helpers. The repo already conceded
+# this in code: `Commands.SoundCapture`'s own moduledoc says it was split out
+# on 08-09 "to stop the Sound module, already the largest file in lib/, from
+# absorbing a second concern."
+#
+# The owed split is Library / Corpus / Render behind a delegating facade so
+# `commands.ex` stays byte-identical, and the 2,524-line test file is the proof
+# harness. Until then the number may not move up. One trap for whoever takes it:
+# `under_library/1` is the security boundary of the whole family and must keep
+# exactly one home.
+check lib/buster_claw/commands/sound.ex                      2464 FROZEN
+
+# ── Core files the review read and ruled feature-sized. ──────────────────────
+#
+# These are regrowth alarms, not split targets. The review's diagnosis for each
+# is one line here; the argument lives in the module's own moduledoc.
+#
+# terminal_theme.ex — ~300 data + ~250 prose + ~310 logic in four coherent
+# blocks. Seams if it ever grows: the WCAG legibility floor (~130 lines, one
+# caller) and the HSL generator (~120).
+check lib/buster_claw/terminal_theme.ex                       880 HELD
+# workspace.ex — deliberately one file. Its whole argument is that layout used
+# to be an emergent property of scattered calls; splitting the registry from
+# the enforcement recreates the disease it cured. ~275 lines are the @entries
+# registry with load-bearing history comments.
+check lib/buster_claw/workspace.ex                            660 HELD
+# agent_mode.ex — the reference shape, health-checked twice. All four moduledoc
+# safety properties map to enforcement code rather than hope.
+check lib/buster_claw/browser_control/agent_mode.ex           650 HELD
+# notes.ex — one coherent contract (containment, UTF-8, size, atomic write,
+# optimistic concurrency), every function one rule applied to one verb. The
+# review called it one of the best files in the set.
+check lib/buster_claw/notes.ex                                610 HELD
+# finance/sources.ex — a registry, and growth here IS a new source entry, which
+# is the sanctioned kind. Strict status parsing means a typo cannot promote a
+# source to :verified.
+check lib/buster_claw/finance/sources.ex                      580 HELD
+# cli.ex — a thin escript HTTP client owning no command logic. Two of its
+# longest comments memorialize real shipped bugs; they are not padding.
+check lib/buster_claw/cli.ex                                 1000 HELD
+# commands.ex — the back two-thirds is a wall of 218 defdelegates and the size
+# IS the point: a reviewable inventory of the whole surface, and it must stay
+# one module for `apply(__MODULE__, …)` to preserve the single policy door.
+check lib/buster_claw/commands.ex                             790 HELD
+# terminal_commands.ex — a different catalog entirely (the whitelisted cmd-list
+# the in-app terminal reads). Pre-named seams: the merge/normalize block (~200)
+# and skill-prompt synthesis (~50).
+check lib/buster_claw/terminal_commands.ex                    840 HELD
+# attachments.ex — the file IS its security argument: generated filenames,
+# magic-byte sniffing, size-before-read, symlink refusal, read-back
+# re-validation are one argument that splitting would scatter.
+check lib/buster_claw/agent/attachments.ex                    960 HELD
+# stream_event.ex — five observed wire schemas as pure clauses, every mapping
+# citing a probe. No shared fallback between codex's two schemas is a
+# deliberate correct call, not an oversight.
+check lib/buster_claw/agent/stream_event.ex                   680 HELD
+# agent_backend.ex — the measured-facts table; nearly half is dated evidence
+# ("measured 08-03, --help quoted") which is the module's whole value. If it
+# ever splits: per concern, NEVER per backend — the cross-backend comparisons
+# in the comments are the point.
+check lib/buster_claw/agent_backend.ex                        580 HELD
+check lib/buster_claw/agent/open_code_server.ex               570 HELD
+# dispatcher.ex — the unattended pump. Bulk is six flat record_outcome clauses;
+# the subtle part (swarm worst-case budget reserved up front, reconciled on
+# completion) is well-commented.
+check lib/buster_claw/dispatcher.ex                           600 HELD
+# model_policy.ex — a deliberate leaf. Watch item rather than growth item:
+# @floors and @claude_only have been empty since the trading deletion, so the
+# floor guards are all vacuously green.
+check lib/buster_claw/model_policy.ex                         540 HELD
+# catalog/web.ex — pure data, 37 documented entries at ~16 lines each: the
+# honest cost of the surface, per the standing entries/0 ruling.
+check lib/buster_claw/commands/catalog/web.ex                 660 HELD
+check lib/buster_claw/commands/catalog/sound.ex               530 HELD
+# telephony.ex — the one file in this batch the review did not diagnose
+# individually. Capped as a plain regrowth alarm; if it trips, read it properly
+# before raising the number.
+check lib/buster_claw/telephony.ex                            630 HELD
+
+# ── The audio family. ────────────────────────────────────────────────────────
+#
+# studio_mix.ex is why this section is dated 08-16 rather than 08-13: the review
+# measured it at 595 and called it cohesive, and it is 781 today. Nothing was
+# wrong with the growth — it is the arrangement model plus a v1->v2 migration —
+# but a 31% increase in three days on a file nobody was watching is exactly the
+# rate this gate exists to make visible.
+check lib/buster_claw/notifications/studio_mix.ex             800 HELD
+# sound.ex — the two-layer library + routing walk the whole surface rests on.
+check lib/buster_claw/notifications/sound.ex                  610 HELD
+# sound_studio.ex — PCM16 editing core + studio folder catalog. Mildly two jobs;
+# `SoundStudio.Store` is the seam IF the folder half grows, not before.
+check lib/buster_claw/notifications/sound_studio.ex           800 HELD
+# The remaining cut-up stages. The review read all twelve and found them the
+# house's best work — one stage per module, a test file each, docs carrying
+# measurements rather than adjectives. Every large one is a single algorithm
+# plus its corrections. These are +10% maintenance room, nothing more.
+#
+# One structural risk they share, recorded where someone will meet it: the
+# 25 ms / 10 ms frame clock is described everywhere as "pinned in Cutup.Types",
+# but Types is prose-and-types only — the numbers live as independent attributes
+# in signal.ex, vad.ex and dtw.ex. The pin is a convention, not a mechanism.
+check lib/buster_claw/notifications/cutup/align.ex           1030 HELD
+check lib/buster_claw/notifications/cutup/select.ex          1020 HELD
+check lib/buster_claw/notifications/cutup/mfcc.ex             660 HELD
+check lib/buster_claw/notifications/cutup/dtw.ex              630 HELD
+check lib/buster_claw/notifications/cutup/vad.ex              620 HELD
+check lib/buster_claw/notifications/cutup/signal.ex           570 HELD
+
 if [ "$fail" -ne 0 ]; then
   echo "FAIL: the file-size inventory does not hold."
   echo
