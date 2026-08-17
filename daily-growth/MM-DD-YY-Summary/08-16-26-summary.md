@@ -619,3 +619,249 @@ against acting on the rest of it yet** — restructuring navigation for a mature
 user who does not exist is the same error as building number provisioning before
 `IX.4` says anyone wants it. Scene3D was the one item that needed no such data:
 its own roadmap had recorded, in writing, that nobody had wanted it.
+
+---
+
+# The afternoon: everything here was already written down
+
+Seven things landed this afternoon and **not one of them needed to be
+discovered.** Every single one was filed, dated, and sitting:
+
+| The work | Filed | Sat for |
+|---|---|---|
+| `VI-a` — one sentence, four surfaces | 08-09 | a week, "ACTIVE, nothing done" |
+| `G-30` — a visible kill switch | 08-09 | scheduled for the release *after* the one it gates |
+| The size gate's missing 19 files | 08-13 | ranked action #5, never taken |
+| The Sound Studio catalog split | frozen phase | weeks |
+| The per-clip catalog rescan | 08-13 | filed, confirmed live at HEAD |
+
+**The morning's lesson was claims that stopped being true. The afternoon's is
+the opposite failure: claims that stayed true and changed nothing.** A map is
+not a mitigation. `VI-a` was described in its own file as "the cheapest
+high-leverage work anywhere in the release" and it took an afternoon — the week
+it waited was not a scheduling decision, it was nobody picking it up.
+
+## `G-30` — the brake you can reach without a terminal
+
+Until today the emergency stop was a `STOP` file on disk, reachable only by
+typing `./buster-claw off-duty` — a command the app described in prose, on two
+screens, in a product whose second setup step promises *no terminal knowledge
+needed*.
+
+**The promotion from R2 to R1 is not a preference, and that is what made it
+easy.** `IX.3`, the release plan's own first-run test, lists *"stop the agent
+immediately"* among the two tasks it says matter most, with a pass bar of four
+users in five, unaided. That task could not be completed inside the app at all.
+**The release gate contained a test nobody could pass, and its fix was scheduled
+for afterwards.** Either `IX.3` drops the task or `G-30` moves; dropping it
+means dropping the product's claim from the product's own test.
+
+`DutyLive` is a fourth sticky dock LiveView. It renders **nothing** when no
+shift is running — a permanent brake showing "idle" trains the eye to skip the
+spot the real one appears.
+
+**Three decisions worth keeping:**
+
+**Latch, then stop.** `Dispatcher.maybe_run/1` consults the kill switch on every
+decision, so engaging first closes the door before anything else runs. Stopping
+first leaves a window where a `shift_start` brings the pump back up and the
+operator's brake reads as a glitch. `shift_start` already clears the latch, so
+resume needed no new mechanism.
+
+**It states its limit on the button.** *"Stops new work at once · a run in
+progress finishes."* Nothing in this app cancels a headless run mid-flight — the
+Dispatcher monitors, it does not kill. A brake that overstates its reach is
+worse than one that names it.
+
+**No confirmation**, against the house `data-claw-confirm` idiom. An emergency
+brake that asks "are you sure" adds friction at the one moment friction is most
+expensive. A mis-click costs a restart; hesitating in front of a modal while an
+agent does something alarming does not have a bounded cost.
+
+### And a guard that guarded nothing, caught this time
+
+I wrote an ordering test — subscribe, call `stand_down/1`, await
+`:shift_stopped`, assert the latch. **It passed with the order swapped**, because
+by the time a subscriber receives anything both lines have run. It looked like an
+ordering guard and guarded nothing.
+
+Deleted, with the reason left where it stood. What *is* guarded is the property
+that matters — the latch goes down regardless of what the stop does — and the
+`{:ok, :latched}` case proves it. **Yesterday's lesson arriving one day later and
+being caught before it shipped**, which is the only reason it is a footnote
+rather than a section.
+
+## `VI-a` — and two of the four surfaces already agreed
+
+> **An assistant on your Mac that uses your tools, keeps working, and shows you
+> what it did.**
+
+Operator's call, assistant-first. The three clauses are the three things this
+product has that a chat box does not, in the order a newcomer can check them.
+
+**The map was wrong about its own problem.** `VI.1`'s table said busterclaw.lol
+pitched *"a desktop runtime where an AI agent manages your web interactivity"*.
+It had not for some time — the site already said the README's line, verbatim. **A
+map that records another surface's copy is a copy of a copy and goes stale
+silently**, which is the argument for fixing this with a test rather than a
+corrected table.
+
+`front_door_test.exs` asserts the sentence in the three in-repo surfaces, refuses
+all three retired pitches anywhere in them, and pins `VI-i` by refusing the word
+*Claude* in the chat's empty state. **It reads source rather than rendering** —
+the README is rendered by nothing, and a render test would have passed while it
+drifted, which is the case that actually happened.
+
+**It failed on its first run against real code**, catching the retired
+queue-jargon phrase inside a comment *I had just written explaining the
+retirement*. The comment was reworded rather than the guard loosened.
+
+**It cannot reach busterclaw.lol and says so in its own moduledoc.** Four
+surfaces, three guarded, and the unguarded one is the repository that carried
+opposite licence terms for two weeks in August.
+
+### One cost, recorded rather than glossed
+
+`IX.1`'s "before" reading was never taken. There is no baseline and the
+counterfactual is gone permanently. It was the right trade only because the old
+copy contained three verifiable falsehoods — **you do not A/B-test against a
+version that lies** — but `IX.1` on the new copy can now report a reading and
+never a delta.
+
+## Part IX was measured, and three of five rows were wrong
+
+Ninety seconds of `curl` against the live site, and the map was more wrong than
+the site. busterclaw.lol is a **hash-routed canvas app**: the server only serves
+`/`, so every path 404s by construction, and the map had read those 404s as
+missing pages.
+
+- The download page **exists**, at `#/downloads/busterclaw`.
+- Privacy and terms **exist**, at `/busterphone/*.html`, BusterPhone-scoped.
+- The headline **already matched** the README.
+
+**What it missed is worse than what it invented.** A live Download button
+resolving to `https://DOMAIN-TBD.invalid/` — a 404 reads as "not built yet"; a
+dead host on the last click before the product reads as broken. And four false
+capability claims, live in the deployed bundle: *203 commands* (211),
+*Sentry and Umami* (removed 08-14), *outbound calling is not built* (shipped
+08-15), and A2P 10DLC as the SMS blocker (abandoned 08-15).
+
+All four fixed and **deployed**, verified against the deployed bundle rather than
+the source. The site is a fifth front-door surface, in another repository, that
+no test here renders — and nothing watches it. Today it was fixed because someone
+ran `curl` on a hunch.
+
+## The size gate finally covers the whole codebase
+
+Ranked action #5, three days old, and the layers it named had not moved:
+
+```
+assets/js         14,202 lines   ZERO capped
+desktop/tauri/src   4,681 lines   ONE capped
+```
+
+34 files added, **measured at HEAD rather than copied from the review** — which
+mattered four times. `gmail.ex` is 301 not 739 (it was split), `integrations.ex`
+is 494 not 539 (the dedup landed), `scene3d.ex` was deleted yesterday, and
+`studio_mix.ex` had grown **595 → 781 in three days** on a file the review called
+cohesive. That last one is the gate's whole argument, found by the act of
+building it.
+
+Verified by breaking it in both directions rather than assuming.
+
+**One correction to something I claimed earlier today:** `appearance.ex` was not
+drifting ungoverned. It is capped at 895 and sits at 891. The argument rested on
+the 34 files that genuinely had no cap.
+
+## The Studio became a place
+
+Three asks in three messages, and they composed into one move.
+
+**`/studio` is a route** with a flat rail — Mix, Voice Library, Sketch Pad. The
+alternative was an outer Studio/Sketch pair with the old rail nested inside, and
+it lost to the reasoning this repo had already written down when the Voice tab
+was briefly split in two this morning: **a rail that makes you leave a tab to
+finish a loop is a rail in the way.**
+
+Home dropped from eight tabs to seven. It had cost Home twice — every panel
+there renders behind an `:if`, so the studio's component was destroyed and
+rebuilt on every glance at Chat, which is the entire reason its selection, trim,
+clipboard and undo stacks had to be hoisted into `StatusLive`.
+
+`status_live.ex` **1060 → 738**. The ratchet asked for the new cap, which is the
+gate doing its job: left at 1060 it would have silently re-opened 300 lines the
+extraction had just closed.
+
+**A behavioural change, accepted and written into the test that used to assert
+the opposite:** leaving `/studio` unmounts the LiveView, so the undo stack, trim
+and clipboard no longer survive navigating away. The mix is on disk; only
+in-progress editing state is lost, and leaving a page is a stronger action than
+glancing at a sibling tab.
+
+**Explained became one tab.** `ramshackle.ex` deleted, the half worth keeping
+merged into `studio.ex`, net −432 lines. Its registry entry had drifted into
+claiming the Voice surface *"is not built"* — months after it shipped. The
+framing the operator asked for is now itself guarded: if the Studio is ever
+presented as settled, a test fails and somebody has to decide whether that is
+true.
+
+## Mix: the frozen phase, then the file bar
+
+**Phase 3, frozen for weeks, took an afternoon.** The catalog moved to core —
+and it only worked because of the correction the 08-13 review made to the plan:
+four of five builders baked router `~p` URLs, so a naive move would have dragged
+`BusterClawWeb.Router` into `lib/buster_claw/`. **Core carries a filesystem
+path — what the unbuilt `sound_*` CLI needs — and the web adds the URL.**
+
+That split made the filed rescan bug visible as two different things.
+`render_mix/1` passed `&resolve_source/1`, which calls `groups/0` fresh every
+time Render asks — and `groups/0` is **four directory listings plus a database
+query**. An n-clip mixdown did n of them. It reads the catalog once now.
+
+Then the sidebar went, and the tracks got the width.
+
+**Nothing was allowed to be orphaned, and two things nearly were.** The
+sidebar's *rows* were what the right-click context menu attached to — rename,
+delete, info, new-audio all find their target by `data-studio-source`. Deleting
+the sidebar would have deleted those four verbs **silently**, because a context
+menu that never opens raises nothing. And the drop zone was the only thing
+saying where an imported file lands.
+
+**Render and Delete are deliberately not in the File menu.** They were, for about
+an hour, and came out because the arranger already has them beside the mix they
+act on — a second door to one action is exactly how a clip's effect chain was
+lost this morning. The test that decided it: **is the existing control
+contextual?** Render and Delete only mean anything while a mix is open.
+
+Group folding was deleted rather than migrated: a submenu has nothing to fold,
+and a persisted preference no surface can honour is worse than none. Its five
+tests went too, **with a note where they stood — they did not start failing,
+they stopped having a subject.**
+
+### The bug the port caught
+
+The sidebar compared `@selected.id == item.id`. I first wrote
+`item.id == @selected` — comparing an id against the whole catalog item. It
+would have shipped a menu that highlighted **nothing, on every row, forever**,
+and no test would have noticed. Caught by porting the sidebar's markup carefully
+rather than by rewriting it from memory.
+
+## Three sessions, one tree
+
+The clearest operational fact of the day. At various points three agents were
+writing into this working tree at once, and it cost real care rather than real
+damage:
+
+- **The Sketch Pad was built twice-over.** I built a minimal one before being
+  told another agent had it; no files collided, and they have since taken it
+  over and improved it — pure `lib/sketch.js`, `data-active` pressed states, its
+  own roadmap. The registry entry, panel dispatch, gate caps and tests are
+  wiring they needed regardless.
+- **Two gate cap raises in `check_file_sizes.sh` are theirs** and were left
+  unstaged, reconstructed out of my commit rather than swept in.
+- **`setup_live.ex` and its test** carried another session's hunk all afternoon,
+  so `VI-k` — the wizard still calling the kill switch a CLI command — is filed
+  rather than fixed. One line, whenever that file is free.
+- The shared test lane showed **174 failures** at one point, all `Database busy`
+  from a concurrent run. `MIX_TEST_PARTITION` is the answer and it is worth
+  reaching for sooner than I did.
