@@ -182,7 +182,7 @@ and zero issues in the verdict. Budget hours per release, not minutes
 | **Agent-applied shaders** | `Appearance.ShaderApproval` | **COMPLETE 08-15** — a workspace shader applies by command once the operator has applied its exact bytes themselves; editing withdraws it. Existing shaders backfilled. The property kept: GPU code no human has looked at cannot reach the screen from a command | [`AGENT_APPLIED_SHADERS`](surfaces/AGENT_APPLIED_SHADERS_ROADMAP.md) |
 | **The corner widget's sky** | `Widget.PlacePanel`, `Appearance` surface `:widget` | **COMPLETE 08-15, all five phases** — `home_widget.ex` decomposed 699 → 135 (FROZEN → HELD), `:widget` is a real surface with `daycycle` as a default nothing can select, the panel follows it live, and `data-daylight` derives from the SHADER so daycycle keeps its clock anywhere. `default` is a mode on every surface and the only way back to the sky | [`WIDGET_BACKGROUND`](surfaces/WIDGET_BACKGROUND_ROADMAP.md) |
 | Image-reactive shaders | `ShaderCanvas`, `Appearance.image_shader_options/0` | SHIPPED — Phase 4 (the skill) open | [`IMAGE_SHADER`](surfaces/IMAGE_SHADER_ROADMAP.md) |
-| The home screen's primary action | `StatusLive` | SHIPPED, **says the wrong thing** | [`FRONT_DOOR`](distribution/FRONT_DOOR_ROADMAP.md) `VI-a` |
+| The home screen's primary action | `StatusLive`, `ChatPanel` | **SHIPPED — and says the right thing as of 08-16.** One of four surfaces now carrying the front-door sentence; guarded by `front_door_test.exs` | [`FRONT_DOOR`](distribution/FRONT_DOOR_ROADMAP.md) `VI-a` DONE |
 
 **Every surface in Home renders something real, and Studio → Voice Library is
 now the whole loop rather than half of it**: browse the words, hear a take,
@@ -361,7 +361,7 @@ Who gets it, what they pay, and how we find out whether anyone wants it.
 |---|---|---|---|
 | **Tiers, margin, the paid pitch** | — | **ACTIVE** | [`DISTRIBUTION`](distribution/DISTRIBUTION_ROADMAP.md) |
 | **Concept testing** — five falsifiable claims | — | **ACTIVE, can start today** | [`DISTRIBUTION`](distribution/DISTRIBUTION_ROADMAP.md) `IX.1`–`IX.5` |
-| The front door — one sentence, four surfaces | README, site, `SetupLive`, `StatusLive` | **ACTIVE, nothing done** | [`FRONT_DOOR`](distribution/FRONT_DOOR_ROADMAP.md) |
+| The front door — one sentence, four surfaces | README, site, `SetupLive`, `ChatPanel` | **`VI-a` DONE 08-16** — *"An assistant on your Mac that uses your tools, keeps working, and shows you what it did."* All four say it; three are guarded, the website is not and cannot be from here. `VI-d`/`VI-h`/`VI-i`/`VI-j` closed with it | [`FRONT_DOOR`](distribution/FRONT_DOOR_ROADMAP.md) |
 | The bill | — | measured | [`DISTRIBUTION`](distribution/DISTRIBUTION_ROADMAP.md) |
 | Anything paid | — | **not started, on purpose** | [`DISTRIBUTION`](distribution/DISTRIBUTION_ROADMAP.md) |
 | **Source model** | `LICENSE`, `TRADEMARK.md`, README | **RELICENSED 08-10 — PolyForm Shield 1.0.0** | [`DISTRIBUTION`](distribution/DISTRIBUTION_ROADMAP.md) |

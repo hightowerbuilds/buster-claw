@@ -11,7 +11,18 @@ defmodule BusterClawWeb.SetupLiveTest do
   test "welcome step renders the explainer", %{conn: conn} do
     {:ok, _view, html} = live(conn, ~p"/setup")
     assert html =~ "Getting started"
-    assert html =~ "reachable by email"
+
+    # The front-door sentence, one of four surfaces that must agree (`VI-a`).
+    # `BusterClawWeb.FrontDoorTest` owns the agreement across surfaces and reads
+    # source; this one proves the wizard actually renders it, which reading the
+    # file cannot.
+    assert html =~ "An assistant on your Mac that uses your tools"
+
+    # `VI-h`: the old copy said "Everything runs on your machine", which a
+    # newcomer reads as "my data never leaves this computer". It does not — the
+    # prompt and what it touches go to the chosen AI service.
+    assert html =~ "the AI service you choose"
+    refute html =~ "Everything runs on your machine"
   end
 
   test "Get started advances to the workspace step", %{conn: conn} do

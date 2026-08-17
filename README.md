@@ -1,10 +1,10 @@
 # Buster Claw
 
-**A desktop runtime that gives an AI agent hands — and a record of what it did with them.**
+**An assistant on your Mac that uses your tools, keeps working, and shows you what it did.**
 
-You run **Claude Code, Codex, or OpenCode** — in the built-in terminal, or headlessly from the app's own Chat. The agent drives the app through one canonical command surface (211 commands) covering your browser, Gmail, Calendar, Drive, GitHub, and a durable work queue. Every command that changes something, every outbound send, and every untrusted fetch lands on an auditable security feed, and restricted actions are refused outright for untrusted callers.
+Ask it in the app's own Chat, email it, or drive it from the built-in terminal. It reads and acts inside the browser tab you're actually looking at, your Gmail, Calendar and Drive, and it works a durable queue that survives a restart — one canonical command surface, 211 commands. Everything it changes lands on an auditable feed you can read afterwards, and restricted actions are refused outright for untrusted callers.
 
-**There is no LLM inside Buster Claw and it needs no API keys.** The intelligence is the agent you already pay for; the app is the body, the memory, and the receipts.
+**You bring the intelligence.** There is no LLM inside Buster Claw and it needs no API keys: it runs **Claude Code, Codex, or OpenCode** under the agent subscription you already pay for. The app is the hands, the memory, and the receipts.
 
 It's an Elixir/Phoenix + LiveView application wrapped in a Tauri desktop shell — Phoenix at the repository root, the shell in `desktop/tauri`.
 

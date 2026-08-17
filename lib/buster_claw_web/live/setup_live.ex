@@ -253,23 +253,38 @@ defmodule BusterClawWeb.SetupLive do
         <div :if={@step == :welcome} class="space-y-6">
           <div class="ic-panel space-y-4 p-6">
             <h1 class="font-display text-3xl font-black uppercase tracking-tight">
-              Your assistant, reachable by email
+              An assistant on your Mac that uses your tools, keeps working, and shows you what it did
             </h1>
             <p class="text-sm leading-7 text-base-content/80">
-              Buster Claw is a personal assistant you reach any time — just email it. While your
-              shift is open, your trusted contacts can email it too, and it gets to work: reading
-              mail, browsing the web, handling tasks, and replying for you.
+              Ask it in Chat, or email it and it answers. While a shift is open your trusted
+              contacts can give it work too, and it gets on with it: reading mail, browsing the
+              web, handling tasks, and replying for you.
             </p>
             <ul class="space-y-2 text-sm leading-7 text-base-content/80">
-              <li>Email it like a person — it reads and replies.</li>
-              <li>It acts for you across Gmail, Calendar, the web, and your tools.</li>
               <li>
-                You stay in control — trusted contacts only, an audit feed of everything it
-                changes, and a kill switch (<code>./buster-claw off-duty</code>).
+                <span class="font-semibold">It uses your tools</span>
+                — Gmail, Calendar, the web, your files.
+              </li>
+              <li>
+                <span class="font-semibold">It keeps working</span>
+                — go on duty and it works a durable queue while you're away.
+              </li>
+              <li>
+                <span class="font-semibold">It shows you what it did</span>
+                — every change lands on an audit feed you can read, and you can stop it at any
+                time with the <span class="font-semibold">Stand down</span>
+                button in the bar at the bottom of the screen.
               </li>
             </ul>
+            <%!-- "Everything runs on your machine" was the old line here and it was
+            too easy to read as "my data never leaves this computer". The app and
+            its records are local; prompts and the content they touch go to the AI
+            service you choose, and connected actions reach Google and the rest.
+            `VI-h`. --%>
             <p class="text-sm leading-7 text-base-content/60">
-              Everything runs on your machine. Four quick steps and you're live.
+              Buster Claw keeps its files and records on your Mac. When you ask it to work, what it
+              needs goes to the AI service you choose and to any account you connect. Four quick
+              steps and you're live.
             </p>
           </div>
           <div class="flex justify-end">
