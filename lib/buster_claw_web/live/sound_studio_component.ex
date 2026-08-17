@@ -125,8 +125,9 @@ defmodule BusterClawWeb.SoundStudioComponent do
 
   # The catalog moved to `BusterClaw.Notifications.StudioCatalog` on 08-16
   # (frozen Phase 3) with the web's `url` decoration in
-  # `BusterClawWeb.SoundStudio.Catalog`. This file is FROZEN and the catalog was
-  # the first thing it had to give up to gain any room at all.
+  # `BusterClawWeb.SoundStudio.Catalog`. This file was FROZEN and the catalog
+  # was the first thing it had to give up to gain any room at all; taking that
+  # phase is what ended the freeze.
   #
   # These stay as delegations rather than being deleted because the call sites
   # are everywhere — templates, the arranger, `StudioLive` — and a rename sweep

@@ -4,14 +4,16 @@ defmodule BusterClawWeb.SoundStudio.Edits do
   and turning a failure into a sentence.
 
   Extracted from `SoundStudioComponent` on 08-16, and the reason is the point:
-  that file is **FROZEN** in `scripts/check_file_sizes.sh`, so the clip-trim
+  that file was **FROZEN** in `scripts/check_file_sizes.sh`, so the clip-trim
   feature could not be paid for with a raised cap. It had to be funded by taking
   something out, and the 08-13 review had already named this block as the better
   second cut of the frozen Phase 3 — *"the render/trim/rename block, socket-free
   `{:ok,_}` / `{:error,_}` functions"*.
 
-  **That is the third time the freeze has produced an extraction rather than
-  growth**, which is the entire argument for the tier.
+  **That was the third time the freeze produced an extraction rather than
+  growth, and the last.** The tier was lifted to HELD hours later, once Phase 3
+  — the phase it was frozen for — had been taken. This module is one of the
+  three things that exist because of it, which is the argument the tier had.
 
   Everything here takes plain values and returns plain values. No socket, no
   assigns — which is also why it is testable without mounting anything.
@@ -71,7 +73,7 @@ defmodule BusterClawWeb.SoundStudio.Edits do
   end
 
   # The mixdown and the effect chain live in `Studio.Render` — this file is
-  # FROZEN and could not hold them, which is the size gate earning its keep.
+  # FROZEN at the time and could not hold them — the size gate earning its keep.
   #
   # **The catalog is read ONCE and closed over**, not per clip. It used to pass
   # `&resolve_source/1`, which calls `groups/0` fresh every time Render asks —

@@ -602,7 +602,25 @@ check lib/buster_claw_web/components/notes/switcher.ex         134 HELD
 # `SoundStudio.Edits`, which the 08-13 review had already named as the better
 # second cut of the frozen Phase 3. Third time the freeze produced an extraction
 # instead of growth, and the file ended up SMALLER than before the feature.
-check lib/buster_claw_web/live/sound_studio_component.ex      972 FROZEN
+#
+# UNFROZEN 08-16 (operator). FROZEN -> HELD, 972 -> 1070.
+#
+# **By the letter of this file's own rule.** FROZEN means "a target of an
+# unstarted roadmap phase", and Phase 3 — the phase it was frozen FOR — was
+# taken the same day. A tier whose stated condition has been met and which
+# nobody re-argues is how a gate stops meaning what it says.
+#
+# What the freeze was worth, recorded because the number alone does not show it:
+# **1,235 -> 972 while GAINING the effect chain, duplicate-clip, a menu bar and
+# clip trim.** Four extractions, three of them producing files that exist only
+# because a feature could not be paid for any other way — `Studio.Render`,
+# `SoundStudio.Format`, `SoundStudio.Edits`. Nobody set out to refactor on any
+# of those days.
+#
+# HELD at +10% is the ordinary contract: maintenance is fine, a feature landing
+# whole in here is not. **If it reaches 1070, the question is not "raise it" —
+# it is whether the 29 event clauses want the same treatment the catalog got.**
+check lib/buster_claw_web/live/sound_studio_component.ex     1070 HELD
 # The Studio's effect chain, capped on arrival. `effects.ex` is the registry AND
 # the DSP: adding an effect is a `@catalog` entry plus an `apply_one/2` clause,
 # and it then appears in the inspector, saves into the mix, applies on render and

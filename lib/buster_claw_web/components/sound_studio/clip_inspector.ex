@@ -4,10 +4,11 @@ defmodule BusterClawWeb.SoundStudio.ClipInspector do
 
   ## Why this exists as its own module
 
-  Two reasons, and the first is a fact about the tree rather than a preference.
-  `SoundStudioComponent` is `FROZEN` in `check_file_sizes.sh` and cannot gain a
-  line, so a growing surface has to live beside it. The second is that this is
-  the **extension point**: every effect the Studio ever grows renders here
+  Two reasons, and the second is the one that still holds.
+  `SoundStudioComponent` was `FROZEN` in `check_file_sizes.sh` when this was
+  built and could not gain a line, so a growing surface had to live beside it.
+  That freeze ended 08-16. What has not changed is that this is the
+  **extension point**: every effect the Studio ever grows renders here
   without this file changing, because it renders `Studio.Effects.catalog/0`.
 
   Adding an effect is a catalog entry and an `apply_one/2` clause. It appears in

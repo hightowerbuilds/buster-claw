@@ -5,7 +5,7 @@ defmodule BusterClaw.Notifications.Studio.Render do
 
   Extracted from `SoundStudioComponent` on 08-16. It lived in the LiveView
   because it was three short functions with nowhere better to be; effects gave it
-  somewhere. The component is `FROZEN` in `check_file_sizes.sh` and could not
+  somewhere. The component was `FROZEN` in `check_file_sizes.sh` and could not
   have grown to hold this, which is the gate doing exactly what it is for.
 
   Being domain code rather than LiveView code buys two things immediately: the

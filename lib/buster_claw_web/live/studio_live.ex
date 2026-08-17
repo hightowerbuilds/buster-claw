@@ -27,8 +27,11 @@ defmodule BusterClawWeb.StudioLive do
   ## What this owns, and what it deliberately does not
 
   Every assign the Studio needs is here rather than in a component, and the
-  reason has changed but not disappeared: `SoundStudioComponent` is FROZEN in
-  `scripts/check_file_sizes.sh`, so it cannot grow to hold its own state, and
+  reason has outlived the one usually given for it. `SoundStudioComponent` was
+  FROZEN and could not grow to hold its own state; that ended 08-16. **The
+  durable reason is `StudioPanel`'s `:if`** — switching sub-tabs removes the
+  component from the DOM and discards it, so a selection, a trim or an undo
+  stack held inside it would not survive a look at Voice.
   `Status.Studio` / `Status.Voice` / `Status.Recorder` remain the socket-in /
   socket-out modules that do the work. They moved surface, not shape — every
   clause below still delegates one line deep, exactly as it did in `StatusLive`.
@@ -51,7 +54,8 @@ defmodule BusterClawWeb.StudioLive do
      |> Recorder.assign_recorder()
      # Which source the Studio has open, the in-progress trim, the arranger's
      # selection/clipboard/undo — all still assigns of the LiveView rather than
-     # the component, because the component is FROZEN and cannot hold them.
+     # the component, because `StudioPanel` renders it behind an `:if` and a
+     # sub-tab switch discards it along with anything it held.
      |> assign(:studio_source, nil)
      |> assign(:studio_trim, nil)
      |> assign(:studio_clip, nil)

@@ -27,10 +27,14 @@ defmodule BusterClawWeb.StudioPanel do
 
   ## Why the rail is above the studio rather than inside it
 
-  `SoundStudioComponent` is `FROZEN` in `scripts/check_file_sizes.sh` at exactly
-  its current size — it cannot gain a single line, so a sub-tab rail *inside* it
-  was never available. Above it, Mix renders it with the same id and the same
-  assigns it always had, and the frozen file is not touched at all.
+  `SoundStudioComponent` was `FROZEN` in `scripts/check_file_sizes.sh` when this
+  rail was built — capped at exactly its size, unable to gain a line — so a
+  sub-tab rail *inside* it was never available. Above it, Mix renders with the
+  same id and the same assigns it always had, and that file is not touched.
+
+  It was unfrozen on 08-16 once the phase it was frozen for had been taken, and
+  the shape stays anyway: a rail that chooses BETWEEN surfaces does not belong
+  inside one of them.
 
   The rail is deliberately **not** wrapped in an `ic-panel`: each tab body brings
   its own panel (the studio's is `#studio-panel`), and on the homepage
@@ -40,7 +44,6 @@ defmodule BusterClawWeb.StudioPanel do
   use BusterClawWeb, :html
 
   alias BusterClawWeb.Studio.Registry
-  alias BusterClawWeb.Studio.Sketch
   alias BusterClawWeb.Studio.VoiceLibrary
 
   @doc "Sub-tab keys, in rail order — the parent's `select_studio_tab` whitelist."
@@ -150,11 +153,13 @@ defmodule BusterClawWeb.StudioPanel do
         />
       </div>
 
-      <%!-- Sketch Pad: a canvas the browser owns entirely. It takes no assigns
-            at all, which is the whole of its first version — see
-            `Studio.Sketch`. --%>
+      <%!-- Sketch Pad. It takes no assigns from here on purpose: unlike Mix and
+            Voice, whose state is the parent's, the sketch document is loaded and
+            saved by `SketchComponent` itself. That is what lets it survive this
+            `:if` removing the whole subtree on a tab switch — the drawing is on
+            disk, not in an assign. See SKETCH_ROADMAP Phase 1. --%>
       <div :if={@tab == "sketch"} data-studio-tab="sketch" class="flex min-h-0 flex-1 flex-col">
-        <Sketch.sketch />
+        <.live_component module={BusterClawWeb.SketchComponent} id="studio-sketch-pad" />
       </div>
 
       <.placeholder :for={p <- @placeholders} :if={@tab == p.key} sub_tab={p} />

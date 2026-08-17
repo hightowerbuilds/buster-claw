@@ -67,8 +67,9 @@ defmodule BusterClawWeb.SoundStudio.Format do
   A render refusal, as a sentence.
 
   Moved out of `SoundStudioComponent` on 08-16 to pay for the `duplicate_clip`
-  handler: that file is FROZEN, so a new feature has to be funded by an
-  extraction rather than a raised cap. This is the right kind to move — it is
+  handler: that file was FROZEN at the time, so a new feature had to be funded
+  by an extraction rather than a raised cap. (It is HELD now — the freeze ended
+  the same day, having produced this module among others.) This is the right kind to move — it is
   pure presentation over `Studio.Render`'s error atoms, with no assigns and no
   socket, which is exactly what this module already collects.
 

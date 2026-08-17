@@ -3,9 +3,10 @@ defmodule BusterClaw.Notifications.StudioCatalog do
   Everything the Studio can open, grouped — as **core** data, with no web in it.
 
   Extracted from `BusterClawWeb.SoundStudioComponent` on 08-16 (the frozen
-  Phase 3 of the archived modularization roadmap). That component is FROZEN in
+  Phase 3 of the archived modularization roadmap). That component was FROZEN in
   `scripts/check_file_sizes.sh` at exactly its size, so the catalog was the
-  first thing it had to give up to gain any room at all.
+  first thing it had to give up to gain any room at all. Taking this phase is
+  what ended the freeze, later the same day.
 
   ## An item is `{id, kind, name, label, sub, path}` — and never a URL
 
