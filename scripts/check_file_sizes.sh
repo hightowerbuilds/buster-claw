@@ -568,7 +568,22 @@ check lib/buster_claw_web/components/notes/switcher.ex         134 HELD
 # `render_error/1` moved to `SoundStudio.Format`, where the rest of this tab's
 # pure presentation already lives. Net six lines down, and the gate is the only
 # reason the right thing happened rather than the easy one.
-check lib/buster_claw_web/live/sound_studio_component.ex     1178 FROZEN
+# 1178 -> 1038 on 08-16: the frozen Phase 3 was finally taken. The source
+# catalog — five item builders, the group roster and the folded-groups setting —
+# moved to `BusterClaw.Notifications.StudioCatalog` in CORE, with the web's
+# `url` decoration left behind in `SoundStudio.Catalog`.
+#
+# That split is what unfroze this file, and it only worked because of the
+# correction the 08-13 review made to the original plan: four builders baked
+# router `~p` URLs, so a naive move would have dragged `BusterClawWeb.Router`
+# into `lib/buster_claw/`. Core carries a filesystem PATH — which is what the
+# unbuilt `sound_*` CLI needs — and the web adds the URL on top.
+#
+# **The 140 lines are banked here rather than left as headroom on purpose.**
+# The Mix tab is about to gain a menu bar, and it goes in its own module beside
+# `sidebar.ex` and `arranger.ex` — which is the pattern this file already
+# follows and the reason FROZEN keeps producing extractions instead of growth.
+check lib/buster_claw_web/live/sound_studio_component.ex     1038 FROZEN
 # The Studio's effect chain, capped on arrival. `effects.ex` is the registry AND
 # the DSP: adding an effect is a `@catalog` entry plus an `apply_one/2` clause,
 # and it then appears in the inspector, saves into the mix, applies on render and
@@ -907,6 +922,11 @@ check lib/buster_claw/integrations/github.ex                  500 HELD
 # arrival with no headroom: it is a security boundary whose entire job is to
 # be small and to be the ONLY copy. If it grows, ask what got added to a path
 # check. The two stores below it shed their duplicate copies to it.
+# The Studio's source catalog, extracted from the frozen component 08-16. Its
+# whole discipline is that an item carries a PATH and never a URL — that is what
+# lets it live in core at all, and what the unbuilt `sound_*` CLI will need. If
+# it grows, ask whether a web concern crept back in.
+check lib/buster_claw/notifications/studio_catalog.ex        255 HELD
 check lib/buster_claw/notifications/cutup/source_name.ex      125 HELD
 # Raised 08-16, 640 -> 655, for the `bank` field (STUDIO_ROADMAP V.0). Small and
 # worth naming, because it is a field on a CONTRACT rather than a feature: an

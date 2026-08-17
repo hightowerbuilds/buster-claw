@@ -27,7 +27,7 @@ defmodule BusterClawWeb.Status.Studio do
 
   alias BusterClaw.Notifications.Studio.Render
   alias BusterClaw.Notifications.StudioMix
-  alias BusterClawWeb.SoundStudioComponent
+  alias BusterClawWeb.SoundStudio.Catalog
   alias BusterClawWeb.Status.Recorder
   alias BusterClawWeb.Status.Voice
   alias BusterClawWeb.Studio.Preview
@@ -175,13 +175,15 @@ defmodule BusterClawWeb.Status.Studio do
   the reason the Voice Library's sentence preview is: the browser caches by URL
   and would otherwise replay the previous chain.
   """
-  # `resolve_source/1` is public on the component rather than here because source
-  # resolution spans the sidebar's three groups (mixes, imports, library) and the
-  # component owns that catalogue. It was made public as a `defp` -> `def` swap:
-  # the component is FROZEN and a doc line would have grown it.
+  # One clip, so ONE catalog read — `resolve_source/1` is the right call here and
+  # the wrong one inside a walk. `render_mix/1` learned that difference the
+  # expensive way; see its comment.
+  #
+  # It reaches `SoundStudio.Catalog` directly rather than through the frozen
+  # component, which owned the catalogue until 08-16 and no longer does.
   def preview_clip(socket) do
     with clip when is_map(clip) <- selected_clip(socket),
-         {:ok, audio} <- Render.preview(clip, &SoundStudioComponent.resolve_source/1),
+         {:ok, audio} <- Render.preview(clip, &Catalog.resolve_source/1),
          {:ok, preview} <- Preview.write(audio, @preview_name, socket.assigns[:studio_preview]) do
       assign(socket, :studio_preview, preview)
     else

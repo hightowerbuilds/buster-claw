@@ -36,14 +36,12 @@ defmodule BusterClawWeb.SoundStudioComponent do
   alias BusterClawWeb.SoundStudio.Overlays
   alias BusterClawWeb.SoundStudio.Sidebar
 
-  alias BusterClaw.Library.Artifact
   alias BusterClaw.Music
   alias BusterClaw.Notifications.Sound
   alias BusterClaw.Notifications.SoundStudio
   alias BusterClaw.Notifications.Studio.Render
+  alias BusterClaw.Notifications.StudioCatalog
   alias BusterClaw.Notifications.StudioMix
-  alias BusterClaw.Settings
-  alias BusterClaw.Telephony
   alias BusterClawWeb.MusicComponent
 
   # Analysing a source means reading it end to end, and for anything compressed
@@ -51,10 +49,6 @@ defmodule BusterClawWeb.SoundStudioComponent do
   # every render for a 60 MB FLAC. Past this, the panel shows what it knows for
   # free and says so rather than stalling the tab.
   @analysis_byte_cap 8_000_000
-
-  # The sidebar entry that opens the full music library manager rather than a
-  # single track.
-  @music_library_id "music:__library__"
 
   # Matches the music library's cap. A long recording clears it; a video does not.
   @max_import_bytes 100_000_000
@@ -128,173 +122,28 @@ defmodule BusterClawWeb.SoundStudioComponent do
 
   defp load_mix(socket, _selected), do: assign(socket, :mix, nil)
 
-  # Resolve a source id to its entry in `groups/0` — which mix a render came from.
-  def resolve_source(id), do: find_source(groups(), id)
-
   # ---------------------------------------------------------------------------
   # The catalog
   # ---------------------------------------------------------------------------
 
-  @doc "Every source the studio can open, grouped for the sidebar."
-  def groups do
-    [
-      %{key: "mix", label: "Mixes", items: mix_items()},
-      # Imports lead the material groups: this is the working mix, and the one
-      # the operator fills themselves.
-      %{key: "imports", label: "Imports", items: import_items()},
-      %{key: "sounds", label: "Sounds", items: sound_items()},
-      %{key: "recordings", label: "Recordings", items: recording_items()},
-      %{key: "music", label: "Music", items: music_items()}
-    ]
-  end
-
-  @doc """
-  Every sidebar group key. Cheap on purpose — `groups/0` reads four directories
-  and the telephony table, which is far too much work to answer "is this a real
-  group?". A test asserts the two lists agree.
-  """
-  def group_keys, do: ~w(mix imports sounds recordings music)
-
-  @collapsed_key "studio_collapsed_groups"
-
-  @doc """
-  Sidebar groups the operator has folded shut, by key.
-
-  Persisted, because a fold that survives a tab switch and not a restart is a
-  preference the app keeps forgetting. **Filtered against `group_keys/0` on
-  read** — the same posture as `Sound.sound_map/0` dropping entries whose file
-  is gone: a group the app stops shipping must not leave a key behind forever,
-  and a hand-edited settings row cannot introduce one.
-  """
-  def collapsed_groups do
-    case Jason.decode(Settings.get(@collapsed_key) || "[]") do
-      {:ok, keys} when is_list(keys) -> Enum.filter(keys, &(&1 in group_keys()))
-      _ -> []
-    end
-  end
-
-  @doc "Store the folded set, dropping the row entirely when nothing is folded."
-  def put_collapsed(keys) when is_list(keys) do
-    case Enum.filter(keys, &(&1 in group_keys())) do
-      [] -> Settings.delete(@collapsed_key)
-      kept -> Settings.put(@collapsed_key, Jason.encode!(kept))
-    end
-
-    :ok
-  end
-
-  defp mix_items do
-    Enum.map(StudioMix.list(), fn name ->
-      %{
-        id: "mix:" <> name,
-        kind: :mix,
-        name: name,
-        label: name,
-        sub: "arrangement",
-        # A mix is not a file the browser can play; it has to be rendered
-        # first, which is what the arranger's Render button is for.
-        url: nil,
-        path: nil
-      }
-    end)
-  end
-
-  defp import_items do
-    Enum.map(SoundStudio.list(), fn name ->
-      %{
-        id: "import:" <> name,
-        kind: :import,
-        name: name,
-        label: Path.rootname(name),
-        sub: String.trim_leading(Path.extname(name), "."),
-        url: ~p"/studio/file/#{name}",
-        path: SoundStudio.path_for(name)
-      }
-    end)
-  end
-
-  @doc "The sidebar id that opens the music library manager."
-  def music_library_id, do: @music_library_id
-
-  # Everything in the `sounds/` folder, plus any built-in not yet copied there.
+  # The catalog moved to `BusterClaw.Notifications.StudioCatalog` on 08-16
+  # (frozen Phase 3) with the web's `url` decoration in
+  # `BusterClawWeb.SoundStudio.Catalog`. This file is FROZEN and the catalog was
+  # the first thing it had to give up to gain any room at all.
   #
-  # The sidebar looked like a dump of system sounds once, and the cause was
-  # `phx.digest`'s hashed duplicates (`alarm-<md5>.wav` beside `alarm.wav`),
-  # since fixed in `Sound.bundled_list/0` — **not** the operator's own files.
-  # Their sounds belong here: a scream and a bongo hit are exactly the raw
-  # material this tab exists to cut up.
+  # These stay as delegations rather than being deleted because the call sites
+  # are everywhere — templates, the arranger, `StudioLive` — and a rename sweep
+  # across three languages is exactly the change this repo has been bitten by.
+  # Every one of them now reads through `Catalog`, so there is one definition.
+  # `groups/0`, `group_keys/0`, `music_library_id/0` and `find_source/2` arrive
+  # unqualified through the `import` above, so they are NOT re-declared here —
+  # an import plus a defdelegate of the same name is a compile error, and the
+  # right fix is one definition rather than a qualified alias for the same thing.
   #
-  # Deduped by basename, because `Sound.resolve_path/1` only ever plays one of
-  # the two layers — listing both would advertise a choice the resolver does not
-  # offer. `yours` means the file is in the workspace (an override, or something
-  # only you have); `built-in` means it still resolves to the shipped copy.
-  defp sound_items do
-    workspace = MapSet.new(Sound.list())
-
-    (Sound.list() ++ Sound.bundled_list())
-    |> Enum.uniq()
-    |> Enum.sort()
-    |> Enum.map(fn name ->
-      %{
-        id: "sound:" <> name,
-        kind: :sound,
-        name: name,
-        label: Path.rootname(name),
-        sub: if(MapSet.member?(workspace, name), do: "yours", else: "built-in"),
-        url: ~p"/notify/sound/#{name}",
-        path: Sound.resolve_path(name)
-      }
-    end)
-  end
-
-  defp recording_items do
-    Telephony.list_events(kind: "voicemail", limit: 50)
-    |> Enum.filter(& &1.recording_path)
-    |> Enum.map(fn event ->
-      %{
-        id: "recording:#{event.id}",
-        kind: :recording,
-        name: Path.basename(event.recording_path),
-        label: event.from_number || "Unknown caller",
-        sub: occurred(event.occurred_at),
-        url: ~p"/phone/recording?path=#{event.recording_path}",
-        path: Path.join(Artifact.root(), event.recording_path)
-      }
-    end)
-  end
-
-  defp music_items do
-    tracks =
-      Enum.map(Music.tracks(), fn track ->
-        %{
-          id: "music:" <> track.name,
-          kind: :music,
-          name: track.name,
-          label: track.title,
-          sub: track.artist,
-          url: ~p"/music/track/#{track.name}",
-          path: Music.path_for(track.name)
-        }
-      end)
-
-    # The manager rides at the top of its own group so uploading, queueing, and
-    # deleting keep a home after the Music tab became the Studio.
-    [
-      %{
-        id: @music_library_id,
-        kind: :library,
-        name: nil,
-        label: "Library manager",
-        sub: "upload · queue · delete",
-        url: nil,
-        path: nil
-      }
-      | tracks
-    ]
-  end
-
-  defp occurred(nil), do: nil
-  defp occurred(at), do: Calendar.strftime(at, "%b %-d, %-I:%M %p")
+  # These two are different: they are Settings-backed, not catalog reads, and
+  # `StudioLive` calls them from outside. An import would not re-export them.
+  defdelegate collapsed_groups, to: StudioCatalog
+  defdelegate put_collapsed(keys), to: StudioCatalog
 
   # ---------------------------------------------------------------------------
   # Import
@@ -655,8 +504,18 @@ defmodule BusterClawWeb.SoundStudioComponent do
 
   # The mixdown and the effect chain live in `Studio.Render` — this file is
   # FROZEN and could not hold them, which is the size gate earning its keep.
-  # Source resolution stays here because it spans the sidebar's three groups.
-  defp render_mix(%StudioMix{} = mix), do: Render.install(mix, &resolve_source/1)
+  #
+  # **The catalog is read ONCE and closed over**, not per clip. It used to pass
+  # `&resolve_source/1`, which calls `groups/0` fresh every time Render asks —
+  # and `groups/0` is four directory listings plus a database query. An n-clip
+  # mixdown therefore did n of them. Filed by the 08-13 review, fixed here
+  # because the extraction is what made the two costs visible as different
+  # things: `groups/0` is the expensive read, `find_source/2` is the cheap
+  # lookup over a result you already have.
+  defp render_mix(%StudioMix{} = mix) do
+    catalog = groups()
+    Render.install(mix, &find_source(catalog, &1))
+  end
 
   defp apply_trim(nil, _trim), do: {:error, :no_selection}
   defp apply_trim(_selected, nil), do: {:error, :no_selection}

@@ -7,6 +7,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
   alias BusterClaw.Notifications.SoundGen
   alias BusterClaw.Notifications.SoundStudio
   alias BusterClaw.Notifications.StudioMix
+  alias BusterClawWeb.SoundStudio.Catalog
   alias BusterClawWeb.SoundStudioComponent
 
   setup do
@@ -1086,7 +1087,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
   describe "the music library manager" do
     test "keeps a home inside the Studio", %{conn: conn} do
       {view, _html} = open_studio(conn)
-      html = select(view, SoundStudioComponent.music_library_id())
+      html = select(view, Catalog.music_library_id())
 
       # Upload/queue/delete did not disappear with the tab rename.
       assert html =~ "Add music"
@@ -1264,8 +1265,8 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
     # `group_keys/0` exists because `groups/0` reads four directories and the
     # telephony table just to answer "is this a real group?".
     test "group_keys/0 agrees with the real roster" do
-      assert Enum.map(SoundStudioComponent.groups(), & &1.key) ==
-               SoundStudioComponent.group_keys()
+      assert Enum.map(Catalog.groups(), & &1.key) ==
+               Catalog.group_keys()
     end
   end
 

@@ -5,6 +5,7 @@ defmodule BusterClawWeb.MusicComponentTest do
 
   alias BusterClaw.Music
   alias BusterClaw.Music.Player
+  alias BusterClawWeb.SoundStudio.Catalog
   alias BusterClawWeb.SoundStudioComponent
 
   setup do
@@ -35,7 +36,7 @@ defmodule BusterClawWeb.MusicComponentTest do
 
     html =
       view
-      |> element("button[phx-value-id='#{SoundStudioComponent.music_library_id()}']")
+      |> element("button[phx-value-id='#{Catalog.music_library_id()}']")
       |> render_click()
 
     {view, html}
