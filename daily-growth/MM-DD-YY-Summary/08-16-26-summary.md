@@ -622,6 +622,289 @@ its own roadmap had recorded, in writing, that nobody had wanted it.
 
 ---
 
+# The evening's fourth arc: the update, and a gate that had the wrong home
+
+The operator asked for a **"Restart and update" button** — a way to move a
+running install forward without asking anyone to re-download a DMG. Built to
+last years.
+
+**It already had a home, and the home was wrong.** `APPLE_ROADMAP` §III.I had
+scoped this as `G-18`–`G-20` since the launch-roadmap split. Unwritten, but
+sharp: it had already caught the two hardest facts — that Apple's Developer ID
+and minisign are **unrelated signatures**, neither satisfying the other, and that
+the dangerous part is the BEAM swap rather than the download.
+
+What it could not hold is what the request turned out to be. A button, a notice,
+a refusal while a shift is running, a database backup, and a fix for seeded
+defaults that never upgrade — **one of those five is Apple's.** §III.I is a
+section about signing; growing it to cover a product surface would have made the
+signing map something other than the signing map.
+
+So `G-18`, `G-19` and `G-20` **moved to a new
+[`UPDATE_ROADMAP`](../roadmaps/platform/UPDATE_ROADMAP.md), keeping their
+numbers**, and both §III.I and the `G-18` checklist became pointers. Three new
+gates, `G-42`–`G-44`, allocated there and nowhere else.
+
+> **This is rule 1 and rule 2 of the Supermap working together rather than
+> against each other.** A gate may change *home* when its subject does; it never
+> changes *name*, because commits and checklists cite `G-n` and renumbering
+> breaks every one of them. The registry line was updated with the move and the
+> next free number recorded (`G-45`), which is the part that rots if skipped.
+
+## The framing was wrong, and it was measured wrong on 08-10
+
+The ask was "a button, after we've pushed to main." **Push-to-main is not
+reachable**, and the reason is already on file: notarization was measured at
+**~5½ hours** on 08-10 — Apple green throughout, zero issues in the verdict,
+simply slow. The best explanation is the artifact's shape (**2,876 files, 2,451
+of them `.beam`**), which makes it structural rather than a queue fluke.
+
+A release costs a working day of wall-clock. Per-push updates are not slow;
+they are impossible. The honest contract is **tag → release, a few times a
+year**, and the map locks it as a decision rather than leaving it to be
+rediscovered by whoever tries.
+
+## Three reads, and one of them removed the scariest item
+
+None of this was inferred from the roadmap. The map rests on five facts, four
+read out of the code this evening:
+
+| | Found | Effect |
+|---|---|---|
+| **F2** | The launch chain is **all `exec`** — `bin/buster_claw start` → `elixir` → `beam.smp` | The `Child` the shell holds **is the BEAM** |
+| **F3** | `shutdown_release/1` already does SIGTERM → 5s grace → SIGKILL → `wait()` | The hard half of `G-19` is written |
+| **F4** | `run_release_monitor` **respawns the BEAM on any exit it did not expect** | A new hazard, and the reason the map exists |
+
+**F2 deleted §III.I's loudest warning.** It feared an orphaned `beam.smp` still
+holding the SQLite file after the swap. Nothing in this launch chain forks — every
+link is an `exec` — so the direct child is the VM itself, `SIGTERM` lands on it,
+and `wait()` reaps the real thing. Ten minutes of reading removed the item the
+map was most afraid of.
+
+**F4 replaced it with a worse one, through a door §III.I did not predict.** The
+obvious implementation — stop the release, swap the bundle, restart — calls
+`shutdown_release()` and proceeds. The monitor thread sees a child exit it did
+not expect and **respawns it from the bundle being renamed out from under it.**
+Mixed-version code loading in a live VM, a second BEAM on the database, and a
+respawn loop racing an `rm -rf`. It would present as an intermittent failure on
+someone else's machine.
+
+The fix is `shutting_down.store(true)` before the release is stopped. **One line,
+invisible in review, and the difference between an update that works and one that
+corrupts an install** — which is exactly why it is written into the map as a
+requirement rather than left to be discovered during Phase 3.
+
+> Both halves of that pair are the same lesson in opposite directions. A hazard
+> written from reading was **overstated**; a hazard nobody wrote was sitting in
+> `main.rs` the whole time. Today's through-line, one more time: *a finding
+> written from reading is a lower bound.*
+
+## The decision that is enforced by absence
+
+**The update is not a command, at any tier.** Not `safe`, not `restricted`, not
+gated-and-confirmable.
+
+An agent that can replace the application binary can replace the thing that
+refuses its requests. Every other boundary here — the policy engine, the trust
+tiers, the Sentinel audit, the `agent_untrusted` gate — is code inside the bundle
+being swapped. A command that swaps the bundle sits *underneath* all of them, and
+**no tier is low enough to make that safe.**
+
+Same call the Clinch made, for the same reason: management is reachable from the
+shell and the operator, never from the catalog. The Clinch enforces it with an
+IPC split and a trusted-token floor; this enforces it by **absence**, which is
+stronger and cheaper — and which rots silently, so it gets a test, the same shape
+as the guards that keep a mutating verb out of Pockets and `set_custom/3` out of
+the agent's reach.
+
+## The phase most likely to be dropped
+
+`maybe_write/2` never overwrites (`skills.ex:305`, `terminal_commands.ex:273`).
+That is **correct** — it is what stops an update destroying an operator's edits.
+Its consequence is that every shipped default is frozen at install time forever:
+six default skills, the terminal command roster, `memory/policy.md`.
+
+Ship v0.5 with a better default skill and a v0.1 user never receives it. Find a
+policy default that is too loose and **you cannot tighten it for anyone who
+already installed.** Today that is a design note with nobody affected — it has
+been on file as `skills_upgrade_path` for weeks. **The moment updates exist it
+becomes a live divergence that widens with every release, and it is invisible:**
+the app looks fine, it is just running last year's defaults.
+
+That is `G-44`, and the map says plainly that it is the phase most likely to be
+dropped and most expensive to add later. **The other phases fail loudly the day
+you build them. This one fails quietly, three years out, on someone else's
+machine.**
+
+## What ships first, and why it is an hour
+
+**The app displays its own version nowhere.** One reference exists in the entire
+codebase — `agent/codex_app_server.ex:264` — and it is sent to Codex, not shown
+to a human.
+
+A "Restart and update" button beside an unknown current version is not a feature,
+it is a dare. So `G-42` is Settings → About showing the running version and
+architecture, read from the `VERSION` file that `sync_version.sh` already
+propagates into `tauri.conf.json` and `Cargo.toml`. One source of truth, already
+built; this only surfaces it.
+
+**It depends on nothing, it is the smallest unit of user-visible progress in the
+whole map, and it ships before any updater exists.**
+
+---
+
+# And then it got built: `G-42` shipped, `G-18` wired
+
+Two phases in one evening. **Phase 0 is in the app; Phase 1 is in the pipeline
+and has never run.** Saying which is which is the whole point of the distinction
+the Apple map draws between *written* and *exercised*, and this section keeps it.
+
+## `G-42` — the app can finally say what it is
+
+`BusterClaw.BuildInfo`, and a Settings → About tab.
+
+`version/0` reads `Application.spec(:buster_claw, :vsn)`, which OTP fills from
+`mix.exs`, which reads the repo-root `VERSION` — **the same file
+`sync_version.sh` already propagates into `tauri.conf.json` and `Cargo.toml`.**
+Nothing new to keep in sync, which is the entire design. `architecture/0` returns
+the bare token off `:erlang.system_info(:system_architecture)`, because that is
+what Phase 1's per-architecture feed keys off; `architecture_label/0` is the half
+a person reads.
+
+The tab cost one registry entry and one `:if` branch — exactly the contract
+`Settings.Registry`'s own moduledoc specifies. **And the guard that was already
+there covered it for free**: the rail test loops every registry key and asserts a
+real `ic-panel` opens, so the new tab was tested the moment it was added, by a
+test written for a different tab weeks ago. That is what a registry-shaped guard
+buys, and it is worth noticing on a day whose through-line is guards that did not.
+
+## The through-line reached my own work inside the hour
+
+Both new guards were broken before being trusted — `version/0` forced to `9.9.9`,
+then forced to leak the raw charlist. All three assertions fired.
+
+**And the second break proved a comment I had just written wrong.** I had said a
+charlist would render as a list of integers on the page. It does not. Measured:
+HEEx renders `~c"0.1.0"` as `"0.1.0"`, correctly, because a charlist is iodata.
+
+The real hazard is worse and quieter. **The updater compares `version()` against a
+string parsed out of `latest.json`, and `~c"0.1.0" == "0.1.0"` is `false`.** A
+charlist there looks right on every screen and makes the update check answer the
+same way forever — an update loop, or a permanent "up to date" on a stale
+install. Exactly the pair `D4` was written to warn about, reached by a route
+`D4` did not describe.
+
+> **Seventh instance, and the only one authored today.** The six in the table at
+> the top of this summary were claims that went stale over weeks or months. This
+> one was **wrong when written and caught forty minutes later, by running the
+> thing it described.** Same lesson, shortest possible interval: the comment was
+> plausible, the code was fine, and only the break revealed that the stated reason
+> was not the real one.
+
+A second correction went in beside it. The LiveView assertions compare the page
+against the same function that filled it — they prove the value *arrived* and
+nothing about whether it is *right*. The unit test pins the value against
+`VERSION`; the `refute html =~ "unknown"` is what stops the pair passing
+vacuously. **Said so in the comment rather than leaving the test looking stronger
+than it is.**
+
+## `G-18` — the feed, and two gates that fail closed
+
+`build_desktop.sh` now produces the updater tarball and its minisign signature,
+**gated on `TAURI_SIGNING_PRIVATE_KEY` exactly as the codesign pass is gated on
+`APPLE_SIGNING_IDENTITY`.** A `--config` override rather than a committed
+`createUpdaterArtifacts: true`, because Tauri *fails* a build that sets the flag
+with no key — committing `true` would turn every keyless local build and every CI
+verification run into a hard error, which is the opposite of gating.
+
+`scripts/build_update_feed.sh` is new, and lives in `scripts/` for the reason
+already written at the top of `release-desktop.yml`: **CI calling a script in the
+repo is one implementation; CI holding its own copy is two that drift.**
+
+The workflow gained a `release` job — tag-only, `contents: write` scoped to
+itself. It exists because **neither architecture's runner can build the feed**:
+`latest.json` carries both signatures and each runner only ever holds its own.
+That job is the one place both halves exist at once.
+
+**Two things now fail closed, and both were broken on purpose to check:**
+
+| Gate | What it refuses | Why it matters |
+|---|---|---|
+| A tag with no signing key | The build, before it starts | A release nobody can update to is discovered **months later**, when a fix does not reach anyone |
+| A feed missing an arch | Writing the file at all | Half a feed is not partial success — it is an update that **silently never arrives** for everyone on the other arch |
+
+The second was broken three ways (missing bundle, missing signature, empty
+signature). All three failed loudly, and **zero feed files were written** in any
+of them. A half-feed never reaches disk.
+
+## One thing verified instead of remembered
+
+`createUpdaterArtifacts` was checked against `tauri-utils` 2.9.3 — the version
+behind the pinned CLI — rather than recalled. `BundleConfig` is
+`rename_all = "camelCase"` **and `deny_unknown_fields`**, and the field is typed
+`Updater`, which accepts a bool. So the key is right, the value is right, and a
+typo would fail loudly rather than be silently ignored.
+
+Cheap, and it is the class of thing that otherwise surfaces at the end of a
+five-and-a-half-hour notarization.
+
+## The endpoint, and the dependency nothing here can see
+
+**`https://busterclaw.lol/updates/latest.json`** — operator decision, taken
+because `D5` is the one item in the map that **cannot be retrofitted**: the
+endpoint is compiled into every shipped binary and old installs follow it
+forever. There are zero installs today, so this was the only moment it was free.
+
+The cost is a rewrite in the **separate website repo**. Nothing in this repo can
+add it, and — the sharp part — **nothing in this repo fails without it.** A
+release would publish perfectly and be invisible to every install.
+
+So the release job ends by fetching the public URL and emitting a CI **warning**
+on anything but 200, and the release checklist gained the line. It is
+deliberately `continue-on-error`: a missing rewrite must not fail a release whose
+artifacts are correct, when the fix is one line somewhere else.
+
+> **This is the second cross-repo invisibility in two days.** On 08-10 the public
+> repo and the public website stated opposite legal terms for a fortnight. The
+> shape is identical — **two repos, one claim, and no gate spanning them** — and
+> the only defence available from inside one of them is to say so loudly at the
+> moment of release.
+
+## What has not happened
+
+**The pipeline has never run.** `release-desktop.yml` fires on `v*` tags only, so
+every one of the checks above is written rather than exercised. The first tag is
+the test, and it costs a notarization wait per architecture.
+
+Four items are the operator's and cannot be done from here: generate the
+keypair, **back the private key up offline**, set the two repo secrets, add the
+Vercel rewrite. The backup is the one with no second chance — there is no
+revocation, and a rotated key is *rejected* by the installs it was meant to reach.
+
+## Three collisions, none of them in the code
+
+Worth recording because all three looked like defects and none were.
+
+1. **116 test failures across Appearance, Pockets, Notify and Setup** — every one
+   `Database busy`, with two `beam.smp` processes live. The suites passed in
+   isolation and the next full run was **0 failures**. Cross-process SQLite
+   contention presents as a catastrophic regression.
+2. **`mix precommit` exit 1, `check_cycles.sh` reporting 0 cycles instead of 2.**
+   Not a cycle change: `mix xref` could not compile the tree, because another
+   session had an unclosed HEEx tag in a **brand-new untracked** `studio_live.ex`.
+   The script read a crash as an absence.
+3. **`check_file_sizes.sh` failing on a file capped in the inventory that no
+   longer exists** — another session's staged delete of `explained/ramshackle.ex`,
+   mid-edit, with the cap not yet removed.
+
+**The repo already knows to stage explicit paths with peers in the tree.** What
+today adds is that **shared-tree contention corrupts the GATES, not just the
+diff** — a red suite, a failed cycle check and a failed size check, none of them
+caused by the change under test. The check that saved time in all three was the
+cheapest one: *does this fail in isolation?*
+
+---
+
 # The afternoon: everything here was already written down
 
 Seven things landed this afternoon and **not one of them needed to be
@@ -865,3 +1148,163 @@ damage:
 - The shared test lane showed **174 failures** at one point, all `Database busy`
   from a concurrent run. `MIX_TEST_PARTITION` is the answer and it is worth
   reaching for sooner than I did.
+
+---
+
+# The evening's fifth arc: a sketch pad two of you can draw on
+
+The operator asked for a **collaborative sketch pad** — the model draws, imports
+screenshots, adds text, and can edit and delete all of it. Research first, then a
+map, then three phases of it in one sitting.
+
+## The research said one thing, four times
+
+[tldraw's agent kit](https://tldraw.dev/starter-kits/agent), its
+[template](https://github.com/tldraw/agent-template),
+[Excalidraw's skeleton API](https://docs.excalidraw.com/docs/@excalidraw/excalidraw/api/excalidraw-element-skeleton),
+and a [vision-checking tldraw skill](https://github.com/Agents365-ai/tldraw-skill).
+**Every one is structured. Not one operates on pixels.**
+
+That is not taste, and it decided the whole build: **you cannot delete a stroke
+from a bitmap**, because once it is drawn there is no stroke there — only pixels
+that used to be one. The ask contained "edit and delete", so the substrate was
+settled before a line was written.
+
+Three more things came back worth stealing. **Dual representation** — tldraw
+sends the model a screenshot *and* the shape list, because JSON says what is
+addressable and the image says what it actually looks like. **Sanitize every
+action against live state**, because the canvas changes between the model seeing
+it and acting, which is a race rather than a model defect. And the
+[Cleo work](https://arxiv.org/html/2603.02050) on concurrent editing, which
+records the failure precisely: *the agent executes a layout while the user
+proposes a different one, treats the user's edit as an error, and reverts it.*
+
+## The finding that was inside the repo, not outside it
+
+**The model can already draw here, and it is not this surface.** `SvgViewer` is
+live in the homepage chat — it appends its own guide to the system prompt,
+extracts ```` ```svg ```` blocks, sanitizes them, renders them with a zoom modal.
+One-way, ephemeral, no element identity.
+
+Any map that ignored it would have created two surfaces where "the model draws".
+`D2` settles it: **chat SVG is a reply; a sketch is a place.**
+
+And choosing structure turned out to *remove* a security surface rather than add
+one. `SvgViewer` needs a sanitiser plus the CSP because it injects model-authored
+markup into the DOM. A structured document needs neither — the model emits data
+and the app draws it, so there is no markup of anyone else's to strip.
+
+## `D6`, which is the decision worth defending
+
+**Authorship is the permission boundary, not tier.** The model gets full power
+over what it drew and none over what the operator drew.
+
+The obvious design is a tier — create but not delete — and it is wrong. This repo
+has worked the right answer out twice already: **terminal paint** writes only to
+the agent's own theme slot, and **voice banks never merge**. Same rule. Applied
+here it lets the model iterate freely with no confirmation friction while making
+the Cleo failure *structurally impossible* rather than something you prompt
+against. Touching an operator's element is gated, not refused — "move my box to
+make room" is reasonable to ask and unreasonable to do unasked.
+
+## Phase 0: three defects, and one of my own comments wrong within the hour
+
+The surface said *"a reload clears the page."* `StudioPanel` dispatches with
+`:if={@tab == "sketch"}`, so **switching to Mix destroyed the canvas** — one
+click, and the likelier way to lose a drawing. The eraser never marked itself, so
+you could be erasing while a colour still read as selected. And `mark()` toggled
+only `border-*`, leaving a `text-primary` nothing removed, so the size dot stayed
+lit on whichever button rendered first.
+
+All three fixed by moving pressed styling into the markup behind `data-[active]:`
+— the Notes toolbar's idiom, where JS flips one attribute and an active look
+cannot be half-applied.
+
+> **A guard I wrote was wrong in the other direction, and only running it said so.**
+> "No button anywhere hardcodes `border-primary`" failed against **Clear**, which
+> carries `border-primary/50` unconditionally and is *right* to — Clear is not a
+> toggle and has no pressed state. A universal over the whole document, asserting
+> something the surface never promised. Rewritten scoped to the three toggle
+> groups, plus a second guard that buttons in a group render identical class
+> lists — which is the shape the original bug actually had.
+
+## Phase 1: the substrate reversed
+
+A sketch is now a document of addressable elements the server owns, rendered as
+SVG, with the DOM as its projection. That reverses the first version's "the
+browser owns the drawing", and the Notes rule it cited is not broken by it: the
+answer is **one** model, on the server, not two.
+
+**The eraser had to change meaning.** Painting the ground colour is the only
+erase a bitmap allows; on a document it would create ground-coloured *elements* —
+marks that look erased, sit in the file, and would be read back to the model as
+strokes. It deletes now.
+
+**The browser still owns exactly one thing.** `pointermove` fires per pixel, so a
+round trip per point would be visible lag on the one interaction that must feel
+immediate. A stroke is the browser's until `pointerup` and the server's after —
+at any moment it is exactly one of the two, which is what keeps this from being
+the parallel model the Notes editor warned about.
+
+Two bugs worth remembering. **`@hit_width` inside `~H` means `assigns.hit_width`**,
+not the module attribute — `KeyError` on every render in select and erase mode,
+caught only by the behavioural test because the markup test never rendered those
+modes. And **hook events silently routed to the parent LiveView** until the
+surface got `phx-target`; `StudioLive` raised, which was luck — a LiveView with a
+catch-all would have swallowed every stroke.
+
+## Phase 4, pulled ahead: images
+
+The operator asked whether images could be imported, pasted or dragged. They
+could not. Phase 4 was scoped model-facing only, and it moved to the front —
+defensibly, since *"the model can read a sketch"* is worth far more when the
+sketch has a screenshot in it.
+
+**The hazard was already documented in this repo, twice.** `ChatDropzone` and
+`WorkspaceDropzone` exist in the shape they do because **macOS WKWebView does not
+hand file contents to the DOM on an OS drag**: the packaged app gets a *path*
+from Tauri and a dev browser gets bytes through LiveView's upload. A surface
+wired only to `phx-drop-target` works perfectly in `mix phx.server` and does
+nothing at all in the DMG. Paste is the easier half and works in both, because a
+pasteboard carries no promise — except for a file copied in Finder, which arrives
+as a reference and is what the drag path is for.
+
+**One parse does two jobs.** `ImageInfo` reads PNG/GIF/JPEG/WebP headers, so the
+same read that proves a file is really an image also measures it — and a file can
+never be sized without having been identified. No decoder, so a hostile file
+costs only its header. The fixtures were checked against `file` and `sips` rather
+than against my reading of the specs.
+
+## The bug the tests earned, and the guard that now stands where it was
+
+Images dropped fine and **vanished on reload**.
+
+`Store.element_to_map/1` was flat — `points`, `color`, `width` — and adding a
+kind did not touch it. An image was written with **none of its fields**,
+`Element.rehydrate/1` refused it on the next load as `missing_source`, and the
+"drop a bad element, keep the drawing" rule dropped it **silently**. The sketch
+simply had no picture in it, with a log line nobody was reading.
+
+> **The protection hid the defect.** That rule is right — one corrupt element
+> should cost that element, not the drawing — and it is exactly why this took
+> instrumenting four layers to find rather than one crash to read.
+
+The serializer is per-kind now, and the durable half is the guard: `store_test`
+round-trips **every kind in `Element.kinds()`** and fails if a sample is missing,
+so a kind added in a later phase cannot be added without teaching the serializer.
+Verified by reinstating the flat version and watching it fail.
+
+## And a cycle, caught by the gate that exists for it
+
+`Store.delete/1` removes a sketch's sidecar — that is the whole argument for
+`D11` — and `Assets` needed the sketch's path to find it, so the two called each
+other. `check_cycles.sh` found a **third** cycle in a repo that accepts two.
+
+The tempting fix was to duplicate the name rule in both, which breaks the cycle
+and is worse: two allowlists that must agree, in the one place where disagreeing
+means a path escapes. `Sketch.Paths` owns it instead, and the dependency runs one
+way — `Store → Assets → Paths`.
+
+**`mix precommit` exits 0: 4,100 tests, 352 JS tests, all eight gates.** The first
+fully green run of the evening — the earlier reds were all another session's
+in-flight work, four separate times.
