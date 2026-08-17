@@ -304,19 +304,12 @@ defmodule BusterClawWeb.StudioLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} socket={@socket}>
-      <div class="flex min-h-0 flex-1 flex-col gap-4">
-        <div class="flex items-center justify-between gap-4">
-          <div>
-            <p class="ic-eyebrow">Studio</p>
-            <h1 class="mt-1 font-display text-2xl font-black uppercase tracking-tight">
-              Make something
-            </h1>
-          </div>
-          <%!-- Nothing rides here any more. The Mix toolbar's two actions (New
-                mix, Import) moved into the menu bar's File menu on 08-16, so the
-                verbs live on the surface they act on rather than in the page
-                chrome above it. --%>
-        </div>
+      <div class="flex min-h-0 flex-1 flex-col gap-2">
+        <%!-- One line of chrome, not three. The eyebrow said "Studio" over a
+              heading that said something else, and the right side was an action
+              slot the menu bar emptied on 08-16 — so the name moved into the
+              heading and the rest went. Everything below this is the surface. --%>
+        <h1 class="font-display text-2xl font-black uppercase tracking-tight">Studio</h1>
 
         <%!-- `voice_rows` and `voice_check` are derived here, never stored:
               `Status.Voice` computes both from the loaded report, which keeps
