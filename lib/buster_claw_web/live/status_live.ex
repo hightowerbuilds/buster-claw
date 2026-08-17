@@ -5,7 +5,6 @@ defmodule BusterClawWeb.StatusLive do
   # aliased so every call site below reads as it did before the split.
   import BusterClawWeb.Status.Chat
   import BusterClawWeb.Status.Comms
-  import BusterClawWeb.Status.Studio
   import BusterClawWeb.Status.Weather
 
   require Logger
@@ -16,15 +15,12 @@ defmodule BusterClawWeb.StatusLive do
   alias BusterClaw.LocalTime
   alias BusterClaw.Notifications
   alias BusterClaw.Notifications.Schedule
-  alias BusterClaw.Notifications.StudioMix
   alias BusterClaw.Runtime.Status
   alias BusterClaw.Setup
   alias BusterClaw.Telephony
   alias BusterClaw.TrustedSenders
   alias BusterClaw.Weather
   alias BusterClawWeb.Status.ChatAttachments
-  alias BusterClawWeb.Status.Recorder
-  alias BusterClawWeb.Status.Voice
 
   # How many files may sit in the composer at once. The per-file byte cap is the
   # store's (`Attachments.limits/0`) and is read at mount rather than restated
@@ -49,7 +45,6 @@ defmodule BusterClawWeb.StatusLive do
     {"pockets", "Pockets"},
     {"calendar", "Calendar"},
     {"phone", "Phone"},
-    {"studio", "Studio"},
     {"explained", "Explained"},
     {"activity", "Activity"}
   ]
@@ -109,37 +104,6 @@ defmodule BusterClawWeb.StatusLive do
      # the tab's `:if` discards the panel on every switch — so a half-read
      # tutorial survives a glance at Chat. The key list belongs to ExplainedPanel.
      |> assign(:explained_tab, "intro")
-     # Which Studio sub-tab is showing (Mix | Voice) — owned here for the same
-     # reason as the arranger state below it. See `Status.Studio`.
-     |> assign_studio_tab()
-     |> Voice.assign_voice()
-     |> Recorder.assign_recorder()
-     # Transport for the Studio's music library. nil until the dock player
-     # announces — it renders a library with no transport rather than guessing.
-     |> assign(:music_player, nil)
-     # Which source the Studio has open. Owned here rather than in the component
-     # because the tab's `:if` discards the component (and its state) on every
-     # tab switch; an in-progress selection must outlive that.
-     |> assign(:studio_source, nil)
-     # The in-progress trim, in milliseconds. Same ownership reasoning as
-     # :studio_source — an edit must outlive a glance at Chat.
-     |> assign(:studio_trim, nil)
-     # Arranger keyboard state: which clip is selected, what was copied, and the
-     # undo/redo stacks. Held here rather than in the component for the usual
-     # reason — `:if` discards the component — and because losing an undo stack
-     # on a tab switch is the kind of thing that reads as the feature being
-     # broken.
-     |> assign(:studio_clip, nil)
-     |> assign(:studio_preview, nil)
-     |> assign(:studio_clipboard, nil)
-     |> assign(:studio_undo, [])
-     |> assign(:studio_redo, [])
-     # Which sidebar groups are folded shut, by group key. Held here for the
-     # same reason as everything above it — a sidebar that re-expands every time
-     # you glance at Chat is not collapsible, it is briefly tidy — and read from
-     # Settings, because one that re-expands on restart is a preference the app
-     # keeps forgetting.
-     |> assign(:studio_collapsed, BusterClawWeb.SoundStudioComponent.collapsed_groups())
      # Header widget: which sub-tab is showing. Order is Time & Place / Contacts /
      # Notify, and Time & Place leads (its analog clock renders instantly, and
      # `mount_weather/1` fills conditions on connect).
@@ -283,212 +247,6 @@ defmodule BusterClawWeb.StatusLive do
   end
 
   def handle_event("explained_try_in_chat", _params, socket), do: {:noreply, socket}
-
-  # The Studio's sub-tab rail (Mix | Voice). Whitelisted through
-  # `StudioPanel.tab_keys/0` inside `Status.Studio.select_studio_tab/2`.
-  def handle_event("select_studio_tab", %{"tab" => tab}, socket) do
-    {:noreply, select_studio_tab(socket, tab)}
-  end
-
-  # Voice (Ramshackle). Every clause delegates in full to `Status.Voice`; the
-  # corpus read is lazy, so opening the tab is what loads it and switching away
-  # and back does not re-read ten files.
-  def handle_event("voice_search", %{"query" => query}, socket),
-    do: {:noreply, Voice.put_query(socket, query)}
-
-  def handle_event("voice_sentence", %{"sentence" => text}, socket),
-    do: {:noreply, Voice.put_sentence(socket, text)}
-
-  def handle_event("voice_refresh", _params, socket),
-    do: {:noreply, Voice.load_report(socket)}
-
-  # The Voice Library's own navigation, and the recorder inside it. ONE clause
-  # for the recorder's six sub-actions rather than six clauses: they share a
-  # shape, `Status.Recorder` owns the dispatch, and this file is at its cap for a
-  # reason. The take arrives separately because it carries audio.
-  def handle_event("voice_section", %{"section" => section}, socket),
-    do: {:noreply, Voice.put_section(socket, section)}
-
-  def handle_event("voice_select", %{"word" => word}, socket),
-    do: {:noreply, Voice.select_word(socket, word)}
-
-  def handle_event("voice_preview", _params, socket),
-    do: {:noreply, Voice.build_preview(socket)}
-
-  def handle_event("voice_prefer", %{"source" => source, "start" => start}, socket),
-    do: {:noreply, Voice.prefer_take(socket, source, start)}
-
-  def handle_event("voice_unprefer", _params, socket),
-    do: {:noreply, Voice.unprefer_take(socket)}
-
-  def handle_event("voice_delete", %{"source" => source, "start" => start}, socket),
-    do: {:noreply, Voice.delete_take(socket, source, start)}
-
-  # A sentence chip leads somewhere: a word that exists opens in Words, a word
-  # that does not arms the recorder for it.
-  def handle_event("voice_open_word", %{"word" => word}, socket),
-    do: {:noreply, Voice.open_word(socket, word)}
-
-  def handle_event("voice_record_word", %{"word" => word}, socket),
-    do: {:noreply, socket |> Recorder.put_word(word) |> Voice.put_section("record")}
-
-  def handle_event("contribute", %{"do" => action} = params, socket),
-    do: {:noreply, Recorder.handle(action, params, socket)}
-
-  def handle_event("contribute_take", params, socket),
-    do: {:noreply, Recorder.save_take(socket, params)}
-
-  # The Studio's selection is owned HERE, not by the component: home tabs render
-  # behind `:if`, which removes the DOM and discards the live_component with it,
-  # so a selection held in the component would not survive a glance at Chat.
-  # Re-selecting what is already open is a no-op. Without this guard, clicking
-  # the open mix in the sidebar — or landing back on it after a tab switch —
-  # would silently throw away its undo stack and any trim in progress.
-  def handle_event("select_studio_source", %{"id" => id}, socket)
-      when id == :erlang.map_get(:studio_source, socket.assigns) do
-    {:noreply, socket}
-  end
-
-  def handle_event("select_studio_source", %{"id" => id}, socket) do
-    # A trim belongs to the file it was drawn on. Carrying it to another source
-    # would apply one file's in/out points to another's waveform. The undo stack
-    # goes with it for the same reason: undoing into an arrangement you are no
-    # longer looking at is not undo, it is vandalism.
-    {:noreply,
-     socket
-     |> assign(:studio_source, id)
-     |> assign(:studio_trim, nil)
-     |> reset_studio_history()}
-  end
-
-  # Fold a sidebar group shut, or open it. The list is the collapsed set, so a
-  # group the app adds later starts open — the right default for something new
-  # appearing, and it means this never needs to know the full group roster.
-  # Persisted on every toggle rather than on some later "save": there is no
-  # moment in this UI that would mean "commit my folds".
-  def handle_event("toggle_studio_group", %{"key" => key}, socket) when is_binary(key) do
-    collapsed = socket.assigns.studio_collapsed
-    next = if key in collapsed, do: List.delete(collapsed, key), else: [key | collapsed]
-
-    BusterClawWeb.SoundStudioComponent.put_collapsed(next)
-    {:noreply, assign(socket, :studio_collapsed, next)}
-  end
-
-  # ---------------------------------------------------------------------------
-  # Arranger: selection, clipboard, undo/redo
-  # ---------------------------------------------------------------------------
-
-  def handle_event("studio_copy", _params, socket) do
-    case selected_clip(socket) do
-      nil ->
-        {:noreply, socket}
-
-      clip ->
-        # The clipboard holds a spec, not the clip: pasting makes a NEW clip
-        # with its own id, so a pasted copy can be moved and deleted on its own.
-        #
-        # `effects` joined the spec on 08-16. Without it, copying a clip you had
-        # shaped pasted it DRY — silently, and only audible on render, which is
-        # the worst place to discover it. Effects arrived that morning and this
-        # spec was written before they existed.
-        {:noreply,
-         assign(socket, :studio_clipboard, %{
-           source: clip.source,
-           duration_ms: clip.duration_ms,
-           effects: StudioMix.chain(clip)
-         })}
-    end
-  end
-
-  # Paste lands on the selected clip's track, so a copy sits beside its
-  # original; with nothing selected it falls to the first track rather than
-  # refusing. (This comment had drifted to the far end of the file, above an
-  # unrelated function, until the 08-08 split walked past it.)
-  def handle_event("studio_paste", _params, socket) do
-    case socket.assigns.studio_clipboard do
-      nil ->
-        {:noreply, socket}
-
-      %{} = spec ->
-        {:noreply,
-         mutate_open_mix(socket, fn mix ->
-           track = StudioMix.paste_track(mix, socket.assigns.studio_clip)
-           StudioMix.place_copy(mix, spec, track.id, StudioMix.track_end_ms(track))
-         end)}
-    end
-  end
-
-  def handle_event("studio_delete_clip", _params, socket) do
-    case socket.assigns.studio_clip do
-      nil ->
-        {:noreply, socket}
-
-      id ->
-        socket = mutate_open_mix(socket, &StudioMix.remove_clip(&1, id))
-        {:noreply, assign(socket, :studio_clip, nil)}
-    end
-  end
-
-  # The selected clip's effect chain. Each is one line into `Status.Studio`,
-  # which routes through `mutate_open_mix/2` so every one of them is undoable.
-  # A hook's `pushEvent` reaches the LIVEVIEW, not the component — `pushEventTo`
-  # is what targets a component, which is why `move_clip` two lines below it in
-  # `track_arrange.js` uses that instead. Without this clause every click on a
-  # clip was a FunctionClauseError: the LiveView crashed, the client reconnected,
-  # and the remount put the operator back on Chat. Reported twice before it was
-  # found, because no server test reproduced it — `render_hook(element(...))`
-  # routes to the component and only `render_hook(view, ...)` routes here.
-  def handle_event("select_clip", %{"id" => id}, socket) when is_binary(id),
-    do: {:noreply, assign(socket, :studio_clip, id)}
-
-  # A payload without an id costs a no-op, never a crash-and-remount. The whole
-  # bug above was one unmatched clause; a second one is not the way to end it.
-  def handle_event("select_clip", _params, socket), do: {:noreply, socket}
-
-  def handle_event("studio_add_effect", %{"type" => type}, socket),
-    do: {:noreply, effect_change(socket, &StudioMix.add_effect(&1, &2, type))}
-
-  def handle_event("studio_remove_effect", %{"position" => position}, socket),
-    do: {:noreply, effect_change(socket, &StudioMix.remove_effect(&1, &2, to_int(position)))}
-
-  def handle_event("studio_set_effect_param", params, socket) do
-    %{"position" => position, "key" => key, "value" => value} = params
-
-    {:noreply,
-     effect_change(
-       socket,
-       &StudioMix.put_effect_param(&1, &2, to_int(position), key, value)
-     )}
-  end
-
-  def handle_event("studio_preview_clip", _params, socket),
-    do: {:noreply, preview_clip(socket)}
-
-  def handle_event("studio_undo", _params, socket) do
-    {:noreply, step_history(socket, :studio_undo, :studio_redo)}
-  end
-
-  def handle_event("studio_redo", _params, socket) do
-    {:noreply, step_history(socket, :studio_redo, :studio_undo)}
-  end
-
-  # Pushed by the WaveTrim hook on pointerup. Held here, not in the component,
-  # for the same reason the source selection is: `:if` discards the component.
-  def handle_event("trim_select", %{"from_ms" => from, "to_ms" => to}, socket)
-      when is_number(from) and is_number(to) and to > from do
-    {:noreply, assign(socket, :studio_trim, %{from_ms: from * 1.0, to_ms: to * 1.0})}
-  end
-
-  def handle_event("trim_select", _params, socket), do: {:noreply, socket}
-
-  def handle_event("trim_clear", _params, socket) do
-    # The hook clears its own overlay on a click; this also answers the Clear
-    # button, whose overlay has not been touched yet.
-    {:noreply,
-     socket
-     |> assign(:studio_trim, nil)
-     |> push_event("studio:trim", %{from_ms: nil, to_ms: nil})}
-  end
 
   def handle_event("select_widget_tab", %{"tab" => tab}, socket)
       when tab in @widget_tab_keys do
@@ -787,39 +545,6 @@ defmodule BusterClawWeb.StatusLive do
   end
 
   # An entry (agent or another session) landed in the day's Notes — ping the
-  # The dock player announced new transport state; the Music tab renders it.
-  def handle_info({:music_state, player}, socket) do
-    {:noreply, assign(socket, :music_player, player)}
-  end
-
-  # The Studio finished an edit and wants the result opened. The component does
-  # the work; only the parent can change the selection, because only the parent
-  # holds it. The trim clears with it — its in/out points describe the source,
-  # not the file just made from it.
-  def handle_info({:studio_select, id}, socket) do
-    {:noreply,
-     socket
-     |> assign(:studio_source, id)
-     |> assign(:studio_trim, nil)
-     |> reset_studio_history()
-     |> push_event("studio:trim", %{from_ms: nil, to_ms: nil})}
-  end
-
-  # The component mutates the open arrangement itself (buttons and forms); it
-  # hands the PREVIOUS state up so undo has something to go back to. Sending the
-  # old state rather than having the parent re-read it avoids a race where the
-  # component has already written the new one to disk.
-  def handle_info({:studio_history, %StudioMix{} = previous}, socket) do
-    {:noreply, push_studio_history(socket, previous)}
-  end
-
-  # Forwarded by the component, which receives the click because the arranger
-  # hook is `phx-target`-bound to it. The selection belongs here, beside the
-  # clipboard and undo stacks that consume it.
-  def handle_info({:studio_select_clip, id}, socket) do
-    {:noreply, assign(socket, :studio_clip, id)}
-  end
-
   # Relay journal broadcasts to the read-only Activity component. `send_update`
   # is safe while another tab is mounted; the next Activity mount reads disk.
   def handle_info({:journal_appended, _date}, socket) do
@@ -921,8 +646,9 @@ defmodule BusterClawWeb.StatusLive do
           <div class="flex min-h-0 flex-1 flex-col gap-2">
             <%!-- Home sub-tabs: Chat | Calendar. Switching to Calendar hides the
                   chat entirely and mounts the full calendar in its place. The
-                  right side of this row is the active tab's action slot —
-                  today only the Studio claims it. --%>
+                  right side of this row was the active tab's action slot; the
+                  Studio was its only claimant and moved to /studio on 08-16, so
+                  nothing claims it today. --%>
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div
                 class="flex gap-0.5 border-2 border-base-content/20 p-0.5"
@@ -947,10 +673,6 @@ defmodule BusterClawWeb.StatusLive do
                   {label}
                 </button>
               </div>
-
-              <BusterClawWeb.SoundStudioComponent.toolbar :if={
-                @home_tab == "studio" and @studio_tab == "mix"
-              } />
             </div>
 
             <div :if={@home_tab == "chat"} class="flex min-h-0 flex-1 flex-col gap-2">
@@ -997,38 +719,6 @@ defmodule BusterClawWeb.StatusLive do
               <.live_component module={BusterClawWeb.PocketsPanel} id="home-pockets" />
             </div>
 
-            <%!-- Two sub-tabs: Mix (this studio) and Voice. The rail is in
-                  StudioPanel, above the FROZEN component, which Mix renders
-                  unchanged with the assigns it always had. --%>
-            <div :if={@home_tab == "studio"} class="flex min-h-0 flex-1 flex-col">
-              <BusterClawWeb.StudioPanel.studio_panel
-                tab={@studio_tab}
-                player={@music_player}
-                studio_source={@studio_source}
-                studio_trim={@studio_trim}
-                studio_clip={@studio_clip}
-                studio_clip_data={selected_clip(assigns)}
-                studio_preview={@studio_preview}
-                studio_clipboard={@studio_clipboard}
-                studio_undo={@studio_undo}
-                studio_redo={@studio_redo}
-                studio_collapsed={@studio_collapsed}
-                voice_report={@voice_report}
-                voice_error={@voice_error}
-                voice_query={@voice_query}
-                voice_sentence={@voice_sentence}
-                voice_rows={Voice.vocabulary(assigns, @voice_query)}
-                voice_check={Voice.sentence_check(assigns, @voice_sentence)}
-                voice_section={@voice_section}
-                voice_selected={@voice_selected}
-                voice_takes={@voice_takes}
-                voice_preview={@voice_preview}
-                voice_preview_error={@voice_preview_error}
-                voice_notice={@voice_notice}
-                recorder={@recorder}
-              />
-            </div>
-
             <div :if={@home_tab == "explained"} class="flex min-h-0 flex-1 flex-col">
               <BusterClawWeb.ExplainedPanel.explained_panel tab={@explained_tab} />
             </div>
@@ -1045,16 +735,4 @@ defmodule BusterClawWeb.StatusLive do
     </Layouts.app>
     """
   end
-
-  # `phx-value-*` arrives as a string; the mix API wants an index.
-  defp to_int(value) when is_integer(value), do: value
-
-  defp to_int(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {parsed, _rest} -> parsed
-      :error -> -1
-    end
-  end
-
-  defp to_int(_value), do: -1
 end

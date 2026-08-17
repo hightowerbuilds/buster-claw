@@ -61,8 +61,8 @@ defmodule BusterClawWeb.ClipActionsTest do
     :ok = StudioMix.save(placed)
     [clip] = Enum.map(StudioMix.clips(placed), fn {_t, c} -> c end)
 
-    {:ok, view, _html} = live(conn, ~p"/")
-    render_click(element(view, "[phx-click='select_home_tab'][phx-value-tab='studio']"))
+    # /studio since 08-16 — was a Home sub-tab click.
+    {:ok, view, _html} = live(conn, ~p"/studio")
     render_click(element(view, "[phx-click='select_studio_tab'][phx-value-tab='mix']"))
     send(view.pid, {:studio_select, "mix:m"})
     _ = :sys.get_state(view.pid)
@@ -70,7 +70,15 @@ defmodule BusterClawWeb.ClipActionsTest do
     {view, clip}
   end
 
-  defp home_tab(view), do: :sys.get_state(view.pid).socket.assigns.home_tab
+  # The crash detector. Until 08-16 this read `home_tab` — the Studio was a Home
+  # sub-tab, and a crash-and-remount reset it to "chat", which is precisely how
+  # the clip-click crash announced itself.
+  #
+  # On `/studio` there is no home tab to lose, so it reads the open source
+  # instead. `studio_with_clip/1` opens `mix:m`; a remount would reset it to
+  # `nil`. Same signal, and anchored to the Studio's own state rather than to
+  # which Home tab happened to be showing.
+  defp still_open(view), do: :sys.get_state(view.pid).socket.assigns.studio_source
 
   describe "selecting a clip" do
     # The COMPONENT path — a second door, kept so a future `pushEventTo` cannot
@@ -78,11 +86,11 @@ defmodule BusterClawWeb.ClipActionsTest do
     # crashing on every click: passing here says nothing about the real path.
     test "goes through the component and leaves the home tab alone", %{conn: conn} do
       {view, clip} = studio_with_clip(conn)
-      assert home_tab(view) == "studio"
+      assert still_open(view) == "mix:m"
 
       render_hook(element(view, "[phx-hook='TrackArrange']"), "select_clip", %{"id" => clip.id})
 
-      assert home_tab(view) == "studio"
+      assert still_open(view) == "mix:m"
       assert :sys.get_state(view.pid).socket.assigns.studio_clip == clip.id
     end
 
@@ -95,7 +103,7 @@ defmodule BusterClawWeb.ClipActionsTest do
 
       render_hook(view, "select_clip", %{"id" => clip.id})
 
-      assert home_tab(view) == "studio"
+      assert still_open(view) == "mix:m"
       assert :sys.get_state(view.pid).socket.assigns.studio_clip == clip.id
     end
 
@@ -106,7 +114,7 @@ defmodule BusterClawWeb.ClipActionsTest do
       # A stale client should cost a no-op, never a crash-and-remount.
       render_hook(view, "select_clip", %{})
 
-      assert home_tab(view) == "studio"
+      assert still_open(view) == "mix:m"
     end
 
     test "opens the inspector for that clip", %{conn: conn} do
@@ -122,7 +130,7 @@ defmodule BusterClawWeb.ClipActionsTest do
       {view, _clip} = studio_with_clip(conn)
       render_hook(element(view, "[phx-hook='TrackArrange']"), "select_clip", %{"id" => "ghost"})
 
-      assert home_tab(view) == "studio"
+      assert still_open(view) == "mix:m"
       refute has_element?(view, "#studio-clip-inspector")
     end
   end
@@ -146,7 +154,7 @@ defmodule BusterClawWeb.ClipActionsTest do
 
       # The clip left the arrangement; the audio it pointed at is untouched.
       assert "a.wav" in SoundStudio.list()
-      assert home_tab(view) == "studio"
+      assert still_open(view) == "mix:m"
     end
 
     test "removing is undoable — it goes through the same save that records history",
@@ -235,7 +243,7 @@ defmodule BusterClawWeb.ClipActionsTest do
 
       # A stale client costs a no-op, never a crash.
       render_hook(element(view, "#studio-ctx"), "duplicate_clip", %{"id" => "ghost"})
-      assert home_tab(view) == "studio"
+      assert still_open(view) == "mix:m"
       {:ok, still} = StudioMix.load("m")
       assert length(StudioMix.clips(still)) == 1
     end

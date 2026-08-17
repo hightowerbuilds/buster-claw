@@ -26,8 +26,8 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
   end
 
   defp open_studio(conn) do
-    {:ok, view, _html} = live(conn, ~p"/")
-    html = view |> element("button[phx-value-tab='studio']") |> render_click()
+    # /studio since 08-16 — was a Home sub-tab click.
+    {:ok, view, html} = live(conn, ~p"/studio")
     {view, html}
   end
 
@@ -244,11 +244,16 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       {view, _html} = open_studio(conn)
       select(view, "sound:confirm.wav")
 
-      # Home tabs render behind `:if`, which REMOVES the DOM and discards the
+      # Sub-tabs render behind `:if`, which REMOVES the DOM and discards the
       # live_component with it. A selection held in the component would be gone
-      # here — which is the failure that demos perfectly and loses real work.
-      view |> element("button[phx-value-tab='chat']") |> render_click()
-      html = view |> element("button[phx-value-tab='studio']") |> render_click()
+      # here — the failure that demos perfectly and loses real work.
+      #
+      # This was a Home tab switch until 08-16. The Studio moved to `/studio`,
+      # and the hazard came with it unchanged: `StudioPanel` dispatches behind
+      # `:if` exactly as Home did, so leaving for Voice and returning to Mix
+      # destroys and rebuilds the component the same way.
+      view |> element("button[phx-value-tab='voice']") |> render_click()
+      html = view |> element("button[phx-value-tab='mix']") |> render_click()
 
       assert html =~ "confirm"
       assert html =~ ~s(aria-current="true")
@@ -268,16 +273,17 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
   describe "the tab bar toolbar" do
     test "New mix and Import audio ride the tab bar, only while the Studio is open",
          %{conn: conn} do
-      {:ok, view, html} = live(conn, ~p"/")
+      # Was a Home tab switch until 08-16. The toolbar now rides `/studio`'s own
+      # header and belongs to Mix specifically, so the thing it must not do is
+      # follow you to another sub-tab.
+      {:ok, view, html} = live(conn, ~p"/studio")
 
-      # On Chat there is no Studio toolbar — the action slot belongs to the
-      # active tab.
-      refute html =~ "studio-toolbar"
-
-      html = view |> element("button[phx-value-tab='studio']") |> render_click()
       assert html =~ "studio-toolbar"
       assert html =~ "New mix"
       assert html =~ "Import audio"
+
+      html = view |> element("button[phx-value-tab='voice']") |> render_click()
+      refute html =~ "studio-toolbar"
     end
 
     test "the toolbar's create form reaches the component through its selector target",
@@ -452,8 +458,8 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       select(view, "sound:alarm.wav")
       drag(view, 120, 480)
 
-      view |> element("button[phx-value-tab='chat']") |> render_click()
-      html = view |> element("button[phx-value-tab='studio']") |> render_click()
+      view |> element("button[phx-value-tab='voice']") |> render_click()
+      html = view |> element("button[phx-value-tab='mix']") |> render_click()
 
       # An in-progress edit must outlive a glance at Chat.
       assert html =~ "120 ms"
@@ -601,8 +607,8 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       new_audio(view, "durable")
       add_clip(view, "sound:alarm.wav")
 
-      view |> element("button[phx-value-tab='chat']") |> render_click()
-      view |> element("button[phx-value-tab='studio']") |> render_click()
+      view |> element("button[phx-value-tab='voice']") |> render_click()
+      view |> element("button[phx-value-tab='mix']") |> render_click()
       html = open_audio(view, "durable")
 
       assert length(clip_ids(html)) == 1
@@ -1054,8 +1060,8 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       click_clip(view, clip)
       render_hook(view, "studio_copy", %{})
 
-      view |> element("button[phx-value-tab='chat']") |> render_click()
-      view |> element("button[phx-value-tab='studio']") |> render_click()
+      view |> element("button[phx-value-tab='voice']") |> render_click()
+      view |> element("button[phx-value-tab='mix']") |> render_click()
       html = select(view, "mix:durable keys")
 
       # An undo stack that evaporates on a glance at Chat reads as the feature
@@ -1214,14 +1220,14 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
     end
 
     # SOUND_STUDIO_ROADMAP Part V landmine 2: the sub-tab's `:if` REMOVES the
-    # component, so anything it owned is lost. A sidebar that re-expands on
-    # every glance at Chat is not collapsible, it is briefly tidy.
+    # component, so anything it owned is lost. A sidebar that re-expands every
+    # time you look at another tab is not collapsible, it is briefly tidy.
     test "a fold survives leaving the tab", %{conn: conn} do
       {view, _html} = open_studio(conn)
       toggle(view, "sounds")
 
-      render_click(view, "select_home_tab", %{"tab" => "chat"})
-      html = render_click(view, "select_home_tab", %{"tab" => "studio"})
+      render_click(view, "select_studio_tab", %{"tab" => "voice"})
+      html = render_click(view, "select_studio_tab", %{"tab" => "mix"})
 
       refute html =~ ~s(phx-value-id="sound:boot.wav")
       assert html =~ ~s(aria-expanded="false")

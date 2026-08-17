@@ -1535,7 +1535,8 @@ defmodule BusterClawWeb.StatusLiveTest do
         {"pockets", "Pockets"},
         {"calendar", "Calendar"},
         {"phone", "Phone"},
-        {"studio", "Studio"},
+        # Studio left Home for `/studio` on 08-16. A review-forcing snapshot:
+        # a tab added to or removed from Home must fail here so somebody looks.
         {"explained", "Explained"},
         {"activity", "Activity"}
       ]
@@ -2011,18 +2012,19 @@ defmodule BusterClawWeb.StatusLiveTest do
       refute html =~ "Tutorial in the works"
     end
 
-    test "the Ramshackle tab explains a command-only engine and says so",
-         %{conn: conn} do
+    # Was "the Ramshackle tab explains a command-only engine and says so". The
+    # Ramshackle tutorial was merged into Studio on 08-16 and its module deleted,
+    # so the tab is gone — but the contract it carried is the reason this test
+    # survived the merge rather than going with it: **the cut-up engine is
+    # command-only, so the verbs ARE the feature**, and a renamed one would leave
+    # the page teaching something that cannot be run.
+    test "the Studio tab offers every cut-up verb, and each one exists", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
       render_click(view, "select_home_tab", %{"tab" => "explained"})
 
-      html = render_click(view, "select_explained_tab", %{"tab" => "ramshackle"})
+      html = render_click(view, "select_explained_tab", %{"tab" => "studio"})
 
-      assert html =~ "Ramshackle Voice"
-      assert has_element?(view, "#explained-ramshackle-pipeline")
-      assert has_element?(view, "#explained-ramshackle-origins")
-      assert has_element?(view, "#explained-ramshackle-lattice")
-      assert has_element?(view, "#explained-ramshackle-numbers")
+      assert has_element?(view, "#explained-studio-cutup-verbs")
 
       # Every command the tutorial names must exist — the same contract the other
       # tutorials carry. This one leans on it harder than most: the tab has no
@@ -2043,24 +2045,33 @@ defmodule BusterClawWeb.StatusLiveTest do
                "tutorial names #{cmd}, which is not in the command catalog"
       end
 
-      # The claim the tab opens with, still a contract — the claim just changed.
-      #
-      # It used to assert Voice was a placeholder, so that BUILDING that tab
-      # would fail here and force this copy to be rewritten. It did exactly that
-      # on 08-14: VI.1's vocabulary and sentence-check panes landed and this test
-      # went red with "the Voice tutorial still says it is not". Worth keeping as
-      # evidence that a lockstep assertion on someone else's module earns its
-      # keep.
-      #
-      # The new claim is narrower and so is the guard: Voice exists and shows the
-      # corpus, but it cannot RECORD, which is what keeps the engine on the
-      # command surface and this page worth reading.
+      # A lockstep assertion on someone else's module, kept because it has already
+      # earned its keep twice. It first asserted Voice was a PLACEHOLDER, so that
+      # building the tab would fail here and force the copy to be rewritten — and
+      # on 08-14 it did exactly that. It is now the narrower claim, and the same
+      # trap applies: if Voice ever goes back to being a placeholder, this page
+      # is overclaiming and should fail rather than quietly mislead.
       refute "voice" in Enum.map(BusterClawWeb.Studio.Registry.placeholders(), & &1.key),
              "Voice is a placeholder again — this tutorial now overclaims what that tab does"
 
-      refute html =~ "no screen for this yet"
-      assert html =~ "Half of this has a screen now"
-      assert html =~ "cannot do yet"
+      # And the tab it sends the reader to must exist. `path` is /studio now, not
+      # /cmd-list: the surface it describes was built, so a deep link into it is
+      # finally honest.
+      assert html =~ ~s(href="/studio")
+
+      # The framing is a contract, not decoration. Every other Explained tab
+      # documents something the product depends on; this one documents a
+      # workshop, and saying so is what buys the room to keep changing it. If
+      # the Studio is ever presented as settled, this fails and somebody has to
+      # decide whether that is true.
+      assert html =~ "Experimental"
+      assert html =~ "where this app tries things"
+
+      # And it must keep admitting what is unfinished rather than smoothing it
+      # over — the recorder's unproven microphone and the sketch pad with no save
+      # are the two honest limits on the page.
+      assert html =~ "never been exercised in a packaged build"
+      assert html =~ "no save"
 
       # sound_sentence writes a SOURCE and nothing else. The tutorial promises
       # that twice, so assert the verb has not quietly grown a routing side

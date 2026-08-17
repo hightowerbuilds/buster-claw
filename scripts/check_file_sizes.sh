@@ -132,8 +132,18 @@ check lib/buster_claw_web/components/explained_panel.ex        118 HELD
 # says which half has a screen and which does not. Two lines, and they were owed
 # — a lockstep test in status_live_test.exs failed the moment Voice was built,
 # which is exactly what it was written to do.
-check lib/buster_claw_web/components/explained/ramshackle.ex   575 HELD
-check lib/buster_claw_web/components/explained/studio.ex       307 HELD
+# 307 -> 450 on 08-16, and this is a MERGE rather than growth: `ramshackle.ex`
+# (575) was deleted and the half of it worth keeping — the origin/confidence
+# table and the cut-up verbs as copyable commands — moved here, along with the
+# Sketch Pad section and the experimental framing. Net for the Explained folder
+# is -432 lines, which is the number that matters.
+#
+# The two tabs existed on a real argument (someone wanting a custom chime should
+# not have to read about dynamic time warping first) and it still cost more than
+# it bought: two tabs described two ENGINES rather than one place you go to make
+# something, and the Ramshackle tab had drifted into claiming the Voice surface
+# was unbuilt months after it shipped.
+check lib/buster_claw_web/components/explained/studio.ex       450 HELD
 # 460 -> 660 on 08-15. The tab gained a SECOND SPINE rather than more of the
 # first: three capabilities with three unrelated blockers (inbound voice works;
 # outbound SMS is built and blocked on Twilio paperwork; outbound voice needs no
@@ -291,7 +301,12 @@ check lib/buster_claw_web/components/gws/calendar_sync.ex    101 HELD
 # a clip crashed the LiveView and the remount threw the operator back to Chat.
 # Two reports, no failing test, and comments in two files asserting the opposite
 # routing — which is why the comment here is longer than the clause.
-check lib/buster_claw_web/live/status_live.ex               1060 HELD
+# 1060 -> 810 on 08-16: the Studio moved off Home to `/studio`, taking ~30
+# handle_event clauses, four handle_info clauses, twelve assigns, `to_int/1` and
+# the panel render with it. The ratchet is what asked for this number — the file
+# came in at 738 and a cap left at 1060 would have quietly re-opened 300 lines
+# of room the extraction had just closed.
+check lib/buster_claw_web/live/status_live.ex                810 HELD
 check lib/buster_claw_web/live/status/chat.ex                685 HELD
 
 # Added 08-09 when the chat skins pushed this past 1,000 lines. It has never been
@@ -413,7 +428,12 @@ check lib/buster_claw_web/live/status/weather.ex              97 HELD
 # ever appears in `studio_panel.ex`, this raise was wrong. The surface is 251
 # lines in `components/studio/contribute.ex` and its state 233 in
 # `live/status/contribute.ex`, both created for it.
-check lib/buster_claw_web/components/studio_panel.ex         195 HELD
+# 195 -> 215 on 08-16 for the Sketch Pad's dispatch: an alias, a four-line
+# `:if` block and the comment above it. The "NO headroom" note above still
+# stands as the rule — this file is a rail and a dispatch and must not become a
+# place features live — and a third tab arriving is exactly the growth it was
+# capped to make visible rather than to forbid.
+check lib/buster_claw_web/components/studio_panel.ex         215 HELD
 check lib/buster_claw_web/components/studio/registry.ex       85 HELD
 
 # Voice, the Ramshackle surface (VI.1), capped on arrival. `voice.ex` is the two
@@ -491,6 +511,21 @@ check lib/buster_claw_web/live/status/voice.ex               400 HELD
 # catch-all to satisfy it makes the function partial.
 check lib/buster_claw_web/components/studio/recorder.ex      280 HELD
 check lib/buster_claw_web/live/status/recorder.ex            265 HELD
+
+# --- The Studio, on its own route (08-16) ------------------------------------
+#
+# `studio_live.ex` is what `StatusLive` handed over: the Studio's whole event
+# surface, unchanged. Every clause still delegates one line deep into
+# `Status.Studio` / `Status.Voice` / `Status.Recorder`, which did not move — so
+# growth here means a handler that stopped delegating, which is the thing to
+# look at rather than the line count itself.
+check lib/buster_claw_web/live/studio_live.ex                415 HELD
+# The Sketch Pad's markup. Capped on arrival at close to its size because the
+# whole point of its first version is to be small: a canvas, five colours, three
+# sizes, an eraser and clear. If it grows, the question is whether SAVING
+# arrived — and that is a `sketch_*` command and a workspace path, which is a
+# roadmap rather than more markup here.
+check lib/buster_claw_web/components/studio/sketch.ex        155 HELD
 
 # The Notes vault: state in the live_component, markup in three function
 # components. Split at ~810 lines during the Home Activity + Notes roadmap's
@@ -999,6 +1034,12 @@ check assets/js/hooks/tab_strip.js                            664 FROZEN
 # green and were unusable. That essay is load-bearing — do not "clean it up" to
 # get under a cap.
 check assets/js/hooks/note_editor.js                          600 HELD
+# The Sketch Pad's canvas hook, capped on arrival — the rule this repo wrote
+# down on 08-16 after finding `capture/take.ex` was the one module added that
+# day without one. It owns every pixel and the server is never told about a
+# stroke, so growth here is either persistence (which belongs behind a command)
+# or a tool, and both are worth being asked about.
+check assets/js/hooks/sketch_pad.js                           185 HELD
 
 # ── The Rust shell. The 07-22 shape, asserted at last. ───────────────────────
 #

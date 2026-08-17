@@ -20,7 +20,7 @@ defmodule BusterClawWeb.ExplainedPanel do
   | `Explained.Intro` | the launcher grid and Get Started |
   | `Explained.Sites` | busterclaw.lol, Notes That Float |
   | `Explained.Stub` | any feature tab whose tutorial is unwritten (none today) |
-  | `Explained.Models`, `.Shaders`, `.Pockets`, `.Phone`, `.Browser`, `.Cmd`, `.Gws`, `.Studio`, `.Ramshackle` | the nine tutorials |
+  | `Explained.Models`, `.Shaders`, `.Pockets`, `.Phone`, `.Browser`, `.Cmd`, `.Gws`, `.Studio` | the eight tutorials |
   | `Explained.Shared` | the leaf components tutorials are built from |
 
   The rail, the Intro grid, the parent's event whitelist (via `tab_keys/0`) and
@@ -36,7 +36,6 @@ defmodule BusterClawWeb.ExplainedPanel do
   import BusterClawWeb.Explained.Models
   import BusterClawWeb.Explained.Phone
   import BusterClawWeb.Explained.Pockets
-  import BusterClawWeb.Explained.Ramshackle
   import BusterClawWeb.Explained.Shaders
   import BusterClawWeb.Explained.Sites
   import BusterClawWeb.Explained.Studio
@@ -106,7 +105,6 @@ defmodule BusterClawWeb.ExplainedPanel do
         <.cmd_panel :if={@tab == "cmd"} />
         <.browser_panel :if={@tab == "browser"} />
         <.studio_panel :if={@tab == "studio"} />
-        <.ramshackle_panel :if={@tab == "ramshackle"} />
         <.stub_panel :for={stub <- @stubs} :if={@tab == stub.key} stub={stub} />
       </div>
     </section>

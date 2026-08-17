@@ -1,42 +1,36 @@
 defmodule BusterClawWeb.Explained.Studio do
   @moduledoc """
-  The Studio tutorial — working material, the editing verbs, and the one verb
-  that crosses from *a file exists* to *the machine behaves differently*.
+  The Studio tutorial — one tab covering all three sub-tabs at `/studio`.
 
-  ## Why this is a separate tab from Ramshackle
+  ## It was two tabs, and merging them was the operator's call
 
-  Both tabs are `sound_*` verbs over the same folders, which is exactly why they
-  were one tab first and should not have been. They answer different questions:
+  Studio and **Ramshackle** were separate tutorials from 08-09 to 08-16, on a
+  real argument: someone who wants a custom chime should not have to read about
+  dynamic time warping to get one. That argument was sound and the split still
+  cost more than it bought — two tabs described *two engines* rather than one
+  place you go to make something, and the Ramshackle tab had drifted into
+  claiming the Voice surface "is not built" months after it shipped.
 
-  - **Studio** (here) — *what does this machine play, and how do I change it?*
-    A library, a routing table, four editing verbs, and `sound_apply`.
-  - **Ramshackle** (`Explained.Ramshackle`) — *how do I build a sentence nobody
-    said, out of recordings I already have?* Word indexes, alignment, a matcher,
-    a unit-selection lattice.
+  So: one tab, and `Explained.Ramshackle` was deleted rather than left orphaned.
 
-  The seam between them is sharp and worth keeping sharp: **Ramshackle produces
-  a source; Studio decides whether a source becomes something the machine
-  plays.** A reader who wants a custom chime should never have to read about
-  dynamic time warping to get one, and that is what the single tab forced.
+  ## The framing this page has to carry
 
-  ## The spine of this page
+  **The Studio is the experimental corner of the app and says so out loud.**
+  Every other Explained tab documents something the product depends on; this one
+  documents a workshop. That is not a hedge — it is the honest description of a
+  surface where the cut-up engine is complete and command-only, the recorder has
+  never been run in a packaged build, and the Sketch Pad is a canvas with no way
+  to save. Saying "experimental" is what buys the room to change all three
+  without anyone feeling misled.
+
+  ## The spine, unchanged
 
   `Catalog.Sound`'s own moduledoc draws the line this tutorial teaches, so the
-  page is built on it rather than on a restatement of it: every write verb here
+  page is built on it rather than on a restatement of it: every write verb
   produces a **new source** in `sounds/studio/` and stops — except `sound_apply`,
   *"the only one that changes what the machine does when nobody is watching"*,
   which is why it carries the gate. `sound_delete` is the other one worth care,
   because it is the only irreversible verb.
-
-  **Do not restore the superlative.** The first draft of this page called
-  `sound_apply` the only gated entry in the whole sound surface, which was true
-  of the catalog it was written against and false within the day: the capture
-  work gates `sound_record` too, for an unrelated reason — it opens the
-  microphone. The claim worth making is about *this page's* verbs, and that is
-  what `status_live_test.exs` asserts: `sound_apply` gated, every verb the
-  tutorial teaches as write-and-stop **un**gated, and `sound_restore_defaults`
-  ungated among them. That last one matters as much as the first — it is the way
-  back, and gating an undo only ever strands the person who needs it.
   """
   use BusterClawWeb, :html
   import BusterClawWeb.Explained.Shared
@@ -45,18 +39,39 @@ defmodule BusterClawWeb.Explained.Studio do
     ~H"""
     <div class="mx-auto flex max-w-2xl flex-col gap-8 px-6 py-8">
       <div>
-        <p class="ic-eyebrow">Sound</p>
+        <p class="ic-eyebrow">The workshop</p>
         <h2 class="mt-2 font-display text-2xl font-black tracking-tight">
-          Studio — the sounds this machine makes, and how to change them
+          Studio — the experimental corner
         </h2>
+      </div>
+
+      <div class="rounded-sm border-2 border-primary/40 bg-primary/5 px-4 py-3">
+        <p class="ic-eyebrow text-primary">Experimental</p>
+        <p class="mt-1.5 text-sm leading-relaxed text-base-content/80">
+          <span class="font-semibold text-base-content">
+            The Studio is where this app tries things.
+          </span>
+          Everything else in Explained documents something the product depends on.
+          This is a workshop: three sub-tabs at <code>/studio</code>, at three
+          different stages of finished, and it will keep changing shape. Some of
+          what is here will grow into features you use every day; some of it will
+          be deleted. Both are the point.
+        </p>
       </div>
 
       <div class="flex flex-col gap-3 text-sm leading-relaxed text-base-content/80">
         <p>
-          Buster Claw makes noise on purpose. A voicemail arrives, a shift ends, a
-          terminal command finishes, an alarm fires — each of those can ring, and
-          which chime rings is a table you own. The Studio is where you cut the audio,
-          and the sound board is where you decide what it is for.
+          <span class="font-semibold text-base-content">Mix</span>
+          cuts and arranges audio. <span class="font-semibold text-base-content">Voice Library</span>
+          is the cut-up: your own words, indexed, spliced into sentences nobody
+          said. <span class="font-semibold text-base-content">Sketch Pad</span>
+          is a canvas, and is currently the smallest thing in the app on purpose.
+        </p>
+        <p>
+          Mix is the one that is genuinely finished, so it leads. Buster Claw makes
+          noise on purpose — a voicemail arrives, a shift ends, an alarm fires — and
+          which chime rings is a table you own. The Studio is where you cut the
+          audio; the sound board is where you decide what it is for.
         </p>
         <p>
           There are three separate things here, and confusing them is the usual way
@@ -126,7 +141,7 @@ defmodule BusterClawWeb.Explained.Studio do
           Two surfaces, and what each is for
         </h3>
         <p class="text-sm leading-relaxed text-base-content/80">
-          Unlike the Ramshackle engine next door, this half has real screens — and
+          Unlike the cut-up engine on the Voice tab, this half has real screens — and
           they split along the same line as the verbs do.
         </p>
         <ul class="ic-unfold" style="list-style: none; padding-left: 0;">
@@ -239,6 +254,115 @@ defmodule BusterClawWeb.Explained.Studio do
           </li>
         </ol>
       </.example>
+
+      <%!-- What Ramshackle's own tab carried, kept because it is the one thing a
+            reader cannot infer from the surface: how much to trust a timing. --%>
+      <section class="flex flex-col gap-3">
+        <h3 class="font-display text-lg font-black tracking-tight">
+          Voice Library — and why a take has a confidence
+        </h3>
+        <p class="text-sm leading-relaxed text-base-content/80">
+          The cut-up indexes audio you already have — voicemails, imported files,
+          and now your own recordings — word by word, then splices those words into
+          sentences nobody said. No model, no training, no network.
+        </p>
+        <p class="text-sm leading-relaxed text-base-content/80">
+          Every index records an <code>origin</code>, and origin is a property of
+          the whole file rather than of a word. It is how much to trust each timing:
+        </p>
+        <ul class="ic-unfold" style="list-style: none; padding-left: 0;">
+          <li>
+            <span class="font-mono font-bold text-base-content">aligned</span>
+            — a transcript shared out across the speech proportionally, by syllable
+            count. <span class="font-semibold text-base-content">Deliberately crude</span>, and confidence
+            <span class="font-semibold text-base-content">caps at 0.9</span>
+            so it can never impersonate a measurement.
+          </li>
+          <li>
+            <span class="font-mono font-bold text-base-content">recognizer</span>
+            — measured by comparing sound to sound. The only origin where a machine
+            actually listened.
+          </li>
+          <li>
+            <span class="font-mono font-bold text-base-content">manual</span>
+            — hand-marked, or recorded one word at a time in the Studio.
+            <span class="font-semibold text-base-content">The only origin that earns 1.0.</span>
+          </li>
+        </ul>
+        <p class="text-sm leading-relaxed text-base-content/70">
+          So an index that is entirely <code>aligned</code>
+          is a vocabulary of estimates and will sound like one. That is not a bug
+          report — it is the reason the recorder exists.
+        </p>
+        <p class="text-sm leading-relaxed text-base-content/80">
+          <span class="font-semibold text-base-content">
+            The engine is command-only, and that is why these are here.
+          </span>
+          The Voice tab shows you the corpus and builds a sentence, but everything
+          the cut-up can actually do it does through verbs — so the verbs are the
+          feature, and each is offered in a form you can lift straight into a
+          terminal.
+        </p>
+        <ul
+          id="explained-studio-cutup-verbs"
+          class="ic-unfold"
+          style="list-style: none; padding-left: 0;"
+        >
+          <li>
+            <.copy_command command="sound_corpus" />
+            what you have: events, how many carry a transcript, how many name a
+            recording, and <span class="font-semibold text-base-content">how many of those files are really on disk</span>. That last gap wastes an afternoon if you skip it.
+          </li>
+          <li>
+            <.copy_command command="sound_transcript_words" /> and
+            <.copy_command command="sound_index_words" />
+            count the vocabulary. The brutal question, asked early:
+            <span class="italic">how many takes of a given word do I have?</span>
+            A word you have once is a word you cannot really use.
+          </li>
+          <li>
+            <.copy_command command="sound_probe" /> and <.copy_command command="sound_import" />
+            inspect and bring audio in; <.copy_command command="sound_align" />
+            gives it an index. There is
+            <span class="font-semibold text-base-content">no recognizer</span>
+            in that step — voice-activity detection finds where sound happens and
+            the transcript is shared out across it, which is why the origin is <code>aligned</code>
+            and the confidence caps below a measurement.
+          </li>
+          <li>
+            <.copy_command command="sound_find" /> and <.copy_command command="sound_index_search" />
+            locate takes of a word by ear rather than by text.
+          </li>
+          <li>
+            <.copy_command command="sound_sentence" /> builds a phrase from the best takes;
+            <.copy_command command="sound_assemble" />
+            is the hand-cut version when you want to choose every piece yourself.
+          </li>
+        </ul>
+        <p class="rounded-sm border-l-2 border-warning pl-3 text-sm leading-relaxed text-base-content/70">
+          <span class="font-semibold text-base-content">Honest limit:</span>
+          the microphone has never been exercised in a packaged build. The recorder
+          reports what your browser actually answered rather than promising either
+          way, so if it cannot record it will say what stopped it.
+        </p>
+      </section>
+
+      <section class="flex flex-col gap-3">
+        <h3 class="font-display text-lg font-black tracking-tight">
+          Sketch Pad — deliberately unfinished
+        </h3>
+        <p class="text-sm leading-relaxed text-base-content/80">
+          A canvas, five colours, three brush sizes, an eraser and clear. There is <span class="font-semibold text-base-content">no save</span>, because there
+          is nowhere to save to yet — and a reload clears the page. The surface says
+          so itself rather than growing a button that does nothing.
+        </p>
+        <p class="text-sm leading-relaxed text-base-content/70">
+          It is here to be the smallest possible version of a thing, and to find out
+          whether anyone reaches for it. If they do, the next question is a <code>sketch_*</code>
+          command and a workspace path — which is a design
+          decision, not a toolbar.
+        </p>
+      </section>
 
       <section class="flex flex-col gap-3" id="explained-studio-safety">
         <h3 class="font-display text-base font-black uppercase tracking-wide">

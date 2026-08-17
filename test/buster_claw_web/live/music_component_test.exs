@@ -30,8 +30,8 @@ defmodule BusterClawWeb.MusicComponentTest do
   # manager kept every affordance it had, one level in: open the Studio, then
   # pick the manager entry at the top of the Music group.
   defp open_music(conn) do
-    {:ok, view, _html} = live(conn, ~p"/")
-    view |> element("button[phx-value-tab='studio']") |> render_click()
+    # /studio since 08-16 — was a Home sub-tab click.
+    {:ok, view, _html} = live(conn, ~p"/studio")
 
     html =
       view
@@ -42,12 +42,20 @@ defmodule BusterClawWeb.MusicComponentTest do
   end
 
   describe "the tab itself" do
-    test "is offered on the homepage as the Studio", %{conn: conn} do
-      {:ok, _view, html} = live(conn, ~p"/")
+    # Was "is offered on the homepage as the Studio" until 08-16, when the Studio
+    # left Home for its own route. The point of the test is unchanged: the music
+    # library has no tab of its own and is reached THROUGH the Studio — the
+    # refutation is the half that matters, and it outlived the move.
+    test "is reached through the Studio, and has no tab of its own", %{conn: conn} do
+      {:ok, _view, html} = live(conn, ~p"/studio")
 
-      assert html =~ "Studio"
-      assert html =~ ~s(phx-value-tab="studio")
+      assert html =~ "Mix"
       refute html =~ ~s(phx-value-tab="music")
+
+      # And the Studio is reachable at all: a route with no door is a dead one.
+      {:ok, _home, home_html} = live(conn, ~p"/")
+      assert home_html =~ ~s(href="/studio")
+      refute home_html =~ ~s(phx-value-tab="studio")
     end
 
     test "opens — the select_home_tab guard is a whitelist, so this is not a formality",

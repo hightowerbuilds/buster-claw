@@ -29,8 +29,9 @@ defmodule BusterClawWeb.StudioPanelTest do
   end
 
   defp open_studio(conn) do
-    {:ok, view, _html} = live(conn, ~p"/")
-    html = view |> element("button[phx-value-tab='studio']") |> render_click()
+    # The Studio moved off Home to its own route on 08-16, so this opens it
+    # directly instead of clicking a home sub-tab that no longer exists.
+    {:ok, view, html} = live(conn, ~p"/studio")
     {view, html}
   end
 
@@ -76,16 +77,29 @@ defmodule BusterClawWeb.StudioPanelTest do
       assert has_element?(view, "#studio-panel")
     end
 
-    test "the sub-tab selection survives a glance at Chat", %{conn: conn} do
-      # The assign lives in StatusLive, not in the `:if`-discarded panel. This is
-      # the reason `Status.Studio` gives for owning every other studio assign.
+    # Was "the sub-tab selection survives a glance at Chat" until 08-16, when the
+    # Studio left Home for `/studio`. The property is still real, but the threat
+    # changed and the test has to name the one that exists now.
+    #
+    # **On Home the danger was the `:if`.** Every home panel renders behind one,
+    # so switching to Chat destroyed the studio's DOM and its `live_component`
+    # with it — the entire reason `studio_source`, the trim, the clipboard and
+    # the undo stacks were hoisted into `StatusLive` in the first place.
+    #
+    # **On a route that danger is gone, and a different one replaces it:**
+    # navigating away from `/studio` unmounts the LiveView, so the undo stack,
+    # the trim and the clipboard do NOT survive it. That is a real behavioural
+    # change, it is accepted — the mix itself is on disk, only in-progress
+    # editing state is lost — and it is written here rather than discovered.
+    # What must still hold is the sub-tab, across a switch inside the rail.
+    test "the sub-tab selection survives a trip through another sub-tab", %{conn: conn} do
       {view, _html} = open_studio(conn)
       select_sub_tab(view, "voice")
 
-      render_click(view, "select_home_tab", %{"tab" => "chat"})
-      refute has_element?(view, "#home-studio-tabs")
+      select_sub_tab(view, "mix")
+      assert has_element?(view, "#studio-panel")
 
-      render_click(view, "select_home_tab", %{"tab" => "studio"})
+      select_sub_tab(view, "voice")
 
       assert has_element?(
                view,
@@ -161,10 +175,48 @@ defmodule BusterClawWeb.StudioPanelTest do
     end
   end
 
+  describe "the Sketch Pad" do
+    test "renders a canvas the browser owns, and no controls that lie", %{conn: conn} do
+      {view, _html} = open_studio(conn)
+      html = select_sub_tab(view, "sketch")
+
+      assert has_element?(view, "#studio-sketch")
+
+      # `phx-update="ignore"` is load-bearing rather than decorative: the hook
+      # owns every pixel, and a LiveView re-render would wipe the drawing. If it
+      # is ever removed, a stroke disappears on the next unrelated diff.
+      assert has_element?(view, ~s(#studio-sketch-surface[phx-hook="SketchPad"][phx-update="ignore"]))
+      assert has_element?(view, "#studio-sketch [data-sketch-canvas]")
+
+      # Clear is destructive with no undo, so it takes the house confirm. This
+      # is the opposite call from the dock's Stand down, which deliberately does
+      # NOT confirm — the difference is whether hesitating is expensive.
+      assert html =~ "data-claw-confirm"
+
+      # The honest limit is on the surface, not buried in a tooltip. There is no
+      # save, and a dead Save button would read as a broken feature.
+      assert html =~ "nothing is saved yet"
+      refute html =~ "Save"
+    end
+
+    test "it is not the frozen studio wearing a different hat", %{conn: conn} do
+      {view, _html} = open_studio(conn)
+      select_sub_tab(view, "sketch")
+
+      # Sub-tabs are alternatives. The `:if` must discard Mix entirely rather
+      # than leaving it mounted and hidden — the same property the Voice tab is
+      # asserted on, and the reason the studio's state lives in the LiveView.
+      refute has_element?(view, "#studio-panel")
+      refute has_element?(view, "#studio-toolbar")
+    end
+  end
+
   describe "the registry is the single source of truth" do
     test "tab_keys/0 is the registry, in rail order", %{conn: _conn} do
       assert StudioPanel.tab_keys() == Enum.map(Registry.tabs(), & &1.key)
-      assert StudioPanel.tab_keys() == ["mix", "voice"]
+      # A review-forcing snapshot: adding a rail button must fail here so
+      # somebody looks. `sketch` joined 08-16 with the move to /studio.
+      assert StudioPanel.tab_keys() == ["mix", "voice", "sketch"]
 
       # Every tab is either built (it has a dispatch) or a placeholder — never
       # both, and never neither.
@@ -229,7 +281,7 @@ defmodule BusterClawWeb.StudioPanelTest do
         |> Regex.scan(File.read!(panel))
         |> Enum.map(fn [_, key] -> key end)
 
-      assert literals == ["mix", "voice"]
+      assert literals == ["mix", "voice", "sketch"]
 
       for key <- literals do
         assert key in StudioPanel.tab_keys(),

@@ -36,8 +36,8 @@ defmodule BusterClawWeb.VoiceLibraryTest do
   end
 
   defp open_library(conn) do
-    {:ok, view, _html} = live(conn, ~p"/")
-    render_click(element(view, "[phx-click='select_home_tab'][phx-value-tab='studio']"))
+    # /studio since 08-16 — was a Home sub-tab click.
+    {:ok, view, _html} = live(conn, ~p"/studio")
     render_click(element(view, "[phx-click='select_studio_tab'][phx-value-tab='voice']"))
     view
   end

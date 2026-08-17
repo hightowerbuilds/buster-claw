@@ -85,6 +85,7 @@ defmodule BusterClawWeb.Router do
       live "/voice", VoiceLive, :index
       live "/notify-settings", NotifySettingsLive, :index
       live "/phone", PhoneLive, :index
+      live "/studio", StudioLive, :index
       live "/workspace", WorkspaceLive, :index
       live "/manual", UserGuideLive, :index
       live "/setup", SetupLive, :index

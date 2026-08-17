@@ -40,6 +40,7 @@ defmodule BusterClawWeb.StudioPanel do
   use BusterClawWeb, :html
 
   alias BusterClawWeb.Studio.Registry
+  alias BusterClawWeb.Studio.Sketch
   alias BusterClawWeb.Studio.VoiceLibrary
 
   @doc "Sub-tab keys, in rail order — the parent's `select_studio_tab` whitelist."
@@ -151,6 +152,13 @@ defmodule BusterClawWeb.StudioPanel do
           notice={@voice_notice}
           recorder={@recorder}
         />
+      </div>
+
+      <%!-- Sketch Pad: a canvas the browser owns entirely. It takes no assigns
+            at all, which is the whole of its first version — see
+            `Studio.Sketch`. --%>
+      <div :if={@tab == "sketch"} data-studio-tab="sketch" class="flex min-h-0 flex-1 flex-col">
+        <Sketch.sketch />
       </div>
 
       <.placeholder :for={p <- @placeholders} :if={@tab == p.key} sub_tab={p} />

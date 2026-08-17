@@ -149,44 +149,29 @@ defmodule BusterClawWeb.Explained.Registry do
       path: "/cmd-list",
       path_label: "Open the command list"
     },
-    # Studio and Ramshackle are two tabs rather than one because they answer
-    # different questions over the same folders. Studio is "what does this
-    # machine play, and how do I change it" — a library, a routing table, four
-    # editing verbs and the single gated `sound_apply`. Ramshackle is "how do I
-    # build a sentence nobody said" — word indexes, alignment, a matcher, a
-    # lattice. They were one tab for part of 08-09 and it was wrong: someone who
-    # wants a custom chime should never have to read about dynamic time warping
-    # to get one.
+    # Studio is one tab covering the whole workshop: the library, the routing
+    # table, the four editing verbs, the single gated `sound_apply`, the cut-up,
+    # and the sketch pad.
+    #
+    # Studio and Ramshackle were TWO tabs from 08-09 to 08-16, on the argument
+    # that someone wanting a custom chime should not have to read about dynamic
+    # time warping first. Sound argument, and it still cost more than it bought:
+    # two tabs described two ENGINES rather than one place you go to make
+    # something, and the Ramshackle tab had drifted into claiming the Voice
+    # surface was unbuilt months after it shipped. Merged 08-16; the module was
+    # deleted rather than left orphaned.
     %{
       key: "studio",
       label: "Studio",
-      eyebrow: "Sound",
-      blurb: "The chimes this machine plays — cut them, then decide what they're for.",
+      eyebrow: "The workshop",
+      blurb: "The experimental corner: cut audio, splice your own voice, sketch.",
       body:
-        "Working material in sounds/studio/, an installed library in sounds/, " <>
-          "and a routing table saying which event key plays what. Trim, fade, " <>
-          "normalize and join write new sources; one gated verb installs a source " <>
-          "and points a key at it.",
-      path: "/notify-settings",
-      path_label: "Open the sound board"
-    },
-    %{
-      key: "ramshackle",
-      label: "Ramshackle",
-      eyebrow: "The cut-up",
-      blurb: "Sentences spliced out of recordings you already have.",
-      # The one entry whose `path` is not the surface it describes, because that
-      # surface does not exist: Studio → Voice is a placeholder (`Studio.Registry`'s
-      # `@built` is `~w(mix)`) and the cut-up engine is reachable only through
-      # commands. The tutorial opens by saying so; a deep link into an empty tab
-      # would say the opposite.
-      body:
-        "Audio you already have — voicemails, imported files — indexed word by " <>
-          "word, then cut apart and spliced into sentences nobody said. No model, " <>
-          "no training, no network. The engine is complete and command-only; the " <>
-          "Studio tab that will front it is not built.",
-      path: "/cmd-list",
-      path_label: "See every sound_ command"
+        "Three sub-tabs at /studio. Mix cuts and arranges; Voice Library splices " <>
+          "words you already said into sentences nobody said; Sketch Pad is a " <>
+          "canvas. Framed as experimental on purpose — it is where this app tries " <>
+          "things, and it will keep changing shape.",
+      path: "/studio",
+      path_label: "Open the Studio"
     }
   ]
 
@@ -195,7 +180,7 @@ defmodule BusterClawWeb.Explained.Registry do
   # returns [] and the `:for` that renders them is vacuous. Left in place rather
   # than deleted — the stub is what makes adding a tab a one-line edit here, and
   # a `@features` entry with no panel must still render something true.
-  @built ~w(models shaders pockets phone browser cmd gws studio ramshackle)
+  @built ~w(models shaders pockets phone browser cmd gws studio)
 
   # The two outbound tabs. They are not features — neither teaches this app, and
   # both send you to a website — which is why they sit last rather than second

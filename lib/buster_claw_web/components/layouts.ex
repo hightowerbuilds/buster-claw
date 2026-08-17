@@ -34,6 +34,18 @@ defmodule BusterClawWeb.Layouts do
     # (see StatusLive). The /calendar route still exists (deep links + SplitLive
     # split pane), so its tab-strip label is preserved in @tab_labels below.
     # No brand PNG yet — the dock falls back to the text label (see render below).
+    #
+    # Studio went the OTHER way on 08-16: it was a Home sub-tab and became a
+    # route, so it needs a door here. Home renders its panels behind `:if`,
+    # which destroyed and rebuilt the studio on every glance at Chat — the whole
+    # reason its selection, trim and undo stacks had to be hoisted into
+    # `StatusLive` to survive. On its own route that pressure is gone.
+    %{
+      label: "Studio",
+      path: "/studio",
+      icon: "hero-musical-note",
+      role: "nav_studio"
+    },
     %{
       label: "Settings",
       path: "/appearance",
