@@ -112,10 +112,10 @@ the section tables below point at it from wherever else it applies.**
    argument against acting on it yet.
 
 8. **[The Sketch Pad](#part-ii-b--the-studio)** — **Phases 0–4 built 08-16, none of it walked.** The Studio's third tab became a surface the operator and the model share: strokes, images and text as addressable elements, six `sketch_*` commands, and a boundary drawn by **authorship rather than tier** — the model may change and delete what the model drew, and asking about yours. Three things only the parallel build found: **no command had ever known its caller** (`D13`), a `gated` flag would have made the feature impossible, and the gate **did not actually surface** until the refusal was wired into Sentinel.
-9. **[The update path](#part-vii--platform--release)** — **`G-42` and `G-18` shipped 08-16.** The app can finally say what version it is, and CI can publish a signed feed. **Neither has run**: the workflow is tag-only, and the minisign keypair does not exist yet. `G-19` — the button itself — is next, and its one sharp edge is already written down (the release monitor will respawn the BEAM into a bundle being swapped unless `shutting_down` is set first).
+9. **[The update path](#part-vii--platform--release)** — **`G-42` and `G-18` shipped 08-16; `G-44`'s first half shipped 08-18.** The seed-rot phase stopped being a `[R2]` design note the day BusterPhone's deletion left every existing workspace holding a job brief that named a deleted command — `BusterClaw.Seed` now upgrades a seed whose bytes still match any version we shipped, and leaves an edited one alone. Jobs' four files are converted; Skills and TerminalCommands are not, and `policy.md` is deliberately excluded. **`G-42` and `G-18` shipped 08-16.** The app can finally say what version it is, and CI can publish a signed feed. **Neither has run**: the workflow is tag-only, and the minisign keypair does not exist yet. `G-19` — the button itself — is next, and its one sharp edge is already written down (the release monitor will respawn the BEAM into a bundle being swapped unless `shutting_down` is set first).
 
-**Five of those wait on the operator rather than an agent**, and the list grew
-tonight rather than shrank:
+**Seven of those wait on the operator rather than an agent**, and the list grew
+again on 08-18 rather than shrank:
 
 - the `getUserMedia` spike needs a permission dialog clicked at a packaged build
 - **`G-4` needs an Apple Silicon Mac** — a dependency this repo had recorded
@@ -128,8 +128,17 @@ tonight rather than shrank:
   nothing here can add and nothing here fails without
 - the Sketch Pad needs someone to watch a model be **refused** — the one
   behaviour its whole design exists for
+- BusterPhone's **toll-free verification must be withdrawn** — it is a live
+  application for a capability that was deleted on 08-18. Tidiness rather than
+  urgency: verification governs *messaging*, so the number answers calls either
+  way
+- someone must **text the toll-free number once** and confirm it lands in the
+  app. Inbound voice is certain; inbound SMS on an unverified toll-free number
+  is the one claim in the intake-only cut that was reasoned to rather than
+  walked, and the last confirmed inbound walk was 08-14 on a number released the
+  next day
 
-**Four of the five are unblockable by any amount of code**, which is the honest
+**Six of the seven are unblockable by any amount of code**, which is the honest
 reading of where the build is: the writing is ahead of the walking.
 
 **First movement on the release path since 08-01.** `G-2` and `G-2b` both landed
@@ -369,7 +378,7 @@ step verified here happened on the operator's own line.
 |---|---|---|---|
 | Tauri desktop shell | `desktop/tauri/` | SHIPPED | — |
 | **Apple — sign, notarize, staple** | CI, `scripts/codesign_release.sh` | **`G-1`–`G-3` DONE 08-10 (x86_64). `G-4` blocked on an arm64 Mac** | [`APPLE`](platform/APPLE_ROADMAP.md) |
-| **Updating a running install** | `BuildInfo`, Settings → About, `release-desktop.yml`, `main.rs` release monitor | **`G-42` + `G-18` SHIPPED 08-16 — the app says what it is, and CI can publish a feed.** Took `G-18`–`G-20` from `APPLE` §III.I keeping their numbers; `G-42`–`G-44` new. **The pipeline has never run** (tag-only), and four things are the operator's: generate the minisign keypair, **back the private key up offline — there is no revocation**, set the two repo secrets, add the Vercel rewrite in the *website* repo. `G-19` (the button) is next | [`UPDATE`](platform/UPDATE_ROADMAP.md) |
+| **Updating a running install** | `BuildInfo`, Settings → About, `release-desktop.yml`, `main.rs` release monitor | **`G-42` + `G-18` SHIPPED 08-16 — the app says what it is, and CI can publish a feed.** Took `G-18`–`G-20` from `APPLE` §III.I keeping their numbers; `G-42`–`G-44` new — and **`G-44`'s Jobs half landed 08-18** (`BusterClaw.Seed`), four months ahead of its `[R2]` slot, because the intake-only cut turned it from a slow-rot design note into a live correctness bug. **The pipeline has never run** (tag-only), and four things are the operator's: generate the minisign keypair, **back the private key up offline — there is no revocation**, set the two repo secrets, add the Vercel rewrite in the *website* repo. `G-19` (the button) is next | [`UPDATE`](platform/UPDATE_ROADMAP.md) |
 | **The release gate** | — | **ACTIVE** | [`RELEASE_GATE`](platform/RELEASE_GATE_ROADMAP.md) |
 | **Trust claims & support** | `Sentinel`, — | **ACTIVE** | [`TRUST_AND_SUPPORT`](platform/TRUST_AND_SUPPORT_ROADMAP.md) |
 | CI gates | `scripts/check_*.sh` | SHIPPED, **all green** — Dialyzer included, 08-16 (below) | — |
