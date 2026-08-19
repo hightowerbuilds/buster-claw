@@ -1,6 +1,19 @@
 # BusterPhone — intake only
 
-**Scoped 08-18-26 · Status: NOT STARTED. No code written.**
+**Scoped 08-18-26 · Status: PHASES 1, 2, 4 and 5 SHIPPED the same day
+(`e08d1cd`, `d9ca4ee`). Phase 0 and Phase 3 are the operator's and are open.**
+
+| Phase | | |
+|---|---|---|
+| 0 | Withdraw the verification | **OPEN — operator.** Tidiness, not urgency: verification governs *messaging*, so the number answers calls regardless |
+| 1 | Delete outbound SMS | ✅ shipped |
+| 2 | Delete outbound calling | ✅ shipped |
+| 3 | The number move | **OPEN — operator.** A cost decision with no deadline, not a repair |
+| 4 | Rewrite `Explained.Phone` as an intake page | ✅ shipped, 701 → 591 |
+| 5 | Close the record | ✅ except the website takedown (operator, other repo) |
+
+47 files, **+1,161 / −2,752**. Six files deleted whole. 217 → 215 commands.
+`mix precommit` green at 4,187 tests.
 
 > ### The one-sentence version
 >
@@ -445,11 +458,20 @@ It survives the deletion of everything around it and is the guard against the
 page's next false claim, which would be *"A2P does not apply to us."* The
 regime always applied; we simply stopped being a sender.
 
-### Phase 5 — Close the record
+### Phase 5 — Close the record ✅ *(done 08-18, except the website)*
 
-Archive `SMS_DISCLOSURE_ROADMAP.md` with a supersession note. Update the
-`SUPERMAP` Part VI rows. Take down `busterclaw.lol/busterphone/` **only after
-Phase 0 is confirmed withdrawn** — see [Part IX](#part-ix--risks).
+- [x] `SMS_DISCLOSURE_ROADMAP.md` archived to
+      `archive/08-18-26-sms-disclosure.md`, cancelled unbuilt, with **where its
+      leftover went** recorded per the archiving convention — Part II was
+      consumed by Phase 4's rewrite, not orphaned.
+- [x] `SUPERMAP` Part VI rows updated; the folder tree no longer lists it.
+- [x] A forward pointer added to `archive/08-17-26-outbound-voice.md`. That map
+      still said **COMPLETE, nothing open** for a feature deleted the next day,
+      which reads as "this works". The pointer is *added above* the header; the
+      body is untouched.
+- [ ] Take down `busterclaw.lol/busterphone/` — **only after Phase 0 is
+      confirmed withdrawn**, see [Part IX](#part-ix--risks). Operator's, and in
+      another repo.
 
 ---
 
@@ -527,10 +549,10 @@ No agent can do any of these:
 
 | Document | Effect |
 |---|---|
-| [`SMS_DISCLOSURE_ROADMAP`](SMS_DISCLOSURE_ROADMAP.md) | **Superseded whole. Archive unbuilt.** Its Part II line-by-line inventory of false claims is still the best map of what `Explained.Phone` gets wrong and should be carried into Phase 4 rather than lost |
+| `SMS_DISCLOSURE_ROADMAP` → [`archive/08-18-26-sms-disclosure.md`](../../archive/08-18-26-sms-disclosure.md) | **Superseded whole; cancelled unbuilt and archived 08-18.** Its Part II inventory of false claims was **consumed by Phase 4, not orphaned** — it is the map that rewrote the page, and the one claim it said to preserve (inbound traffic is still A2P-*classified*) is still there under `[data-phone-a2p]` |
 | [`BUSTERPHONE_ROADMAP`](BUSTERPHONE_ROADMAP.md) Phase 2 (SMS) | **Cancelled.** Phase 1 (voice/voicemail) is unaffected and remains the paid tier |
 | `SUPERMAP` Part VI | rows *Outgoing texts* (`:309`), *The SMS consent story* (`:310`), *Outgoing calls* (`:311`) all resolve to **DELETED**; the *Twilio / BusterPhone* row (`:308`) needs its "the only thing this phone cannot do is send a text" framing rewritten — that stops being a limitation and becomes the design |
-| `OUTBOUND_VOICE_ROADMAP` (archived 08-17, COMPLETE) | its subject is deleted. **Leave the archive as written** — it was true and finished when filed; the supersession is recorded here, not by editing history |
+| `OUTBOUND_VOICE_ROADMAP` (archived 08-17, COMPLETE) | its subject is deleted. **The body stays exactly as written** — it was true and finished when filed. A dated forward pointer was *added above* its header on 08-18, because "COMPLETE, nothing open" is read as "this works". Adding a pointer is not rewriting a record; editing the body would be |
 
 > The last row is this repo's own rule, from the 08-17 handling of `VI.0b`:
 > *"Rewriting history to match the present is how a record stops being one."*

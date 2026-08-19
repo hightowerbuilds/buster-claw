@@ -1,5 +1,23 @@
 > ## ARCHIVED 2026-08-17 — complete, and one phase deleted by the build
 >
+> > ### 2026-08-18, one day later: THE FEATURE THIS MAP BUILT IS DELETED.
+> >
+> > Outbound calling was removed whole when BusterPhone became intake-only —
+> > `phone_call`, `place_call/2`, the bridge TwiML, the self-dial guard, the
+> > voice kill switch, `call_flow.ex`, `call_action.ex` and the keypad. See
+> > [`PHONE_INTAKE`](../roadmaps/integrations/PHONE_INTAKE_ROADMAP.md).
+> >
+> > **It was cut on product grounds, not paperwork.** Nothing below was wrong and
+> > nothing below failed: `voice_ready/0` never required a registration, which is
+> > exactly why this shipped 08-15 while SMS sat blocked. That remains the most
+> > useful fact in this document.
+> >
+> > **The body below is left exactly as written.** It was true and finished when
+> > filed, and rewriting a record to match the present is how it stops being one.
+> > This pointer is added rather than edited in, because an archived map saying
+> > "COMPLETE, nothing open" is otherwise read as "this works" — and it no longer
+> > does.
+>
 > Scoped and finished 08-15. Phases 1, 3 and 4 shipped with the cost back-fill;
 > Phase 0 was the operator's call. **Nothing was open when this closed.**
 >
