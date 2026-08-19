@@ -79,8 +79,18 @@ on disk disappears without an error · path traversal via a crafted filename is 
 
 **Phone** — inbound call → greeting → record → transcript → Library doc + `/phone` row ·
 voicemail audio plays · a call while the Mac is asleep drains on wake · inbound SMS from a
-trusted number creates a Dispatch item, from a stranger archives only · outbound `sms_send`
-respects the kill switch and daily cap · empty states read as "nothing yet," not broken.
+trusted number creates a Dispatch item, from a stranger archives only · empty states read as
+"nothing yet," not broken · the tab says **"No number configured"** when none is set, rather
+than showing a blank label.
+
+> **Outbound was struck from this list 08-18.** It read *"outbound `sms_send`
+> respects the kill switch and daily cap"* — there is no `sms_send`, no kill
+> switch and no cap; BusterPhone is intake-only
+> ([`PHONE_INTAKE`](../integrations/PHONE_INTAKE_ROADMAP.md)). Replacing it with
+> the `nil`-number check rather than deleting the line, because that branch is
+> new on 08-18 and **cannot be seen on a machine that has a number configured** —
+> which makes it a [fresh-machine](FRESH_MACHINE_WALK.md) item as much as a phone
+> one.
 
 **Calendar / Integrations / Security / Settings / Manual** — calendar handles all-day,
 multi-day, and empty months · GitHub manual poll, good-signature webhook,
@@ -308,6 +318,41 @@ sections of `archive/08-08-26-busterclaw-critical-review.md` were excised on 08-
 surface itself; what they taught is recorded here.
 
 ---
+
+### V.10 — The fresh-machine walk → its own side-map
+
+**[`FRESH_MACHINE_WALK.md`](FRESH_MACHINE_WALK.md) · scoped 08-18, NOT RUN.**
+
+Every test we have runs on the machine that built the app — a machine with a
+workspace, a Keychain entry, a Clinch master key, Google tokens, an agent CLI on
+`PATH`, and months of state nobody remembers creating. **First-run paths are the
+least-tested code in the app for the same reason they matter most: every user
+executes them exactly once, and it is the first thing they ever see.**
+
+Split into its own file rather than listed here because it is a *runnable
+sequence* with an order and a hazard, and this document is an inventory. Nine
+paths (`FM-1`–`FM-9`) execute only on a machine that has never had the app.
+
+**Two of them justify the trip on their own:**
+
+- **`FM-4` — seed `:created`.** `BusterClaw.Seed` shipped 08-18 and the dev Mac
+  can only ever exercise `:current`, `:upgraded` and `:kept`. The create path has
+  **no other test bed**, and the assertion that matters is that a fresh `jobs/`
+  contains no `sms_send`.
+- **`FM-7` — no agent CLI installed.** The dev Mac has `claude` on `PATH`; a
+  buyer's may not. **Nobody has ever watched this app start without one.** What
+  the `tools` step says in that state is the entire first impression, and it has
+  zero coverage.
+
+> **It does not close `G-4`.** That is the two-arch exit test and needs an
+> **Apple Silicon** Mac. This walk is about *first run*, not architecture; the
+> two are easily confused because they want the same spare machine.
+
+> **Read Part I before running it.** Configuring BusterPhone on a second machine
+> while the first is running **silently destroys voicemails** — the drain deletes
+> a relay row as its ack, so whichever machine wins takes the event permanently.
+> Onboarding has no phone step, so the default (enter no Twilio credentials)
+> costs nothing.
 
 ### The Dock icon has never been seen to change — **packaged walk owed**
 

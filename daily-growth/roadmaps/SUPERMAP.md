@@ -71,7 +71,7 @@ roadmaps/
 ├── surfaces/ ··············· Parts II–III  STUDIO · SKETCH · IMAGE_SHADER · LEFTOVERS_SURFACES
 ├── agent-core/ ············· Part V    LEFTOVERS_AGENT_CORE
 ├── integrations/ ··········· Part VI   CLINCH · BUSTERPHONE (+NUMBER_VENDING) · PHONE_INTAKE · PHONE_ACCESS · GOOGLE_VERIFICATION
-├── platform/ ··············· Part VII  APPLE · UPDATE · RELEASE_GATE · TRUST_AND_SUPPORT · QA_BACKLOG · LEFTOVERS_PLATFORM
+├── platform/ ··············· Part VII  APPLE · UPDATE · RELEASE_GATE · TRUST_AND_SUPPORT · QA_BACKLOG (+FRESH_MACHINE_WALK) · LEFTOVERS_PLATFORM
 ├── distribution/ ··········· Part VIII DISTRIBUTION · FRONT_DOOR
 └── website/ ················ Part IX   WEBSITE
 ```
