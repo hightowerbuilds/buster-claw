@@ -129,6 +129,21 @@ defmodule BusterClaw.IntroductionTest do
       |> Enum.map(& &1.name)
       |> Enum.group_by(fn name -> name |> String.split("_") |> hd() end)
 
+    assert families != %{},
+           "no command families — the catalog is empty and this guard is now vacuous"
+
+    # This guard is derived, so a family LEAVING the catalog silently removes its
+    # obligation, and that is correct: `sms` went on 08-18 with `sms_send`
+    # (PHONE_INTAKE_ROADMAP), and `introduction/` no longer contains "sms_"
+    # anywhere. Nothing here passes by accident — there is genuinely no `sms`
+    # key to check.
+    #
+    # But an *absence* is a claim this test cannot make, only a promise it
+    # stopped checking — and "the briefing must not advertise a verb the catalog
+    # lacks" is the opposite direction from the one this guard runs in. That
+    # claim is made by the next test down, in its `else` branch. Deliberately not
+    # duplicated here: two guards with different tolerances for the same fact is
+    # how one of them ends up wrong.
     missing =
       Enum.reject(families, fn {family, commands} ->
         String.contains?(prose, family <> "_") or
@@ -154,9 +169,28 @@ defmodule BusterClaw.IntroductionTest do
   # bullet said "there is no outbound calling", which is the shape that shipped
   # on 08-15 and had to be corrected. A denial needs its own assertion, tied to
   # the catalog so it cannot outlive the verb.
-  test "the briefing does not deny a capability the catalog has" do
+  #
+  # **Both branches are load-bearing, and the `else` is why this test still
+  # exists.** As written on 08-15 the body was a bare `if` over
+  # `command_type("phone_call")`. `phone_call` and `sms_send` left the catalog on
+  # 08-18 (PHONE_INTAKE_ROADMAP) — and a bare `if` would then have gone
+  # permanently, silently green, guarding nothing, in a file whose whole subject
+  # is prose drifting away from the catalog. That is this repo's recorded failure
+  # mode: a collection empties and its guard goes vacuously green.
+  #
+  # The two directions are different bugs and both are real:
+  #   - verb present, briefing denies it → the model never offers a capability it
+  #     has (the 08-15 bug);
+  #   - verb absent, briefing promises it → the model offers a capability it does
+  #     not have, and only finds out mid-task, having already told the operator
+  #     it would ring somebody back. That one is worse, and it is the live case.
+  test "the briefing agrees with the catalog about outbound, in whichever direction" do
     md = Introduction.markdown()
     [prose, _generated] = String.split(md, "These are the commands you can run", parts: 2)
+
+    # This prose is hard-wrapped, so a sentence the model reads as one line is
+    # not one line in the source.
+    flat = String.replace(prose, ~r/\s+/, " ")
 
     if Commands.command_type("phone_call") do
       assert prose =~ "can make phone calls"
@@ -172,6 +206,46 @@ defmodule BusterClaw.IntroductionTest do
 
       # The refusal it would otherwise promise and then fail to deliver.
       assert prose =~ "emergency number is not dialable"
+    else
+      # No dialler in the catalog, so the briefing may not describe one — in any
+      # of the shapes the 08-15 version used, since a partial edit that leaves
+      # one sentence behind is the likely failure, not a wholesale relapse.
+      refute flat =~ "can make phone calls"
+      refute flat =~ "phone_call"
+      refute flat =~ "rings *the operator's own phone*"
+      refute flat =~ "emergency number is not dialable"
+
+      # And it must not promise the OTHER direction of a positive claim: that it
+      # will ring anyone back.
+      refute flat =~ "call them back"
+      refute flat =~ "ring them back"
+    end
+
+    if Commands.command_type("sms_send") do
+      assert flat =~ "sms_send"
+    else
+      refute flat =~ "sms_send"
+      refute flat =~ "text them back"
+      refute flat =~ "reply by text"
+    end
+
+    # The absence is not enough on its own. A briefing that simply stops
+    # mentioning outbound leaves the model to assume — and it will assume a
+    # phone can be answered by phone, because every other phone can. So when
+    # neither verb exists the prose has to say so OUT LOUD, and this asserts the
+    # positive statement rather than only the absence of the wrong ones.
+    intake_only? =
+      is_nil(Commands.command_type("phone_call")) and is_nil(Commands.command_type("sms_send"))
+
+    if intake_only? do
+      assert flat =~ "It only receives",
+             "the briefing must state the absence, not merely omit the capability"
+
+      assert flat =~ "There is no verb that sends a text or places a call"
+
+      # ...and tell it what to do instead, or "you cannot reply" is a dead end
+      # rather than an instruction.
+      assert flat =~ "you do the work and write it down"
     end
   end
 

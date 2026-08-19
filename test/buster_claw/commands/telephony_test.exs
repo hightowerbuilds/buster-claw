@@ -139,13 +139,33 @@ defmodule BusterClaw.Commands.TelephonyTest do
       assert BusterClaw.TrustedNumbers.list_entries() == []
     end
 
-    test "an untrusted run cannot send SMS" do
-      assert {:error, :requires_confirmation} =
+    # This replaces "an untrusted run cannot send SMS", which asked whether the
+    # gate held. BusterPhone became intake-only on 08-18
+    # (PHONE_INTAKE_ROADMAP), and the honest successor question is whether there
+    # is anything left to gate — a deleted capability cannot be gated wrongly,
+    # socially engineered, or described falsely.
+    #
+    # Deleting the old test and stopping there is how outbound comes back
+    # unnoticed: nothing else in this file would notice a new send verb. So the
+    # assertion inverts rather than disappears. If either name returns, this
+    # fails, and whoever re-added it has to state the product argument (Part I:
+    # outbound voice was never blocked by paperwork, so paperwork clearing is
+    # not a reason).
+    test "the phone surface only receives — there is no outbound verb to gate" do
+      assert Commands.command_type("sms_send") == nil
+      assert Commands.command_type("phone_call") == nil
+
+      # Not merely absent from the catalog: unreachable through the front door,
+      # including via a composition skill that might claim the name.
+      assert {:error, :unknown_command} =
                Commands.call(
                  "sms_send",
                  %{"to" => "+15035550123", "body" => "Do not send"},
-                 caller: :agent_untrusted
+                 caller: :trusted
                )
+
+      assert {:error, :unknown_command} =
+               Commands.call("phone_call", %{"to" => "+15035550123"}, caller: :trusted)
     end
   end
 

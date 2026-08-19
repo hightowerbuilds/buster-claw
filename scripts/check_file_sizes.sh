@@ -165,7 +165,18 @@ check lib/buster_claw_web/components/explained/studio.ex       450 HELD
 # and never queued), and the operator asked the question the A2P section had left
 # implied — whether any of this needs a business. It does not, and a tutorial
 # that leaves a reader believing otherwise costs them the feature.
-check lib/buster_claw_web/components/explained/phone.ex        710 HELD
+#
+# 710 -> 653 on 08-18, and the four paragraphs above are now history rather than
+# argument: outbound SMS, outbound voice and A2P registration were all DELETED
+# (PHONE_INTAKE_ROADMAP), so the "second spine" this cap was raised twice to pay
+# for does not exist. The tab is one spine again — intake — and the page was
+# rewritten rather than trimmed, because it had been organised around what the
+# phone could not yet do, which stops being a structure once nothing is pending.
+# 701 -> 593.
+#
+# The ratchet did not force this (83% passes). Lowered anyway: 117 lines of
+# headroom on a file that just shrank is how a cap stops meaning anything.
+check lib/buster_claw_web/components/explained/phone.ex        653 HELD
 check lib/buster_claw_web/components/explained/cmd.ex          430 HELD
 # 340 -> 350: the tab taught two surfaces and there are three
 # (WIDGET_BACKGROUND Phase 4). Named rather than counted — a page that says
@@ -195,7 +206,13 @@ check lib/buster_claw_web/components/explained/intro.ex        151 HELD
 # construction (a `when` guard reads it at compile time), so growth here means a
 # third sub-tab, which is exactly the change that should cost a decision.
 check lib/buster_claw_web/components/phone/contact_list.ex   330 HELD
-check lib/buster_claw_web/components/phone/playback.ex       314 HELD
+# 314 -> 215 on 08-18. Lost 116 lines to the intake-only cut: the number display,
+# clear/backspace, the `CallAction` render, the dial-match jump, the whole
+# `#phone-keypad-controls` grid, and `#phone-contact-actions` (which held BOTH
+# outbound buttons and was a separate region from the keypad — a reader deleting
+# only "the keypad" would have left a live Call button on screen). 311 -> 195, or
+# 62% of the old cap, so the ratchet forced it.
+check lib/buster_claw_web/components/phone/playback.ex       215 HELD
 check lib/buster_claw_web/components/phone/log.ex            256 HELD
 # 176 -> 200 on 08-15, for the second thing this app prices. The cost breakdown
 # renderer had the three voicemail components inlined as a literal; an outbound
@@ -840,18 +857,31 @@ check lib/buster_claw/calendar/grid.ex                        221 HELD
 # translucent, so nesting one inside another doubles the blur. The tab LIST is
 # not here at all; it is `Phone.Registry`, which is the point of the change.
 #
-# Raised 08-15, 560 -> 590, for the Call button. This is what is LEFT after the
-# extraction the cap forced and should have had anyway: three `handle_event`
-# clauses, which cannot be imported. The flow behind them is `Phone.CallFlow` and
-# the markup is `Phone.CallAction`, both capped below.
-check lib/buster_claw_web/live/phone_component.ex             590 HELD
+# Raised 08-15, 560 -> 590, for the Call button. Lowered 08-18, 590 -> 553, when
+# the Call button and the whole keypad were deleted (PHONE_INTAKE_ROADMAP): the
+# dialler's three `handle_event` clauses went, and with them ~60 lines of private
+# contact-search machinery (`closest_contact`, `dial_match_score`, `digits_only`,
+# `national_digits`, `assign_dial`, `select_contact_number`) that only the dial
+# display ever called. 583 -> 502.
+#
+# The ratchet did not force this one — 502/590 is 85%, which passes. It is
+# lowered anyway, because a cap set for a file that has since shrunk by 81 lines
+# is exactly the "drifting into meaninglessness" this script's header names. A
+# cap that only ever ratchets when forced is a cap that records the largest the
+# file has ever been.
+check lib/buster_claw_web/live/phone_component.ex             553 HELD
 
-# Outbound calling's two halves, capped on arrival (OUTBOUND_VOICE Phase 4). Two
-# files rather than one because a confirmation flow and the words it renders fail
-# differently: the flow is wrong when it lets a call through, the copy is wrong
-# when it names no fix.
-check lib/buster_claw_web/live/phone/call_flow.ex             105 HELD
-check lib/buster_claw_web/components/phone/call_action.ex     190 HELD
+# `live/phone/call_flow.ex` (105) and `components/phone/call_action.ex` (190)
+# stood here until 08-18, capped on arrival as outbound calling's two halves
+# (OUTBOUND_VOICE Phase 4) — a confirmation flow and the words it renders, split
+# because they fail differently.
+#
+# Both files are DELETED. BusterPhone became intake-only and outbound calling was
+# removed whole (PHONE_INTAKE_ROADMAP) — not on paperwork grounds, which never
+# applied to voice, but on product grounds. Their `check` lines go with them,
+# because this script fails when a capped path does not exist. That failure is
+# the feature: it is what stops a deletion from quietly leaving the inventory
+# describing a file nobody has.
 
 # Pockets (POCKETS_ROADMAP, 08-08/09). Capped ON ARRIVAL rather than after they
 # sprawl — every file above this line was added to the inventory late, once it
@@ -1304,7 +1334,16 @@ check lib/buster_claw/commands/catalog/sound.ex               530 HELD
 # telephony.ex — the one file in this batch the review did not diagnose
 # individually. Capped as a plain regrowth alarm; if it trips, read it properly
 # before raising the number.
-check lib/buster_claw/telephony.ex                            630 HELD
+#
+# 630 -> 360 on 08-18. The context lost 271 lines — every outbound path — when
+# BusterPhone became intake-only (PHONE_INTAKE_ROADMAP): `send_sms`, `place_call`,
+# both deliver/persist/observe trios, the per-recipient day caps, the opt-out
+# gate, and `our_number/0`. 598 -> 327, which is 51% of the old cap, so the
+# ratchet forced this rather than anyone remembering to.
+#
+# Read that as the ratchet working. The alarm above was written for regrowth and
+# fired on a cut instead, which is the direction nobody sets a cap expecting.
+check lib/buster_claw/telephony.ex                            360 HELD
 
 # ── The audio family. ────────────────────────────────────────────────────────
 #

@@ -6,8 +6,12 @@ defmodule BusterClaw.Notifications.SoundGen do
   octave partial for body, PCM16 mono WAV at 22.05 kHz — because sounds we
   synthesize are ours by construction: no licensing provenance to audit, no
   third-party pack whose taste we inherit, and a set that can be regenerated
-  byte-identically (`scripts/gen_sounds.exs`) instead of curated. DTMF for the
-  dialpad is NOT here — that's client-side WebAudio (Phase 3), no files at all.
+  byte-identically (`scripts/gen_sounds.exs`) instead of curated. DTMF tones are
+  not in the set and never were: they belonged to the /phone dialpad, they were
+  synthesized in the browser at press time rather than shipped as files, and the
+  dialpad itself was deleted with outbound calling on 08-18
+  (`PHONE_INTAKE_ROADMAP`). Nothing here changed when it went — noted so the
+  absence reads as a boundary, not as a gap someone should fill.
 
   ## Determinism
 

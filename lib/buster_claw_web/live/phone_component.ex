@@ -11,6 +11,11 @@ defmodule BusterClawWeb.PhoneComponent do
   from `BusterClaw.Telephony` broadcasts as the relay drain lands new events and
   cost back-fills settle.
 
+  The tab rail also prints the BusterPhone number itself — `Twilio.caller_id/0`,
+  rendered at the DOM id `<id>-caller-id`. An intake-only phone is only useful if
+  you can tell someone what to dial, and until 08-18 the app displayed its own
+  number nowhere.
+
   ## An embeddable component, and why
 
   This renders inline with no layout of its own, so a host page provides the
@@ -48,11 +53,16 @@ defmodule BusterClawWeb.PhoneComponent do
   alias BusterClaw.Pockets.Faces
   alias BusterClaw.Telephony
   alias BusterClaw.Telephony.Event
-  alias BusterClawWeb.Phone.CallFlow
+  alias BusterClaw.Telephony.Twilio
   alias BusterClawWeb.Phone.ContactList
   alias BusterClawWeb.Phone.Log, as: PhoneLog
   alias BusterClawWeb.Phone.Playback
   alias BusterClawWeb.Phone.Registry
+
+  # The one thing borrowed from the panels' shared display helpers: the header
+  # prints the operator's own number, and it must be punctuated the same way
+  # every caller's number in the log below it is.
+  import BusterClawWeb.Phone.Shared, only: [format_phone: 1]
 
   # The sub-tab whitelist, read at COMPILE TIME from the same list the rail
   # renders — a `when` guard cannot call a remote function, and that constraint
@@ -67,10 +77,10 @@ defmodule BusterClawWeb.PhoneComponent do
     %{key: "call", label: "Calls"}
   ]
 
-  @keypad_keys ~w(1 2 3 4 5 6 7 8 9 * 0 #)
-
   # Shader palette for the Playback panel (base / accent / highlight), fed as
-  # custom colors — hazard orange over near-black behind the keypad.
+  # custom colors — hazard orange over near-black. The shader is still the
+  # `keypad` one; it is the panel's backdrop, and it outlived the keypad that
+  # `PHONE_INTAKE_ROADMAP` deleted along with outbound calling.
   @wave_colors %{
     playback: "#160d09,#ff4d1c,#ffc9b3"
   }
@@ -102,15 +112,15 @@ defmodule BusterClawWeb.PhoneComponent do
 
     socket
     |> assign(:tab, "messages")
-    |> assign(:keypad_keys, @keypad_keys)
     |> assign(:filter, "all")
+    # The number to give out. Read once here rather than on every reload: it is a
+    # Clinch/env lookup, it changes only when an operator edits Settings, and an
+    # intake-only phone whose own number appears nowhere is a machine you cannot
+    # tell anyone how to reach.
+    |> assign(:caller_id, Twilio.caller_id())
     |> assign(:selected_event, nil)
     |> assign(:selected_thread, nil)
     |> assign(:thread_messages, [])
-    |> assign(:dialed_number, "")
-    |> assign(:dial_match, nil)
-    |> CallFlow.reset()
-    |> CallFlow.load_readiness()
     |> assign(:selected_contact, nil)
     |> assign(:adding_contact, false)
     |> assign(:contact_error, nil)
@@ -168,49 +178,11 @@ defmodule BusterClawWeb.PhoneComponent do
      |> assign(:selected_thread, nil)}
   end
 
-  def handle_event("dial_key", %{"key" => key}, socket) when key in @keypad_keys do
-    dialed_number =
-      if String.length(socket.assigns.dialed_number) < 15,
-        do: socket.assigns.dialed_number <> key,
-        else: socket.assigns.dialed_number
-
-    {:noreply, assign_dial(socket, dialed_number)}
-  end
-
-  def handle_event("dial_backspace", _params, socket) do
-    length = max(String.length(socket.assigns.dialed_number) - 1, 0)
-    dialed_number = String.slice(socket.assigns.dialed_number, 0, length)
-    {:noreply, assign_dial(socket, dialed_number)}
-  end
-
-  def handle_event("dial_clear", _params, socket) do
-    {:noreply, assign_dial(socket, "")}
-  end
-
-  # Three lines of dispatch; the flow itself is `CallFlow`, which shares nothing
-  # with this component's log, filter and contact handling.
-  def handle_event("call_prompt", %{"number" => number}, socket) do
-    {:noreply, CallFlow.prompt(socket, number)}
-  end
-
-  def handle_event("call_cancel", _params, socket) do
-    {:noreply, CallFlow.cancel(socket)}
-  end
-
-  def handle_event("call_confirm", _params, socket) do
-    case CallFlow.confirm(socket) do
-      # The outbound row exists now, so the log has to be re-read here rather
-      # than waiting for a broadcast this component does not send itself.
-      {:placed, socket} -> {:noreply, load_data(socket)}
-      {:refused, socket} -> {:noreply, socket}
-    end
-  end
-
   # Manual "refresh costs" — back-fill Twilio prices now rather than waiting for
   # the drain tick. No-op (with a hint) when Twilio isn't configured.
   def handle_event("refresh_costs", _params, socket) do
     socket =
-      if BusterClaw.Telephony.Twilio.configured?() do
+      if Twilio.configured?() do
         Telephony.refresh_unpriced_costs()
         load_data(socket)
       else
@@ -226,11 +198,7 @@ defmodule BusterClawWeb.PhoneComponent do
 
   def handle_event("select_contact", %{"id" => id}, socket) do
     contact = Contacts.get_contact!(id)
-
-    {:noreply,
-     socket
-     |> select_contact(contact)
-     |> select_contact_number(contact)}
+    {:noreply, select_contact(socket, contact)}
   end
 
   def handle_event("close_contact", _params, socket) do
@@ -256,7 +224,6 @@ defmodule BusterClawWeb.PhoneComponent do
          socket
          |> assign(adding_contact: false, contact_error: nil)
          |> select_contact(contact)
-         |> select_contact_number(contact)
          |> load_contacts()}
 
       {:error, changeset} ->
@@ -360,67 +327,7 @@ defmodule BusterClawWeb.PhoneComponent do
     |> assign(:contacts, contacts)
     |> assign(:contacts_by_number, Contacts.by_phone(contacts))
     |> assign(:orphan_numbers, Contacts.orphan_entries(contacts).numbers)
-    |> assign(:dial_match, closest_contact(contacts, socket.assigns[:dialed_number] || ""))
     |> refresh_selected_contact(contacts)
-  end
-
-  defp assign_dial(socket, dialed_number) do
-    assign(socket,
-      dialed_number: dialed_number,
-      dial_match: closest_contact(socket.assigns.contacts, dialed_number)
-    )
-    # Editing the number abandons the pending call rather than re-pointing it. A
-    # confirmation that survives a digit being typed is a confirmation for a
-    # number the operator is no longer looking at.
-    |> CallFlow.reset()
-  end
-
-  defp select_contact_number(socket, %{phone: phone}) when is_binary(phone) do
-    assign_dial(socket, national_digits(phone))
-  end
-
-  defp select_contact_number(socket, _contact), do: socket
-
-  defp closest_contact(_contacts, ""), do: nil
-
-  defp closest_contact(contacts, dialed_number) do
-    query = digits_only(dialed_number)
-
-    if query == "" do
-      nil
-    else
-      contacts
-      |> Enum.reject(&is_nil(&1.phone))
-      |> Enum.map(&{dial_match_score(&1.phone, query), &1})
-      |> Enum.reject(fn {score, _contact} -> is_nil(score) end)
-      |> Enum.max_by(fn {score, contact} -> {score, contact.name} end, fn -> nil end)
-      |> case do
-        nil -> nil
-        {_score, contact} -> contact
-      end
-    end
-  end
-
-  defp dial_match_score(phone, query) do
-    full = digits_only(phone)
-    national = national_digits(phone)
-
-    cond do
-      String.starts_with?(national, query) -> {3, -String.length(national)}
-      String.starts_with?(full, query) -> {2, -String.length(full)}
-      String.contains?(national, query) -> {1, -String.length(national)}
-      true -> nil
-    end
-  end
-
-  defp digits_only(value), do: String.replace(value, ~r/\D/, "")
-
-  defp national_digits(phone) do
-    digits = digits_only(phone)
-
-    if String.starts_with?(digits, "1") and byte_size(digits) == 11,
-      do: binary_part(digits, 1, 10),
-      else: digits
   end
 
   # Re-read the selected contact's derived state whenever the list moves, so the
@@ -478,6 +385,15 @@ defmodule BusterClawWeb.PhoneComponent do
     end
   end
 
+  # `nil` is a real state with its own sentence. "No number configured" says the
+  # app has not been told its number; an empty label would read as the phone not
+  # having one, which is a different (and usually wrong) fact.
+  defp caller_id_label(nil), do: "No number configured"
+  defp caller_id_label(number), do: "Your number: " <> format_phone(number)
+
+  defp caller_id_hint(nil), do: "Set the Twilio Phone Number in Settings → Clinch"
+  defp caller_id_hint(_number), do: "The BusterPhone number people reach you on"
+
   # One shader layer behind a panel. Hook-owned: LiveView never patches inside
   # (phx-update="ignore"); the SmokeBackground hook compiles the named built-in
   # WGSL and drives the canvas itself. WebGPU missing → canvas stays blank and
@@ -493,30 +409,42 @@ defmodule BusterClawWeb.PhoneComponent do
 
     ~H"""
     <div id={"#{@id}-root"} class="flex h-full min-h-0 flex-col gap-3 p-3">
-      <div
-        role="tablist"
-        aria-label="Phone"
-        class="flex shrink-0 flex-wrap gap-1 border-b-2 border-base-content/20"
-      >
-        <button
-          :for={t <- @tabs}
-          type="button"
-          role="tab"
-          title={t.blurb}
-          aria-selected={to_string(@tab == t.key)}
-          phx-click="select_phone_tab"
-          phx-target={@myself}
-          phx-value-tab={t.key}
-          class={[
-            "-mb-0.5 border-b-2 px-3 py-1.5 font-display text-xs font-bold uppercase tracking-wide transition",
-            if(@tab == t.key,
-              do: "border-primary text-primary",
-              else: "border-transparent text-base-content/55 hover:text-base-content"
-            )
-          ]}
+      <%!-- The rail shares its bottom rule with the number readout, so the border
+            lives on this wrapper and the tabs keep their -mb-0.5 overlap. --%>
+      <div class="flex shrink-0 items-end justify-between gap-3 border-b-2 border-base-content/20">
+        <div role="tablist" aria-label="Phone" class="flex flex-wrap gap-1">
+          <button
+            :for={t <- @tabs}
+            type="button"
+            role="tab"
+            title={t.blurb}
+            aria-selected={to_string(@tab == t.key)}
+            phx-click="select_phone_tab"
+            phx-target={@myself}
+            phx-value-tab={t.key}
+            class={[
+              "-mb-0.5 border-b-2 px-3 py-1.5 font-display text-xs font-bold uppercase tracking-wide transition",
+              if(@tab == t.key,
+                do: "border-primary text-primary",
+                else: "border-transparent text-base-content/55 hover:text-base-content"
+              )
+            ]}
+          >
+            {t.label}
+          </button>
+        </div>
+
+        <%!-- The number to give out. An unset number says so in words: an empty
+              label would read as "no number exists", which is a different fact
+              from "nobody has told this app what its number is". --%>
+        <p
+          id={"#{@id}-caller-id"}
+          data-caller-id={@caller_id}
+          title={caller_id_hint(@caller_id)}
+          class="shrink-0 truncate pb-1.5 pr-1 font-mono text-[0.6875rem] text-base-content/55"
         >
-          {t.label}
-        </button>
+          {caller_id_label(@caller_id)}
+        </p>
       </div>
 
       <%!-- Messages: the log beside Playback. Both panels are `:if`-ed rather
@@ -542,17 +470,8 @@ defmodule BusterClawWeb.PhoneComponent do
         <div class="flex min-h-0 flex-1 flex-col gap-3 lg:col-span-2">
           <Playback.playback
             target={@myself}
-            keypad_keys={@keypad_keys}
-            dialed_number={@dialed_number}
-            dial_match={@dial_match}
-            voice_ready={@voice_ready}
-            caller_id={@caller_id}
-            pending_call={@pending_call}
-            call_error={@call_error}
-            call_notice={@call_notice}
             selected_event={@selected_event}
             selected_thread={@selected_thread}
-            selected_contact={@selected_contact}
             thread_messages={@thread_messages}
             contacts_by_number={@contacts_by_number}
             wave_colors={@wave_colors}

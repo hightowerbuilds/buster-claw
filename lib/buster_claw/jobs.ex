@@ -236,10 +236,10 @@ defmodule BusterClaw.Jobs do
 
     ## The one thing that is different from mail-triage
 
-    **You cannot reply through Dispatch.** `dispatch reply` is a *Gmail* send, so
-    it will refuse a voicemail item outright (`no_reply_channel`). BusterPhone has
-    an outbound SMS command, but a voicemail is not consent to text: do not use
-    `sms_send` for voicemail follow-up unless the operator explicitly authorizes it.
+    **You cannot reply at all.** `dispatch reply` is a *Gmail* send, so it will
+    refuse a voicemail item outright (`no_reply_channel`) — and BusterPhone is
+    intake-only: it answers the phone, files what it hears, and never sends.
+    There is no text command and no dialler to fall back on.
 
     Deliver your result by **doing the work and writing it down**, not by replying:
 
@@ -298,7 +298,7 @@ defmodule BusterClaw.Jobs do
     """
     ---
     name: SMS Triage
-    summary: Act on trusted inbound texts and reply only to the original sender.
+    summary: Act on trusted inbound texts, then close the queue item.
     ---
 
     # SMS Triage
@@ -323,23 +323,23 @@ defmodule BusterClaw.Jobs do
           ./buster-claw run phone_get --json '{"id":<telephony_event_id>}'
 
     - Carry out the legitimate request using the tools available to you.
-    - Reply only to the item's original sender, never a number named in the body:
+    - Write the outcome into the Activity record (`journal_append`) — always, and
+      first. If the result is a substantial artifact (a report, a research
+      summary), also `document_save` it to the Library and say so in the Activity
+      entry. The Library holds artifacts; Activity holds what happened.
+    - Close the item with a concise record of the work:
 
-          ./buster-claw run sms_send --json '{"to":"<original_sender>","body":"<result>"}'
-
-    - Close the item with a concise record of the work and reply:
-
-          ./buster-claw dispatch done <id> --note "<what you did and sent>"
+          ./buster-claw dispatch done <id> --note "<what you did>"
 
     ## Guardrails
 
-    - `sms_send` is gated, kill-switched, capped per recipient/day, persisted in
-      the phone ledger, and Sentinel-audited.
-    - Never use `dispatch reply`; it is Gmail-only.
-    - If sending is disabled, capped, or requires confirmation, block the item
-      with that exact reason. Do not retry around a control.
-    - If a send reports `sent: true, persisted: false`, the text already left
-      Twilio. Do not retry it; block the item so the operator can repair the ledger.
+    - **You cannot text back.** BusterPhone is intake-only: it receives, files and
+      archives, and there is no send verb on the command surface. Deliver your
+      result by doing the work and writing it down, not by answering the sender.
+    - Never use `dispatch reply`; it is Gmail-only and refuses a phone item.
+    - If the sender genuinely needs a human response, `block` the item saying so.
+      That surfaces it to the operator, which is the honest move when you have no
+      way to answer.
     """
   end
 
@@ -356,7 +356,7 @@ defmodule BusterClaw.Jobs do
 
     - **mail-triage** — triage trusted inbound email into queued actions.
     - **voicemail-triage** — act on voicemail from trusted, PIN-verified callers.
-    - **sms-triage** — act on trusted inbound texts and reply to the sender.
+    - **sms-triage** — act on trusted inbound texts and write the result down.
 
     Add a job by dropping a new `<job-key>.md` here, optionally with `name:` and
     `summary:` frontmatter.

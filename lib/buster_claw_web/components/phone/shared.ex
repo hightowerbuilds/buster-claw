@@ -7,10 +7,11 @@ defmodule BusterClawWeb.Phone.Shared do
 
   Imported by `Phone.Log`, `Phone.Playback` and `Phone.ContactList` rather than
   aliased, so a panel still writes `format_phone(number)` and `<.shader_bg …>`
-  exactly as it did when all three lived in one file.
+  exactly as it did when all three lived in one file. `PhoneComponent` imports
+  `format_phone/1` alone, to print the operator's own number in the tab header.
 
   These are public only because they cross a module boundary now. Nothing
-  outside `BusterClawWeb.Phone` should call them.
+  outside the Phone surface should call them.
   """
   use BusterClawWeb, :html
 
@@ -86,9 +87,16 @@ defmodule BusterClawWeb.Phone.Shared do
 
   Kept beside the renderer so the panel that shows a Cost line and the query that
   fills it in cannot disagree about which rows have one.
+
+  **Voicemail only, since 08-18.** This clause used to include
+  `%{kind: "call", direction: "outbound"}`, matching the query. Outbound calling
+  was deleted (`PHONE_INTAKE_ROADMAP`) and `unpriced_events/1` narrowed to
+  voicemail with it, because the pricing path those rows needed is gone and they
+  can never be priced again. The rows themselves stay — they are a true record of
+  calls that happened — but a Cost line on one would advertise a number that is
+  never coming, so the affordance goes and the row does not.
   """
   def priced_kind?(%{kind: "voicemail"}), do: true
-  def priced_kind?(%{kind: "call", direction: "outbound"}), do: true
   def priced_kind?(_event), do: false
 
   # --- pure display helpers ------------------------------------------------
@@ -147,11 +155,6 @@ defmodule BusterClawWeb.Phone.Shared do
     do: "(#{a}) #{b}-#{c}"
 
   def format_phone(number), do: number
-
-  def format_dialed(<<a::binary-size(3), b::binary-size(3), c::binary-size(4)>>),
-    do: "(#{a}) #{b}-#{c}"
-
-  def format_dialed(number), do: number
 
   def format_duration(seconds) when is_integer(seconds) do
     "#{div(seconds, 60)}:#{seconds |> rem(60) |> Integer.to_string() |> String.pad_leading(2, "0")}"

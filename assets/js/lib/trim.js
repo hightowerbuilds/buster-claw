@@ -1,6 +1,6 @@
 // Pure geometry for the Studio's drag-to-select (SOUND_STUDIO_ROADMAP Phase 3).
 //
-// Separated from the hook for the same reason `dtmf.js` is: this is arithmetic
+// Separated from the hook for the same reason `arrange.js` is: this is arithmetic
 // that decides what gets cut out of someone's audio, and arithmetic you can
 // only exercise by dragging a mouse is arithmetic nobody tests. The hook keeps
 // the DOM; this keeps the maths.

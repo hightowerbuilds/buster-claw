@@ -104,13 +104,13 @@ defmodule BusterClaw.Telephony.CostTest do
     assert length(Telephony.unpriced_events()) == 1
   end
 
-  # --- outbound bridged calls: TWO legs ------------------------------------
+  # --- legacy call rows: in the ledger, out of the work list ---------------
   #
-  # The parent is the call we created (it rings the operator); `<Dial>` creates a
-  # child call for the far end, which Twilio prices as its own resource. Summing
-  # the parent alone halves the bill and looks settled while doing it.
+  # Outbound calling was deleted on 08-18 (PHONE_INTAKE_ROADMAP Phase 2) and the
+  # rows it created deliberately STAYED — they are a true record of what
+  # happened. What went with it was the only code that could ever price them.
 
-  defp outbound_call(attrs \\ %{}) do
+  defp legacy_call(attrs \\ %{}) do
     {:ok, event} =
       Telephony.record_event(
         Map.merge(
@@ -119,6 +119,8 @@ defmodule BusterClaw.Telephony.CostTest do
             kind: "call",
             from_number: "+13603646763",
             to_number: "+15035550142",
+            # A CallSid, not a RecordingSid — the shape `cost_for/2` no longer
+            # prices, and the reason these rows can never finalize.
             twilio_sid: "CA#{System.unique_integer([:positive])}",
             occurred_at: DateTime.utc_now(:second)
           },
@@ -130,101 +132,56 @@ defmodule BusterClaw.Telephony.CostTest do
     event
   end
 
-  # `parent` is the leg we created, `children` the ones `<Dial>` made.
-  defp stub_call(parent, children) do
-    Req.Test.stub(BusterClaw.TwilioCostHTTP, fn conn ->
-      if String.ends_with?(conn.request_path, "/Calls.json") do
-        conn = Plug.Conn.fetch_query_params(conn)
-        assert conn.query_params["ParentCallSid"], "child legs must be scoped to the parent"
-        Req.Test.json(conn, %{"calls" => children})
-      else
-        Req.Test.json(conn, parent)
-      end
-    end)
+  # THE STARVATION BUG, pinned.
+  #
+  # `unpriced_events/1` used to select `kind == "voicemail" OR (kind == "call"
+  # AND direction == "outbound")`, which was correct while outbound calls had a
+  # pricing clause. With that clause deleted every one of those rows answers
+  # `{:error, :missing_sids}` forever, so `cost_synced_at` stays `nil` and they
+  # stay in the list. The list is **oldest-first with a limit of 25** — and the
+  # legacy rows are, by construction, older than every voicemail that will ever
+  # be recorded again. Twenty-five of them is one quiet week of a feature that
+  # no longer exists, and after that no voicemail is ever priced again: no
+  # error, no log, the drain reporting a clean tick every time.
+  #
+  # The fix is that the `where` clause names ONE kind. This test is what says so.
+  test "legacy outbound call rows never enter the work list, however old they are" do
+    old = DateTime.utc_now(:second) |> DateTime.add(-30, :day)
+
+    legacy_a = legacy_call(%{occurred_at: old})
+    legacy_b = legacy_call(%{occurred_at: DateTime.add(old, 1, :day)})
+
+    # Inbound call rows are excluded for the same reason and were already
+    # excluded before — asserted here so the two exclusions share a guard, since
+    # it is now the KIND that rules both out and no longer the direction.
+    inbound = legacy_call(%{direction: "inbound", occurred_at: DateTime.add(old, 2, :day)})
+
+    # Newest of the four, so an oldest-first query only reaches it once all
+    # three call rows are out of the way.
+    vm = voicemail()
+
+    assert Enum.map(Telephony.unpriced_events(), & &1.id) == [vm.id],
+           "a call row in the work list starves every voicemail behind it"
+
+    # And the other half of why they must not be queued: there is no route that
+    # could ever take them out again.
+    for row <- [legacy_a, legacy_b, inbound] do
+      assert {:error, :no_sids} = Telephony.refresh_cost(row, opts())
+      assert Repo.reload!(row).cost_synced_at == nil
+    end
   end
 
-  defp leg(price, status \\ "completed"),
-    do: %{"price" => price, "price_unit" => "USD", "status" => status}
+  # --- giving up, so one bad row cannot starve the list --------------------
 
-  test "a bridged call prices BOTH legs, not just the one we created" do
-    event = outbound_call()
-    stub_call(leg("-0.0140"), [leg("-0.0220")])
-
-    assert {:ok, updated} = Telephony.refresh_cost(event, opts())
-
-    # 0.014 + 0.022 — the parent alone would have read $0.0140 and looked final.
-    assert updated.cost_micros == 36_000
-    assert updated.cost_currency == "USD"
-    assert updated.cost_synced_at != nil
-
-    assert updated.metadata["cost_breakdown"] == %{"your_leg" => 14_000, "their_leg" => 22_000}
-  end
-
-  test "a call nobody answered has one leg, and that is final" do
-    event = outbound_call()
-
-    # The operator never picked up, so `<Dial>` never ran and there is no child.
-    # Treating an empty child list as pending — which is what the voicemail path
-    # does for transcriptions — would retry this row forever.
-    stub_call(leg("-0.0060", "no-answer"), [])
-
-    assert {:ok, updated} = Telephony.refresh_cost(event, opts())
-    assert updated.cost_micros == 6_000
-    assert updated.cost_synced_at != nil
-    assert updated.metadata["cost_breakdown"] == %{"your_leg" => 6_000, "their_leg" => 0}
-  end
-
-  test "a call still in progress is provisional even when both legs report a price" do
-    event = outbound_call()
-
-    # Deliberately inconsistent, and that is the point: `price` and `status` are
-    # separate fields on the same resource, and this code does not get to assume
-    # a priced call has ended. If it did, a partially-billed in-flight call would
-    # finalize at whatever it happened to cost so far and never be corrected.
-    stub_call(leg("-0.0140", "in-progress"), [leg("-0.0220")])
-
-    assert {:ok, updated} = Telephony.refresh_cost(event, opts())
-    assert updated.cost_micros == 36_000
-    assert updated.cost_synced_at == nil
-    assert Enum.map(Telephony.unpriced_events(), & &1.id) == [updated.id]
-  end
-
-  test "an in-flight call with no child yet is provisional too" do
-    event = outbound_call()
-    stub_call(leg(nil, "in-progress"), [])
-
-    assert {:ok, updated} = Telephony.refresh_cost(event, opts())
-    assert updated.cost_synced_at == nil
-    assert Enum.map(Telephony.unpriced_events(), & &1.id) == [updated.id]
-  end
-
-  test "an unpriced child leg keeps the row in the work list" do
-    event = outbound_call()
-    stub_call(leg("-0.0140"), [leg(nil)])
-
-    assert {:ok, updated} = Telephony.refresh_cost(event, opts())
-    assert updated.cost_micros == 14_000
-    assert updated.cost_synced_at == nil
-    assert Enum.map(Telephony.unpriced_events(), & &1.id) == [updated.id]
-  end
-
-  test "an outbound call is in the work list; an inbound one never is" do
-    outbound = outbound_call()
-    _inbound = outbound_call(%{direction: "inbound"})
-
-    # An inbound leg frequently never prices at all. Including it would fill an
-    # oldest-first, limited work list with rows that can never finalize.
-    assert Enum.map(Telephony.unpriced_events(), & &1.id) == [outbound.id]
-  end
-
-  test "a row that can never price is given up on rather than starving the list" do
+  test "a voicemail that can never price is given up on rather than starving the list" do
     old = DateTime.utc_now(:second) |> DateTime.add(-8, :day)
-    event = outbound_call(%{occurred_at: old})
+    event = voicemail(%{occurred_at: old})
 
-    # Terminal, but the price never settled — a deleted resource, or a plan that
-    # does not per-call price. Without a give-up this row sits at the head of an
-    # oldest-first list forever.
-    stub_call(leg(nil), [leg(nil)])
+    # Terminal, but nothing settled — a deleted recording, or a plan that does
+    # not per-component price. Without a give-up this row sits at the head of an
+    # oldest-first list forever, which is the same failure the test above pins
+    # from the other direction.
+    stub(%{call: nil, recording: nil, transcriptions: []})
 
     assert {:ok, updated} = Telephony.refresh_cost(event, opts())
     assert updated.cost_synced_at != nil
@@ -233,8 +190,8 @@ defmodule BusterClaw.Telephony.CostTest do
   end
 
   test "a young row with the same missing prices is NOT given up on" do
-    event = outbound_call()
-    stub_call(leg(nil), [leg(nil)])
+    event = voicemail()
+    stub(%{call: nil, recording: nil, transcriptions: []})
 
     assert {:ok, updated} = Telephony.refresh_cost(event, opts())
     assert updated.cost_synced_at == nil

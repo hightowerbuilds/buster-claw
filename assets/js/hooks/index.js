@@ -29,7 +29,6 @@ import {WorkspaceDropzone} from "./workspace_dropzone.js"
 import {ChatDropzone} from "./chat_dropzone.js"
 import {NotifySound, SoundPreview} from "./notify_sound.js"
 import {MusicPlayer} from "./music_player.js"
-import {Dtmf} from "./dtmf.js"
 import {Composer} from "./composer.js"
 import {NoteEditor} from "./note_editor.js"
 import SketchPad from "./sketch_pad.js"
@@ -41,7 +40,6 @@ import {ClinchManager, ClinchAppKeys, RecoveryKey} from "./clinch.js"
 
 export const Hooks = {
   MusicPlayer,
-  Dtmf,
   VoiceRecorder,
   VoiceAudition,
   CornerWidget,

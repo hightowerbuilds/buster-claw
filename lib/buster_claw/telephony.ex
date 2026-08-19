@@ -4,10 +4,15 @@ defmodule BusterClaw.Telephony do
   SQLite. The Message Machine panel (`PhoneLive`) reads everything through this
   context.
 
-  Inbound voicemail and SMS arrive through signed Supabase Edge Functions and
-  the durable relay drain. Outbound SMS uses Twilio's Messages API, but remains
-  disabled until the operator explicitly enables the kill switch after the
-  Messaging Service and A2P registration are ready.
+  Inbound voicemail and SMS arrive through signed Supabase Edge Functions and the
+  durable relay drain. **Nothing here sends.** BusterPhone is intake-only
+  (`PHONE_INTAKE_ROADMAP.md`): outbound SMS and outbound calling were deleted
+  08-18 rather than left switched off, because a capability that exists has to be
+  described and a description can go false.
+
+  Rows already written with `direction: "outbound"` stay — they are a true record
+  of what happened, and the schema keeps the field. This context simply never
+  creates another one.
   """
 
   import Ecto.Query
@@ -16,7 +21,6 @@ defmodule BusterClaw.Telephony do
 
   alias BusterClaw.Telephony.Event
   alias BusterClaw.Telephony.Twilio
-  alias BusterClaw.TrustedNumbers
 
   @topic "telephony"
 
@@ -50,295 +54,26 @@ defmodule BusterClaw.Telephony do
     end
   end
 
-  @doc "Send and persist one SMS, subject to the configured recipient/day cap."
-  def send_sms(to, body, opts \\ []) do
-    with {:ok, recipient} <- normalize_recipient(to),
-         {:ok, body} <- validate_sms_body(body) do
-      :global.trans({__MODULE__, {:sms_send, recipient}}, fn ->
-        deliver_sms(recipient, body, opts)
-      end)
-    end
-  end
-
-  @doc """
-  Place and persist one bridged outbound call, subject to the per-recipient cap.
-
-  The operator's own phone rings first and the far end is dialled only when they
-  answer, so this returns as soon as Twilio accepts the request — `placed` means
-  *the call was created*, never *somebody spoke*.
-
-  Guards, in the order they are cheapest to fail: a recipient who has opted out
-  of SMS is refused here too. **Voice has no STOP**, so there is no consent
-  signal of its own to read, and the roadmap named the choice — either the SMS
-  opt-out list covers the same human or a second one is invented. It is the same
-  human. Treating a STOP as SMS-only would mean a number that asked to be left
-  alone can still be phoned by the same app.
-  """
-  def place_call(to, opts \\ []) do
-    with {:ok, recipient} <- normalize_recipient(to) do
-      :global.trans({__MODULE__, {:call_place, recipient}}, fn ->
-        deliver_call(recipient, opts)
-      end)
-    end
-  end
-
-  @doc "Count locally-persisted outbound calls to one recipient since 00:00 UTC."
-  def called_today(recipient) do
-    start_of_day = DateTime.new!(Date.utc_today(), ~T[00:00:00], "Etc/UTC")
-
-    Event
-    |> where(
-      [event],
-      event.kind == "call" and event.direction == "outbound" and
-        event.to_number == ^recipient and event.occurred_at >= ^start_of_day
-    )
-    |> Repo.aggregate(:count)
-  end
-
-  @doc "Count locally-persisted outbound SMS to one recipient since 00:00 UTC."
-  def sent_today_to(recipient) do
-    start_of_day = DateTime.new!(Date.utc_today(), ~T[00:00:00], "Etc/UTC")
-
-    Event
-    |> where(
-      [event],
-      event.kind == "sms" and event.direction == "outbound" and
-        event.to_number == ^recipient and event.occurred_at >= ^start_of_day
-    )
-    |> Repo.aggregate(:count)
-  end
-
-  @doc "Whether the latest inbound SMS consent event for a number is an opt-out."
-  def sms_opted_out?(recipient) do
-    Event
-    |> where(
-      [event],
-      event.kind == "sms" and event.direction == "inbound" and
-        event.from_number == ^recipient
-    )
-    |> order_by([event], desc: event.occurred_at, desc: event.id)
-    |> Repo.all()
-    |> Enum.reduce_while(false, fn event, _state ->
-      case sms_consent_event(event) do
-        :opt_out -> {:halt, true}
-        :opt_in -> {:halt, false}
-        :none -> {:cont, false}
-      end
-    end)
-  end
-
-  defp deliver_sms(recipient, body, opts) do
-    cap = sms_daily_cap(opts)
-
-    cond do
-      sms_opted_out?(recipient) ->
-        {:error, :recipient_opted_out}
-
-      sent_today_to(recipient) >= cap ->
-        {:error, {:sms_daily_cap_reached, cap}}
-
-      true ->
-        with {:ok, receipt} <- Twilio.send_sms(recipient, body, opts) do
-          persist_outbound_sms(recipient, body, receipt)
-        end
-    end
-  end
-
-  defp sms_consent_event(%Event{metadata: metadata, body: body}) do
-    type = metadata && (metadata["opt_out_type"] || metadata[:opt_out_type])
-    keyword = type || body
-
-    case keyword |> to_string() |> String.trim() |> String.upcase() do
-      value when value in ~w(STOP STOPALL UNSUBSCRIBE CANCEL END QUIT) -> :opt_out
-      value when value in ~w(START UNSTOP) -> :opt_in
-      _ -> :none
-    end
-  end
-
-  defp deliver_call(recipient, opts) do
-    cap = call_daily_cap(opts)
-
-    cond do
-      sms_opted_out?(recipient) ->
-        {:error, :recipient_opted_out}
-
-      called_today(recipient) >= cap ->
-        {:error, {:call_daily_cap_reached, cap}}
-
-      true ->
-        with {:ok, receipt} <- Twilio.place_call(recipient, opts) do
-          persist_outbound_call(recipient, receipt)
-        end
-    end
-  end
-
-  defp persist_outbound_call(recipient, receipt) do
-    attrs = %{
-      direction: "outbound",
-      kind: "call",
-      from_number: receipt.from || our_number(),
-      to_number: recipient,
-      twilio_sid: receipt.call_sid,
-      occurred_at: DateTime.utc_now() |> DateTime.truncate(:second),
-      # No duration and no cost yet, and both arrive the same way a voicemail's
-      # do: Twilio settles them after the call, so the existing back-fill pass
-      # picks this row up by its call_sid rather than anything new being written.
-      metadata: %{"twilio_status" => receipt.status, "leg" => "bridge"}
-    }
-
-    case record_event(attrs, observe: false) do
-      {:ok, event} ->
-        observe_call_place(recipient, receipt, true)
-        {:ok, %{id: event.id, placed: true, to: recipient, call_sid: receipt.call_sid}}
-
-      {:error, reason} ->
-        # The call is already ringing. Failing to file it locally must not read
-        # as "no call happened", so the audit entry is written either way and
-        # says which half succeeded — the same posture the SMS path takes.
-        observe_call_place(recipient, receipt, false)
-        {:error, {:call_placed_but_not_persisted, reason}}
-    end
-  end
-
-  defp observe_call_place(recipient, receipt, persisted?) do
-    BusterClaw.Sentinel.observe(
-      :outbound_send,
-      "Call placed to #{recipient}",
-      %{
-        kind: "call",
-        to: recipient,
-        twilio_sid: receipt.call_sid,
-        status: receipt.status,
-        persisted: persisted?
-      },
-      severity: :warning
-    )
-  end
-
-  # Deliberately lower than the SMS cap's 20. A repeated text is an annoyance; a
-  # repeated phone call is harassment, and it costs two legs each time.
-  defp call_daily_cap(opts) do
-    case Keyword.get(
-           opts,
-           :daily_cap,
-           Application.get_env(:buster_claw, :call_daily_recipient_cap, 5)
-         ) do
-      cap when is_integer(cap) and cap > 0 -> cap
-      _ -> 5
-    end
-  end
-
-  defp persist_outbound_sms(recipient, body, receipt) do
-    attrs = %{
-      direction: "outbound",
-      kind: "sms",
-      from_number: receipt.from || our_number() || receipt.messaging_service_sid,
-      to_number: recipient,
-      body: body,
-      twilio_sid: receipt.sid,
-      occurred_at: DateTime.utc_now() |> DateTime.truncate(:second),
-      metadata: %{
-        "twilio_status" => receipt.status,
-        "messaging_service_sid" => receipt.messaging_service_sid
-      }
-    }
-
-    case record_event(attrs, observe: false) do
-      {:ok, event} ->
-        observe_sms_send(recipient, receipt, true)
-
-        {:ok,
-         %{
-           id: event.id,
-           sent: true,
-           persisted: true,
-           to: recipient,
-           twilio_sid: receipt.sid,
-           status: receipt.status
-         }}
-
-      {:error, changeset} ->
-        # Twilio has already accepted the message. Report partial success so a
-        # caller does not blindly retry and create a duplicate delivery.
-        observe_sms_send(recipient, receipt, false)
-
-        {:ok,
-         %{
-           sent: true,
-           persisted: false,
-           to: recipient,
-           twilio_sid: receipt.sid,
-           status: receipt.status,
-           persistence_error: inspect(changeset.errors)
-         }}
-    end
-  end
-
-  defp observe_sms_send(recipient, receipt, persisted?) do
-    BusterClaw.Sentinel.observe(
-      :outbound_send,
-      "SMS sent to #{recipient}",
-      %{
-        kind: "sms",
-        to: recipient,
-        twilio_sid: receipt.sid,
-        status: receipt.status,
-        persisted: persisted?
-      }
-    )
-  end
-
-  defp normalize_recipient(raw) do
-    case TrustedNumbers.normalize(raw) do
-      {:ok, recipient} -> {:ok, recipient}
-      :error -> {:error, :invalid_recipient}
-    end
-  end
-
-  defp validate_sms_body(body) when is_binary(body) do
-    cond do
-      String.trim(body) == "" -> {:error, :empty_body}
-      String.length(body) > 1600 -> {:error, :body_too_long}
-      true -> {:ok, body}
-    end
-  end
-
-  defp validate_sms_body(_body), do: {:error, :invalid_body}
-
-  defp sms_daily_cap(opts) do
-    case Keyword.get(
-           opts,
-           :daily_cap,
-           Application.get_env(:buster_claw, :sms_daily_recipient_cap, 20)
-         ) do
-      cap when is_integer(cap) and cap > 0 -> cap
-      _ -> 20
-    end
-  end
-
-  # --- cost back-fill (VOICEMAIL_COST_ROADMAP.md, OUTBOUND_VOICE_ROADMAP.md) ---
+  # --- cost back-fill (VOICEMAIL_COST_ROADMAP.md) ---
   # Twilio prices lag, so cost is a retryable pass: fetch what's settled now, keep
   # the row unfinalized (cost_synced_at nil) until every component prices, and
-  # re-run. Two kinds price: voicemails, and outbound calls (two legs, since the
-  # bridge creates a second call resource).
+  # re-run. One kind prices: voicemails.
 
   @doc """
-  Rows not yet finally priced (`cost_synced_at` nil), oldest first — the back-fill
-  work list.
+  Voicemail rows not yet finally priced (`cost_synced_at` nil), oldest first — the
+  back-fill work list. A drained voicemail carries a RecordingSid as its
+  `twilio_sid`, which is all `refresh_cost/2` needs.
 
-  Two kinds qualify, for two different reasons. A drained **voicemail** carries a
-  RecordingSid as its `twilio_sid`, which is all `refresh_cost/2` needs. An
-  **outbound call** carries the parent CallSid, and prices as two legs.
-
-  Inbound call rows are excluded: nothing here created them, and an inbound leg
-  frequently never prices at all — including it would fill this list with rows
-  that can never finalize and starve the ones that can.
+  Call rows are excluded, inbound and outbound alike. Nothing here created the
+  inbound ones and an inbound leg frequently never prices at all; the outbound
+  ones are a closed historical set with no pricing route left since intake-only.
+  Either would fill this list with rows that can never finalize — and because it
+  is oldest-first with a limit, a row that can never finalize sits at the head
+  forever and starves every row behind it.
   """
   def unpriced_events(limit \\ 25) do
     from(e in Event,
-      where:
-        is_nil(e.cost_synced_at) and not is_nil(e.twilio_sid) and
-          (e.kind == "voicemail" or (e.kind == "call" and e.direction == "outbound")),
+      where: is_nil(e.cost_synced_at) and not is_nil(e.twilio_sid) and e.kind == "voicemail",
       order_by: [asc: e.occurred_at],
       limit: ^limit
     )
@@ -408,14 +143,13 @@ defmodule BusterClaw.Telephony do
     :ok
   end
 
-  # An outbound call's `twilio_sid` is a CallSid, a voicemail's is a RecordingSid,
-  # and the two price by different routes. The kind is what tells them apart —
-  # the SIDs themselves both start "CA"/"RE" but nothing here should be reading
-  # Twilio's prefixes to decide what a row is.
-  defp cost_sids(%Event{kind: "call", twilio_sid: sid}) when is_binary(sid),
-    do: %{call_sid: sid}
+  # A voicemail's `twilio_sid` is a RecordingSid, which is the only shape
+  # `Twilio.cost_for/2` prices now. The kind is what says so — a call row's SID is
+  # a CallSid, and handing it over as a RecordingSid would 404 forever. Nothing
+  # here reads Twilio's "CA"/"RE" prefixes to decide what a row is.
+  defp cost_sids(%Event{kind: "voicemail", twilio_sid: sid}) when is_binary(sid),
+    do: %{recording_sid: sid}
 
-  defp cost_sids(%Event{twilio_sid: rec}) when is_binary(rec), do: %{recording_sid: rec}
   defp cost_sids(_event), do: :no_sids
 
   # How long a row may stay unpriced before the back-fill stops asking. Twilio
@@ -489,17 +223,12 @@ defmodule BusterClaw.Telephony do
   defp maybe_limit(query, nil), do: query
   defp maybe_limit(query, n), do: limit(query, ^n)
 
-  # The BusterPhone number — the number inbound callers dialed, read from the most
-  # recent inbound event's `to_number`. It is not configured anywhere; it's learned
-  # from traffic, so this is `nil` until the first call/voicemail lands.
-  defp our_number do
-    Event
-    |> where([e], e.direction == "inbound" and not is_nil(e.to_number))
-    |> order_by([e], desc: e.occurred_at, desc: e.id)
-    |> limit(1)
-    |> select([e], e.to_number)
-    |> Repo.one()
-  end
+  # The BusterPhone number used to be derived here, from the most recent inbound
+  # event's `to_number`. Its only two callers were the outbound persist paths,
+  # which stamped a `from_number` on rows this context no longer creates — so it
+  # went with them rather than staying as a query nothing asks. `Twilio.caller_id/0`
+  # answers the same question from configuration, and does so before any traffic
+  # has arrived.
 
   @doc "Voicemails with no `heard_at` — the blinking light."
   def unheard_count do

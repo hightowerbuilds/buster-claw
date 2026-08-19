@@ -35,14 +35,21 @@ defmodule BusterClawWeb.Explained.Registry do
   # `sound_record_save` (:restricted + gated, the recorder's write half) and the
   # four `voice_bank_*` verbs — `list` is a :safe read, `create` and `select` are
   # :restricted, `delete` is :restricted + gated.
+  #
+  # Recomputed 08-18 — the first time this block has gone DOWN. BusterPhone
+  # became intake-only (PHONE_INTAKE_ROADMAP) and `sms_send` and `phone_call`
+  # were deleted; both were :mutate, :restricted and gated, which is why exactly
+  # three of these numbers move and `read`/`trigger`/`safe` do not. Ten `phone_*`
+  # verbs remain, all intake. Measured from `Catalog.entries/0`, not derived by
+  # hand.
   @command_stats %{
-    total: 217,
+    total: 215,
     read: 88,
     trigger: 17,
-    mutate: 112,
+    mutate: 110,
     safe: 91,
-    restricted: 126,
-    gated: 25
+    restricted: 124,
+    gated: 23
   }
 
   # Feature sub-tabs: rail + tile metadata for every non-site tab. A key in

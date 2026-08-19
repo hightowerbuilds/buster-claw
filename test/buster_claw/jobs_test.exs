@@ -88,7 +88,7 @@ defmodule BusterClaw.JobsTest do
     assert job.body =~ "dispatch reply <id>"
   end
 
-  test "the seeded voicemail-triage job does not treat voicemail as consent to text", %{
+  test "the seeded voicemail-triage job tells the agent it cannot reply at all", %{
     root: _root
   } do
     Jobs.ensure()
@@ -98,27 +98,55 @@ defmodule BusterClaw.JobsTest do
     assert job.body =~ "dispatch claim --job voicemail-triage"
     assert job.body =~ "phone_get"
 
-    # `dispatch reply` is Gmail-only, and a voicemail is not permission to use
-    # the separate SMS channel.
-    assert job.body =~ "voicemail is not consent to text"
+    # `dispatch reply` is Gmail-only and refuses a phone item. Until 08-18 this
+    # brief went on to say a voicemail was not *consent* to text — which was the
+    # right rule while a send verb existed. It now has to say something stronger
+    # and simpler: there is no channel at all.
     assert job.body =~ "no_reply_channel"
+    assert job.body =~ "You cannot reply at all"
+    assert job.body =~ "intake-only"
+
+    # And the deliverable that replaces replying, so the agent has somewhere to
+    # put the result instead of looking for a send verb.
+    assert job.body =~ "journal_append"
+
+    # The consent framing must not survive the deletion. It implies a send verb
+    # exists and is merely unauthorized here, which would send the model hunting
+    # for it and then reading `unknown_command` as a bug.
+    refute job.body =~ "sms_send"
+    refute job.body =~ "consent to text"
 
     # Transcripts are machine-made and are a stranger's words — both warnings matter.
     assert job.body =~ "often wrong"
     assert job.body =~ "untrusted input"
   end
 
-  test "the seeded sms-triage job replies only through the gated SMS command", %{root: _root} do
+  test "the seeded sms-triage job never points the agent at a send verb", %{root: _root} do
     Jobs.ensure()
 
     job = Jobs.get("sms-triage")
     assert job.name == "SMS Triage"
     assert job.body =~ "dispatch claim --job sms-triage"
     assert job.body =~ "phone_get"
-    assert job.body =~ "sms_send"
-    assert job.body =~ "original sender"
     assert job.body =~ "STOP/START/HELP"
-    assert job.body =~ "persisted: false"
+
+    # BusterPhone is intake-only (PHONE_INTAKE_ROADMAP, 08-18). The brief used
+    # to hand the agent an `sms_send` command line and a `persisted: false`
+    # recovery rule; both describe a verb that is no longer in the catalog.
+    #
+    # This is the assertion that has to be here rather than merely deleted. A
+    # seeded job body is a PROMPT — the model does what it says without checking
+    # the catalog first, so a stale send instruction does not fail loudly, it
+    # produces an agent that reports having texted somebody back.
+    refute job.body =~ "sms_send"
+    refute job.body =~ "persisted: false"
+    refute job.body =~ "buster-claw run sms"
+
+    # What it says instead, so the agent has an actual instruction and not just
+    # a prohibition.
+    assert job.body =~ "You cannot text back"
+    assert job.body =~ "intake-only"
+    assert job.body =~ "journal_append"
   end
 
   test "get derives name/summary from frontmatter or falls back to the key/body", %{root: root} do

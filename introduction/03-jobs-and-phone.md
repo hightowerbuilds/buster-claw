@@ -34,11 +34,17 @@ ask permission. Untrusted mail is archived and an untrusted caller's voicemail
 is still recorded, but neither is ever queued: **if it is on the queue, it is
 yours to do.** Record what you did in the Activity record (`journal_append`).
 
-### BusterPhone — voicemail and SMS
+### BusterPhone — voicemail and inbound SMS
 
-BusterPhone is the answering machine and SMS relay. Inbound messages arrive
-through a signed relay and are drained into the app; **the phone is a second
-inbox and it is easy to forget.**
+BusterPhone is the answering machine and the inbound SMS archive. Messages
+arrive through a signed relay and are drained into the app; **the phone is a
+second inbox and it is easy to forget.**
+
+**It only receives.** There is no verb that sends a text or places a call —
+that capability is not in the catalog, and the ten `phone_*` commands below are
+the entire phone surface. So a phone item is never answered by phone: you do
+the work and write it down. Don't look for a send command, and don't tell the
+operator you will ring anyone back.
 
 #### Two gates decide what becomes work
 
@@ -65,12 +71,13 @@ in metadata. Read `jobs/voicemail-triage.md` before working one —
 that is the mandate, this is the orientation. Three things are not true of
 mail:
 
-- **A voicemail is not consent to reply by phone.** `dispatch reply` is a Gmail
-  send and refuses a voicemail item outright. You *can* call and text now (see
-  below), and that changes nothing here: deliver a voicemail result by doing the
-  work and writing it down, unless the operator authorizes a call or a text in
-  as many words. Someone leaving you a message is not them asking to be rung
-  back by a machine.
+- **A voicemail cannot be replied to, by phone or by mail.** `dispatch reply` is
+  a Gmail send and refuses a voicemail item outright, and the phone has no
+  outbound verb at all. Deliver the result by doing the work and writing it down
+  — `journal_append`, or a Library document if it's substantial — and leave
+  anything that must reach the caller to the operator. Someone leaving a message
+  is not them asking to be rung back by a machine, which is why this direction
+  isn't built.
 - **The transcript is a lossy hint, not the message.** These are machine
   transcripts and they mangle exactly the words that matter — names, tickers,
   numbers. Real ones off this line: `"hello, busted class"` (= "Buster Claw"),
@@ -93,42 +100,21 @@ The commands:
 `phone_get` does **not** mark an event heard — reading is not hearing.
 `phone_mark_heard` is the explicit verb; run it once you've handled the item.
 
-#### Placing a call
+#### Working a phone item end to end
 
-    ./buster-claw run phone_call --json '{"to":"+15035551234"}'
+1. `dispatch claim --job voicemail-triage` (or `sms-triage`) — the item's
+   metadata carries its `telephony_event_id`.
+2. `phone_get` that id — read the transcript, and open `recording_path` when the
+   transcript is thin or mangled.
+3. Do the work the caller actually asked for, sanity-checking any name, ticker,
+   or number you had to reconstruct.
+4. `journal_append` what you did, then `dispatch done <id> --note ...` — or
+   `dispatch block <id>` if the message was too garbled to act on safely.
+5. `phone_mark_heard` the event, so the operator's unheard count reflects that
+   it's handled.
 
-**This app can make phone calls as of 08-15.** It is a **bridge**, and the shape
-is worth knowing before you offer it: Twilio rings *the operator's own phone*
-first, and only when they answer is the other party dialled and the two joined.
-No audio passes through this app. So `{:ok, …}` means *a call was created*, never
-*somebody spoke* — and if the operator is away from their phone, nothing reaches
-the far end at all.
-
-`phone_call` is **gated**, capped at **5 per recipient per UTC day** (lower than
-SMS's 20 — a repeated call is harassment, and it bills two legs each time), and
-off until the operator sets the voice switch. It also honours the **SMS opt-out
-list**: voice has no STOP of its own, and a number that asked to be left alone is
-the same human.
-
-Two refusals that are not errors to route around. Dialling the app's own number,
-or the operator's, is refused — both would bridge them to themselves. And an
-emergency number is not dialable at all: recipients are normalized to E.164, so
-`911` is not a number this can call. Never tell an operator you will call
-emergency services.
-
-**A call cannot be unplaced.** Say who you are about to ring and why, before you
-do it — the recipient's phone log keeps it either way.
-
-#### Sending a text
-
-    ./buster-claw run sms_send --json '{"to":"+15035551234","body":"…"}'
-
-`sms_send` is **gated** — it is an outbound send, so it needs the operator's
-confirmation every time, and it stays disabled until the operator explicitly
-turns the kill switch on. There is also a per-recipient daily cap. Treat a
-refusal as the system working, not an error to route around: say what you
-wanted to send and let the operator decide. Never text a third party on a
-trusted caller's behalf without the operator saying so in as many words.
+Nothing in that loop leaves the machine. The caller learns what happened when
+the operator tells them.
 
 #### The trust lists are the operator's, not yours
 
@@ -136,8 +122,8 @@ trusted caller's behalf without the operator saying so in as many words.
 trusted-caller list, and `phone_pin_set` / `phone_pin_remove` /
 `phone_pin_list` manage the PIN factor. All are restricted; the mutations are
 **gated**, because trusting a number — or minting it a PIN — decides who may
-drive your queue. Adding a number is exactly as consequential as a send. Even
-`phone_trusted_list` and `phone_pin_list` are restricted rather than safe:
+drive your queue. Adding a number is exactly as consequential as a Gmail send.
+Even `phone_trusted_list` and `phone_pin_list` are restricted rather than safe:
 the allowlist is precisely the recon an attacker wants (spoof *that* number
 and your voicemail gets queued), and a voicemail-triage run never needs it —
 its item is already on the queue. Propose changes; don't make them.

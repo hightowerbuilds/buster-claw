@@ -1,5 +1,5 @@
 // Pure pointer maths for the Studio's multi-track arranger
-// (SOUND_STUDIO_ROADMAP Phase 6). Same split as `trim.js` and `dtmf.js`: this
+// (SOUND_STUDIO_ROADMAP Phase 6). Same split as `trim.js`: this
 // decides where a clip lands in someone's arrangement, and arithmetic you can
 // only exercise by dragging a mouse is arithmetic nobody tests.
 //

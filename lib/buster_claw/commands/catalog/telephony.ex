@@ -4,10 +4,13 @@ defmodule BusterClaw.Commands.Catalog.Telephony do
 
   Reads are `:safe` — an untrusted caller-provenance run may still *look* at the
   phone log, which is how it triages a voicemail it was queued for. Anything that
-  mutates is `:restricted`, and the trusted-numbers list is `gated` on top of that:
-  adding a number decides who may drive agent work, so it is exactly as
-  consequential as a send, and an untrusted run must never be able to promote its
-  own caller into the trusted list.
+  mutates is `:restricted`, and the trust and PIN verbs are `gated` on top of
+  that: they decide who may drive agent work, and an untrusted run must never be
+  able to promote its own caller into the trusted list.
+
+  Nothing here sends. BusterPhone is intake-only (`PHONE_INTAKE_ROADMAP.md`) —
+  `sms_send` and `phone_call` were deleted 08-18, which removes the class of
+  question rather than answering it correctly forever.
   """
 
   @doc "Telephony catalog entries."
@@ -47,43 +50,6 @@ defmodule BusterClaw.Commands.Catalog.Telephony do
         description:
           "Mark a phone event as heard (clears the answering machine's blinking light).",
         args: %{"id" => %{type: :integer, required: true}}
-      },
-      %{
-        name: "sms_send",
-        type: :mutate,
-        tier: :restricted,
-        gated: true,
-        description:
-          "Send one SMS through BusterPhone. Gated, disabled until explicitly configured, and capped per recipient per UTC day.",
-        args: %{
-          "to" => %{type: :string, required: true},
-          "body" => %{type: :string, required: true}
-        }
-      },
-      # Gated for a sharper reason than sms_send's, and the tier alone does not
-      # carry it: PolicyEngine's baseline earns a confirmation from an :agent or
-      # :mcp caller at :restricted, but an :agent_untrusted caller is stopped
-      # ONLY by `gated: true`. An unattended run triaging email it did not choose
-      # to read is exactly the caller that must never be able to dial a stranger
-      # from the operator's number.
-      #
-      # This is the line `sound_record` sits on — Catalog.Sound states the
-      # principle as "the only one that changes what the machine does when nobody
-      # is watching". A phone call is that, and it bills two legs per attempt.
-      %{
-        name: "phone_call",
-        type: :mutate,
-        tier: :restricted,
-        gated: true,
-        description:
-          "Place a bridged phone call: your own phone rings first, then the other " <>
-            "party is dialled and the two are joined — no audio passes through this " <>
-            "app. Gated, off until the voice switch is set, and capped per recipient " <>
-            "per UTC day. Needs no A2P registration; that gate is SMS-only. A call " <>
-            "cannot be unplaced.",
-        args: %{
-          "to" => %{type: :string, required: true}
-        }
       },
       # :restricted, not :safe — this is a *policy* read, not operational data.
       # Caller ID is trivially spoofable, so handing an untrusted-provenance run the

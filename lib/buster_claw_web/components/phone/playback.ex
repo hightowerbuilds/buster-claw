@@ -1,31 +1,34 @@
 defmodule BusterClawWeb.Phone.Playback do
   @moduledoc """
-  Playback and the dialpad, over the telephone-keypad WGSL shader.
+  Playback, over the telephone-keypad WGSL shader.
+
+  ## There is no keypad here any more
+
+  BusterPhone is intake-only (`PHONE_INTAKE_ROADMAP`): outbound calling and
+  outbound SMS are deleted, not switched off. The dialpad that used to sit on
+  this shader existed to *originate* — dial a number, search a contact for one,
+  press Call — and with nothing to originate it would have gone back to being
+  decoration, which is the exact state `LAUNCH_ROADMAP` G-37 refused. So it was
+  deleted rather than relabelled.
+
+  **The shader stays**, and it is still the `keypad` one: it is the backdrop of
+  the Playback panel, not a control surface, and the ids below name the shader
+  region rather than a thing you can press.
   """
   use BusterClawWeb, :html
 
   import BusterClawWeb.Phone.Shared
 
   alias BusterClaw.Telephony
-  alias BusterClawWeb.Phone.CallAction
 
   attr :target, :any, required: true
-  attr :keypad_keys, :list, required: true
-  attr :dialed_number, :string, required: true
-  attr :dial_match, :any, default: nil
-  attr :voice_ready, :any, required: true
-  attr :caller_id, :string, default: nil
-  attr :pending_call, :any, default: nil
-  attr :call_error, :string, default: nil
-  attr :call_notice, :string, default: nil
   attr :selected_event, :any, default: nil
   attr :selected_thread, :any, default: nil
-  attr :selected_contact, :any, default: nil
   attr :thread_messages, :list, required: true
   attr :contacts_by_number, :map, required: true
   attr :wave_colors, :map, required: true
 
-  @doc "Playback and the dialpad, over the telephone-keypad WGSL shader."
+  @doc "A voicemail, a text thread, or the bare shader when nothing is selected."
   def playback(assigns) do
     ~H"""
     <section class="ic-panel relative isolate flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -55,149 +58,23 @@ defmodule BusterClawWeb.Phone.Playback do
           id="phone-keypad-stage"
           class="relative min-h-0 flex-1 overflow-hidden"
         >
+          <%!-- Idle: the shader and nothing else. Nothing is pressable here —
+                the buttons that were are gone with outbound, and this panel's
+                job is to play back what came IN, chosen from the log beside it.
+                A control on this stage would have to originate something, and
+                there is nothing left to originate. --%>
           <.shader_bg
             id="phone-keypad-playback"
             shader="keypad"
             colors={@wave_colors.playback}
           />
 
-          <div class="absolute inset-x-4 top-3 z-10">
-            <div class="flex min-h-9 items-center gap-2 border-b-2 border-base-content/20 pb-2">
-              <span
-                id="phone-dialed-number"
-                class="min-w-0 flex-1 truncate font-mono text-lg font-bold tracking-normal text-base-content"
-              >
-                {if @dialed_number == "",
-                  do: "Enter a number",
-                  else: format_dialed(@dialed_number)}
-              </span>
-              <button
-                :if={@dialed_number != ""}
-                id="phone-dial-clear"
-                type="button"
-                phx-click="dial_clear"
-                phx-target={@target}
-                class="grid size-8 shrink-0 place-items-center text-base-content/45 transition hover:bg-base-content/10 hover:text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-                title="Clear number"
-                aria-label="Clear number"
-              >
-                <.icon name="hero-x-mark" class="size-4" />
-              </button>
-              <button
-                :if={@dialed_number != ""}
-                id="phone-dial-backspace"
-                type="button"
-                phx-click="dial_backspace"
-                phx-target={@target}
-                class="grid size-8 shrink-0 place-items-center text-base-content/45 transition hover:bg-base-content/10 hover:text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-                title="Delete last digit"
-                aria-label="Delete last digit"
-              >
-                <.icon name="hero-backspace" class="size-4" />
-              </button>
-            </div>
-
-            <%!-- The keypad is a dialer now — `phone_call` shipped 08-15 — but it
-                  is still also a contact search, and it is still off until the
-                  operator sets the voice switch. `CallAction` owns both halves of
-                  that disclosure and the button itself; see its moduledoc for why
-                  the G-37 line narrowed rather than went away. --%>
-            <CallAction.call_action
-              target={@target}
-              dialed_number={@dialed_number}
-              selected_contact={@selected_contact}
-              voice_ready={@voice_ready}
-              caller_id={@caller_id}
-              pending_call={@pending_call}
-              call_error={@call_error}
-              call_notice={@call_notice}
-            />
-
-            <button
-              :if={@dial_match && (!@selected_contact || @selected_contact.id != @dial_match.id)}
-              id="phone-dial-match"
-              type="button"
-              phx-click="select_contact"
-              phx-target={@target}
-              phx-value-id={@dial_match.id}
-              class="mt-2 flex w-full items-center justify-between gap-3 border-l-2 border-accent px-2 py-1 text-left transition hover:bg-accent/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-            >
-              <span class="min-w-0 truncate font-mono text-xs font-bold">
-                {@dial_match.name}
-              </span>
-              <span class="shrink-0 font-mono text-[11px] text-base-content/60">
-                {format_phone(@dial_match.phone)}
-              </span>
-            </button>
-
-            <div
-              :if={@selected_contact && @selected_contact.phone}
-              id="phone-contact-actions"
-              class="mt-2 grid grid-cols-2 gap-2"
-            >
-              <button
-                id="phone-contact-text"
-                type="button"
-                disabled
-                aria-disabled="true"
-                class="flex h-8 cursor-not-allowed items-center justify-center gap-2 border-2 border-base-content/15 bg-base-100/30 font-mono text-[11px] font-bold uppercase text-base-content/40"
-                title="Outbound texting is not enabled yet"
-              >
-                <.icon name="hero-chat-bubble-left-right" class="size-3.5" /> Text
-              </button>
-              <%!-- Text is still inert and Call no longer is, which is the whole
-                    A2P story in two buttons: outbound SMS waits on a registration
-                    at Twilio, outbound voice never needed one. --%>
-              <button
-                id="phone-contact-call"
-                type="button"
-                disabled={@voice_ready != :ok}
-                aria-disabled={to_string(@voice_ready != :ok)}
-                phx-click={@voice_ready == :ok && "call_prompt"}
-                phx-target={@target}
-                phx-value-number={@selected_contact.phone}
-                class={[
-                  "flex h-8 items-center justify-center gap-2 border-2 font-mono text-[11px] font-bold uppercase transition",
-                  if(@voice_ready == :ok,
-                    do: "border-accent bg-accent/15 text-base-content hover:bg-accent/30",
-                    else:
-                      "cursor-not-allowed border-base-content/15 bg-base-100/30 text-base-content/40"
-                  )
-                ]}
-              >
-                <.icon name="hero-phone" class="size-3.5" /> Call
-              </button>
-            </div>
-
-            <p
-              :if={@dialed_number != "" and is_nil(@dial_match) and is_nil(@selected_contact)}
-              id="phone-dial-no-match"
-              class="mt-2 px-2 font-mono text-[10px] uppercase tracking-wide text-base-content/40"
-            >
-              No contact match
-            </p>
-          </div>
-
-          <div
-            id="phone-keypad-controls"
-            phx-hook="Dtmf"
-            data-sound-on={to_string(BusterClaw.Notifications.Sound.enabled?())}
-            class="absolute bottom-[4%] left-1/2 z-10 grid h-[66%] max-w-[86%] -translate-x-1/2 grid-cols-3 grid-rows-4 aspect-[0.78]"
-            aria-label="Contact number search keypad"
+          <p
+            id="phone-playback-idle"
+            class="absolute inset-x-4 top-3 z-10 font-mono text-[10px] uppercase tracking-wide text-base-content/40"
           >
-            <button
-              :for={key <- @keypad_keys}
-              id={"phone-dial-key-#{if key == "*", do: "star", else: if(key == "#", do: "hash", else: key)}"}
-              type="button"
-              phx-click="dial_key"
-              phx-target={@target}
-              phx-value-key={key}
-              class="grid min-h-0 min-w-0 place-items-center bg-transparent transition hover:bg-accent/10 active:bg-accent/25 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
-              aria-label={"Enter #{if key == "*", do: "star", else: if(key == "#", do: "hash", else: key)}"}
-            >
-              <span class="sr-only">{key}</span>
-            </button>
-          </div>
+            Pick a voicemail or a thread from the log
+          </p>
         </div>
 
         <div
@@ -220,9 +97,12 @@ defmodule BusterClawWeb.Phone.Playback do
                   · {format_duration(@selected_event.duration_seconds)}
                 </span>
               </div>
-              <%!-- Voicemails and outbound calls, which are the two kinds the
-                    back-fill prices. An SMS row has no cost to show and an
-                    inbound call row is not something this app created. --%>
+              <%!-- Voicemails, which are what the back-fill prices now, plus
+                    the outbound-call rows already in the ledger — those stay as
+                    a true record of what happened and keep showing their cost,
+                    even though nothing creates another one. An SMS row has no
+                    cost to show and an inbound call row is not something this
+                    app created. --%>
               <div
                 :if={priced_kind?(@selected_event)}
                 class="mt-2 flex items-center gap-2"
@@ -274,6 +154,10 @@ defmodule BusterClawWeb.Phone.Playback do
             </p>
           </div>
 
+          <%!-- The outbound branch stays even though nothing sends any more.
+                `direction: "outbound"` rows already in the ledger are a true
+                record of texts that were sent, and a thread that rendered them
+                as the other party's words would be a lie about who said what. --%>
           <div :if={@selected_thread} id="phone-text-thread" class="space-y-3">
             <div
               :for={message <- @thread_messages}

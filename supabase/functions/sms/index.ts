@@ -2,15 +2,22 @@
 //
 // Twilio signs the exact configured webhook URL. Supabase may expose an
 // internally-rewritten req.url, so PUBLIC_SMS_URL_BASE should be set to the
-// public function URL used in the Messaging Service webhook configuration.
+// public function URL configured on the NUMBER itself — Phone Numbers ->
+// Messaging Configuration -> "A message comes in". There is no Messaging
+// Service in the path: one was only ever needed to SEND, and sending is gone
+// (PHONE_INTAKE_ROADMAP, 08-18).
 //
 // Env (set via `supabase secrets set`):
 //   TWILIO_AUTH_TOKEN   verifies X-Twilio-Signature
 //   PUBLIC_SMS_URL_BASE exact public URL of this function (recommended)
 // SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are injected automatically.
 
-// This function deliberately returns empty TwiML. Replies are explicit,
-// policy-gated outbound actions on the Mac; Twilio handles opt-out responses.
+// This function deliberately returns empty TwiML, and the reason changed on
+// 08-18: it used to be that replies were explicit, policy-gated outbound
+// actions on the Mac. There is no reply path at all now — outbound SMS is
+// deleted, so empty TwiML is the only thing this function could honestly
+// return. The behaviour is unchanged; only its justification is. Twilio still
+// handles opt-out responses at the carrier level.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import {

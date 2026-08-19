@@ -16,8 +16,9 @@
 // The audio element is found by id rather than passed in: it is server-rendered
 // beneath us and there is exactly one at a time.
 
-// The geometry lives in a bun-tested lib module (same reason as `dtmf.js`):
-// this arithmetic decides what gets cut out of someone's audio.
+// The geometry lives in a bun-tested lib module (same split as
+// `track_arrange.js` / `lib/arrange.js`): this arithmetic decides what gets cut
+// out of someone's audio.
 import {msAtRatio, selection, isMeaningful, overlay} from "../lib/trim.js"
 
 export const WaveTrim = {

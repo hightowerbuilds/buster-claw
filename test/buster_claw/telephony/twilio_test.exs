@@ -10,11 +10,12 @@ defmodule BusterClaw.Telephony.TwilioTest do
   setup do
     prev = Application.get_env(:buster_claw, :twilio)
 
+    # Two creds and nothing else. The Messaging Service SID and the two kill
+    # switches went with outbound (PHONE_INTAKE_ROADMAP, 08-18) — this client
+    # only reads now, so there is nothing left to enable or disable.
     Application.put_env(:buster_claw, :twilio, %{
       account_sid: "AC_test",
-      auth_token: "tok",
-      messaging_service_sid: "MG_test",
-      sms_enabled: true
+      auth_token: "tok"
     })
 
     on_exit(fn -> Application.put_env(:buster_claw, :twilio, prev) end)
@@ -131,80 +132,18 @@ defmodule BusterClaw.Telephony.TwilioTest do
     assert {:error, :missing_sids} = Twilio.cost_for(%{recording_sid: nil}, opts())
   end
 
-  describe "send_sms/3" do
-    test "posts the recipient, body, and Messaging Service SID" do
-      test_pid = self()
-
-      Req.Test.expect(BusterClaw.TwilioHTTP, fn conn ->
-        {:ok, encoded, conn} = Plug.Conn.read_body(conn)
-        send(test_pid, {:sms_request, conn.request_path, URI.decode_query(encoded)})
-
-        Req.Test.json(conn, %{
-          "sid" => "SM_sent",
-          "status" => "accepted",
-          "to" => "+15035550123",
-          "from" => "+13603646763",
-          "messaging_service_sid" => "MG_test"
-        })
-      end)
-
-      assert {:ok, receipt} =
-               Twilio.send_sms("+15035550123", "Status is green.", opts())
-
-      assert_received {:sms_request, "/2010-04-01/Accounts/AC_test/Messages.json", form}
-      assert form["To"] == "+15035550123"
-      assert form["Body"] == "Status is green."
-      assert form["MessagingServiceSid"] == "MG_test"
-      assert receipt.sid == "SM_sent"
-      assert receipt.status == "accepted"
-      assert receipt.from == "+13603646763"
-    end
-
-    test "fails closed when the SMS kill switch is off" do
-      Application.put_env(:buster_claw, :twilio, %{
-        account_sid: "AC_test",
-        auth_token: "tok",
-        messaging_service_sid: "MG_test",
-        sms_enabled: false
-      })
-
-      assert {:error, :sms_disabled} =
-               Twilio.send_sms("+15035550123", "No send", opts())
-    end
-
-    test "requires a Messaging Service and validates Twilio limits" do
-      Application.put_env(:buster_claw, :twilio, %{
-        account_sid: "AC_test",
-        auth_token: "tok",
-        sms_enabled: true
-      })
-
-      assert {:error, :missing_messaging_service} =
-               Twilio.send_sms("+15035550123", "No send", opts())
-
-      Application.put_env(:buster_claw, :twilio, %{
-        account_sid: "AC_test",
-        auth_token: "tok",
-        messaging_service_sid: "MG_test",
-        sms_enabled: true
-      })
-
-      assert {:error, :invalid_recipient} = Twilio.send_sms("555", "No send", opts())
-      assert {:error, :empty_body} = Twilio.send_sms("+15035550123", "  ", opts())
-
-      assert {:error, :body_too_long} =
-               Twilio.send_sms("+15035550123", String.duplicate("x", 1601), opts())
-    end
-
-    test "surfaces Twilio API errors without treating them as sent" do
-      Req.Test.expect(BusterClaw.TwilioHTTP, fn conn ->
-        conn
-        |> Plug.Conn.put_status(400)
-        |> Req.Test.json(%{"code" => 21_611, "message" => "Invalid To number"})
-      end)
-
-      assert {:error, {:twilio_status, 400, %{"code" => 21_611}}} =
-               Twilio.send_sms("+15035550123", "No send", opts())
-    end
+  # The other half of the same rule, and the one a deletion can quietly undo.
+  # `cost_for/2` used to have a second clause that priced an outbound bridged
+  # call from a CallSid; it went with outbound calling on 08-18
+  # (PHONE_INTAKE_ROADMAP Phase 2). A RecordingSid is now the ONLY shape that
+  # prices, and the legacy `direction: "outbound"` rows still in the ledger —
+  # whose `twilio_sid` is a CallSid — must bounce off it rather than find a
+  # route back in.
+  #
+  # No stub is installed on purpose. If a clause for this shape ever comes back,
+  # it reaches `Req.Test` with nothing registered and blows up there — so this
+  # fails loudly on the re-added code path, not quietly on a different error.
+  test "a CallSid is not a pricing shape — outbound pricing is gone, not dormant" do
+    assert {:error, :missing_sids} = Twilio.cost_for(%{call_sid: "CA1"}, opts())
   end
 end

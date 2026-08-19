@@ -18,7 +18,7 @@ command, outbound send, and untrusted fetch is recorded on the Security
 | Area | Commands | Section |
 |---|---|---|
 | The queue you work | `dispatch_*`, `job_*`, `shift_*` | Jobs & the pull queue |
-| Phone: voicemail, SMS, trust | `phone_*`, `sms_send` | BusterPhone |
+| Phone: voicemail, SMS, trust | `phone_*` | BusterPhone |
 | Web: read, act, watch | `web_search`, `browser_*`, `agent_run_*` | Browsing the web |
 | Repeatable web work | `browser_flow`, `browser_check_*` | Flows & saved checks |
 | Google Workspace | `gmail_*`, `gcal_*`, `drive_*`, `docs_*`, `sheets_*`, `slides_*`, `tasks_*`, `contacts_*` | Google Workspace |

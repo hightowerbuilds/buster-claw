@@ -22,7 +22,7 @@ result shape into their transport-specific response format.
 
 ## Active Domains
 
-217 commands as of 08-16 (`./buster-claw commands` is authoritative; the Explained
+215 commands as of 08-18 (`./buster-claw commands` is authoritative; the Explained
 tab's Command List renders the same counts from a contract test):
 
 - Runtime status, orchestration shifts, and in-shift role sessions
@@ -36,7 +36,8 @@ tab's Command List renders the same counts from a contract test):
   Tasks, and Contacts
 - Web search, guarded browser fetch, co-presence `browser_*`, Agent Mode
   (`agent_run_*`), flows and saved site checks, bookmarks and history
-- BusterPhone: voicemail, SMS, trusted callers and PINs
+- BusterPhone intake: voicemail, inbound SMS, trusted callers and PINs (nothing
+  outbound — the phone sends no texts and places no calls)
 - Notifications (timers, alarms, reminders) and sound
 - The Dispatch pull-queue (list/claim/done/block/reply)
 - Memory (`memory_search`) and skill suggestions
@@ -112,3 +113,7 @@ These older command-surface areas were removed or retired:
   run, full-text searched by the catalogued `memory_search`.
 - Trading, Portfolio, MarketData, Watchlist and Chart Build — deleted whole on
   08-08 (`293f47f`). `finance_*` (SEC EDGAR + Finnhub) is unrelated and survives.
+- Outbound telephony — `sms_send` and `phone_call`, deleted 08-18. BusterPhone is
+  intake only; the ten surviving `phone_*` commands read the message archive or
+  edit the trusted-caller and PIN lists. See
+  `daily-growth/roadmaps/integrations/PHONE_INTAKE_ROADMAP.md`.

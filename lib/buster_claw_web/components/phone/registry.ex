@@ -39,7 +39,7 @@ defmodule BusterClawWeb.Phone.Registry do
     %{
       key: "messages",
       label: "Messages",
-      blurb: "The log, the keypad, and whatever is playing: voicemail, texts, calls."
+      blurb: "Everything that came in — voicemail, texts, calls — and whatever is playing."
     },
     %{
       key: "contacts",

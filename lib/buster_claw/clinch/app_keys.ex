@@ -40,15 +40,16 @@ defmodule BusterClaw.Clinch.AppKeys do
   thousands that do not. Resolution here passes `audit: false`; **agent use of a
   `$secret` remains fully audited**, which is the case the feed exists for.
 
-  ## What stays an environment variable on purpose
+  ## The kill switches that used to be listed here are gone
 
-  `BUSTER_CLAW_SMS_ENABLED` and `BUSTER_CLAW_VOICE_ENABLED` are kill switches, not
-  credentials. They stay outside the Clinch precisely because they should be
-  awkward to flip — a switch you can turn on from a settings screen is not the
-  same safeguard as one that needs a deliberate act outside the running app.
+  `BUSTER_CLAW_SMS_ENABLED` and `BUSTER_CLAW_VOICE_ENABLED` were deliberately kept
+  outside the Clinch — a switch you can flip from a settings screen is not the
+  same safeguard as one that needs an act outside the running app. Both were
+  deleted on 08-18 with the capabilities they guarded (`PHONE_INTAKE_ROADMAP`):
+  BusterPhone only receives now, and a deleted capability needs no switch.
 
-  Two switches rather than one because a text and a phone call are different
-  capabilities: outbound SMS waits on A2P registration, outbound voice does not.
+  The reasoning is kept rather than blanked because it is the rule to apply if a
+  dangerous capability is ever added back: gate it outside the Clinch, not in it.
   """
 
   alias BusterClaw.Clinch
@@ -66,7 +67,9 @@ defmodule BusterClaw.Clinch.AppKeys do
       env: "TWILIO_ACCOUNT_SID",
       group: "BusterPhone",
       secret?: false,
-      note: "Identifies the Twilio account. Not secret, but required to place calls."
+      note:
+        "Identifies the Twilio account. Not secret, but required for the inbound " <>
+          "relay and the voicemail cost back-fill."
     },
     %{
       name: "twilio_auth_token",
@@ -76,18 +79,12 @@ defmodule BusterClaw.Clinch.AppKeys do
       secret?: true,
       note: "Full control of the Twilio account. Rotate from the Twilio console."
     },
-    %{
-      name: "twilio_messaging_service_sid",
-      label: "Twilio Messaging Service SID",
-      env: "TWILIO_MESSAGING_SERVICE_SID",
-      group: "BusterPhone",
-      secret?: false,
-      note: "Required for outbound SMS, which additionally needs the env kill switch."
-    },
-    # Outbound VOICE needs both of these and outbound SMS needs neither, which is
-    # why they arrive together and late. A message is addressed by Messaging
-    # Service; a call needs an explicit `From`, and the bridge needs to know
-    # which phone to ring first.
+    # Two keys used to sit here and no longer do. `twilio_messaging_service_sid`
+    # addressed outbound SMS and `operator_phone_number` was the phone the
+    # outbound bridge rang first; both capabilities were deleted 08-18
+    # (`PHONE_INTAKE_ROADMAP`), leaving nothing that reads either value. They are
+    # removed rather than left settable, because a settings field that changes
+    # nothing is a lie the operator can type into.
     %{
       name: "twilio_phone_number",
       label: "Twilio Phone Number",
@@ -95,18 +92,8 @@ defmodule BusterClaw.Clinch.AppKeys do
       group: "BusterPhone",
       secret?: false,
       note:
-        "E.164, e.g. +13603646763. The number a call comes FROM — so a person " <>
-          "who calls it back reaches the answering machine, not you."
-    },
-    %{
-      name: "operator_phone_number",
-      label: "Your Phone Number",
-      env: "OPERATOR_PHONE_NUMBER",
-      group: "BusterPhone",
-      secret?: false,
-      note:
-        "E.164. Outbound calls ring THIS phone first, then dial the other party " <>
-          "and bridge you — so no audio ever passes through this app."
+        "E.164, e.g. +13603646763. The BusterPhone number itself — the one you " <>
+          "give out, and the one whose voicemails this app files."
     },
     %{
       name: "supabase_url",
@@ -183,9 +170,7 @@ defmodule BusterClaw.Clinch.AppKeys do
   # way keeps working, and tests that set app env keep controlling these.
   defp from_env("twilio_account_sid"), do: twilio(:account_sid)
   defp from_env("twilio_auth_token"), do: twilio(:auth_token)
-  defp from_env("twilio_messaging_service_sid"), do: twilio(:messaging_service_sid)
   defp from_env("twilio_phone_number"), do: twilio(:phone_number)
-  defp from_env("operator_phone_number"), do: twilio(:operator_number)
   defp from_env("supabase_url"), do: app_env(:telephony_relay_url)
   defp from_env("supabase_service_role_key"), do: app_env(:telephony_relay_key)
   defp from_env("finnhub_api_key"), do: app_env(:finnhub_api_key)

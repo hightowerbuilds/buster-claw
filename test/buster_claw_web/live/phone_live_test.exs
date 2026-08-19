@@ -26,32 +26,43 @@ defmodule BusterClawWeb.PhoneLiveTest do
     view
   end
 
-  @ours "+18445550100"
-  @operator "+15033412655"
+  # Every id and every `phx-click` that BusterPhone deleted when it became
+  # intake-only (`PHONE_INTAKE_ROADMAP`, 08-18). Named once, asserted absent from
+  # both sub-tabs below, so a control that originates something cannot grow back
+  # onto this surface without turning a test red. Deleting the assertions that
+  # used to press these buttons is only half the job — the other half is this.
+  # Every one of these was read out of the deleted markup at `HEAD~`, not guessed:
+  # an absence-assertion over a name that never existed is scenery that reads like
+  # a guard.
+  @gone_ids ~w(phone-keypad-controls phone-keypad-purpose
+               phone-dial-key-0 phone-dial-key-1 phone-dial-key-5
+               phone-dial-key-star phone-dial-key-hash
+               phone-dial-backspace phone-dial-clear phone-dial-call
+               phone-dial-match phone-dial-no-match phone-dialed-number
+               phone-call-action phone-call-confirm phone-call-confirm-place
+               phone-call-cancel phone-call-error phone-call-notice
+               phone-contact-actions phone-contact-call phone-contact-text)
 
-  # Voice is off in test, which is the state most of this file asserts against.
-  # Turning it on has to happen BEFORE `live/2` — readiness is read at mount, so
-  # a switch flipped afterwards describes a tab nobody is looking at.
-  defp enable_voice(_context) do
-    previous = Application.get_env(:buster_claw, :twilio)
+  # The six `handle_event/3` clauses `phone_component.ex` lost. `select_contact`
+  # is deliberately NOT here — the dial-match button used it too, but the contact
+  # list still does, and it originates nothing.
+  @gone_events ~w(dial_key dial_backspace dial_clear
+                  call_prompt call_confirm call_cancel)
 
-    Application.put_env(:buster_claw, :twilio, %{
-      account_sid: "AC_test",
-      auth_token: "tok",
-      phone_number: @ours,
-      operator_number: @operator,
-      voice_enabled: true
-    })
-
-    on_exit(fn -> Application.put_env(:buster_claw, :twilio, previous) end)
-  end
-
-  defp dial(view, digits) do
-    for key <- String.graphemes(digits) do
-      view |> element("#phone-dial-key-#{key}") |> render_click()
+  defp refute_outbound_surface(view, html) do
+    for id <- @gone_ids do
+      refute has_element?(view, "##{id}"),
+             "##{id} is back — BusterPhone is intake-only and originates nothing"
     end
 
-    view
+    for event <- @gone_events do
+      refute html =~ ~s(phx-click="#{event}"),
+             "#{event} is back on the phone surface — BusterPhone originates nothing"
+    end
+
+    # The keypad's DTMF hook played a tone per press. Nothing else uses it, so its
+    # presence anywhere on this surface means keys came back.
+    refute html =~ ~s(phx-hook="Dtmf")
   end
 
   test "renders the empty machine", %{conn: conn} do
@@ -168,87 +179,49 @@ defmodule BusterClawWeb.PhoneLiveTest do
     assert detail =~ "pricing…"
   end
 
-  test "playback panel rests on the functional keypad", %{conn: conn} do
-    {:ok, view, _html} = live(conn, "/phone")
+  # The Playback panel still sits on the `keypad` WGSL shader — the shader is the
+  # backdrop and the two ids below name the shader region, not a control. What is
+  # gone is everything that was pressable on it.
+  test "playback rests on the keypad shader, and nothing on it originates", %{conn: conn} do
+    {:ok, view, html} = live(conn, "/phone")
 
     assert has_element?(view, "#phone-keypad-stage")
     assert has_element?(view, "#phone-keypad-playback[data-shader=keypad]")
-    assert has_element?(view, "#phone-keypad-controls")
-    assert has_element?(view, "#phone-dial-key-1")
-    assert has_element?(view, "#phone-dial-key-0")
-    refute has_element?(view, "#phone-contact-actions")
     refute has_element?(view, "#phone-message-detail")
+
+    # The idle stage is not blank: the keypad left and the panel had to say what
+    # it is waiting for. A shader with no words on it is the decorative state
+    # LAUNCH_ROADMAP G-37 refused.
+    assert has_element?(view, "#phone-playback-idle", "Pick a voicemail or a thread")
+
+    refute_outbound_surface(view, html)
   end
 
-  # LAUNCH_ROADMAP G-37 closed by *labelling in place*: the keypad had to say on
-  # screen what it did, because gating it behind Labs was declined. On 08-15 the
-  # obligation narrowed rather than lifted — the keypad dials now, but calling is
-  # off until the operator sets the voice switch, so the line has to say WHY and
-  # name the fix. A disabled control whose reason lives in a `title` is the same
-  # G-37 failure wearing a different hat.
-  test "the keypad says on screen why calling is off, and names the fix", %{conn: conn} do
-    {:ok, view, _html} = live(conn, "/phone")
+  # This replaces two tests that pressed the keypad's Call button and read the
+  # disclosure line beside it. Both were the G-37 obligation in its 08-15 shape:
+  # a control that could originate had to say on screen why it would refuse.
+  # Deleting the control retires the obligation, so what is asserted now is the
+  # inverse — the surface has nothing to disclose *about*, on either sub-tab, and
+  # the disclosures it used to carry are gone rather than stranded.
+  test "neither sub-tab carries a control that sends or dials", %{conn: conn} do
+    {:ok, _contact} = Contacts.create_contact(%{name: "Dana Printshop", phone: "+15035550142"})
+    {:ok, view, html} = live(conn, "/phone")
 
-    assert has_element?(view, "#phone-keypad-purpose", "Searches your contacts")
-    assert has_element?(view, "#phone-keypad-purpose", "calling off")
-    assert has_element?(view, "#phone-keypad-purpose", "BUSTER_CLAW_VOICE_ENABLED")
+    refute_outbound_surface(view, html)
 
-    # Not just the accessible name: the disclosure has to survive as visible text.
-    refute view |> element("#phone-keypad-purpose") |> render() =~ "sr-only"
+    # The two disclosures the deleted buttons carried, both of which lived on the
+    # Messages tab. Each was true of a control that no longer exists, and a stale
+    # disclosure is worse than none — it explains a limit on something a reader
+    # cannot find, which is how a page teaches that the feature is merely off.
+    refute html =~ "BUSTER_CLAW_VOICE_ENABLED"
+    refute html =~ "outbound calling isn&#39;t built"
 
-    # And the claim it replaced must not survive anywhere — it became false the
-    # hour `phone_call` shipped, and a stale disclosure is worse than none.
-    refute render(view) =~ "outbound calling isn't built"
+    contacts = render(select_tab(view, "contacts"))
+    assert contacts =~ "Dana Printshop"
+    refute_outbound_surface(view, contacts)
   end
 
-  # The other half of the same obligation, and the half a disclosure line cannot
-  # carry on its own: the button has to actually be inert. A live control beside
-  # a paragraph explaining why it will fail is worse than either alone.
-  test "with the switch off the Call button is disabled and carries no click",
-       %{conn: conn} do
-    {:ok, view, _html} = live(conn, "/phone")
-    dial(view, "5035550142")
-
-    assert has_element?(view, "#phone-dial-call[disabled]")
-
-    # Not merely styled as disabled: there is no event to send. A `disabled`
-    # attribute is a browser courtesy, and this component is reachable over a
-    # socket by anything that can speak to it.
-    refute has_element?(view, "#phone-dial-call[phx-click]")
-
-    # So the switch is re-read in the handler too, and the event refuses on its
-    # own — sent straight down the socket, past the button that isn't there.
-    html =
-      view
-      |> with_target("#phone-root")
-      |> render_click("call_prompt", %{"number" => "+15035550142"})
-
-    assert html =~ "BUSTER_CLAW_VOICE_ENABLED"
-    refute has_element?(view, "#phone-call-confirm")
-  end
-
-  test "keypad searches contacts by number and supports correction", %{conn: conn} do
-    {:ok, contact} =
-      Contacts.create_contact(%{name: "Dana Printshop", phone: "+15035550142"})
-
-    {:ok, view, _html} = live(conn, "/phone")
-
-    view |> element("#phone-dial-key-5") |> render_click()
-    view |> element("#phone-dial-key-0") |> render_click()
-    view |> element("#phone-dial-key-3") |> render_click()
-
-    assert has_element?(view, "#phone-dialed-number", "503")
-    assert has_element?(view, "#phone-dial-match[phx-value-id='#{contact.id}']", "Dana Printshop")
-
-    view |> element("#phone-dial-backspace") |> render_click()
-    assert has_element?(view, "#phone-dialed-number", "50")
-
-    view |> element("#phone-dial-clear") |> render_click()
-    assert has_element?(view, "#phone-dialed-number", "Enter a number")
-    refute has_element?(view, "#phone-dial-match")
-  end
-
-  test "selected contact shows pending actions and collapsed caller history", %{conn: conn} do
+  test "caller history hangs off the selected contact, collapsed", %{conn: conn} do
     {:ok, contact} =
       Contacts.create_contact(%{name: "Dana Printshop", phone: "+15035550142"})
 
@@ -260,29 +233,25 @@ defmodule BusterClawWeb.PhoneLiveTest do
 
     {:ok, view, _html} = live(conn, "/phone")
 
-    view |> element("#phone-dial-key-5") |> render_click()
-    view |> element("#phone-dial-key-0") |> render_click()
-    view |> element("#phone-dial-key-3") |> render_click()
-    view |> element("#phone-dial-match") |> render_click()
-
-    assert has_element?(view, "#phone-dialed-number", "(503) 555-0142")
-    assert has_element?(view, "#phone-contact-actions")
-    assert has_element?(view, "#phone-contact-text[disabled]")
-    # Call is disabled here for a *different* reason than Text: the voice switch
-    # is off in test, not because the feature is unbuilt. That is the whole A2P
-    # story in two buttons — texting waits on a registration at Twilio, calling
-    # never needed one.
-    assert has_element?(view, "#phone-contact-call[disabled]")
-    refute has_element?(view, "#phone-dial-match")
-
-    # Caller history rides with the contact, so it is on the Contacts tab. The
-    # selection made from the keypad above carries across — the tabs are two
-    # views of one component's state, not two components.
+    # Selection is the contact list now. It used to be reachable from the keypad
+    # too — dial three digits, get a match, press it — and that second route left
+    # with the keypad, so this is the only one.
     select_tab(view, "contacts")
+
+    card =
+      view
+      |> element("button[phx-click=select_contact][phx-value-id='#{contact.id}']")
+      |> render_click()
+
+    assert card =~ "(503) 555-0142"
 
     assert has_element?(view, "#phone-contact-history:not([open])")
     assert has_element?(view, "#phone-contact-history-toggle", "Caller history")
     assert has_element?(view, "#phone-contact-history-items", "Voicemail")
+
+    # A selected contact used to grow a Text and a Call button here. Selecting one
+    # is now purely a read: a face, a number, the trust switch, and this history.
+    refute_outbound_surface(view, card)
   end
 
   test "contacts: add via form, select shows the shaderface card", %{conn: conn} do
@@ -374,15 +343,19 @@ defmodule BusterClawWeb.PhoneLiveTest do
       {:ok, _} = Contacts.create_contact(%{name: "Dana Printshop", phone: "+15035550142"})
       {:ok, view, html} = live(conn, "/phone")
 
-      # Messages: the log and the keypad, no contact list.
+      # Messages: the log and the Playback panel, no contact list.
       assert html =~ "Message machine"
+      assert has_element?(view, "#phone-keypad-stage")
       refute has_element?(view, "button[phx-click=toggle_add_contact]")
 
       contacts = render(select_tab(view, "contacts"))
 
       assert contacts =~ "Dana Printshop"
       assert has_element?(view, "button[phx-click=toggle_add_contact]")
-      refute has_element?(view, "#phone-dial-key-5")
+      # Contacts gets the whole panel, so Playback's shader stage is torn down
+      # rather than animating unseen. This used to assert on a dial key; the key
+      # is gone, and a refute on a deleted id proves nothing about the switch.
+      refute has_element?(view, "#phone-keypad-stage")
     end
   end
 
@@ -455,102 +428,60 @@ defmodule BusterClawWeb.PhoneLiveTest do
     end
   end
 
-  # OUTBOUND_VOICE Phase 4. What these can prove without a network is more than it
-  # looks: every refusal below is raised by `Telephony`/`Twilio`, not by the
-  # component, so a passing refusal is itself proof that the button is wired to
-  # the real path. The accepted case belongs to `telephony/call_test.exs`, which
-  # can stub Twilio; here it would place an actual call.
-  describe "the Call button" do
-    setup :enable_voice
+  # This replaces the six-test "the Call button" block that `OUTBOUND_VOICE`
+  # Phase 4 added. Every one of those tests turned the voice switch ON before
+  # mount and then asserted the keypad came alive — a Call button, a confirm
+  # step, a self-dial refusal, a STOP refusal.
+  #
+  # The claim they collectively guarded was "the switch is what decides". The
+  # claim that replaced it is `PHONE_INTAKE_ROADMAP`'s central one — **deleted,
+  # not disabled** — and the only honest way to test that is to flip the same
+  # switch on and prove it buys nothing. A surface that came back when the
+  # config said so would mean the deletion was really a default.
+  describe "with every telephony switch turned on" do
+    setup do
+      previous = Application.get_env(:buster_claw, :twilio)
 
-    test "is live once the switch is on, and says what pressing it does", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/phone")
-      dial(view, "5035550142")
-
-      assert has_element?(view, "#phone-dial-call:not([disabled])")
-      assert has_element?(view, "#phone-keypad-purpose", "Call rings your phone first")
-      refute has_element?(view, "#phone-keypad-purpose", "calling off")
-    end
-
-    test "confirms before the first ring, naming all three surprising facts",
-         %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/phone")
-      dial(view, "5035550142")
-
-      confirm = view |> element("#phone-dial-call") |> render_click()
-
-      # Who is dialled, that YOUR phone rings first, and what they will see.
-      assert confirm =~ "(503) 555-0142"
-      assert confirm =~ "Your own phone rings first"
-      assert confirm =~ "(844) 555-0100"
-
-      # And nothing has happened yet.
-      assert Telephony.list_events() == []
-
-      view |> element("#phone-call-cancel") |> render_click()
-      refute has_element?(view, "#phone-call-confirm")
-    end
-
-    test "editing the number abandons the pending call", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/phone")
-      dial(view, "5035550142")
-      view |> element("#phone-dial-call") |> render_click()
-
-      assert has_element?(view, "#phone-call-confirm")
-
-      view |> element("#phone-dial-backspace") |> render_click()
-
-      # A confirmation that survives a digit being typed is a confirmation for a
-      # number the operator is no longer looking at.
-      refute has_element?(view, "#phone-call-confirm")
-    end
-
-    test "refuses our own number, in words rather than a tag", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/phone")
-      dial(view, "8445550100")
-
-      view |> element("#phone-dial-call") |> render_click()
-      html = view |> element("#phone-call-confirm-place") |> render_click()
-
-      assert html =~ "this app&#39;s own number"
-      refute has_element?(view, "#phone-call-confirm")
-      assert Telephony.list_events() == []
-    end
-
-    test "a number that replied STOP cannot be called from the keypad either",
-         %{conn: conn} do
-      record!(%{
-        kind: "sms",
-        direction: "inbound",
-        from_number: "+15035550142",
-        to_number: @ours,
-        body: "STOP"
+      # Deliberately includes the two kill switches this roadmap deleted. They
+      # are inert keys now; the point is that setting them is inert too.
+      Application.put_env(:buster_claw, :twilio, %{
+        account_sid: "AC_test",
+        auth_token: "tok",
+        phone_number: "+18445550100",
+        operator_number: "+15033412655",
+        voice_enabled: true,
+        sms_enabled: true,
+        messaging_service_sid: "MG_test"
       })
 
-      {:ok, view, _html} = live(conn, "/phone")
-      dial(view, "5035550142")
-
-      view |> element("#phone-dial-call") |> render_click()
-      html = view |> element("#phone-call-confirm-place") |> render_click()
-
-      # The opt-out list is the SMS one on purpose — voice has no STOP, and it is
-      # the same human. A button that ignored it would be the loophole.
-      assert html =~ "replied STOP"
+      on_exit(fn -> Application.put_env(:buster_claw, :twilio, previous) end)
     end
 
-    test "a selected contact's Call button dials their stored number", %{conn: conn} do
-      {:ok, contact} = Contacts.create_contact(%{name: "Dana Printshop", phone: "+15035550142"})
+    test "the phone tab still originates nothing", %{conn: conn} do
+      {:ok, _contact} = Contacts.create_contact(%{name: "Dana Printshop", phone: "+15035550142"})
+      {:ok, view, html} = live(conn, "/phone")
 
+      # Configured, credentialed, both switches on — and the surface is the same
+      # intake surface it is with nothing set.
+      assert has_element?(view, "#phone-keypad-stage")
+      assert has_element?(view, "#phone-playback-idle")
+      refute_outbound_surface(view, html)
+
+      contacts = render(select_tab(view, "contacts"))
+      assert contacts =~ "Dana Printshop"
+      refute_outbound_surface(view, contacts)
+    end
+
+    test "and no ledger row appears from merely looking at it", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/phone")
-      dial(view, "503")
-      view |> element("#phone-dial-match") |> render_click()
 
-      assert has_element?(view, "#phone-contact-call:not([disabled])")
-      confirm = view |> element("#phone-contact-call") |> render_click()
+      select_tab(view, "contacts")
+      select_tab(view, "messages")
 
-      # The stored E.164 number, not the national digits on the display.
-      assert confirm =~ "(503) 555-0142"
-      assert contact.phone == "+15035550142"
+      # The old block leaned on this too, as its proof that a confirm step had
+      # not yet placed anything. Here it is the whole assertion: there is no path
+      # through this tab that writes an outbound row, switches or no switches.
+      assert Telephony.list_events() == []
     end
   end
 end

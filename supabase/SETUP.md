@@ -1,7 +1,14 @@
-# BusterPhone — operator console checklist (Phases 0–2)
+# BusterPhone — operator console checklist (intake only)
 
-Everything in this file happens in web consoles and a terminal; no app code
-runs until the Mac-side `BusterClaw.Telephony` context lands. The code that
+> **BusterPhone receives; it never sends.** It answers the call, records,
+> transcribes, files the voicemail in the Library, and archives inbound SMS.
+> `sms_send` and `phone_call` were deleted 08-18 — see
+> `daily-growth/roadmaps/integrations/PHONE_INTAKE_ROADMAP.md`. So there is no
+> carrier registration anywhere in this checklist: A2P 10DLC, 10DLC campaigns and
+> toll-free verification all govern *sending*, and nothing here sends. Wiring is
+> two webhooks (voice, SMS) and a drain.
+
+Everything in this file happens in web consoles and a terminal. The code that
 deploys from here lives in this directory (`functions/`, `migrations/`) per
 the roadmap rule: the Edge Function is app code, so it's versioned in the
 repo even though it runs on Supabase.
@@ -80,8 +87,8 @@ repo even though it runs on Supabase.
 > the shared Supabase project was torn down 07-18 — only the dedicated project
 > answers now.
 
-1. Sign up at https://www.twilio.com (upgrade out of trial — trial numbers
-   inject a preamble message and can only call verified numbers).
+1. Sign up at https://www.twilio.com (upgrade out of trial — a trial account
+   makes every caller sit through a Twilio preamble before your greeting).
 2. Buy a **local 10-digit number** with Voice + SMS capability
    (Phone Numbers → Buy a Number). ~$1–2/mo.
 3. Copy **Account SID** and **Auth Token** from the console home into the
@@ -93,15 +100,13 @@ repo even though it runs on Supabase.
    - dropdown → **Webhook**
    - URL → `https://<PROJECT_REF>.supabase.co/functions/v1/voice`
    - method → **HTTP POST**
-5. Add an **emergency address** to the number. Twilio warns about a $75 charge
-   per emergency call without one. Outbound calling landed 08-15, but **an
-   emergency number is unreachable by construction**: `phone_call` normalizes to
-   E.164 and rejects anything that is not 10 digits, 11 starting with `1`, or a
-   `+` followed by 8–15 — so `911` is refused as an invalid recipient before any
-   request is built. The address is still free and still worth adding; it is a
-   backstop, not the guard.
-6. Voice needs no A2P registration. Texting does; follow the Phase 2 activation
-   checklist below before turning on outbound sends.
+5. Add an **emergency address** to the number if Twilio asks for one. Twilio
+   warns about a $75 charge per emergency call placed without one; this install
+   originates no calls at all, so there is nothing here that could dial one. The
+   address is free — add it and stop thinking about it.
+6. For SMS, set the number's inbound messaging webhook — §4. **There is no
+   Brand, Campaign, or toll-free verification to file**, because those register
+   a *sender* and this number only receives.
 
 ## 2b. Caller PINs (the credential caller ID is not)
 
@@ -141,7 +146,7 @@ Set one from the in-app terminal (or any `./buster-claw` shell):
 > 147 KB `.mp3` in Storage, a `telephony_events` row, and the transcript landing
 > on the follow-up callback ~40 s later. The relay half is proven.
 
-**Phase 0 — reachability.** Call the number from your phone. You should hear
+**Reachability.** Call the number from your phone. You should hear
 the greeting and a beep. This proves the whole point: a loopback-only app is
 reachable from the phone network with zero open ports on the Mac.
 
@@ -162,7 +167,7 @@ returned zero rows for requests we could prove had happened (including a manual
 never called. Twilio's **Monitor → Logs → Errors** is the trustworthy source: it
 records the HTTP status Twilio actually received.
 
-**Phase 1 (relay half) — capture.** Leave a message after the beep, hang up,
+**Capture, relay half.** Leave a message after the beep, hang up,
 then check the Supabase dashboard:
 
 - **Storage → recordings** — a `<date>/voicemail-RExxxx.mp3` you can play.
@@ -170,7 +175,7 @@ then check the Supabase dashboard:
   number in `from_number`, `synced = false`; `transcript` fills in ~30–60 s
   after the recording row appears (separate Twilio callback).
 
-**Phase 1 (Mac half).** With `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` in
+**Capture, Mac half.** With `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` in
 `.env` (exactly those names — `config/runtime.exs:102-103`; the drain child is
 simply absent from the supervision tree if either is missing), start the app
 with `./scripts/dev.sh`. Within ~30 s `BusterClaw.Telephony.Drain` ticks, pulls
@@ -201,78 +206,75 @@ the `.mp3` into the Library, inserts into local SQLite, and the row flips to
 - Secrets live in two places by design (app + Supabase env). Documented risk;
   Sentinel can't see the Edge Function.
 
-## 4. Phase 2 SMS activation
+## 4. Inbound SMS
 
-The code path is fail-closed. Inbound can be deployed immediately; outbound
-will return `sms_disabled` until the operator deliberately flips its kill switch.
+Voice and SMS are two separate webhooks on the same number, so the texting half
+is wired independently of the calling half and can be done later. There is
+nothing to register and no switch to flip: the number receives, the function
+archives, and no code path can reply.
 
-1. In Twilio, register an A2P 10DLC Brand and Campaign. A Sole Proprietor Brand
-   is the current Twilio path for a US/Canadian direct customer without an EIN;
-   use a Standard Brand when the business has an EIN. Campaign approval can take
-   days or weeks, so do this before promising an activation date.
-2. Create a **Messaging Service**, attach `+13603646763` to its sender pool, and
-   associate the approved campaign. Record its `MG...` SID.
-3. Keep Twilio's opt-out handling enabled. The inbound function stores
-   `OptOutType`; the Mac archives STOP/START/HELP traffic without dispatching it
-   or sending a second response. `sms_send` also refuses an opted-out recipient
-   until a later START/UNSTOP event restores consent.
-4. Point the inbound messaging webhook (HTTP POST) at:
+1. Point the number's **inbound messaging webhook** (HTTP POST) at:
 
    ```text
    https://<PROJECT_REF>.supabase.co/functions/v1/sms
    ```
 
-5. Run `supabase db push`, set `PUBLIC_SMS_URL_BASE`, deploy `sms` with
-   `--no-verify-jwt`, and verify an unsigned POST returns 403.
-6. Add these to the Mac's environment. Leave the kill switch false until the
-   campaign and sender pool are correct:
+   In the console this is **Messaging Configuration** → the **"A message comes
+   in"** row (the first one — *not* "Primary handler fails"), the exact twin of
+   the Voice row in step 2.4.
+
+   **No Messaging Service is involved.** A Messaging Service exists to pool
+   senders and carry a campaign; the number receives directly, so it needs
+   neither and `TWILIO_MESSAGING_SERVICE_SID` no longer exists.
+
+2. Run `supabase db push`, set `PUBLIC_SMS_URL_BASE`, deploy `sms` with
+   `--no-verify-jwt`, and check that an unsigned POST is refused:
 
    ```sh
-   TWILIO_MESSAGING_SERVICE_SID=MGxxxxxxxx
-   BUSTER_CLAW_SMS_ENABLED=false
-   BUSTER_CLAW_SMS_DAILY_RECIPIENT_CAP=20
+   curl -s -o /dev/null -w '%{http_code}\n' -X POST \
+     https://<PROJECT_REF>.supabase.co/functions/v1/sms   # expect 403
    ```
 
-7. Send a real phone an inbound text. Within one drain interval it should appear
-   under `/phone`; only a number in `memory/trusted-phone-numbers.md` should
-   create an `sms-triage` Dispatch item.
-8. After campaign approval, set `BUSTER_CLAW_SMS_ENABLED=true`, restart the app,
-   and run one controlled outbound test:
+   `PUBLIC_SMS_URL_BASE` is the SMS twin of the `PUBLIC_URL_BASE` trap in step
+   1.4 — same rewritten `req.url`, same signature mismatch, same silent 403.
 
-   ```sh
-   ./buster-claw run sms_send --json '{"to":"+15551234567","body":"BusterPhone SMS test"}'
-   ```
+3. STOP/START/HELP arrive as ordinary inbound messages. The function records
+   Twilio's `OptOutType` and the Mac archives that traffic without dispatching
+   it and without answering it. Keyword handling is Twilio's business at the
+   carrier level; ours is only to file what arrived — there is no send to
+   suppress.
 
-   Confirm the command returns a Twilio `SM...` SID, `/phone` shows the outbound
-   row, Sentinel records `outbound_send`, and a send above the daily recipient
-   cap is refused. Trial accounts can only send to verified recipient numbers.
+4. Text the number from a real phone. Within one drain interval (~30 s) it
+   should appear under `/phone`; only a number in
+   `memory/trusted-phone-numbers.md` should create an `sms-triage` Dispatch
+   item. A stranger's text is archived and goes no further.
 
-### Outbound calling, which is a separate switch and needs none of the above
+This needs no new environment variables. `SUPABASE_URL` and
+`SUPABASE_SERVICE_ROLE_KEY` from §3 are the whole Mac-side configuration — one
+drain carries voicemail and text alike.
 
-`phone_call` shipped 08-15 and is gated by its own kill switch. **It does not
-wait on A2P** — that registration is an SMS gate and touches voice in neither
-direction — so it can be turned on while the steps above are still stuck:
+## 5. The commands that exist once it's up
 
-```sh
-TWILIO_PHONE_NUMBER=+13603646763        # the number the far end sees
-OPERATOR_PHONE_NUMBER=+15551234567      # YOUR phone — this is the one that rings first
-BUSTER_CLAW_VOICE_ENABLED=false
-```
-
-Both numbers are required, and either may live in the Clinch instead. Restart
-the app after setting them, then:
+Ten, and none of them reach the phone network — they read the ledger or edit
+who is trusted:
 
 ```sh
-./buster-claw run phone_call --json '{"to":"+15551234567"}'
+./buster-claw run phone_list                                  # newest first; kind/unheard_only/limit
+./buster-claw run phone_get --json '{"id":12}'                # transcript + recording path
+./buster-claw run phone_stats                                 # totals, unheard, by kind
+./buster-claw run phone_mark_heard --json '{"id":12}'         # clears the blinking light
+./buster-claw run phone_trusted_list
+./buster-claw run phone_trusted_add --json '{"number":"+15551234567"}'
+./buster-claw run phone_trusted_remove --json '{"number":"+15551234567"}'
 ```
 
-Your own phone rings first; answering bridges you to the far end. **A trial
-Twilio account can only dial numbers verified in the console**, so an upgraded
-(funded) account is the real prerequisite — not a business entity, and not any
-registration. No Supabase function is involved — the `<Dial>` document travels inline on the request that
-creates the call, so there is no public endpoint for this path at all. Nothing
-is deployed and nothing calls back.
+plus the three `phone_pin_*` verbs in §2b. The trusted-number list is what
+decides whether an inbound message becomes agent work at all, and on the
+voicemail side the caller PIN is the second factor on top of it — remove either
+and that caller stops driving the queue. Everything else is still recorded and
+still readable; it just never becomes a Dispatch item.
 
-Primary Twilio references: [Message resource](https://www.twilio.com/docs/messaging/api/message-resource),
-[A2P 10DLC quickstart](https://www.twilio.com/docs/messaging/compliance/a2p-10dlc/quickstart),
-and [Advanced Opt-Out](https://www.twilio.com/docs/messaging/tutorials/advanced-opt-out).
+Primary Twilio references: [Record TwiML](https://www.twilio.com/docs/voice/twiml/record),
+[incoming message webhook](https://www.twilio.com/docs/messaging/guides/webhook-request),
+and [webhook security](https://www.twilio.com/docs/usage/webhooks/webhooks-security)
+— which is the `X-Twilio-Signature` check both functions do fail-closed.

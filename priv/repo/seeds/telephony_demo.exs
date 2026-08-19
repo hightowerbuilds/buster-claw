@@ -117,29 +117,34 @@ else
       observe: false
     )
 
+  # Inbound only, and deliberately so. This thread used to alternate
+  # inbound/outbound — the agent answering "$120, pickup in Sellwood" — which
+  # demonstrated a capability the phone no longer has (PHONE_INTAKE_ROADMAP,
+  # 08-18: outbound SMS deleted). Real `direction: "outbound"` rows that predate
+  # that cut stay in the database, because they are a true record of something
+  # that happened; a *seed* that manufactures them is not a record, it is an
+  # advertisement for a deleted feature, rendered on the /phone tab to anyone
+  # who runs the demo.
+  #
+  # An unanswered thread is also the more honest demo: this is what intake
+  # actually looks like, and the second message arriving because the first got
+  # no reply is the texture a two-way thread hid.
   sms_thread = [
-    {"inbound", "Hey, is the workbench still for sale?", 5 * 3600},
-    {"outbound", "It is — $120, pickup in Sellwood. Evenings work best.", 5 * 3600 - 240},
-    {"inbound", "Great. Would 6:30 tomorrow work?", 4 * 3600},
-    {"outbound", "6:30 works. I'll text the address in the morning.", 4 * 3600 - 120}
+    {"Hey, is the workbench still for sale?", 5 * 3600},
+    {"Still interested if it is — I can pick up evenings.", 4 * 3600},
+    {"No rush, just let me know either way.", 3 * 3600}
   ]
 
   sms_thread
   |> Enum.with_index(1)
-  |> Enum.each(fn {{direction, body, seconds_ago}, index} ->
-    {from, to} =
-      case direction do
-        "inbound" -> {"+15035550177", "+18446878016"}
-        "outbound" -> {"+18446878016", "+15035550177"}
-      end
-
+  |> Enum.each(fn {{body, seconds_ago}, index} ->
     {:ok, _} =
       Telephony.record_event(
         %{
-          direction: direction,
+          direction: "inbound",
           kind: "sms",
-          from_number: from,
-          to_number: to,
+          from_number: "+15035550177",
+          to_number: "+18446878016",
           body: body,
           twilio_sid: "DEMO-sms-#{index}",
           occurred_at: TelephonyDemo.ago(seconds_ago),
@@ -157,14 +162,14 @@ else
         from_number: "+19715550163",
         to_number: "+18446878016",
         body: "Your package was delivered to the front porch.",
-        twilio_sid: "DEMO-sms-5",
+        twilio_sid: "DEMO-sms-4",
         occurred_at: TelephonyDemo.ago(30 * 3600),
         metadata: %{"demo" => true}
       },
       observe: false
     )
 
-  IO.puts("Seeded telephony demo data: 2 voicemails (1 unheard), 1 missed call, 5 texts.")
+  IO.puts("Seeded telephony demo data: 2 voicemails (1 unheard), 1 missed call, 4 inbound texts.")
 end
 
 # Contacts seed separately so re-runs after the events exist still add them.

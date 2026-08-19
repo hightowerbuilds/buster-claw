@@ -299,23 +299,30 @@ defmodule BusterClawWeb.Explained.Cmd do
       <.example
         n={3}
         title="The phone desk"
-        want="Voicemail triage and a quick text back, from the same chat."
-        needs="Messages in the archive for the reads. The text needs outbound SMS configured and explicitly switched on — off by default."
-        touches="Reads the phone log; clears one message's unheard flag; sends a real, unrecallable text."
-        confirm="`sms_send` is policy-gated — an untrusted-provenance run is blocked and files a pending approval. The reads are safe-tier and `phone_mark_heard` is an explicit verb rather than a side effect of reading."
-        result="Transcripts in chat, the light cleared on that one message, the text in its thread. With SMS not enabled the send refuses outright — it never half-sends."
+        want="Voicemail triage from the same chat as everything else."
+        needs="Messages in the archive. Nothing else — these are local reads plus one small write."
+        touches="Reads the phone log and one message's transcript, then clears that message's unheard flag. Sends nothing: the phone line only receives."
+        confirm="None. The reads are safe-tier, and `phone_mark_heard` is ungated on purpose — what protects the blinking light is that it is a separate verb you have to ask for, not a side effect of reading."
+        result="Transcripts in chat and the light cleared on the one message you named. Everything else keeps blinking."
       >
-        <.prompt text="Any voicemails since yesterday? Mark the one from Dana heard, and text her: on my way." />
+        <.prompt text="Any voicemails since yesterday? Read me the one from Dana, then mark just that one heard." />
         <ol class="ic-unfold">
           <li>
-            <code>phone_list</code> pulls recent messages — transcripts included —
-            and <code>phone_mark_heard</code> clears Dana's.
+            <code>phone_list</code>
+            pulls recent messages — transcripts included — and <code>phone_get</code>
+            opens Dana's with its body and the path to the recording.
           </li>
           <li>
-            <code>sms_send</code> is the sharp one: gated, disabled until you've
-            explicitly configured outbound SMS, and capped per recipient per day.
-            Until it's switched on, the command refuses safely — it never
-            half-sends.
+            <code>phone_mark_heard</code>
+            clears that one, and only because you asked. Reading deliberately does
+            not clear it: the blinking light is yours, and an agent skimming the
+            log must not switch it off behind your back.
+          </li>
+          <li>
+            There is no verb here that texts her back. BusterPhone is an intake —
+            it answers, records and archives, and replying is you, on your own
+            phone. The phone tutorial in this rail says why that is the design
+            rather than a gap.
           </li>
         </ol>
         <p class="text-sm leading-relaxed text-base-content/70">

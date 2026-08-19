@@ -114,35 +114,32 @@ if config_env() != :test do
     telephony_relay_key: telephony_relay_key,
     telephony_drain_enabled: telephony_drain_enabled
 
-  enabled? = fn var -> System.get_env(var) in ["1", "true", "TRUE", "yes", "YES"] end
-
-  # Twilio REST creds on the Mac. Both outbound capabilities are fail-closed even
-  # when credentials are present: SMS additionally requires a Messaging Service
-  # SID and BUSTER_CLAW_SMS_ENABLED=true, and calling requires
-  # BUSTER_CLAW_VOICE_ENABLED=true. Two switches, because a text and a phone call
-  # are different capabilities with different costs — and outbound SMS waits on
-  # A2P registration while outbound voice does not.
+  # Twilio REST creds on the Mac, read only. BusterPhone is intake-only
+  # (`PHONE_INTAKE_ROADMAP.md`): the two kill switches that used to live here —
+  # BUSTER_CLAW_SMS_ENABLED and BUSTER_CLAW_VOICE_ENABLED — guarded outbound SMS
+  # and outbound calling, and both capabilities were deleted 08-18. A deleted
+  # capability needs no switch, and the Messaging Service SID they gated with it
+  # has nothing left to address. All that remains is the credential pair the cost
+  # back-fill authenticates its GETs with.
   #
   # NOT gated on TWILIO_ACCOUNT_SID being set, which it was until 08-15. The
   # credentials themselves are read through the Clinch with env as fallback, so an
   # operator who stored them in the Clinch has no TWILIO_ACCOUNT_SID in env — and
-  # this whole map went unset, which meant the kill switches read false and could
-  # never be flipped on. A switch you cannot turn on is not a safeguard.
+  # this whole map went unset.
   config :buster_claw, :twilio, %{
     account_sid: System.get_env("TWILIO_ACCOUNT_SID"),
     auth_token: System.get_env("TWILIO_AUTH_TOKEN"),
-    messaging_service_sid: System.get_env("TWILIO_MESSAGING_SERVICE_SID"),
-    sms_enabled: enabled?.("BUSTER_CLAW_SMS_ENABLED"),
-    voice_enabled: enabled?.("BUSTER_CLAW_VOICE_ENABLED")
+    # `phone_number` is NOT new here and is not part of the intake-only cut — it
+    # is a pre-existing bug this cut made visible. `AppKeys.from_env/1` has read
+    # `twilio(:phone_number)` all along, and this map has never set it, so the
+    # `TWILIO_PHONE_NUMBER` fallback that `app_keys.ex` advertises to the
+    # operator (`env:` on the settings row) has never once resolved. It went
+    # unnoticed because the only reader was the dialler's caller-ID line, on a
+    # surface that was off by default. The Phone tab now names the number for
+    # everyone, so the dead fallback would have read "No number configured" to
+    # an operator who had configured it exactly as the UI told them to.
+    phone_number: System.get_env("TWILIO_PHONE_NUMBER")
   }
-
-  sms_daily_recipient_cap =
-    case Integer.parse(System.get_env("BUSTER_CLAW_SMS_DAILY_RECIPIENT_CAP") || "20") do
-      {cap, ""} when cap > 0 -> cap
-      _ -> 20
-    end
-
-  config :buster_claw, :sms_daily_recipient_cap, sms_daily_recipient_cap
 end
 
 # Finnhub API key for the finance_quote / finance_news commands. Optional — when

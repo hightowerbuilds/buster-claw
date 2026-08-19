@@ -22,10 +22,15 @@ defmodule BusterClawWeb.Widget.CommsPanel do
 
   # The Contacts tab as a comms hub — three inline columns: contacts (with
   # per-person Text / Call / Email), recent phone activity, and the trusted-sender
-  # list. Text and Call are inert for now (outbound telephony isn't wired — the
-  # same decorative state as the /phone dialpad); Email drops a templated request
-  # into the home chat, handled by StatusLive's `email_contact`. Rows/people are
-  # pre-shaped by StatusLive, so this stays presentational.
+  # list. Text and Call are inert, and not as a stopgap: BusterPhone is
+  # intake-only (PHONE_INTAKE_ROADMAP, 08-18), so outbound SMS and calling were
+  # deleted along with the /phone dialler — there is no path left to wire these
+  # two buttons to. They stay because the rows are the same shape either way and
+  # a disabled control names a capability the machine deliberately doesn't have;
+  # see the `title`/`aria-label` pair below for how that reads to a user. Email
+  # drops a templated request into the home chat, handled by StatusLive's
+  # `email_contact`. Rows/people are pre-shaped by StatusLive, so this stays
+  # presentational.
   def comms_panel(assigns) do
     ~H"""
     <section id="home-comms-panel" class="ic-panel grid h-full grid-cols-3 overflow-hidden">
@@ -87,17 +92,19 @@ defmodule BusterClawWeb.Widget.CommsPanel do
               <span class="truncate font-display text-xs font-bold text-base-content">{c.name}</span>
             </span>
             <div class="flex shrink-0 items-center gap-1">
-              <%!-- Inert: outbound telephony isn't wired. `title` is a hover
-                    tooltip only, so these carry an aria-label too — otherwise the
-                    accessible name is empty (the icons are decorative) and the
-                    "not built" state is reachable by mouse alone. --%>
+              <%!-- Inert by design, not pending: outbound telephony is deleted.
+                    `title` is a hover tooltip only, so these carry an aria-label
+                    too — otherwise the accessible name is empty (the icons are
+                    decorative) and the reason is reachable by mouse alone. No
+                    "yet": these strings must not promise a roadmap that was
+                    cancelled (PHONE_INTAKE_ROADMAP, 08-18). --%>
               <button
                 :if={c.phone}
                 type="button"
                 disabled
                 aria-disabled="true"
-                title="Texting isn't available yet"
-                aria-label={"Text #{c.name} — not available yet"}
+                title="This phone doesn't send texts — it only receives"
+                aria-label={"Text #{c.name} — this phone only receives"}
                 class="cursor-not-allowed rounded-xs border border-base-content/20 p-1 text-base-content/35"
               >
                 <.icon name="hero-chat-bubble-left-ellipsis" class="size-3.5" />
@@ -107,8 +114,8 @@ defmodule BusterClawWeb.Widget.CommsPanel do
                 type="button"
                 disabled
                 aria-disabled="true"
-                title="Calling isn't available yet"
-                aria-label={"Call #{c.name} — not available yet"}
+                title="This phone doesn't place calls — it only answers"
+                aria-label={"Call #{c.name} — this phone only answers"}
                 class="cursor-not-allowed rounded-xs border border-base-content/20 p-1 text-base-content/35"
               >
                 <.icon name="hero-phone" class="size-3.5" />
