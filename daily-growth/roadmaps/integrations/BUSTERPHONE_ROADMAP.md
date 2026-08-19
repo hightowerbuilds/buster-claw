@@ -195,6 +195,32 @@ transcript doc appear in the workspace without touching the app.
 
 ### Phase 2 — Texting (inbound + outbound SMS)
 
+> ## ⛔ CANCELLED 2026-08-18. The outbound half of this phase is DELETED CODE.
+>
+> **Everything below about *sending* describes software that no longer exists.**
+> `sms_send`, `Telephony.send_sms/3`, `Twilio.send_sms/3`, the Messaging Service
+> config, the kill switch and the per-recipient daily cap were all removed
+> (`e08d1cd`). BusterPhone is intake-only — see
+> [`PHONE_INTAKE`](PHONE_INTAKE_ROADMAP.md).
+>
+> **The inbound half of this phase is LIVE and unaffected.** Signed inbound SMS,
+> trusted-number Dispatch into `sms-triage`, the archive and the Sentinel
+> `:untrusted_ingest` observation all still ship. Reading "Phase 2 is cancelled"
+> as "inbound texting is gone" would be the wrong lesson: **the phase is split,
+> not deleted**, and only the sending half went.
+>
+> **The A2P paragraph immediately below is the one to distrust hardest.** It
+> calls 10DLC *"the long pole"* and *"paperwork, not code"* — and it was right
+> twice over. 10DLC was abandoned 08-15 for toll-free verification; that
+> verification was rejected 08-17 (`30484`); and on 08-18 the operator deleted
+> the capability rather than resubmit. The paperwork was never the hard part
+> because **the paperwork was the whole cost**, and the cheapest way through it
+> turned out to be not to need it.
+>
+> **The body is left exactly as written.** It was true when filed and it is the
+> record of how the money leg was reasoned about; rewriting it to match the
+> present is how a record stops being one. This notice is added above it.
+
 > **Code-complete 2026-07-18; operator activation remains.** Signed inbound SMS,
 > trusted-number Dispatch, `sms_send`, local outbound persistence, Sentinel audit,
 > kill switch, and daily recipient cap are implemented and tested. The `/phone`

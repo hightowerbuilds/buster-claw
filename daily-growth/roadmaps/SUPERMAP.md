@@ -44,7 +44,7 @@ Three rules keep that from recurring —
    wording through both splits. Scripts and CI cite `III.E/F/G/J` by name
    (`codesign_release.sh`, `build_desktop.sh`, `Entitlements.plist`,
    `release-desktop.yml`); commits cite `G-n`. **Nothing was renumbered.**
-2. **Each number lives in exactly one map.** `G-1`–`G-17` in Apple, `G-21`–`G-24`
+2. **Each number lives in exactly one map.** `G-1`–`G-17` in Apple, `G-21`–`G-24` and `G-45`
    in Website, `G-25`–`G-35` in Trust and Support, `G-36`–`G-41` in Release Gate,
    and **`G-18`–`G-20` plus `G-42`–`G-44` in Update**. A number in two places is
    precisely the old failure mode — check before adding one.
@@ -53,7 +53,7 @@ Three rules keep that from recurring —
    > That is rule 1 and rule 2 working together rather than against each other:
    > a gate may change *home* when its subject does, but it never changes
    > *name* — commits and checklists cite `G-n`, and renumbering would break
-   > every one of them. **Next free number: `G-45`.**
+   > every one of them. **Next free number: `G-46`.** (`G-45` claimed 08-18 by `WEBSITE`, for two false claims in the public `documentation.md`.)
 3. **Status has one home, and this is it.** What disagreed last time was *what
    state we are in*. Every map states its own phase; this page states which of
    them is next.

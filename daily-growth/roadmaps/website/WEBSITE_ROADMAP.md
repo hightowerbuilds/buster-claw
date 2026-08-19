@@ -107,6 +107,61 @@ because this is one of the four surfaces that has to change.
 **14.0**, and the app requires the user's own Claude subscription. A visitor who
 learns either of those *after* downloading has been wasted, and tells people so.
 
+> ### Measured 08-18: this is worse than G-24 describes, and G-24 should be re-read
+>
+> `G-24` is written as a **placement** problem — state the floor *before* the
+> download button rather than after. The site does not have a placement problem
+> with the floor. **It has a wrong number.**
+>
+> `documentation.md` says *"Minimum macOS version: 10.15 (Catalina)."*
+> `desktop/tauri/tauri.conf.json:38` says `"minimumSystemVersion": "14.0"`.
+> **That is nine major versions apart**, and the failure it produces is the exact
+> one `scripts/check_macos_floor.sh` was written to prevent — quoted from its own
+> header:
+>
+> > *"macOS refuses to load a Mach-O whose minimum-OS load command is newer than
+> > the running system. So on macOS 11, 12, or 13 that bundle installs, passes
+> > Gatekeeper, launches the shell — and then dyld rejects `beam.smp` and Phoenix
+> > never starts. The user gets a window that never becomes an app."*
+>
+> So a visitor on Catalina through Ventura reads a supported-version claim,
+> downloads, installs, launches, and gets **a window that never becomes an app**.
+> There is a build gate asserting this invariant inside the bundle. **The public
+> claim sits outside every gate we have**, which is how it got to be nine
+> versions stale.
+>
+> **Moving a correct number earlier on the page is a different job from replacing
+> a false one, and only the second is urgent.** Nothing here can fix it — the
+> site is a different repository — but the number to put there is `14.0`, and it
+> should be taken from `tauri.conf.json` rather than retyped.
+
+### G-45 — `documentation.md` states two more things that are not true **[R2]**
+
+- [ ] **G-45.** Correct or remove the platform-support table and the auto-update
+      paragraph in the public `documentation.md`.
+
+Found 08-18 while checking whether busterclaw.lol serves the current build. Both
+were verified against the code, not inferred:
+
+| The site says | The code says |
+|---|---|
+| *"Linux \| Supported \| AppImage, .deb"* | `tauri.conf.json:32` — `"targets": ["app", "dmg"]`. **macOS only.** No Linux bundle is produced by anything in the repo |
+| *"iOS / Android \| Research"* | nothing in the tree targets mobile. Harmless as aspiration, misleading in a table whose other rows are read as fact |
+| *"Auto-updates are delivered through GitHub Releases via the **Tauri updater plugin**. The app checks for updates on launch and downloads them in the background."* | **there is no updater plugin** — `grep updater` over `tauri.conf.json` and `Cargo.toml` returns nothing. The real mechanism is a minisign-signed `latest.json` feed (`scripts/build_update_feed.sh`), `G-19` — the button — **is unbuilt**, and nothing checks anything on launch |
+
+**Why this is filed as a gate rather than a typo.** The update sentence is not
+merely wrong, it is *reassuring*: a reader who believes updates arrive in the
+background will not go looking for them, and there is no mechanism that will ever
+bring one. That is the same shape as the `Explained.Phone` problem this codebase
+spent 08-18 deleting — **a page describing a feature that does not exist, in the
+confident present tense.** The difference is that this one is public.
+
+**Sequencing note.** `G-45` cannot be finished before `G-19` and the update feed
+exist, because the honest sentence today is *"updates are manual: download the
+new DMG."* Write that sentence now and revise it when the feed ships, rather than
+leaving the false one standing until it happens to become true — which is exactly
+how `README.md:31` survived being wrong for three days.
+
 ---
 
 ## The landing test

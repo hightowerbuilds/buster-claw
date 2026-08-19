@@ -54,6 +54,16 @@ A stranger judges maturity by the weakest surface they click.
       switched on and names the variable that turns it on — a disabled control with its
       reason in a `title` is the same G-37 failure, so the disclosure survives its own
       feature.
+      **Re-read 08-18, still closed, and the disclosure survived its feature a THIRD
+      time.** Outbound calling was deleted with the rest of outbound
+      ([`PHONE_INTAKE`](../integrations/PHONE_INTAKE_ROADMAP.md)), so the keypad and its
+      Call button are gone rather than relabelled — deliberately, because returning the
+      keypad to decoration is the exact state this gate first rejected. What remains are
+      `comms_panel`'s two inert Text/Call buttons, and their copy moved from *"not
+      available **yet**"* to naming a permanent absence: **"yet" promises a roadmap that
+      was cancelled.** *The rule this adds: when a feature is removed, its disclosure
+      must stop implying it is coming — a label can go stale in the direction of
+      optimism just as easily as in the direction of "unbuilt".*
 - [x] **G-38. CLOSED BY DELETION 08-08.** *Decide what to do about Trading in the dock
       while its safety remediation is open (**R9**).* Decided in the strongest available
       way: the surface is gone. Nothing to label, nothing to gate, no unsafe path for a
