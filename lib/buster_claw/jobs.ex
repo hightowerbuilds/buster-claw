@@ -12,9 +12,74 @@ defmodule BusterClaw.Jobs do
   require Logger
 
   alias BusterClaw.Library.{Artifact, Frontmatter}
+  alias BusterClaw.Seed
 
   @subdir "jobs"
   @roster "README.md"
+
+  # ── Shipped seed versions ────────────────────────────────────────────────
+  #
+  # Every version of each job default this app has ever written to a workspace,
+  # as sha256 digests, **oldest first, current last**. `BusterClaw.Seed` uses
+  # them to tell an untouched file from an operator's: a file matching any digest
+  # here was written by us and may be upgraded; anything else is theirs.
+  #
+  # **When you edit a `default_*` function below, APPEND its new digest here.**
+  # Never replace an entry and never reorder — the old digests are what identify
+  # the installs still holding them. `mix test test/buster_claw/seed_test.exs`
+  # fails with the digest to add if you forget, which is the only reason this
+  # list can be trusted; a forgotten entry is silent, and fails in the safe
+  # direction (a file that could have upgraded doesn't), so nothing else would
+  # ever surface it.
+  #
+  # They live here rather than beside each default because a module attribute
+  # must be defined before the function that reads it, and `seeds/0` is above
+  # them all.
+  #
+  # Digests recovered from git history on 08-18 by parsing each past revision of
+  # this file, not by hand.
+
+  @mail_triage_versions [
+    "dd586c92daa95919195de058424c3ffc0c329e3fd988592711da6cf2865a0911",
+    "0e8af697c9a415cd66cfb87b80c173aa7c99d0c8ba611cad0ff46b4117bb8190",
+    "a51f221931a43ce1012bd9f587c6cf44bc998ea13b01ef8e9cf02b84587c3aa3",
+    "f7c2be50713076f612c375adb2d44940d95833c8f326094e3d5362be2c6bdf1c",
+    "01694fd26bde2ba4b223836aa6a99f501ba87ecea3cd752ace6f82ca6f0bd50e",
+    "dc431e56e0e0c360c903eaa7dc0126d64b417a9ade3a279d1eb6af509d01ba76",
+    "27df0ea6cd1af05f69c28478d8faac8dd3646e495c0d5d208c5fc74cfa779cf7",
+    # 08-18: outbound deleted — the brief stopped promising a reply.
+    "805ba4572a4669b97a5d227c5edcf3e6d5bb0902ec496e5e848a2d106ed2dca8"
+  ]
+
+  @voicemail_triage_versions [
+    "1e6a4fc7f0986717467c13b128c1cd9c02e5eee1f27cf681eabae652e4d908b8",
+    "acb52e8da7a41544a28ecc2d4520e22694870099ad25bf03cb7454d94a0eb74c",
+    "e223cc08872956f98ec0554048aa8ef38796ac8d469aebd860036e6fe3626abe",
+    "a4338a7dac30d8be020bda03c2190c78dd6d360880d0ed22ca365ce31c038b29",
+    "b8b3e00ccfe10636c5326f744c560e53378056ed8883a9b0bff977dc368ca5b2",
+    "f6a58ddcf389f0804af3757d404be700d6a67c5f939979c85dc81a71012f62d3",
+    "5beb649da6ae75be7fa2384daa637915e0b6c90502ec6d59a529e27e6524d872",
+    # 08-18: "voicemail is not consent to text" → "You cannot reply at all".
+    "f2a70a2ff3b4ebc08eb4fe8efdfe80842ac4c6f58092e54e9d1748d6753e70cc"
+  ]
+
+  # The one that forced this mechanism to exist. The first digest is the brief
+  # that told the agent to run `sms_send` — a command deleted on 08-18. Every
+  # workspace created before then is holding it, and under the old create-only
+  # seeding would have held it forever.
+  @sms_triage_versions [
+    "d3aa96c6afe7839c8cf4b03a031febdcd8980cafc7e2ac95bf82bc29c2e78088",
+    "d89c4175f2a8ee696a519c6aa8c04db3108283e79a4764f142e3372bc75c3e35"
+  ]
+
+  @roster_versions [
+    "31e83b1c7693d1a4f32728066530c77f5481760c81c59985dca44bc78cc6a11c",
+    "193d469e1bb4b345ebfc93730e2ac8d0bcd100a65416060d59db058db97b2c11",
+    "4abbf625c2ae3560bb1600cc677af637bddb0900c3664258296bddb86ec4ef74",
+    "3c0763541b402547fd0b496467f00802c981f880e805a07edc5a5c115580eba8",
+    # 08-18: the roster promised sms-triage would "reply to the sender".
+    "73a90d42d836a73a207ebd09de32bb5604ae57c5ec38686c08f807193bf5fc41"
+  ]
 
   def dir, do: Artifact.workspace_path(@subdir)
   def roster_path, do: Path.join(dir(), @roster)
@@ -46,22 +111,61 @@ defmodule BusterClaw.Jobs do
   @doc """
   Best-effort seed: create `jobs/` with channel-triage jobs + roster,
   a `memory/trusted-email-senders.md` template, and the agent's
-  `.claude/settings.json` (autonomous — see `seed_agent_settings/0`). Never
-  overwrites an existing operator-authored file.
+  `.claude/settings.json` (autonomous — see `seed_agent_settings/0`).
+
+  The four job files go through `BusterClaw.Seed`, so a file the operator has
+  never touched **upgrades** when its default improves, and a file they have
+  edited is left alone. Returns `{:ok, outcomes}` where `outcomes` maps each
+  seeded path's basename to `:created | :current | :upgraded | :kept | :error`.
+
+  `seed_trusted_senders/0` and `seed_agent_settings/0` are deliberately still
+  create-only — see the note on `seeds/0`.
   """
   def ensure do
     File.mkdir_p!(dir())
-    maybe_write(job_path("mail-triage"), default_mail_triage())
-    maybe_write(job_path("voicemail-triage"), default_voicemail_triage())
-    maybe_write(job_path("sms-triage"), default_sms_triage())
-    maybe_write(roster_path(), default_roster())
+
+    outcomes =
+      Map.new(seeds(), fn {path, content, versions} ->
+        {:ok, outcome} = Seed.write(path, content, versions)
+        {Path.basename(path), outcome}
+      end)
+
     seed_trusted_senders()
     seed_agent_settings()
-    :ok
+    {:ok, outcomes}
   rescue
     error ->
       Logger.warning("Jobs.ensure failed: #{Exception.message(error)}")
       :error
+  end
+
+  # The four upgradable seeds, as {path, current content, every shipped digest}.
+  #
+  # `memory/policy.md`, the trusted-sender lists and the agent settings are NOT
+  # here and stay create-only, on purpose. `G-44` treats them as the same
+  # problem, and they are not: those three are **security state**, and silently
+  # replacing an operator's policy file on boot — even one that looks
+  # unmodified — is a different act from replacing a job description. Moving
+  # them needs its own decision about what an automatic tightening may do, not a
+  # list append. See `QA_BACKLOG` for the full seeder inventory.
+  defp seeds do
+    [
+      {job_path("mail-triage"), default_mail_triage(), @mail_triage_versions},
+      {job_path("voicemail-triage"), default_voicemail_triage(), @voicemail_triage_versions},
+      {job_path("sms-triage"), default_sms_triage(), @sms_triage_versions},
+      {roster_path(), default_roster(), @roster_versions}
+    ]
+  end
+
+  @doc false
+  # Exposed for `BusterClaw.SeedTest`, which pins each current digest so that
+  # editing a default without appending its digest fails the build. Without that
+  # guard the version lists rot silently in the safe direction — every install
+  # would look "edited" and quietly stop upgrading forever.
+  def seed_manifest do
+    Enum.map(seeds(), fn {path, content, versions} ->
+      %{name: Path.basename(path), content: content, versions: versions}
+    end)
   end
 
   # --- internals ---------------------------------------------------------
@@ -152,6 +256,8 @@ defmodule BusterClaw.Jobs do
 
   # --- seed templates ----------------------------------------------------
 
+  # Editing this text? Append its new digest to `@mail_triage_versions` at the top of
+  # this module, or installs holding the old one never receive it.
   defp default_mail_triage do
     """
     ---
@@ -217,6 +323,8 @@ defmodule BusterClaw.Jobs do
     """
   end
 
+  # Editing this text? Append its new digest to `@voicemail_triage_versions` at the top of
+  # this module, or installs holding the old one never receive it.
   defp default_voicemail_triage do
     """
     ---
@@ -294,6 +402,8 @@ defmodule BusterClaw.Jobs do
     """
   end
 
+  # Editing this text? Append its new digest to `@sms_triage_versions` at the top of
+  # this module, or installs holding the old one never receive it.
   defp default_sms_triage do
     """
     ---
@@ -343,6 +453,8 @@ defmodule BusterClaw.Jobs do
     """
   end
 
+  # Editing this text? Append its new digest to `@roster_versions` at the top of
+  # this module, or installs holding the old one never receive it.
   defp default_roster do
     """
     # Jobs

@@ -336,7 +336,7 @@ installed.** Today that is a design note with nobody affected. The moment update
 exist it is a live divergence that widens with every release, and it is invisible —
 the app looks fine, it is just running last year's defaults.
 
-- [ ] **`G-44`.** Seeds carry a version. On boot, a seed file whose bytes still
+- [x] **`G-44`.** Seeds carry a version. On boot, a seed file whose bytes still
       match the default it shipped with is **unmodified**, so it upgrades. A seed
       the operator has touched is **theirs**, so it does not — and the app says
       what it declined to update and why.
@@ -345,9 +345,55 @@ The comparison is bytes, not timestamps, and the previous shipped default is the
 thing compared against — which means the app must retain them. That is the whole
 design; it is smaller than the problem it solves.
 
+> ### Built 08-18 — `BusterClaw.Seed`, and why it stopped being a [R2] item
+>
+> **The prediction above came true four months early, and not gently.** This was
+> filed as *"the one that only matters over years"* with *"nobody affected"*.
+> Then BusterPhone became intake-only, `sms_send` left the command catalog, and
+> every workspace in existence was left holding a seeded job brief instructing
+> the agent to run **a command that no longer exists**. Not a stale default — a
+> broken one, in the file the agent reads to decide what to do.
+>
+> So the mechanism exists now: `lib/buster_claw/seed.ex`, wired for the four
+> `Jobs` seeds (`mail-triage`, `voicemail-triage`, `sms-triage`, the roster).
+> Four outcomes — `:created`, `:current`, `:upgraded`, `:kept`.
+>
+> **One refinement to the design as written.** It retains **digests**, not the
+> prior text. That answers the only question being asked — *is this unmodified?*
+> — at 64 bytes per version instead of a document. The cost is that the app
+> cannot show the operator a diff of what it declined to change, only that it
+> declined. Revisit if a surface ever wants the diff.
+>
+> **The failure mode is asymmetric on purpose.** An unrecognised digest is always
+> treated as the operator's, so a forgotten version entry costs an upgrade that
+> did not happen — never a file that got destroyed. That safety is also what
+> makes the version lists rot *silently*, which is why `SeedTest` pins each
+> current digest as a review-forcing snapshot: edit a default without appending
+> its digest and the build fails with the digest to add. Both directions were
+> verified by reintroducing the defect and watching them fail.
+>
+> **Historical digests were recovered from git**, by parsing every past revision
+> of `jobs.ex` and hashing each `default_*` body — 8 shipped versions of the mail
+> brief, 8 of the voicemail brief, 5 of the roster, 2 of `sms-triage`. Installs
+> holding *any* of them upgrade.
+
+**What remains of `G-44`:**
+
+- [ ] `Skills.ensure/0` (`skills.ex:305`) and `TerminalCommands.ensure/0`
+      (`terminal_commands.ex:273`) still use create-only `maybe_write/2`. Same
+      mechanism, same shape — they need version lists recovered the same way.
+- [ ] **`memory/policy.md`, the trusted-sender lists, and the agent settings are
+      deliberately NOT converted, and should not be by list-append.** `G-44`
+      treats every seed as one problem; they are not. Those three are **security
+      state**, and silently replacing an operator's policy file on boot — even
+      one that looks unmodified — is a different act from replacing a job
+      description. It needs its own decision about what an automatic *tightening*
+      may do, and to whom it should be visible. Filed here rather than done.
+
 *Cost: two days. **This is the phase most likely to be dropped and most expensive
 to add later**, because every release that ships without it widens the set of
-installs it has to reason about.*
+installs it has to reason about.* — *and the half that got built cost an
+afternoon, because the deletion that forced it had already made the case.*
 
 ---
 

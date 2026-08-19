@@ -110,7 +110,7 @@ defmodule BusterClaw.Telephony.CostTest do
   # rows it created deliberately STAYED — they are a true record of what
   # happened. What went with it was the only code that could ever price them.
 
-  defp legacy_call(attrs \\ %{}) do
+  defp legacy_call(attrs) do
     {:ok, event} =
       Telephony.record_event(
         Map.merge(

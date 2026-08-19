@@ -191,21 +191,40 @@ Also: a non-admin user account, and a non-English locale with a non-US date form
 
 ### V.8 — Seeded defaults have no upgrade path
 
-**Status: open, needs a design. Inherited 08-03 from `CHART_BUILDER_ROADMAP.md`
-(archived) — the operator flagged it as app-wide work coming soon.**
+**Status: PARTLY CLOSED 08-18. The design exists and is built —
+`BusterClaw.Seed` — and `Jobs.ensure/0`'s four files are converted. The rest of
+the table below is not.** Inherited 08-03 from `CHART_BUILDER_ROADMAP.md`
+(archived) — the operator flagged it as app-wide work coming soon.
+
+> **It stopped being hypothetical.** BusterPhone went intake-only on 08-18 and
+> `sms_send` left the catalog, which meant every existing workspace held a
+> seeded job brief telling the agent to run a **deleted command**. That is the
+> scenario this item was written to predict, and it arrived as a correctness bug
+> rather than a stale-default annoyance. See `UPDATE_ROADMAP` `G-44` for the
+> mechanism, its digests-not-documents refinement, and the guard that keeps the
+> version lists honest.
 
 `maybe_write` — `File.exists?` → skip — is the house seeding idiom, and it is
 used far more widely than the skill that surfaced it. Every one of these is
 frozen at whatever version first touched that install; improving a default
 reaches new installs only:
 
-| Seeder | Files |
-|---|---|
-| `Skills.ensure/0` | `save-note`, `shader-designer`, roster |
-| `Jobs.ensure/0` | `mail-triage`, `voicemail-triage`, `sms-triage`, roster |
-| `Jobs.seed_trusted_senders/0` | **`memory/policy.md`**, `trusted-email-senders.md`, `trusted-phone-numbers.md` |
-| `Jobs.seed_agent_settings/0` | agent settings |
-| `TerminalCommands.ensure/0` | roster, command catalog |
+| Seeder | Files | 08-18 |
+|---|---|---|
+| `Skills.ensure/0` | `save-note`, `shader-designer`, roster | open |
+| `Jobs.ensure/0` | `mail-triage`, `voicemail-triage`, `sms-triage`, roster | **DONE** — `BusterClaw.Seed`, 23 historical digests recovered from git |
+| `Jobs.seed_trusted_senders/0` | **`memory/policy.md`**, `trusted-email-senders.md`, `trusted-phone-numbers.md` | **deliberately not converted** — see below |
+| `Jobs.seed_agent_settings/0` | agent settings | **deliberately not converted** — see below |
+| `TerminalCommands.ensure/0` | roster, command catalog | open |
+
+> **The three marked "deliberately not converted" are the ones this section's
+> own next paragraph warns about, and that is exactly why they were left.** The
+> mechanism makes an unmodified file upgrade *silently, at boot*. For a job
+> description that is right. For the operator's security policy it is a
+> different act, and one worth deciding on its own terms rather than inheriting
+> from a list append — including whether an automatic tightening should be
+> announced rather than merely logged. **A converted `policy.md` would be the
+> first thing in this app that changes a security boundary without being asked.**
 
 **Note what is on that list.** `memory/policy.md` is the operator's security
 policy, and `trusted-email-senders.md` / `trusted-phone-numbers.md` gate the

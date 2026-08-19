@@ -20,7 +20,7 @@ defmodule BusterClaw.JobsTest do
   end
 
   test "ensure seeds a starter job, roster, and trusted-sender template", %{root: root} do
-    assert :ok = Jobs.ensure()
+    assert {:ok, _outcomes} = Jobs.ensure()
 
     assert File.exists?(Path.join(root, "jobs/mail-triage.md"))
     assert File.exists?(Path.join(root, "jobs/sms-triage.md"))
@@ -32,7 +32,7 @@ defmodule BusterClaw.JobsTest do
   end
 
   test "ensure seeds the agent's .claude/settings.json with bypassPermissions", %{root: root} do
-    assert :ok = Jobs.ensure()
+    assert {:ok, _outcomes} = Jobs.ensure()
 
     settings_path = Path.join(root, ".claude/settings.json")
     assert File.exists?(settings_path)
@@ -49,7 +49,7 @@ defmodule BusterClaw.JobsTest do
       ~s({"permissions":{"defaultMode":"default"}})
     )
 
-    assert :ok = Jobs.ensure()
+    assert {:ok, _outcomes} = Jobs.ensure()
 
     assert %{"permissions" => %{"defaultMode" => "default"}} =
              Path.join(root, ".claude/settings.json") |> File.read!() |> Jason.decode!()
@@ -174,5 +174,40 @@ defmodule BusterClaw.JobsTest do
     assert job.name == "Mail Triage"
 
     assert {:error, :not_found} = Commands.call("job_show", %{"key" => "nope"})
+  end
+
+  # ── The seed upgrade path (UPDATE_ROADMAP G-44) ────────────────────────────
+  #
+  # These run against the REAL bytes that shipped before 08-18, recovered from
+  # git at 89b2de9 and stored as a fixture rather than paraphrased. Everything in
+  # `BusterClaw.SeedTest` tests the mechanism in the abstract; these two are the
+  # actual workspace an operator was sitting on the morning `sms_send` was
+  # deleted, and the reason the mechanism exists at all.
+  @pre_intake_only "test/support/fixtures/sms_triage_pre_intake_only.md"
+
+  test "a real pre-08-18 workspace is upgraded off the sms_send brief", %{root: root} do
+    brief = Path.join(root, "jobs/sms-triage.md")
+    File.mkdir_p!(Path.dirname(brief))
+    File.write!(brief, File.read!(@pre_intake_only))
+
+    # Precondition: this is genuinely the broken state, not an approximation of it.
+    assert File.read!(brief) =~ "./buster-claw run sms_send"
+
+    assert {:ok, outcomes} = Jobs.ensure()
+    assert outcomes["sms-triage.md"] == :upgraded
+
+    refute File.read!(brief) =~ "sms_send",
+           "the workspace is still telling the agent to run a deleted command"
+  end
+
+  test "the same workspace with one line added by the operator is left alone", %{root: root} do
+    mine = File.read!(@pre_intake_only) <> "\n- Always CC my accountant.\n"
+    brief = Path.join(root, "jobs/sms-triage.md")
+    File.mkdir_p!(Path.dirname(brief))
+    File.write!(brief, mine)
+
+    assert {:ok, outcomes} = Jobs.ensure()
+    assert outcomes["sms-triage.md"] == :kept
+    assert File.read!(brief) == mine, "an operator's edit must survive the upgrade pass"
   end
 end

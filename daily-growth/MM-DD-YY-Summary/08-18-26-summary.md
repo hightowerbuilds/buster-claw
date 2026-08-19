@@ -261,9 +261,99 @@ machine for your agent.**
    it is another session's uncommitted file, and moving it would be taking their
    work. The `SUPERMAP` row marks it cancelled and names where it goes.
 
-> **One thing no amount of code can fix, and it is worth writing down.**
-> `jobs.ex` seeds its job prompts through `maybe_write`, which never overwrites.
-> **Every existing workspace keeps the old `sms-triage` brief telling the agent
-> to run `sms_send`** — a command that no longer exists. This is the
-> `skills_upgrade_path` problem, and today is the first time it has shipped a
-> prompt that names a deleted verb rather than merely an outdated default.
+---
+
+## Then the thing no amount of code could fix, got fixed
+
+The list above ended with a caveat: `jobs.ex` seeds its job prompts through
+`maybe_write`, which never overwrites, so **every existing workspace kept the old
+`sms-triage` brief telling the agent to run `sms_send`** — a command that had
+just stopped existing. Not a stale default. A broken one, in the file the agent
+reads to decide what to do.
+
+That is `QA_BACKLOG` V.8 and `UPDATE_ROADMAP` `G-44`, filed months ago as *"the
+one that only matters over years"*, with *"nobody affected"*, scheduled `[R2]`.
+
+**It arrived four months early, and as a correctness bug rather than an
+annoyance.** So it got built.
+
+### The mechanism
+
+`BusterClaw.Seed`. Each seed declares every version of itself ever shipped, as
+sha256 digests, oldest first. On boot:
+
+| On disk | Outcome |
+|---|---|
+| nothing | `:created` |
+| the current default | `:current` |
+| **any earlier shipped version** | `:upgraded` — the operator never touched it |
+| anything else | `:kept` — it is theirs |
+
+Bytes, not timestamps, because a timestamp says *when* a file changed and not
+*who* changed it.
+
+**One refinement to `G-44` as written.** It retains **digests**, not the prior
+text — 64 bytes per version instead of a document, and enough to answer the only
+question being asked. The cost is real and named in the module: the app can say
+it declined to update a file, but cannot show a diff of what it would have
+changed.
+
+### Recovering history, rather than guessing at it
+
+The mechanism is worthless without the digests of what actually shipped. Those
+were **recovered from git** by parsing every past revision of `jobs.ex` and
+hashing each `default_*` function body — the defaults are pure heredocs with no
+interpolation, so the hashes are stable:
+
+| Seed | Shipped versions |
+|---|---|
+| `mail-triage` | 8 |
+| `voicemail-triage` | 8 |
+| roster | 5 |
+| `sms-triage` | **2** |
+
+An install holding *any* of them upgrades. The pre-08-18 `sms-triage` brief —
+`d3aa96c6…`, the one naming `sms_send` — is the first entry in its list, and
+there is a test whose only job is to fail if anyone ever removes it.
+
+### The asymmetry that makes it safe, and the guard that makes it honest
+
+**An unrecognised digest is always treated as the operator's.** So the failure
+mode of a forgotten version entry is *"a file that could have upgraded didn't"* —
+never *"a file the operator wrote got destroyed."*
+
+That safety is also the problem: a stale version list rots **silently**, in the
+safe direction, and nothing in the build would ever notice. Every install would
+quietly start looking "edited" and stop upgrading forever.
+
+So the list is guarded by a review-forcing snapshot — `SeedTest` pins each
+current digest, and editing a default without appending its digest fails the
+build *with the digest to add in the message*.
+
+> **Both guards were broken on purpose before being trusted.** Edit a default
+> without appending its digest → the manifest test fails. Drop the historical
+> `sms_send` digest → the end-to-end test fails with `left: :kept, right:
+> :upgraded`. A test written in the same sitting as its code inherits its blind
+> spot; the only cure is watching it fail.
+
+The end-to-end tests run against **the real bytes that shipped**, recovered from
+git at `89b2de9` and stored as a fixture rather than paraphrased — the actual
+workspace an operator was sitting on this morning. One asserts it upgrades off
+the `sms_send` brief. The other adds a single line to that same file and asserts
+it is left completely alone.
+
+### What was deliberately NOT converted
+
+`memory/policy.md`, the trusted-sender lists, and the agent settings stay
+create-only. `G-44` treats every seed as one problem; they are not.
+
+**Those three are security state.** Silently replacing an operator's policy file
+at boot — even one that looks unmodified — is a different act from replacing a
+job description, and it deserves its own decision about what an automatic
+*tightening* may do and whether it should be announced rather than merely logged.
+
+> **A converted `policy.md` would be the first thing in this app that changes a
+> security boundary without being asked.** That is not a list append.
+
+`Skills.ensure/0` and `TerminalCommands.ensure/0` remain open — same mechanism,
+same shape, digests still to recover.
