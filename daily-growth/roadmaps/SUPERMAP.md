@@ -44,16 +44,16 @@ Three rules keep that from recurring —
    wording through both splits. Scripts and CI cite `III.E/F/G/J` by name
    (`codesign_release.sh`, `build_desktop.sh`, `Entitlements.plist`,
    `release-desktop.yml`); commits cite `G-n`. **Nothing was renumbered.**
-2. **Each number lives in exactly one map.** `G-1`–`G-17` in Apple, `G-21`–`G-24` and `G-45`
+2. **Each number lives in exactly one map.** `G-1`–`G-17` and `G-47` in Apple, `G-21`–`G-24` and `G-45`
    in Website, `G-25`–`G-35` in Trust and Support, `G-36`–`G-41` in Release Gate,
-   and **`G-18`–`G-20` plus `G-42`–`G-44` in Update**. A number in two places is
+   and **`G-18`–`G-20` (incl. `G-19a`/`G-19b`), `G-42`–`G-44` and `G-46` in Update**. A number in two places is
    precisely the old failure mode — check before adding one.
 
    > **`G-18`–`G-20` moved from Apple to Update on 08-16, keeping their numbers.**
    > That is rule 1 and rule 2 working together rather than against each other:
    > a gate may change *home* when its subject does, but it never changes
    > *name* — commits and checklists cite `G-n`, and renumbering would break
-   > every one of them. **Next free number: `G-46`.** (`G-45` claimed 08-18 by `WEBSITE`, for two false claims in the public `documentation.md`.)
+   > every one of them. **Next free number: `G-48`.** (`G-45` claimed 08-18 by `WEBSITE`, for two false claims in the public `documentation.md`; `G-46` and `G-47` claimed 08-22 by `UPDATE` and `APPLE` — see [The R1 path](#the-r1-path--the-ordered-list-08-22).)
 3. **Status has one home, and this is it.** What disagreed last time was *what
    state we are in*. Every map states its own phase; this page states which of
    them is next.
@@ -95,7 +95,7 @@ the section tables below point at it from wherever else it applies.**
 
 1. **[The Clinch](#part-vi--integrations)** — **Phases 0–4 complete 08-10; Phase 5 is as far as an agent can take it.** Its preconditions are pinned (`18af12e`) and every remote-mode notice is guarded (`d26c4ad`). **What remains is the tunnel spike, and it needs a person with two machines** — the roadmap forbids the gateway and the panel until a real tunnel survives a WebSocket upgrade, an upload, a long Chat response and a laptop sleep.
 2. **[BusterPhone](#part-vi--integrations)** — the only paid thing. **Inbound is live and carrying real traffic** (verified in the app 08-14, not inferred); the gap is vending a number to someone who is not the operator. **Scope narrowed 08-18: the phone becomes intake-only** and every outbound capability is deleted — a Twilio rejection made the price of sending legible, and the operator chose to stop paying it rather than resubmit. [`PHONE_INTAKE`](integrations/PHONE_INTAKE_ROADMAP.md) is the map; the paid tier is untouched.
-3. **[Apple](#part-vii--platform--release)** — **`G-1`–`G-3` DONE 08-10: a notarized, stapled DMG exists.** What is next is not code — an **Apple Silicon Mac**.
+3. **[Apple](#part-vii--platform--release)** — **`G-1`–`G-3` DONE 08-10: a notarized, stapled DMG exists.** ~~What is next is not code — an **Apple Silicon Mac**.~~ **Corrected 08-22: what is next IS code.** The first real rehearsal of the pipeline found three defects and a cycle — the floor was wrong on both arches (`G-16b`, fixed), the DMG was never notarized by anything but a human hand (III.H, fixed), and **`G-19` turns out to block every tagged release**. The Apple Silicon Mac is still needed, but only for `G-4`, which is now seventh on the list rather than next. See [The R1 path](#the-r1-path--the-ordered-list-08-22).
 4. **[Studio → Voice Library](#part-ii-b--the-studio)** — built 08-16; **needs a person at a microphone.** Everything except capture is done and tested: banks, audition, sentence preview, and both recording paths. What has never run is V.4a — `getUserMedia` in a packaged build — and until someone clicks that dialog the recorder is honest rather than working.
 5. **[The Dialyzer gate](#part-vii--platform--release)** — **GREEN, exit 0, verified 08-16.** The baseline is a rule rather than a file list (`1d52cff`) and that fix has held; the three unreachable `refusal/2` clauses that 08-15 added were deleted 08-16 rather than baselined. Part VII records what the deletion cost.
 6. **The whole-codebase review (08-13)** — **ARCHIVED 08-15**, [`CODE_REVIEW_08-13-26.html`](../archive/CODE_REVIEW_08-13-26.html): every part with its argument, every large file diagnosed feature-sized vs overloaded, 21 ranked findings. **The top four landed same-day** — the gmail attachment fence (`1728e64`), both `chat.ex` contract bugs (`20a36a9`), the dead Trading hooks plus a both-directions hook guard (`577085e`). Everything else is **filed, not floating**: by section into the LEFTOVERS maps — [agent-core](agent-core/LEFTOVERS_AGENT_CORE.md), [platform](platform/LEFTOVERS_PLATFORM.md), [surfaces](surfaces/LEFTOVERS_SURFACES.md), and the shell's first, [`LEFTOVERS_SHELL`](shell/LEFTOVERS_SHELL.md), created for it. The review's two structural conclusions: the size gate covers no core/JS/Rust file (its §12 has the 19-file proposed inventory), and `commands/sound.ex` at 2,514 is the one file where the 08-08 "commands/ is correct" ruling no longer holds.
@@ -148,13 +148,99 @@ Connect notary credentials (key `SAKNAF6YLA`). **All five release secrets are se
 
 **Then the pipeline itself ran, and passed on the first attempt.** A signed `.app`
 and a signed **27 MB x86_64 DMG** were built from current `main`, Apple returned
-**`Accepted` / "Ready for distribution" with zero issues**, and both artifacts are
-stapled. **All eight machine-checkable III.J exit tests pass**, including the two
-only a real notarization can produce: `spctl` reading `source=Notarized Developer
-ID`, and `stapler validate` on the `.app` and the `.dmg`.
+**`Accepted` / "Ready for distribution" with zero issues**, and both artifacts were
+stapled.
 
-**A distributable macOS app exists** — not a build. It opens on a stranger's Intel
-Mac with no dialog. The map budgeted rejection rounds; none were needed.
+> ### Corrected 08-22 — two of the sentences above described an afternoon, not a pipeline
+>
+> This block used to end: *"All eight machine-checkable III.J exit tests pass …
+> `stapler validate` on the `.app` and the `.dmg`,"* and *"A distributable macOS
+> app exists — it opens on a stranger's Intel Mac with no dialog."*
+>
+> **Both were true of 08-10 and neither was true of the build system.** The `.dmg`
+> was stapled that day because the operator ran `notarytool` and `stapler` by hand
+> after `build_desktop.sh` finished; those commands were never scripted, so **every
+> CI build since produced an un-stapled image.** Caught 08-22 by the III.J
+> assertion running in CI for the first time, on both architectures. Fixed in
+> `44e8bd6`. See [`APPLE`](platform/APPLE_ROADMAP.md) III.H.
+>
+> And no stranger's Mac has ever opened it. The 08-10 artifact was verified on the
+> machine that built it, which is the one machine where Gatekeeper proves least —
+> see `FM-2` and `DL-1` in
+> [`FRESH_MACHINE_WALK`](platform/FRESH_MACHINE_WALK.md).
+>
+> **The generalisable failure**, because it has now happened twice in this file:
+> a manual step taken during a successful milestone gets written down as a
+> property of the system. Anything done by hand to make a gate pass has to land in
+> a script in the same sitting, or it becomes a claim with a date on it that
+> outlives its truth.
+
+---
+
+## The R1 path — the ordered list, 08-22
+
+**Why this section exists.** The first real rehearsal of the release pipeline
+(three runs, 08-22) found three defects and one *cycle*, and the cycle spans
+three maps. Rule 3 above puts sequencing here rather than in any of them.
+
+**The destination is one sentence: a stranger downloads Buster Claw and it
+opens.** Everything below is ordered by what blocks what, not by importance.
+
+### The cycle, first — it is the thing that changed
+
+> A `v*` tag fails closed without `TAURI_SIGNING_PRIVATE_KEY` → setting that
+> secret flips `build_desktop.sh:146` to `createUpdaterArtifacts` → that requires
+> a `plugins.updater` block → that block is **`G-19`**, unbuilt.
+>
+> **A tagged release requires the key, the key requires the plugin, the plugin is
+> `G-19`.** It was tracked as an R2 product feature — a button in Settings. It is
+> a prerequisite for shipping anything at all.
+
+### The path
+
+| # | Step | Blocked by | Map |
+|---|---|---|---|
+| 1 | **An artifact exists** — signed, notarized, stapled, both arches | *in flight 08-22* | [`APPLE`](platform/APPLE_ROADMAP.md) |
+| 2 | **Walk it on a machine that has never seen it** | 1 | [`FRESH_MACHINE_WALK`](platform/FRESH_MACHINE_WALK.md) |
+| 3 | **`G-46` — make the trap loud** | nothing | [`UPDATE`](platform/UPDATE_ROADMAP.md) |
+| 4 | **`G-19a` — make a tag possible** | nothing | [`UPDATE`](platform/UPDATE_ROADMAP.md) |
+| 5 | **Tag → a real Release with a real URL** | 4 | [`APPLE`](platform/APPLE_ROADMAP.md) |
+| 6 | **`G-21` / `G-24` / `G-45` — the site stops lying and points at 5** | 5 (partly) | [`WEBSITE`](website/WEBSITE_ROADMAP.md) |
+| 7 | **`G-4` — the arm64 walk on real hardware** | an Apple Silicon Mac | [`RELEASE_GATE`](platform/RELEASE_GATE_ROADMAP.md) |
+| — | **`G-47` — credential hygiene** | nothing | [`APPLE`](platform/APPLE_ROADMAP.md) |
+
+**Steps 3, 4 and `G-47` are unblocked right now** and are the only things on this
+list that a session can start without waiting for a machine, a person, or Apple.
+
+### Two notes that change the size of the work
+
+**`G-19` should be split, and step 4 is why.** Producing a valid updater artifact
+needs the `plugins.updater` config and a compiled-in pubkey. It does **not** need
+the button, the `shutting_down` race, the database backup, or the swap sequence —
+that is `G-19`'s Phase 3 and it is the expensive half. Splitting off **`G-19a`
+(the config exists and a tag can build)** from **`G-19b` (the button works)**
+unblocks releasing without buying the whole feature.
+
+> **`G-19a` is a one-way door and must not be treated as a config tweak.** The
+> pubkey compiles into every binary and there is no revocation, so the keypair
+> chosen at that moment is permanent for every install that follows. The pair
+> generated 08-22 is the candidate; **confirm it is backed up offline before the
+> block is written**, not after.
+>
+> **Unverified and worth ten minutes before starting:** whether the config block
+> alone satisfies the bundler, or whether `tauri-plugin-updater` must also be a
+> Cargo dependency and registered in `main.rs`. That answer decides whether
+> `G-19a` is an hour or a day, and it is cheap to establish with one
+> `workflow_dispatch`.
+
+**Step 6 is not all blocked on step 5.** The download *URL* needs a release, but
+three of the site's false claims need nothing: the macOS floor (now **15.0**,
+moved twice in three weeks), *"Linux — Supported, AppImage, .deb"*, and the
+paragraph promising background auto-updates through a *"Tauri updater plugin"*
+that does not exist. Those are wrong today and stay wrong until edited. **Fix the
+lies before building the link.**
+
+**Next free number after this section: `G-48`.**
 
 **The Apple map's "exercised" column went from empty to five marks in one day**
 ([`APPLE`](platform/APPLE_ROADMAP.md) III.0), each earned by running the thing.

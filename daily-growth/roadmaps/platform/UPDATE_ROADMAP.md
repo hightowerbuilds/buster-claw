@@ -327,9 +327,51 @@ wrong.
 
 *Cost: a day. The ACL lockstep is the only sharp edge.*
 
-### Phase 3 — The swap · `G-19` **[R2]**
+### Phase 2b — A tag can build · `G-19a` · `G-46` **[R1]** *(allocated 08-22)*
+
+**Split out of `G-19` on 08-22 because the cycle only needs this half.** A tagged
+release needs a valid *updater artifact*; it does not need a working update. Those
+turned out to be different amounts of work, and only the first blocks shipping.
+
+- [ ] **`G-19a`.** A `plugins.updater` block exists with the endpoint and the
+      compiled-in pubkey, and `build_desktop.sh` produces a signed `.app.tar.gz`
+      with the `TAURI_SIGNING_PRIVATE_KEY` secret set. **Done when a
+      `workflow_dispatch` with the secret present goes green.**
+      > **A one-way door, not a config tweak.** The pubkey compiles into every
+      > binary and there is no revocation: the keypair chosen here is permanent for
+      > every install that follows it. The pair generated 08-22 (no passphrase) is
+      > the candidate. **Confirm it is backed up offline before this block is
+      > written**, not after.
+      >
+      > **Establish first, in ten minutes, with one `workflow_dispatch`:** whether
+      > the config block alone satisfies the bundler, or whether
+      > `tauri-plugin-updater` must also be a Cargo dependency and registered in
+      > `main.rs`. That answer is the difference between an hour and a day, and
+      > guessing it wrong costs a notarization round trip.
+- [ ] **`G-46`.** **Make the trap loud.** `build_desktop.sh` must refuse early —
+      before `mix release`, before Rust, before anything Apple sees — when
+      `TAURI_SIGNING_PRIVATE_KEY` is set and `plugins.updater` is absent, with a
+      message naming `G-19a`. Today that combination surfaces as
+      `failed to get updater configuration: plugins > updater doesn't exist`
+      after several minutes of build, and reads as a Tauri bug rather than a
+      missing gate.
+      > **Worth doing even after `G-19a` lands**, because it is the assertion that
+      > would have caught this on day one instead of on the first release attempt.
+      > It also survives the reverse mistake: someone deleting the config block
+      > later gets a sentence instead of a riddle.
+
+*Cost: `G-46` is an afternoon at most. `G-19a` is unknown until the question above
+is answered.*
+
+### Phase 3 — The swap · `G-19b` **[R2]**
 
 The button. Everything above exists to make this small.
+
+> **Renamed from `G-19` to `G-19b` on 08-22** when Phase 2b was split off. The
+> number is not reused and nothing is renumbered: `G-19` remains the name of the
+> whole update capability, `G-19a` is the half that lets a tag build, and `G-19b`
+> is this — the half a user can see. Commits citing plain `G-19` predate the split
+> and refer to this phase.
 
 - [ ] **`G-19`.** The BEAM-safe sequence, in this order, **never
       `download_and_install()`**:

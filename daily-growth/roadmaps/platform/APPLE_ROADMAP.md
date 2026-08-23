@@ -829,6 +829,34 @@ The lesson of BLOCKER-1: five green CI jobs on a tree that could not produce a w
 **A wrong floor is the most expensive cheap mistake here** — it is discovered by strangers,
 one refund at a time, and it was an hour's work to measure.
 
+### G-47 — The signing identity lives in iCloud **[R1]** *(allocated 08-22)*
+
+- [ ] **G-47.** Move the Developer ID material off a synced folder, and stop storing
+      its password in cleartext beside it.
+
+Found 08-22 while locating the notarization key. `~/Desktop/apple-dev-skills/`
+holds `developer_id.p12`, `developer_id.key`, `AuthKey_SAKNAF6YLA.p8`, and
+`.p12-password` — the last containing the export password as plain text, in the
+same directory as the thing it unlocks.
+
+**The Desktop is iCloud-synced on this machine.** That is recorded as an
+environment fact elsewhere: the repository was moved to `~/Developer` in the first
+place *because* iCloud was evicting build artifacts from the Desktop. So the
+private key that signs every Buster Claw release, the App Store Connect key that
+notarizes it, and the password to the first are all replicated to Apple's servers
+and to any other Mac signed into the account.
+
+**Why this is a gate rather than a note.** These are the credentials that let
+someone sign software as Luke Hightower. A leaked *updater* key is bounded by the
+installs that carry its pubkey — which is why rotating one on 08-22 cost ninety
+seconds. **A leaked Developer ID key has no such bound**: it signs anything, for
+anyone, and revoking it invalidates every build already shipped under it.
+
+Not urgent in the sense of *tonight*, and genuinely small: move the directory
+outside the synced tree, delete `.p12-password` and keep the password in the
+Keychain or a password manager, and `chmod 600` what remains. It earns a number
+because it is exactly the kind of item that stays a passing remark forever.
+
 ### G-18 — Updatable **[R2]** · **MOVED → [`UPDATE_ROADMAP`](UPDATE_ROADMAP.md)**
 
 `G-18`, `G-19` and `G-20` are **tracked in [`UPDATE_ROADMAP`](UPDATE_ROADMAP.md)** as of
