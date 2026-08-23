@@ -31,7 +31,11 @@
 #   smoke_release_boot.sh [path/to/Buster Claw.app]
 #
 # Exits 0 only if the bundled release boots, serves /_health, lists a plausible
-# command catalog, and rejects a bad token.
+# command catalog, rejects a bad token, and RENDERS ITS FIRST SCREEN against an
+# empty database. That last one was added 08-23 after 0.1.0 shipped unable to
+# complete its own onboarding: every check above it passed on that build,
+# because /_health and /api/commands are JSON controllers and nothing in this
+# pipeline had ever rendered an HTML page.
 set -euo pipefail
 
 APP_NAME="Buster Claw"
@@ -138,4 +142,63 @@ STATUS="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/run" \
   -d '{"command":"runtime_status"}')"
 [ "$STATUS" = 401 ] || fail "bad token got $STATUS, expected 401"
 
-say "PASS — the bundled release boots, serves, and rejects a bad token"
+# --- the first screen a human ever sees -------------------------------------
+#
+# ## The bug this exists to prevent
+#
+# 0.1.0 shipped unable to complete its own first run. `/` correctly redirected
+# to `/setup`, and `/setup` returned 500 — `cannot redirect from a child
+# LiveView` — so there was no path past the wizard. Every download was a white
+# screen. Found by installing the DMG on a real machine on 08-23.
+#
+# Everything above this line passed on that build. `/_health` is not a page: it
+# is a controller returning JSON, mounting no layout and rendering no LiveView.
+# `/api/commands` is the same. So the whole pipeline could be green while every
+# HTML page in the app raised, because NOTHING IN CI HAD EVER RENDERED A PAGE.
+#
+# ## Why /setup rather than /
+#
+# Because this runs against a FRESH database, which is the only state where the
+# onboarding gate fires — and the gate is what broke. On a database that has
+# completed onboarding, `/setup` and `/` both render happily and this assertion
+# proves nothing. The empty DATABASE_PATH below is load-bearing, not incidental.
+#
+# `/` is asserted too, and only for its redirect: a 200 there would mean the
+# gate did not fire, i.e. the fresh-database precondition silently stopped
+# holding and the /setup check went vacuous.
+say "first run: GET / must redirect to the wizard"
+HOME_STATUS="$(curl -s -o /dev/null -w '%{http_code}' "$BASE/")"
+case "$HOME_STATUS" in
+  30*) say "  / redirected ($HOME_STATUS) — the onboarding gate is live" ;;
+  *)   fail "/ returned $HOME_STATUS, expected a 3xx redirect to /setup.
+       This smoke runs against an empty database, so the onboarding gate MUST
+       fire. A 200 means it did not, which makes the /setup check below
+       meaningless — fix this before trusting a pass." ;;
+esac
+
+say "first run: GET /setup must render"
+SETUP_BODY="$(mktemp)"
+SETUP_STATUS="$(curl -s -o "$SETUP_BODY" -w '%{http_code}' -L "$BASE/setup")"
+if [ "$SETUP_STATUS" != 200 ]; then
+  printf '\033[31m--- /setup returned %s ---\033[0m\n' "$SETUP_STATUS" >&2
+  head -c 2000 "$SETUP_BODY" >&2 || true
+  printf '\n' >&2
+  rm -f "$SETUP_BODY"
+  fail "the onboarding wizard did not render ($SETUP_STATUS).
+       A user who downloads this build cannot get past the first screen.
+       Check the release log above for the raised exception — if it reads
+       'cannot redirect from a child LiveView', a sticky child LiveView is
+       missing from BusterClawWeb.RequireOnboarding (see its @sticky_children
+       and test/buster_claw_web/live/require_onboarding_test.exs)."
+fi
+
+# 200 alone is not enough: a Phoenix error page can be returned with a 200 by a
+# misconfigured error handler, and an empty body would also pass a status check.
+grep -qi 'buster' "$SETUP_BODY" || {
+  rm -f "$SETUP_BODY"
+  fail "/setup returned 200 but the body does not look like the app."
+}
+rm -f "$SETUP_BODY"
+say "  the wizard renders"
+
+say "PASS — the bundled release boots, serves, renders its first screen, and rejects a bad token"
