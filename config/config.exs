@@ -97,20 +97,6 @@ config :logger, :default_formatter,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
-# The portfolio ledger buckets readings by market day (America/New_York), which
-# needs a real IANA database — machine-local dates would file a Pacific evening
-# reading under the wrong market day.
-config :elixir, :time_zone_database, Tzdata.TimeZoneDatabase
-
-# Tzdata ships a background updater that periodically fetches a new database
-# from IANA over the network. Disabled deliberately: this app makes no
-# unannounced outbound requests (every fetch it *does* make is SSRF-guarded and
-# lands on the Sentinel feed), and a silent HTTP call to iana.org from a desktop
-# app is exactly the kind of thing that posture exists to prevent. The bundled
-# database is fine for the job — US market DST rules last changed in 2007, and
-# refreshing it is a `mix deps.update tzdata` away.
-config :tzdata, :autoupdate, :disabled
-
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

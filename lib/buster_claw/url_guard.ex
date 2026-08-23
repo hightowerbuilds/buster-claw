@@ -66,7 +66,8 @@ defmodule BusterClaw.URLGuard do
   so callers see a normal bad-status error rather than reaching the host.
 
   On its own this guards a single hop — use `attach/2`, whose response step
-  re-arms this one so every redirect hop is re-validated and re-pinned.
+  restores the original URL before Req reruns the request pipeline for every
+  redirect, so each hop is re-validated and re-pinned.
   """
   def req_step(request, opts \\ []) do
     case vet(URI.to_string(request.url), opts) do
@@ -83,17 +84,13 @@ defmodule BusterClaw.URLGuard do
     end
   end
 
-  # Runs on every hop's response, before Req's :redirect step. Two jobs:
-  #
-  # 1. Restore the pre-pin URL (and connect options), so a relative Location
-  #    is resolved against the original hostname, not the pinned IP.
-  # 2. Re-arm the guard. Req consumes `current_request_steps` as the pipeline
-  #    runs, and the :redirect/:retry steps re-enter `run_request/1` WITHOUT
-  #    resetting it — request steps do NOT re-run on subsequent hops on their
-  #    own. Without this re-arm a redirect hop would be neither validated nor
-  #    pinned (a public server could 302 straight to the metadata address).
+  # Runs on every hop's response, before Req's :redirect step. It restores the
+  # pre-pin URL (and connect options), so a relative Location is resolved
+  # against the original hostname, not the pinned IP. Req 0.7 keeps the full
+  # request-step list on the request and reruns it for redirects, so the guard
+  # naturally vets and pins the next hop after this restoration.
   defp unpin_step({request, response}) do
-    {request |> restore_pin() |> rearm_guard(), response}
+    {restore_pin(request), response}
   end
 
   defp restore_pin(request) do
@@ -105,14 +102,6 @@ defmodule BusterClaw.URLGuard do
 
       _ ->
         request
-    end
-  end
-
-  defp rearm_guard(%{current_request_steps: steps} = request) do
-    if :ssrf_guard in steps do
-      request
-    else
-      %{request | current_request_steps: steps ++ [:ssrf_guard]}
     end
   end
 
