@@ -174,6 +174,76 @@ if [ ! -x "$BUNDLED_REL/bin/buster_claw" ] || ! compgen -G "$BUNDLED_REL/erts-*"
   exit 1
 fi
 
+# --- Notarize and staple the DMG (APPLE_ROADMAP III.F) ----------------------
+#
+# Tauri notarizes the .app, staples it, THEN bundles the disk image around it
+# and signs the image. It never submits the image. Measured on run
+# 32618232509, both architectures:
+#
+#   Notarizing .../Buster Claw.app
+#   Notarizing Finished with status Accepted
+#   Bundling Buster Claw_0.1.0_x64.dmg
+#   Signing   Buster Claw_0.1.0_x64.dmg      <- signed, never notarized
+#
+# so `stapler validate` passed on the .app and failed on the .dmg.
+#
+# The DMG is the artifact a stranger actually downloads, and a stapled app
+# inside an un-notarized image does not save it: Gatekeeper evaluates the file
+# that carries the quarantine flag, which is the image. Without a ticket on the
+# image that check needs the network, and on a machine that is offline — or
+# behind a captive portal, on a plane, or during an Apple outage — it fails
+# closed. Stapling is what makes the first launch work with no network, which
+# is the entire reason the III.J assertion tests the image separately from the
+# app rather than trusting one to imply the other.
+#
+# G-3 (08-10) recorded "both artifacts are stapled" and that was true — because
+# the operator ran these two commands by hand after the script finished. They
+# were never written down, so every CI build since has produced an un-stapled
+# image and nothing noticed until the assertion ran for the first time tonight.
+# This is that manual step, scripted, for the same reason codesign_release.sh
+# exists: local and CI must sign identically rather than CI keeping a second
+# copy that drifts.
+#
+# Gated on the signing identity, exactly like the codesign pass: an unsigned
+# local build skips it and is unchanged.
+if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
+  DMG_PATH="$(find "$REPO_ROOT/desktop/tauri/target/release/bundle/dmg" \
+    -name '*.dmg' -print -quit 2>/dev/null || true)"
+
+  if [ -z "$DMG_PATH" ]; then
+    echo "FATAL: signing identity is set but no .dmg was produced to notarize." >&2
+    exit 1
+  fi
+
+  # Same two credential shapes the workflow stages, in the same order of
+  # preference (API key first: revocable, scoped, no account password).
+  if [ -n "${APPLE_API_KEY_PATH:-}" ]; then
+    NOTARY_AUTH=(--key "$APPLE_API_KEY_PATH"
+                 --key-id "${APPLE_API_KEY:?APPLE_API_KEY required with APPLE_API_KEY_PATH}"
+                 --issuer "${APPLE_API_ISSUER:?APPLE_API_ISSUER required with APPLE_API_KEY_PATH}")
+  elif [ -n "${APPLE_ID:-}" ]; then
+    NOTARY_AUTH=(--apple-id "$APPLE_ID"
+                 --password "${APPLE_PASSWORD:?APPLE_PASSWORD required with APPLE_ID}"
+                 --team-id "${APPLE_TEAM_ID:?APPLE_TEAM_ID required with APPLE_ID}")
+  else
+    echo "FATAL: a signing identity is present but no notarization credentials are." >&2
+    echo "       The .app was notarized by Tauri using these same credentials, so" >&2
+    echo "       reaching here means they were unset between the two steps." >&2
+    exit 1
+  fi
+
+  echo ""
+  echo "==> Notarizing the DMG — this waits on Apple's notary service"
+  # --wait can outlive an agent/CI timeout; the SUBMISSION survives the client
+  # being killed, so recover with `notarytool history` rather than resubmitting
+  # and burning a second upload (APPLE_ROADMAP G-3).
+  xcrun notarytool submit "$DMG_PATH" "${NOTARY_AUTH[@]}" --wait
+
+  echo "==> Stapling the ticket to the DMG"
+  xcrun stapler staple "$DMG_PATH"
+  xcrun stapler validate "$DMG_PATH"
+fi
+
 # Restore the dev-mode placeholder so `cargo tauri dev` keeps working without the
 # full bundled release present.
 touch "$REPO_ROOT/desktop/tauri/resources/release/.gitkeep"
