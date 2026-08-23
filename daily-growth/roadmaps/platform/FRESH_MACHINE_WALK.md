@@ -3,6 +3,20 @@
 **A side-map of [`QA_BACKLOG`](QA_BACKLOG.md) · Scoped 08-18-26 · Status: NOT
 RUN.**
 
+> **Extended 08-22 with step `0b` — the download itself.** Everything scoped on
+> 08-18 begins with the app already installed, because there was no artifact to
+> download and no link that resolved — and as of this edit there still is not:
+> busterclaw.lol's button points at `DOMAIN-TBD.invalid` and no release has been
+> published. **`0b` is written ahead of the artifact on purpose**, because the
+> decision it governs gets made in the thirty seconds before you mount a DMG and
+> cannot be recovered afterwards. `DL-1` is the load-bearing one: without a
+> quarantine flag on the arriving file, Gatekeeper never runs and `FM-2` reports
+> a pass it did not earn.
+>
+> Until a real download exists, `DL-3`–`DL-5` cannot be walked at all — they
+> describe a page that has not been fixed yet. Say so in the writeup rather than
+> marking them passed.
+
 > ### What this is for
 >
 > Every test we have runs on the machine that built the app. That machine has a
@@ -109,6 +123,48 @@ costs nothing.
 - [ ] Decide: real Google account, or skip step 4? Both are valid walks; say
       which you did.
 
+### 0b. The download itself — `DL-1`–`DL-5`
+
+**Added 08-22.** Everything below step 1 tests an app that is *already on the
+machine*. Nobody has ever tested how it gets there, and the way it gets there
+decides whether step 1 means anything at all.
+
+- [ ] **`DL-1`. The DMG arrives carrying a quarantine flag.** Before mounting:
+
+      xattr -p com.apple.quarantine "$HOME/Downloads/<name>.dmg"
+
+      **This must print a value.** If it errors with *"No such xattr"*, the file
+      did not arrive the way a stranger's does and **`FM-2` is void** — Gatekeeper
+      simply does not run on an unquarantined file, so the walk will report a
+      pass it did not earn.
+- [ ] **`DL-2`. The bytes match what was built.** `shasum -a 256` on the arrived
+      file equals the checksum recorded in step 0. A DMG that was re-zipped,
+      re-hosted or resaved somewhere in the chain is a different artifact.
+- [ ] **`DL-3`. The macOS floor stated before the button is `14.0`.** Not after
+      it, and not `10.15`. See `WEBSITE_ROADMAP` `G-24` — the public claim was
+      nine major versions stale, and the failure it produces is a window that
+      never becomes an app. **Read the page as a stranger and write down the
+      number it actually told you**, rather than checking that the right number
+      appears somewhere on it.
+- [ ] **`DL-4`. The page said you need your own Claude subscription** *before*
+      the download, and named which architecture you were getting in a sentence
+      a non-expert can act on.
+- [ ] **`DL-5`. You reached the file by clicking, not by being handed a path.**
+      A URL pasted from this repo is not the download path; the download path is
+      whatever busterclaw.lol actually links to on the day you walk it.
+
+> **The trap that will void this whole section.** `unzip` from the command line
+> **does not propagate quarantine** to the files it extracts; Finder's Archive
+> Utility does. So a DMG pulled out of a CI artifact zip with `unzip` looks
+> identical to one downloaded normally and behaves completely differently at
+> `DL-1`. Extract in Finder, or set the attribute by hand before mounting:
+>
+>     xattr -w com.apple.quarantine \
+>       "0083;00000000;Safari;" "<name>.dmg"
+>
+> Same hazard for AirDrop and USB from the build machine: both produce a file
+> Gatekeeper waves through, and neither tells you it did.
+
 ### 1. Install — `FM-2`
 
 - [ ] DMG mounts; drag to Applications; first open.
@@ -198,6 +254,9 @@ Named so a failure is recognised rather than debugged from scratch.
 
 A walk that produces a feeling produces nothing. Capture:
 
+- **The `xattr -p com.apple.quarantine` output** from `DL-1`, pasted. It is the
+  one line that says whether the Gatekeeper result below is worth anything.
+- **The macOS floor the download page told you**, quoted (`DL-3`).
 - **The Gatekeeper sentence, verbatim.**
 - **The `tools` step's text when no agent CLI is present** — screenshot.
 - **A listing of the workspace folder** after step 3, to diff against
