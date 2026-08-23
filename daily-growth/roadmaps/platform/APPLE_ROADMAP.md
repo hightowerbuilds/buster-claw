@@ -409,7 +409,59 @@ genuine arm64 build from an Intel one wearing a universal wrapper.
 
 ### III.H — Notarization mechanics
 
-> ### Budget hours, not minutes — measured 2026-08-10
+> ### Re-measured 2026-08-22 — it was queue time, not the artifact
+>
+> III.H's open question was whether 5½ hours is a **property of this bundle**
+> (2,876 files, 2,451 `.beam`) or a queue fluke, and it named the second
+> submission as the cheapest way to tell. Three CI runs on 08-22 answered it:
+> **the app notarized in minutes, on both architectures, every time.** The
+> structural-slowness hypothesis is **not supported** — do not plan releases
+> around hours.
+>
+> Keep the advice anyway. A slow submission is still not a broken one, and the
+> `--wait`-outlives-its-client note below is still how you recover.
+>
+> ### And there are now TWO submissions per build, not one
+>
+> Tauri notarizes the `.app`. `build_desktop.sh` notarizes the `.dmg`
+> afterwards (`44e8bd6`). Both wait. Budget two round trips per architecture.
+>
+> ### The DMG was never notarized, and G-3 hid it
+>
+> Found by the III.J staple assertion on run `32618232509`, both architectures:
+>
+> ```
+> Processing: Buster Claw.app
+> The validate action worked!
+> Processing: Buster Claw_0.1.0_x64.dmg
+> Buster Claw_0.1.0_x64.dmg does not have a ticket stapled to it.
+> ```
+>
+> Tauri's sequence, quoted from the build log: *Notarizing `.app` → Accepted →
+> Bundling `.dmg` → Signing `.dmg`.* **It signs the image and never submits
+> it.**
+>
+> A stapled app inside an un-notarized image does not save the download. The
+> image is what carries the quarantine flag, so the image is what Gatekeeper
+> evaluates; with no ticket on it that check needs the network and **fails
+> closed offline** — the plane case that stapling exists for. This is exactly
+> why III.J validates the image separately instead of trusting the app to imply
+> it.
+>
+> **`G-3` recorded "both artifacts are stapled" on 08-10 and that was true.**
+> The operator ran `notarytool` and `stapler` by hand after the script finished,
+> and the two commands were never written down. **Every CI build since produced
+> an un-stapled image**, and nobody could have known, because the assertion had
+> never run.
+>
+> The lesson is not about Tauri: **a manual step performed during a successful
+> milestone gets recorded as a property of the pipeline.** `G-3`'s own text says
+> "both artifacts are stapled" — a true statement about that afternoon, read
+> ever since as a statement about the build. Anything done by hand to make a
+> gate pass has to land in a script in the same sitting or it becomes a lie with
+> a date on it.
+
+> ### Budget hours, not minutes — measured 2026-08-10 · **superseded above**
 >
 > **The first submission took about five and a half hours** from upload to
 > `Accepted`. Apple's published guidance is "minutes to an hour," the Developer ID
@@ -736,11 +788,31 @@ The lesson of BLOCKER-1: five green CI jobs on a tree that could not produce a w
       naming `erl_child_setup`, and passes once the declaration is honest.
       *Raising the floor excludes nobody — macOS 11–13 users could not run the old build
       either. It replaces a broken install with an honest refusal.*
-- [ ] **G-16b.** **Decide whether 14.0 is the floor we want.** It is currently an accident of
-      the build toolchain, not a choice. Lowering it means building the OTP release against
-      an older `MACOSX_DEPLOYMENT_TARGET` — real work for a shrinking audience, given macOS
-      14 shipped Sept 2023 and Apple supports roughly three versions. **Probably accept
-      14.0; just accept it deliberately.**
+- [x] **G-16b. DECIDED 08-22 — and the number is 15.0, not 14.0.** This item asked whether
+      14.0 was the floor we wanted. The first CI build of the release answered it before
+      anyone chose: `check_macos_floor.sh` failed **both** architectures of run
+      `32618232509` with the same object and the same number —
+      `scanned 24 Mach-O objects; highest requirement is macOS 15.0 (inet_gethost)`.
+      Corrected to `15.0` in `tauri.conf.json` (`e0b7e3b`).
+      > **This is the drift the box above predicted, arriving on schedule.** 14.0 was
+      > measured 08-01 on the operator's Intel laptop against an asdf Erlang. CI builds
+      > against `setup-beam`'s OTP 28.4.2, whose `inet_gethost` carries `minos 15.0`. The
+      > number went stale the moment the release stopped being built on one machine —
+      > *"inherited from whichever Erlang built the release, not chosen by us."*
+      >
+      > **Both architectures agree**, so this is not the arch-specific case: one shared
+      > value stays correct and no runner pinning is needed.
+      >
+      > **Accepted rather than worked around.** The alternative is building OTP from source
+      > in CI against an older `MACOSX_DEPLOYMENT_TARGET` — a source build per runner, to
+      > recover an OS version the bundle *demonstrably cannot run on*. The whole content of
+      > the failure is that the 14.0 claim was already false; nobody was being served by it.
+      > **Buster Claw no longer supports macOS 14**, and that is now a decision rather than
+      > an accident, which is what this item asked for.
+      >
+      > **`G-16` remains the reason this was cheap.** The floor was wrong for three weeks
+      > and cost nothing, because the assertion caught it on the first build that mattered
+      > instead of a stranger catching it one refund at a time.
 - [ ] **G-17.** **The feature floor is a separate, unmeasured number.** 14.0 is the *hard*
       floor (dyld). WebGPU-in-WKWebView sets a higher *feature* floor, and it only matters
       if the shader fails to degrade. Test on a machine where WebGPU is unavailable and
@@ -749,6 +821,10 @@ The lesson of BLOCKER-1: five green CI jobs on a tree that could not produce a w
       remembered version number into a download page.**
 - [ ] **G-17b.** Put the confirmed floor in the **README** and the **download page**, not
       just the config. A floor the buyer discovers after downloading is not a floor.
+      **The number is `15.0` as of 08-22** (`G-16b`). The public `documentation.md` says
+      `10.15`, which was nine major versions stale an hour before this edit and is now ten
+      — see [`WEBSITE`](../website/WEBSITE_ROADMAP.md) `G-24`. Take it from
+      `tauri.conf.json`, never retyped: this number has now moved twice in three weeks.
 
 **A wrong floor is the most expensive cheap mistake here** — it is discovered by strangers,
 one refund at a time, and it was an hour's work to measure.

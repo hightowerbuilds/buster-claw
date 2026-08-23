@@ -1,8 +1,51 @@
 # The Update — how a running install becomes the next one
 
 **Scoped 2026-08-16 · Status: ACTIVE — `G-42` and `G-18` SHIPPED 08-16.
-`G-19` (the button) is next. The pipeline has never run: it fires on `v*` tags
-only, and the minisign keypair does not exist yet.**
+`G-19` is next, and as of 08-22 it BLOCKS EVERY TAGGED RELEASE.**
+
+> ### `G-19` stopped being a feature on 08-22. It is a release blocker.
+>
+> The first real run of the release pipeline found a cycle. Read it as a chain,
+> because no single link is wrong:
+>
+> 1. A `v*` tag fails closed without `TAURI_SIGNING_PRIVATE_KEY` — the
+>    *"A tagged release must be updatable"* gate, `release-desktop.yml:237`.
+> 2. Setting that secret flips `build_desktop.sh:146` to
+>    `createUpdaterArtifacts: true`.
+> 3. That flag requires a `plugins.updater` block in `tauri.conf.json`.
+> 4. There is no such block, because `tauri-plugin-updater` is not wired in —
+>    which is `G-19`.
+>
+> Measured, not reasoned: run `32615493428` died with
+> `failed to get updater configuration: plugins > updater doesn't exist`.
+>
+> **So a tagged release requires the key, the key requires the plugin, and the
+> plugin is `G-19`.** Until it lands, the only way to produce an artifact is
+> `workflow_dispatch` with the secret *absent*, which publishes nothing and
+> yields a downloadable CI artifact instead of a release. That is what R1 is
+> being cut from today.
+>
+> **The keypair now exists** (generated 08-22, no passphrase, backed up
+> offline). It is deliberately NOT set as a secret; setting it breaks the build
+> until step 4 is done. Whoever sets it next should read this box first.
+>
+> ### And the branch it flips had never run
+>
+> `build_desktop.sh:146` is secret-gated — *"with no key the path is skipped."*
+> That worked, and it is exactly why the failure survived: **the ON branch had
+> never executed once in the history of this repository.** Every CI run and
+> every local build took the OFF branch.
+>
+> The generalisation, which is not specific to Tauri: **a conditional whose
+> true-branch has no coverage is not gated, it is unwritten.** Secret-gating
+> hides that better than a feature flag does, because there is no flag anywhere
+> to notice and nothing lists it.
+>
+> **Fix `G-19` or fix the branch.** The cheap half is making
+> `build_desktop.sh` refuse early, with a message naming `G-19`, when the key is
+> present and `plugins.updater` is not — turning a confusing bundler error into
+> a sentence. That is worth doing even after `G-19` lands, because it is the
+> assertion that would have caught this in the first place.
 
 > ### The one-sentence version
 >
