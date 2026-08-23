@@ -1,0 +1,590 @@
+<title>New Machine Walk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+  :root {
+    --bone:#F4F1EA; --ink:#121212;
+    --ground:#F4F1EA; --surface:#FFFDF8; --surface-2:#EDE9DF;
+    --text:#121212; --muted:#6E6A5F; --faint:#8A8578;
+    --rule:#D6D1C4; --rule-strong:#B8B2A2;
+    --hazard:#FF4D1C; --hazard-ink:#FFFFFF;
+    --pass:#2F6F4F; --fail:#C42B1C; --blocked:#6E6A5F;
+    --pass-bg:#E4EFE7; --fail-bg:#F8E4E1; --blocked-bg:#EAE7DE;
+    --on-status:#FFFFFF;
+    --shadow:0 1px 0 var(--rule);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:#121212; --surface:#1A1917; --surface-2:#232220;
+      --text:#F4F1EA; --muted:#A29C8E; --faint:#807A6D;
+      --rule:#2F2D29; --rule-strong:#43403A;
+      --hazard:#FF5F32; --hazard-ink:#121212;
+      --pass:#6FBF8F; --fail:#F2705E; --blocked:#8A8578;
+      --pass-bg:#1B2A21; --fail-bg:#2E1B18; --blocked-bg:#242320;
+      --on-status:#121212;
+      --shadow:0 1px 0 var(--rule);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:#121212; --surface:#1A1917; --surface-2:#232220;
+    --text:#F4F1EA; --muted:#A29C8E; --faint:#807A6D;
+    --rule:#2F2D29; --rule-strong:#43403A;
+    --hazard:#FF5F32; --hazard-ink:#121212;
+    --pass:#6FBF8F; --fail:#F2705E; --blocked:#8A8578;
+    --pass-bg:#1B2A21; --fail-bg:#2E1B18; --blocked-bg:#242320;
+      --on-status:#121212;
+  }
+
+  *,*::before,*::after{box-sizing:border-box}
+  body{
+    margin:0; background:var(--ground); color:var(--text);
+    font-family:Archivo,"Helvetica Neue",Arial,sans-serif;
+    font-size:16px; line-height:1.55; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:60rem;margin:0 auto;padding:0 1.5rem 6rem}
+  code,.mono{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace}
+
+  /* ---------- masthead ---------- */
+  header.mast{border-bottom:3px solid var(--ink);padding:2.75rem 0 1.5rem;margin-bottom:0}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) header.mast{border-bottom-color:var(--hazard)}}
+  :root[data-theme="dark"] header.mast{border-bottom-color:var(--hazard)}
+  .eyebrow{
+    font-family:"IBM Plex Mono",monospace;font-size:.72rem;font-weight:500;
+    letter-spacing:.16em;text-transform:uppercase;color:var(--hazard);margin:0 0 .75rem
+  }
+  h1{
+    font-size:clamp(2.2rem,6vw,3.4rem);font-weight:800;letter-spacing:-.02em;
+    line-height:1.02;margin:0 0 .75rem;text-wrap:balance
+  }
+  .standfirst{font-size:1.06rem;color:var(--muted);margin:0;max-width:44ch}
+
+  /* ---------- progress ---------- */
+  .progress{
+    position:sticky;top:0;z-index:20;background:var(--ground);
+    border-bottom:1px solid var(--rule);padding:.75rem 0;margin-bottom:2.5rem
+  }
+  .pbar{display:flex;height:8px;border:1px solid var(--rule-strong);overflow:hidden}
+  .pbar span{display:block;height:100%;transition:width .25s ease}
+  .pbar .s-pass{background:var(--pass)}
+  .pbar .s-fail{background:var(--fail)}
+  .pbar .s-blocked{background:var(--blocked)}
+  .pstats{
+    display:flex;flex-wrap:wrap;gap:1.25rem;align-items:baseline;
+    margin-top:.6rem;font-family:"IBM Plex Mono",monospace;font-size:.78rem;
+    font-variant-numeric:tabular-nums;color:var(--muted)
+  }
+  .pstats b{color:var(--text);font-weight:600}
+  .pstats .k-pass b{color:var(--pass)} .pstats .k-fail b{color:var(--fail)}
+  .btn{
+    font-family:"IBM Plex Mono",monospace;font-size:.74rem;font-weight:500;
+    letter-spacing:.06em;text-transform:uppercase;cursor:pointer;
+    background:var(--surface);color:var(--text);
+    border:1px solid var(--rule-strong);padding:.4rem .7rem
+  }
+  .btn:hover{border-color:var(--hazard);color:var(--hazard)}
+  .btn:focus-visible{outline:2px solid var(--hazard);outline-offset:2px}
+  .btn.primary{background:var(--hazard);color:var(--hazard-ink);border-color:var(--hazard)}
+  .btn.primary:hover{filter:brightness(1.08);color:var(--hazard-ink)}
+  .pactions{margin-left:auto;display:flex;gap:.5rem}
+
+  /* ---------- hazard callout ---------- */
+  .hazard{
+    border:2px solid var(--hazard);background:var(--surface);
+    padding:1.15rem 1.25rem;margin:0 0 2rem
+  }
+  .hazard h3{
+    margin:0 0 .5rem;font-size:.78rem;font-family:"IBM Plex Mono",monospace;
+    letter-spacing:.14em;text-transform:uppercase;color:var(--hazard);font-weight:600
+  }
+  .hazard p{margin:0 0 .6rem}
+  .hazard p:last-child{margin-bottom:0}
+
+  .note-block{
+    border-left:3px solid var(--rule-strong);padding:.15rem 0 .15rem 1rem;
+    margin:0 0 2rem;color:var(--muted);font-size:.95rem
+  }
+
+  /* ---------- sections ---------- */
+  section{margin:0 0 3rem;scroll-margin-top:6rem}
+  .sec-head{display:flex;align-items:baseline;gap:.85rem;border-bottom:2px solid var(--rule-strong);padding-bottom:.5rem;margin-bottom:.35rem}
+  .sec-num{
+    font-family:"IBM Plex Mono",monospace;font-size:.85rem;font-weight:600;
+    color:var(--hazard);font-variant-numeric:tabular-nums
+  }
+  .sec-head h2{font-size:1.5rem;font-weight:600;letter-spacing:-.01em;margin:0;flex:1}
+  .sec-count{font-family:"IBM Plex Mono",monospace;font-size:.75rem;color:var(--faint);font-variant-numeric:tabular-nums}
+  .sec-why{color:var(--muted);font-size:.94rem;margin:.6rem 0 1.1rem;max-width:62ch}
+
+  ul.items{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.5rem}
+  li.item{
+    background:var(--surface);border:1px solid var(--rule);
+    padding:.85rem 1rem;display:grid;
+    grid-template-columns:1fr auto;gap:.6rem 1rem;align-items:start
+  }
+  li.item[data-state="pass"]{background:var(--pass-bg);border-color:var(--pass)}
+  li.item[data-state="fail"]{background:var(--fail-bg);border-color:var(--fail)}
+  li.item[data-state="blocked"]{background:var(--blocked-bg);border-color:var(--rule-strong)}
+
+  .itxt{margin:0;font-size:.97rem}
+  .itxt code{
+    font-size:.86em;background:var(--surface-2);padding:.1em .35em;
+    border:1px solid var(--rule);white-space:nowrap
+  }
+  .tags{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.4rem;align-items:center}
+  .chip{
+    font-family:"IBM Plex Mono",monospace;font-size:.68rem;font-weight:600;
+    letter-spacing:.06em;border:1px solid var(--rule-strong);
+    padding:.1rem .4rem;color:var(--muted)
+  }
+  .chip.oneshot{border-color:var(--hazard);color:var(--hazard)}
+  .chip.blocker{background:var(--ink);color:var(--bone);border-color:var(--ink)}
+  :root[data-theme="dark"] .chip.blocker{background:var(--bone);color:var(--ink);border-color:var(--bone)}
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]) .chip.blocker{background:var(--bone);color:var(--ink);border-color:var(--bone)}
+  }
+
+  .ctrls{display:flex;gap:.3rem}
+  .ctrls button{
+    font-family:"IBM Plex Mono",monospace;font-size:.68rem;font-weight:500;
+    letter-spacing:.05em;text-transform:uppercase;cursor:pointer;
+    background:transparent;color:var(--muted);
+    border:1px solid var(--rule-strong);padding:.3rem .5rem;min-width:2.6rem
+  }
+  .ctrls button:hover{color:var(--text);border-color:var(--text)}
+  .ctrls button:focus-visible{outline:2px solid var(--hazard);outline-offset:1px}
+  li.item[data-state="pass"] button[data-v="pass"]{background:var(--pass);border-color:var(--pass);color:var(--on-status)}
+  li.item[data-state="fail"] button[data-v="fail"]{background:var(--fail);border-color:var(--fail);color:var(--on-status)}
+  li.item[data-state="blocked"] button[data-v="blocked"]{background:var(--blocked);border-color:var(--blocked);color:var(--on-status)}
+
+  .inote{
+    grid-column:1/-1;display:none;width:100%;font-family:"IBM Plex Mono",monospace;
+    font-size:.82rem;background:var(--ground);color:var(--text);
+    border:1px solid var(--rule-strong);padding:.5rem .6rem;resize:vertical;min-height:3.2rem
+  }
+  .inote:focus-visible{outline:2px solid var(--hazard);outline-offset:-1px}
+  li.item[data-state="fail"] .inote,
+  li.item[data-state="blocked"] .inote,
+  li.item.has-note .inote{display:block}
+
+  .capture{
+    background:var(--surface-2);border:1px solid var(--rule-strong);
+    padding:1.15rem 1.25rem;margin-top:1rem
+  }
+  .capture h4{margin:0 0 .6rem;font-size:.78rem;font-family:"IBM Plex Mono",monospace;
+    letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+  .capture ul{margin:0;padding-left:1.1rem;font-size:.93rem;color:var(--muted)}
+  .capture li{margin-bottom:.3rem}
+
+  pre.cmd{
+    background:var(--ink);color:var(--bone);font-family:"IBM Plex Mono",monospace;
+    font-size:.82rem;padding:.8rem 1rem;overflow-x:auto;margin:.6rem 0;border:0
+  }
+  :root[data-theme="dark"] pre.cmd{background:#000;border:1px solid var(--rule)}
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]) pre.cmd{background:#000;border:1px solid var(--rule)}
+  }
+
+  footer.foot{border-top:1px solid var(--rule);margin-top:3rem;padding-top:1.25rem;
+    color:var(--faint);font-size:.85rem;font-family:"IBM Plex Mono",monospace}
+
+  @media (max-width:640px){
+    li.item{grid-template-columns:1fr}
+    .ctrls{justify-self:start}
+    .pactions{margin-left:0;width:100%}
+  }
+  @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="wrap">
+
+<header class="mast">
+  <p class="eyebrow">Buster Claw · 0.1.0 · first install</p>
+  <h1>New Machine Walk</h1>
+  <p class="standfirst">Every check for putting Buster Claw on a Mac that has never seen it — organised by the surface you are looking at.</p>
+</header>
+
+<div class="progress">
+  <div class="pbar" aria-hidden="true">
+    <span class="s-pass" id="bar-pass" style="width:0%"></span>
+    <span class="s-fail" id="bar-fail" style="width:0%"></span>
+    <span class="s-blocked" id="bar-blocked" style="width:0%"></span>
+  </div>
+  <div class="pstats">
+    <span><b id="n-done">0</b>&thinsp;/&thinsp;<b id="n-total">0</b> checked</span>
+    <span class="k-pass">pass <b id="n-pass">0</b></span>
+    <span class="k-fail">fail <b id="n-fail">0</b></span>
+    <span>blocked <b id="n-blocked">0</b></span>
+    <span>one-shot left <b id="n-oneshot">0</b></span>
+    <span class="pactions">
+      <button class="btn" id="btn-reset">Reset</button>
+      <button class="btn primary" id="btn-copy">Copy report</button>
+    </span>
+  </div>
+</div>
+
+<div class="hazard">
+  <h3>Read before you touch the machine</h3>
+  <p><strong>Do not configure BusterPhone on this machine while the primary Mac is running.</strong> Both drains poll the same Supabase project, and the drain <em>deletes</em> a row from the relay as its acknowledgement. Whichever machine wins permanently takes the event; the other never sees it, with no error on either side. A real voicemail simply never arrives.</p>
+  <p>The default costs nothing: <strong>enter no Twilio or Supabase credentials here.</strong> Onboarding never asks for them. If you want to walk the credential path anyway, set <code>BUSTER_CLAW_TELEPHONY_DRAIN=false</code> — and note that an <em>unset</em> variable means enabled, so the disable must be explicit.</p>
+</div>
+
+<div class="note-block">
+  <p style="margin:0 0 .5rem"><strong>The artifact.</strong> <code class="mono">Buster Claw_0.1.0_x64.dmg</code> — 25.6&nbsp;MB, built by CI on 08-22 from <code class="mono">44e8bd6</code>, signed, notarized and stapled on both architectures.</p>
+  <pre class="cmd">sha256  018f21fee3a5cfda6d895cab2f939744355615ad2b025dfa43ada5f1744011e2</pre>
+  <p style="margin:.5rem 0 0"><strong>Marks used below.</strong> <span class="chip oneshot">one shot</span> means this machine can only answer it once — the code path runs on first install and never again, so skipping it forfeits the answer. <span class="chip blocker">blocker</span> means a failure here stops the release rather than joining a list.</p>
+</div>
+
+<main id="list"></main>
+
+<footer class="foot">
+  Sources — FRESH_MACHINE_WALK (FM/DL), QA_BACKLOG V.2–V.7, APPLE_ROADMAP G-9…G-15.<br>
+  Answers are kept in this browser only. Nothing is sent anywhere.
+</footer>
+
+</div>
+
+<script>
+const SECTIONS = [
+  {
+    n:"00", t:"Before you start", why:"Three decisions that cannot be made retroactively. The first one can destroy real data on the other machine.",
+    items:[
+      {id:"PRE-1", text:"The primary Mac's app is <strong>quit</strong>, or this machine gets no Twilio credentials at all.", blocker:true},
+      {id:"PRE-2", text:"You have the DMG's SHA-256 recorded, so what you install is provably what CI built."},
+      {id:"PRE-3", text:"Decided: real Google account, or skip the Google step? Both are valid walks — say which you did."},
+      {id:"PRE-4", text:"Note what this machine <em>is</em>: admin or standard account, locale, macOS version. &ldquo;It worked&rdquo; means something different on an admin account in en_US.", },
+    ]
+  },
+  {
+    n:"01", t:"The download", why:"Everything after this tests an app already on the machine. How it got there decides whether any of that means anything.",
+    items:[
+      {id:"DL-1", oneshot:true, blocker:true, text:"The arriving file carries a quarantine flag. Before mounting: <code>xattr -p com.apple.quarantine &lt;file&gt;.dmg</code> — <strong>must print a value.</strong> If it errors with &ldquo;No such xattr&rdquo;, Gatekeeper will not run and every signing check below is void."},
+      {id:"DL-1b", text:"You extracted in <strong>Finder</strong>, not with <code>unzip</code>. Archive Utility propagates quarantine; the CLI does not, and produces a byte-identical file that behaves completely differently."},
+      {id:"DL-2", text:"<code>shasum -a 256</code> on the arrived file matches the hash above."},
+      {id:"DL-3", text:"The macOS floor stated <em>before</em> the download button reads <strong>15.0</strong>. Quote what the page actually told you rather than checking the right number is present — and take the truth from <code>tauri.conf.json</code>, since this number has moved twice in three weeks."},
+      {id:"DL-4", text:"The page said you need your own Claude subscription <em>before</em> the download, and named which architecture you were getting."},
+      {id:"DL-5", text:"You reached the file by clicking a link on busterclaw.lol, not by being handed a path."},
+    ],
+    capture:["Not walkable yet: DL-3, DL-4 and DL-5 describe a page that still points at DOMAIN-TBD.invalid. Record that rather than marking them passed — use Blocked."]
+  },
+  {
+    n:"02", t:"Install and Gatekeeper", why:"The dev Mac has trusted this developer for months. A machine that has never seen the certificate is the only honest test of notarization and stapling.",
+    items:[
+      {id:"FM-2", oneshot:true, blocker:true, text:"DMG mounts, app drags to Applications, first open succeeds. <strong>Record the exact Gatekeeper text verbatim</strong> — &ldquo;it worked&rdquo; is not a finding; the sentence a stranger reads is."},
+      {id:"INS-2", text:"Time from double-click to first paint. The shell withholds the window until <code>/_health</code> answers, so a slow boot is a blank screen of unknown duration and reads as a hang."},
+      {id:"INS-3", text:"No Gatekeeper dialog required a right-click&rarr;Open workaround. If it did, notarization is not doing its job."},
+      {id:"INS-4", text:"The app icon in the Dock is the real icon, not a generic placeholder — never confirmed in a packaged build."},
+    ]
+  },
+  {
+    n:"03", t:"First run", why:"Five code paths that execute exactly once per install. On a machine that already has state, none of them can run at all.",
+    items:[
+      {id:"FM-9", oneshot:true, text:"The app opens on <code>/setup</code>, not the homepage. <code>RequireOnboarding</code> should force the redirect."},
+      {id:"FM-1", oneshot:true, text:"<code>security find-generic-password -s BusterClaw -a api_token -w</code> returns a token — the shell generated it straight into the Keychain."},
+      {id:"FM-1b", oneshot:true, blocker:true, text:"<strong>No plaintext <code>api_token</code> file exists anywhere</strong> in the app's data directory."},
+      {id:"FM-5", oneshot:true, text:"Clinch master key generated — a first-run derivation that cannot repeat once a key exists."},
+      {id:"FM-6", oneshot:true, text:"No migration error in the log. A release runs <em>every</em> migration in order against an empty database, and that ordering has never been walked end to end."},
+      {id:"FR-6", text:"Keychain prompt appears once, is named intelligibly, and &ldquo;Always Allow&rdquo; sticks across a restart. (G-13)"},
+    ]
+  },
+  {
+    n:"04", t:"Onboarding — all five steps", why:"The wizard is welcome &rarr; workspace &rarr; tools &rarr; google &rarr; live. There is no phone step, which is why the hazard above costs nothing.",
+    items:[
+      {id:"OB-1", text:"<strong>welcome</strong> — reads correctly to someone who has never seen the app. Does it say the same thing as the README and the website, or a fourth different pitch? (G-23)"},
+      {id:"FM-3", oneshot:true, text:"<strong>workspace</strong> — choose a folder, then <em>look in it</em>. Compare against <code>Workspace.entries/0</code>: note anything created that is not declared, or declared <code>:core</code> and missing."},
+      {id:"FM-7", oneshot:true, blocker:true, text:"<strong>tools</strong> — the big one. If no agent CLI is installed, <strong>record exactly what the step says.</strong> Does it name all three supported CLIs? Does it say how to install one? Can you proceed past it? Nobody has ever watched this app start without <code>claude</code> on PATH."},
+      {id:"FM-8", oneshot:true, text:"<strong>google</strong> — consent screen lists the scopes, callback returns, app says connected. Skipping is a valid walk; say so."},
+      {id:"OB-5", text:"<strong>live</strong> — completes and lands on the homepage."},
+      {id:"OB-6", text:"Each step can be backed out of and re-entered; quitting mid-wizard and relaunching resumes sanely. (G-15)"},
+      {id:"OB-7", text:"The Desktop/Documents TCC prompt fires when the workspace is created — and <strong>the app behaves correctly when you click Don't Allow.</strong> Untested to date. (G-9)"},
+      {id:"OB-8", text:"First launch with <strong>no Homebrew</strong> gives an actionable message, not &ldquo;Re-check&rdquo; with no detail. (G-11)"},
+    ]
+  },
+  {
+    n:"05", t:"The seeded workspace", why:"BusterClaw.Seed shipped 08-18. The dev Mac can only ever exercise :current, :upgraded and :kept — the :created branch has no other test bed anywhere.",
+    items:[
+      {id:"FM-4", oneshot:true, blocker:true, text:"<code>jobs/</code> contains exactly four files: <code>mail-triage.md</code>, <code>voicemail-triage.md</code>, <code>sms-triage.md</code>, <code>README.md</code>."},
+      {id:"FM-4b", oneshot:true, blocker:true, text:"<code>grep -r sms_send jobs/</code> returns <strong>nothing</strong>. This is the entire point of the 08-18 seed work — a fresh install must never receive a brief naming a deleted command."},
+      {id:"FM-4c", oneshot:true, text:"<code>grep -r phone_call jobs/</code> returns nothing."},
+      {id:"FM-4d", oneshot:true, text:"<code>memory/policy.md</code> exists (still create-only by design — QA_BACKLOG V.8)."},
+      {id:"SW-5", text:"Edit one seeded job file, restart, and confirm your edit survives — the upgrade path must not eat operator changes."},
+    ]
+  },
+  {
+    n:"06", t:"Home — Chat", why:"The primary surface. A stranger judges the product by whether this streams.",
+    items:[
+      {id:"CH-1", blocker:true, text:"A message sends and the response <strong>streams</strong>, if an agent CLI is installed."},
+      {id:"CH-2", text:"Interrupt mid-stream stops it cleanly and the transcript stays coherent."},
+      {id:"CH-3", text:"A hung run is killed and reported rather than spinning forever."},
+      {id:"CH-4", text:"An error from the harness surfaces as a readable message, not a silent stall."},
+      {id:"CH-5", text:"The shader background renders — and on a machine without WebGPU it degrades to a blank canvas with an explanation, not an error. (G-17)"},
+      {id:"CH-6", text:"Switch to another Home tab mid-response and back: the conversation is intact."},
+      {id:"CH-7", text:"Chat skin and text size (Settings &rarr; Appearance) both apply, and messages already on screen change with them."},
+    ]
+  },
+  {
+    n:"07", t:"Home — the other tabs", why:"Activity, Notes, Pockets, Calendar, Phone, Explained. Each has an empty state that only a fresh install can show.",
+    items:[
+      {id:"HT-1", text:"<strong>Activity</strong> — the auto log shows this session's own events, and its empty state reads as &ldquo;nothing yet&rdquo; rather than broken."},
+      {id:"HT-2", text:"<strong>Notes</strong> — create a note, type into it, restart, confirm it survived. Typing writes nothing to the DOM tree by design; watch for cursor jumps."},
+      {id:"HT-3", text:"<strong>Notes</strong> — a <code>[[wiki link]]</code> resolves, backlinks appear, and &#8984;P switches notes."},
+      {id:"HT-4", text:"<strong>Calendar</strong> — all-day, multi-day, and an entirely empty month all render correctly."},
+      {id:"HT-5", oneshot:true, blocker:true, text:"<strong>Phone</strong> — with no number configured the tab says <strong>&ldquo;No number configured&rdquo;</strong>, not a blank label. This <code>nil</code> branch is new on 08-18 and cannot be seen on a machine that has a number."},
+      {id:"HT-6", text:"<strong>Pockets</strong> — mounts, lists, and refuses a planted symlink."},
+      {id:"HT-7", text:"<strong>Explained</strong> — every tutorial renders; &ldquo;Try in Chat&rdquo; prefills rather than executing. No page describes a feature that does not exist."},
+    ]
+  },
+  {
+    n:"08", t:"Terminal", why:"A real PTY. The one surface where the app's own CLI has to resolve on an installed build.",
+    items:[
+      {id:"TM-1", blocker:true, text:"<code>./buster-claw commands</code> returns <strong>215</strong>."},
+      {id:"TM-2", blocker:true, text:"<code>$BUSTER_CLAW_API_TOKEN</code> is already exported inside the app's terminal — nothing to look up."},
+      {id:"TM-3", text:"The PTY survives tab switches and window resize; scrollback is intact."},
+      {id:"TM-4", text:"Multiple terminals at once; closing one with a busy process asks for confirmation."},
+      {id:"TM-5", text:"ANSI colour, unicode and wide glyphs render correctly; a large scrollback does not wedge the UI."},
+      {id:"TM-6", text:"The terminal opens <em>into</em> the chosen workspace, not a dev path."},
+      {id:"TM-7", text:"Terminal theme presets apply, and the custom hue slider changes all 21 colours at once rather than half of them."},
+    ]
+  },
+  {
+    n:"09", t:"Browser", why:"Not a headless scraper — it drives the tab you are looking at. The SSRF guard is the part that must fail closed.",
+    items:[
+      {id:"BR-1", text:"Navigate, back, forward, reload, new tab, &#8984;1–9, &#8984;W, &#8984;F all work."},
+      {id:"BR-2", text:"Tab eviction at the cap behaves; a popup opens as a tab."},
+      {id:"BR-3", text:"Download a file, then reveal it in Finder."},
+      {id:"BR-4", text:"Bookmarks round-trip with folders; history dedups and clears."},
+      {id:"BR-5", blocker:true, text:"<strong>SSRF guard refuses</strong> <code>localhost</code>, <code>127.0.0.1</code>, <code>169.254.169.254</code>, an IPv6 literal, and a redirect to an internal address. This shipped a Req 0.7 change on 08-22 — the redirect case is the one that changed."},
+      {id:"BR-6", text:"The agent co-presence badge fires on every agent-driven call, with no silent ones."},
+      {id:"BR-7", text:"An Agent Mode run starts, streams to the mirror, stops, and survives the command call that started it."},
+    ]
+  },
+  {
+    n:"10", t:"Workspace", why:"Everything the app owns is markdown on disk. This is where a path-traversal bug would live.",
+    items:[
+      {id:"WS-1", text:"The file tree lists, opens, and renders markdown."},
+      {id:"WS-2", text:"Drag-and-drop import works."},
+      {id:"WS-3", text:"A file deleted on disk disappears from the tree without an error."},
+      {id:"WS-4", blocker:true, text:"Path traversal via a crafted filename is refused."},
+      {id:"WS-5", text:"The workspace can be moved and found again; deleting it under a running app errors rather than crash-loops."},
+    ]
+  },
+  {
+    n:"11", t:"Settings", why:"Harness detection is the one check that can only pass in a packaged build — and it is the check that decides whether the product looks broken on arrival.",
+    items:[
+      {id:"ST-1", oneshot:true, blocker:true, text:"<strong>Configuration &rarr; Models</strong> lists the harnesses you actually have installed, and the &ldquo;greyed out means not found&rdquo; paragraph does <strong>not</strong> appear when they are all present. <code>ShellPath</code>'s fix is proven only in dev; a login shell does not source <code>.zshrc</code>, and this machine's profile is arranged differently from the dev Mac's."},
+      {id:"ST-2", text:"A profile that prints a banner on login does not weld its output onto PATH — the harness list is correct rather than merely non-empty."},
+      {id:"ST-3", text:"<strong>Credentials</strong> — a secret can be stored; no command anywhere returns its value."},
+      {id:"ST-4", text:"<strong>Google</strong> — connect, disconnect, reconnect. A revoked token surfaces a clear reconnect prompt rather than a silent failure."},
+      {id:"ST-5", text:"<strong>Profile</strong> and <strong>About</strong> render; About states the real version."},
+      {id:"ST-6", text:"<strong>Appearance</strong> — all three skins and all four text sizes apply, and no skin overrides the panel translucency."},
+      {id:"ST-7", text:"<strong>Notify</strong> — a timer, an alarm and a reminder each fire, sound, and dismiss."},
+      {id:"ST-8", text:"Every toggle persists across a full restart."},
+    ]
+  },
+  {
+    n:"12", t:"Security, Integrations, Manual", why:"The audit spine, the one remaining integration, and the pages that claim things.",
+    items:[
+      {id:"SEC-1", text:"The Security feed streams live and contains this session's own events."},
+      {id:"SEC-2", blocker:true, text:"Redaction catches an API key, a Bearer token, an OAuth <code>code</code> in a URL, and a card number — <strong>by key name and by value shape</strong>."},
+      {id:"SEC-3", text:"A refused command appears on the feed as a refusal rather than vanishing."},
+      {id:"IN-1", blocker:true, text:"GitHub: a manual poll works, a good-signature webhook works, and <strong>a bad-signature webhook fails closed</strong>."},
+      {id:"IN-2", blocker:true, text:"A webhook with <strong>no configured secret</strong> also fails closed."},
+      {id:"MN-1", text:"Every link in the Manual resolves. Nothing describes a deleted feature in the present tense."},
+      {id:"MN-2", text:"Cmd List renders the catalog and its counts agree with <code>./buster-claw commands</code>."},
+    ]
+  },
+  {
+    n:"13", t:"Studio", why:"Two walks that must not be collapsed into one — they fail in different places, and a pass on either says nothing about the other.",
+    items:[
+      {id:"SD-1", text:"<strong>Voice</strong> — the corpus counts match <code>sound_gaps</code> run from the CLI on this same machine."},
+      {id:"SD-2", blocker:true, text:"A single-take word reads <strong>&ldquo;quote only&rdquo;</strong>, never as cuttable. That distinction is the entire point of the surface and is what a demo would quietly get wrong."},
+      {id:"SD-3", text:"Leave Voice for Chat and come back — a half-typed sentence survives the trip."},
+      {id:"SD-4", oneshot:true, text:"In the packaged app the corpus reads from the configured DataZone, not an empty dev path — and the counts are non-zero. <strong>Zero sources and a broken read render almost identically.</strong>"},
+      {id:"SD-5", text:"<strong>Sketch</strong> — the pad refuses a malicious SVG: script tags, external refs, <code>foreignObject</code>."},
+      {id:"SD-6", text:"<strong>Sketch</strong> — the model may change what the model drew, and is <em>refused</em> on yours. Watch the refusal actually surface; that behaviour is the whole design."},
+      {id:"SD-7", text:"Recording is out of scope for this pass and the tab says so on its face."},
+    ]
+  },
+  {
+    n:"14", t:"The agent loop", why:"The durable queue is the product's actual architecture. This is the end-to-end proof.",
+    items:[
+      {id:"AG-1", blocker:true, text:"<code>on-duty</code> &rarr; claimed &rarr; work &rarr; <code>dispatch reply</code> &rarr; <code>done</code>, end to end."},
+      {id:"AG-2", text:"The STOP file halts an unattended shift within one tick."},
+      {id:"AG-3", text:"The crash-loop brake trips instead of burning tokens; the budget cap stops the shift and records a Sentinel event."},
+      {id:"AG-4", text:"Killing the agent mid-run reclaims the orphaned item; a timeout kills the <strong>whole process group</strong>, leaving no orphaned Bash or MCP grandchildren."},
+      {id:"AG-5", text:"<code>Dispatch.md</code> matches the database after every state change; two agents cannot claim the same item."},
+      {id:"AG-6", blocker:true, text:"<strong>Prompt injection</strong> — a hostile web page, a hostile email body, and a hostile SMS body each fail to make the agent run a gated command."},
+    ]
+  },
+  {
+    n:"15", t:"Restart and durability", why:"The second launch is where first-run code proves it did not just appear to work.",
+    items:[
+      {id:"RS-1", oneshot:true, blocker:true, text:"Quit and reopen: <strong>onboarding does not run again.</strong>"},
+      {id:"RS-2", text:"Workspace, Keychain token and every setting survive the restart."},
+      {id:"RS-3", text:"Nothing was re-seeded that should not have been — your edit from SW-5 is still there."},
+      {id:"RS-4", text:"Two launches at once produce single-instance behaviour, not two BEAMs on one SQLite file. (G-14)"},
+      {id:"RS-5", text:"Force-quit mid-session, then relaunch: recovers cleanly, no orphaned <code>beam.smp</code>, no stale <code>epmd</code>, no locked database."},
+      {id:"RS-6", blocker:true, text:"First launch <strong>offline</strong> opens — this is what the stapled ticket buys — and every network-dependent surface degrades with a message rather than a spinner. (G-12)"},
+    ]
+  },
+  {
+    n:"16", t:"Accessibility and the machine itself", why:"Cheap to check while you are already here, and impossible to check later without another clean machine.",
+    items:[
+      {id:"AX-1", text:"Full keyboard navigation reaches every control; focus is always visible."},
+      {id:"AX-2", text:"VoiceOver reads the audit feed and the chat."},
+      {id:"AX-3", text:"Hazard-orange passes contrast on both backgrounds; success and refusal are never communicated by colour alone."},
+      {id:"AX-4", text:"<code>prefers-reduced-motion</code> disables the shader."},
+      {id:"PL-1", text:"If this machine is a <strong>non-admin account</strong> or a <strong>non-English locale</strong>, say so loudly in the report — both are untested and a pass means something different."},
+      {id:"PL-2", text:"Idle CPU and battery over an hour with the render loop running. A laptop that gets hot on an idle chat window is a returned product."},
+    ],
+    capture:[
+      "The exact Gatekeeper sentence, verbatim.",
+      "The tools step's text when no agent CLI is present — screenshot it.",
+      "A listing of the workspace folder after onboarding, to diff against Workspace.entries/0.",
+      "Every log line at warning or above during first boot.",
+      "Anything that made you pause, even briefly. First-run friction is invisible to anyone who has used the app before, and you get exactly one chance to notice it here."
+    ]
+  }
+];
+
+const KEY = "bc-new-machine-walk-v1";
+let state = {};
+try { state = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { state = {}; }
+function save(){ try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const list = document.getElementById("list");
+
+list.innerHTML = SECTIONS.map(sec => `
+  <section id="s-${sec.n}">
+    <div class="sec-head">
+      <span class="sec-num">${sec.n}</span>
+      <h2>${sec.t}</h2>
+      <span class="sec-count" data-count="${sec.n}"></span>
+    </div>
+    <p class="sec-why">${sec.why}</p>
+    <ul class="items">
+      ${sec.items.map(it => `
+        <li class="item" data-id="${it.id}">
+          <div>
+            <div class="tags">
+              <span class="chip">${it.id}</span>
+              ${it.oneshot ? '<span class="chip oneshot">one shot</span>' : ""}
+              ${it.blocker ? '<span class="chip blocker">blocker</span>' : ""}
+            </div>
+            <p class="itxt">${it.text}</p>
+          </div>
+          <div class="ctrls">
+            <button data-v="pass" aria-label="Pass ${it.id}">Pass</button>
+            <button data-v="fail" aria-label="Fail ${it.id}">Fail</button>
+            <button data-v="blocked" aria-label="Blocked ${it.id}">Blkd</button>
+          </div>
+          <textarea class="inote" placeholder="What happened — verbatim where it matters"></textarea>
+        </li>`).join("")}
+    </ul>
+    ${sec.capture ? `<div class="capture"><h4>Capture</h4><ul>${sec.capture.map(c=>`<li>${c}</li>`).join("")}</ul></div>` : ""}
+  </section>`).join("");
+
+const ALL = SECTIONS.flatMap(s => s.items.map(i => ({...i, sec:s.t, n:s.n})));
+document.getElementById("n-total").textContent = ALL.length;
+
+function paint(){
+  document.querySelectorAll("li.item").forEach(li => {
+    const rec = state[li.dataset.id];
+    if (rec && rec.s) li.dataset.state = rec.s; else li.removeAttribute("data-state");
+    const ta = li.querySelector(".inote");
+    if (rec && rec.note) { ta.value = rec.note; li.classList.add("has-note"); }
+  });
+  let pass=0, fail=0, blocked=0, oneshotLeft=0;
+  ALL.forEach(it => {
+    const s = state[it.id] && state[it.id].s;
+    if (s === "pass") pass++; else if (s === "fail") fail++; else if (s === "blocked") blocked++;
+    if (it.oneshot && !s) oneshotLeft++;
+  });
+  const total = ALL.length, done = pass+fail+blocked;
+  document.getElementById("n-pass").textContent = pass;
+  document.getElementById("n-fail").textContent = fail;
+  document.getElementById("n-blocked").textContent = blocked;
+  document.getElementById("n-done").textContent = done;
+  document.getElementById("n-oneshot").textContent = oneshotLeft;
+  document.getElementById("bar-pass").style.width = (pass/total*100)+"%";
+  document.getElementById("bar-fail").style.width = (fail/total*100)+"%";
+  document.getElementById("bar-blocked").style.width = (blocked/total*100)+"%";
+  SECTIONS.forEach(sec => {
+    const d = sec.items.filter(i => state[i.id] && state[i.id].s).length;
+    const el = document.querySelector(`[data-count="${sec.n}"]`);
+    if (el) el.textContent = `${d}/${sec.items.length}`;
+  });
+}
+
+list.addEventListener("click", e => {
+  const b = e.target.closest(".ctrls button");
+  if (!b) return;
+  const li = b.closest("li.item"), id = li.dataset.id, v = b.dataset.v;
+  const cur = state[id] || {};
+  cur.s = (cur.s === v) ? null : v;
+  state[id] = cur;
+  save(); paint();
+});
+
+list.addEventListener("input", e => {
+  if (!e.target.classList.contains("inote")) return;
+  const li = e.target.closest("li.item"), id = li.dataset.id;
+  const cur = state[id] || {};
+  cur.note = e.target.value;
+  state[id] = cur;
+  if (cur.note) li.classList.add("has-note");
+  save();
+});
+
+document.getElementById("btn-reset").addEventListener("click", () => {
+  if (!confirm("Clear every answer and note on this walk?")) return;
+  state = {}; save();
+  document.querySelectorAll(".inote").forEach(t => t.value = "");
+  document.querySelectorAll("li.item").forEach(l => l.classList.remove("has-note"));
+  paint();
+});
+
+document.getElementById("btn-copy").addEventListener("click", async () => {
+  const L = [];
+  let pass=0, fail=0, blocked=0, untested=0;
+  ALL.forEach(i => { const s=state[i.id]&&state[i.id].s;
+    if(s==="pass")pass++; else if(s==="fail")fail++; else if(s==="blocked")blocked++; else untested++; });
+  L.push("# New Machine Walk — results", "");
+  L.push(`Pass ${pass} · Fail ${fail} · Blocked ${blocked} · Untested ${untested} (of ${ALL.length})`, "");
+  const oneshotMissed = ALL.filter(i => i.oneshot && !(state[i.id]&&state[i.id].s));
+  if (oneshotMissed.length) {
+    L.push("## One-shot items NOT answered — this machine cannot answer them again", "");
+    oneshotMissed.forEach(i => L.push(`- ${i.id} (${i.sec})`));
+    L.push("");
+  }
+  ["fail","blocked"].forEach(kind => {
+    const hits = ALL.filter(i => state[i.id] && state[i.id].s === kind);
+    if (!hits.length) return;
+    L.push(`## ${kind === "fail" ? "Failures" : "Blocked"}`, "");
+    hits.forEach(i => {
+      L.push(`### ${i.id} — ${i.sec}${i.blocker ? " [BLOCKER]" : ""}`);
+      L.push(i.text.replace(/<[^>]+>/g, "").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&amp;/g,"&").replace(/&ldquo;|&rdquo;/g,'"').replace(/&#8984;/g,"Cmd"));
+      const n = state[i.id].note;
+      if (n && n.trim()) L.push("", "> " + n.trim().replace(/\n/g, "\n> "));
+      L.push("");
+    });
+  });
+  const noted = ALL.filter(i => state[i.id] && state[i.id].s === "pass" && state[i.id].note && state[i.id].note.trim());
+  if (noted.length) {
+    L.push("## Passed, with notes", "");
+    noted.forEach(i => L.push(`- **${i.id}** — ${state[i.id].note.trim()}`));
+  }
+  const text = L.join("\n");
+  try {
+    await navigator.clipboard.writeText(text);
+    const b = document.getElementById("btn-copy");
+    b.textContent = "Copied"; setTimeout(() => b.textContent = "Copy report", 1600);
+  } catch (err) {
+    window.prompt("Copy the report below:", text);
+  }
+});
+
+paint();
+</script>
