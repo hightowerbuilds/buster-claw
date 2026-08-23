@@ -93,6 +93,33 @@ defmodule BusterClawWeb.SetupLiveTest do
       Settings.mark_onboarding_complete()
       assert {:ok, _view, _html} = live(conn, ~p"/")
     end
+
+    # The regression this file existed without. `live/2` connects the LiveView
+    # directly and never renders the root layout, so every test above passed
+    # while a real first launch served a 500: the layout `live_render`s sticky
+    # CHILD LiveViews, and a child that hits the gate calls push_navigate, which
+    # LiveView refuses with "cannot redirect from a child LiveView".
+    #
+    # Found 08-23 on a real install, not here. A plain GET is what renders the
+    # layout, so a plain GET is what has to be asserted.
+    test "GET /setup renders rather than 500ing on a first launch", %{conn: conn} do
+      refute Settings.onboarding_completed?()
+
+      conn = get(conn, ~p"/setup")
+      assert html_response(conn, 200)
+    end
+
+    # Every page carries the same sticky children, so the fault was never
+    # specific to /setup. Assert the reachable-during-onboarding routes as a set
+    # rather than one of them.
+    test "every route reachable during onboarding renders", %{conn: conn} do
+      refute Settings.onboarding_completed?()
+
+      for path <- ["/setup", "/terminal"] do
+        assert conn |> get(path) |> html_response(200),
+               "#{path} did not render while onboarding was incomplete"
+      end
+    end
   end
 
   describe "home setup CTA" do
@@ -211,5 +238,4 @@ defmodule BusterClawWeb.SetupLiveTest do
       assert BusterClawWeb.GoogleOAuth.reconnect_sentence() == "You'll do this once."
     end
   end
-
 end
