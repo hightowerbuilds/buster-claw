@@ -140,12 +140,18 @@ decides whether step 1 means anything at all.
 - [ ] **`DL-2`. The bytes match what was built.** `shasum -a 256` on the arrived
       file equals the checksum recorded in step 0. A DMG that was re-zipped,
       re-hosted or resaved somewhere in the chain is a different artifact.
-- [ ] **`DL-3`. The macOS floor stated before the button is `14.0`.** Not after
+- [ ] **`DL-3`. The macOS floor stated before the button is `15.0`.** Not after
       it, and not `10.15`. See `WEBSITE_ROADMAP` `G-24` — the public claim was
       nine major versions stale, and the failure it produces is a window that
       never becomes an app. **Read the page as a stranger and write down the
       number it actually told you**, rather than checking that the right number
       appears somewhere on it.
+      > **This item said `14.0` when it was written on 08-22 and was corrected
+      > the same evening**, after CI measured `15.0` on both architectures
+      > (`APPLE` `G-16b`, commit `e0b7e3b`). **Take the number from
+      > `tauri.conf.json`, never from this page** — it has now moved twice in
+      > three weeks, and a walker who trusts a hardcoded number in a checklist
+      > will confirm the wrong thing with total confidence.
 - [ ] **`DL-4`. The page said you need your own Claude subscription** *before*
       the download, and named which architecture you were getting in a sentence
       a non-expert can act on.

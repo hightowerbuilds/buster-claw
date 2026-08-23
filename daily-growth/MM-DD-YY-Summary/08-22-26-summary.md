@@ -78,10 +78,15 @@ and it decides whether the rest of the walk means anything.
 notarization exists to satisfy. Finder's Archive Utility propagates quarantine;
 `unzip` does not.
 
-`DL-3` carries `G-24`'s number into the walk — the page must say **14.0**, not
-`10.15` — and is deliberately worded as *quote what the page told you* rather
-than *check the number is right*, because a reader who already knows the answer
-will find it whether or not a stranger would.
+`DL-3` carries `G-24`'s number into the walk — and is deliberately worded as
+*quote what the page told you* rather than *check the number is right*, because a
+reader who already knows the answer will find it whether or not a stranger would.
+
+> **`DL-3` was written saying `14.0` and was wrong within three hours**, when CI
+> measured the real floor at `15.0`. Corrected the same evening. It is a small,
+> perfect demonstration of the thing this file keeps recording: **a number copied
+> into prose is a number that will go stale**, and the checklist now says to read
+> it from `tauri.conf.json` instead of trusting the line above it.
 
 Written ahead of the artifact and says so: `DL-3`–`DL-5` are not walkable yet,
 and the header instructs the walker to record that rather than tick them.
@@ -165,19 +170,118 @@ Three things worth keeping:
 
 ---
 
-## Where it stands at the time of writing
+## The rehearsal, and what it cost to find three defects
 
-- `main` at `cb7da07`, `mix precommit` green.
-- Run **`32616468652`** in flight — both architectures, signing and notarization
-  enabled, updater artifacts off. First time this pipeline has ever built
-  `aarch64` or notarized anything from CI.
-- If green: download the `x86_64` DMG artifact and walk `FRESH_MACHINE_WALK`,
-  starting at `DL-1`, extracting in Finder rather than `unzip`.
+Five dispatches, two cancelled before they could fail the same way twice, three
+that reported. **Every one failed one step later than the last**, which is the
+shape you want from a pipeline nobody has ever run.
 
-**Still open, unchanged by tonight:**
+| Run | Died at | Finding |
+|---|---|---|
+| `32615493428` | `Build DMG` | `plugins > updater doesn't exist` — the updater branch had never executed |
+| `32616468652` | `Verify the advertised macOS floor` | both arches: `highest requirement is macOS 15.0 (inet_gethost)` |
+| `32618232509` | `Verify signature, notarization, and staple` | both arches: *"the .dmg does not have a ticket stapled to it"* |
+| **`32619301080`** | **— green —** | signed, notarized, stapled, booted, both architectures |
 
-- busterclaw.lol serves a dead download URL and a stale command count; separate
-  repo, nothing here can reach it.
-- `G-19` — now blocking tagged releases, not just the update button.
-- The Developer ID private key and its plaintext password live in
-  `~/Desktop/apple-dev-skills/`, which is iCloud-synced.
+**All three would have shipped.** Not one is a CI quirk:
+
+1. Setting the signing secret produces a **build failure**, not a feature.
+2. The advertised floor was wrong, so the app would install, pass Gatekeeper,
+   and **never start** on macOS 14.
+3. The disk image was never notarized, so it would **fail on any downloader's
+   machine without network** — the plane case stapling exists for.
+
+The first two were caught by guards this repository already had. `G-16`'s floor
+check and `G-5`'s boot smoke were both written *before* there was anything to
+run them against, and both fired on first contact. The third was caught by the
+III.J staple assertion, which had also never run.
+
+> ### The lesson is about the guards, not the bugs
+>
+> Every one of these was found by an assertion written months ago by someone who
+> could not yet test it. The defects are ordinary; **the guards catching them on
+> the first real run is the actual result.**
+>
+> And the counter-lesson, filed in III.H and in SUPERMAP: `G-3` recorded *"both
+> artifacts are stapled"* on 08-10, truthfully, because the operator ran
+> `notarytool` and `stapler` by hand. **A manual step taken during a successful
+> milestone gets written down as a property of the system.** SUPERMAP had been
+> repeating it since — *"all eight III.J exit tests pass"* — and it was a claim
+> about one afternoon. Corrected today. That is the second time this file has
+> found that exact pattern, which is why it is now written as a rule rather than
+> a fix.
+
+---
+
+## The artifact
+
+**`Buster Claw_0.1.0_x64.dmg`** — 25.6 MB, `sha256
+018f21fee3a5cfda6d895cab2f939744355615ad2b025dfa43ada5f1744011e2`.
+
+```
+stapler: The validate action worked!
+spctl:   accepted
+         source=Notarized Developer ID
+         origin=Developer ID Application: Luke Hightower (KD977J8NF6)
+```
+
+**And an `aarch64` DMG, 25.9 MB — the first arm64 build in this project's
+history.** It passed the same eight assertions, including `lipo -archs`
+confirming the bundled VM is genuinely arm64 rather than a universal shell
+wrapping an Intel ERTS. It still needs `G-4`, which needs a machine nobody here
+has. **The build was never the blocker for arm64; the walk is.**
+
+Neither is published. Both are `workflow_dispatch` artifacts, because a tagged
+release is blocked by the `G-19` cycle below.
+
+---
+
+## What the evening actually changed
+
+**Four commits, three of them fixes to things that were broken in production
+terms:**
+
+- `0e38592` — Req 0.5.17 → 0.7.2, tzdata and hackney gone, SSRF guard simplified
+- `e0b7e3b` — the macOS floor is 15.0; **Buster Claw no longer supports macOS 14**
+- `44e8bd6` — the DMG is notarized and stapled by the pipeline, not by a person
+- `cb7da07` — the fresh-machine walk starts at the download (`DL-1`–`DL-5`)
+
+**And the roadmap caught up with reality** (`e05378e`, `9f6aa15`): `G-16b` closed
+at a number it did not propose, III.H re-measured (the 5½-hour notarization was
+queue time — three runs today took minutes), `G-19` split into `G-19a`/`G-19b`,
+`G-46` and `G-47` allocated, and **"The R1 path"** added to SUPERMAP as the
+ordered list from artifact to stranger.
+
+> ### The finding that outranks the three defects
+>
+> **`G-19` blocks every tagged release.** A `v*` tag fails closed without the
+> minisign key; setting the key flips `build_desktop.sh` to
+> `createUpdaterArtifacts`; that needs a `plugins.updater` block; that block is
+> `G-19`. It was tracked as an R2 button — a product feature for later — and it
+> is a prerequisite for shipping anything at all.
+>
+> Split into `G-19a` (a tag can build) and `G-19b` (the button) precisely because
+> only the first blocks R1, and it may be an hour rather than a day. **The
+> estimate is deliberately not given**: whether the config block alone satisfies
+> the bundler is written down as the thing to establish first, with one
+> `workflow_dispatch`, before anyone commits to a number.
+
+---
+
+## Where it stands
+
+- `main` at `9f6aa15`, `mix precommit` green.
+- **Step 1 of the R1 path is done** — a signed, notarized, stapled artifact
+  exists on both architectures, produced end to end by CI for the first time.
+- **Step 2 is next**: walk the Intel DMG on a machine that has never seen it.
+  Start at `DL-1`. The copy downloaded with `gh run download` carries **no
+  quarantine flag** and is therefore useless for `FM-2` — the trap written into
+  the walk this afternoon, met the same evening.
+
+**Unblocked and needing nobody:** `G-46` (make the trap loud), `G-19a` (make a
+tag possible), `G-47` (get the Developer ID key out of iCloud).
+
+**Still waiting on the world:** `G-4` needs an Apple Silicon Mac; busterclaw.lol
+needs a separate repository to be edited, and still serves a dead download URL,
+a stale command count, and a macOS floor that was nine versions wrong this
+morning and is ten versions wrong tonight.
