@@ -154,6 +154,15 @@ defmodule BusterClawWeb.Router do
     get "/sound/:name", NotifySoundController, :named
   end
 
+  # The operator's voice played back to them — reference recordings and rendered
+  # clips for the players in Settings → Voice. Only `:media`; the name is an
+  # allowlist over real directory listings, never joined from raw input.
+  scope "/voice-audio", BusterClawWeb do
+    pipe_through :media
+
+    get "/:name", VoiceAudioController, :show
+  end
+
   # Renders a workspace file (Markdown → HTML, .html as-is) for the in-app browser.
   # Only `:media`: returns a raw HTML document, not a LiveView page, so no root layout
   # and no CSRF. Path-guarded to the workspace by FileManager; loopback-only.

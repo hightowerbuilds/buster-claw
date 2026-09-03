@@ -17,9 +17,11 @@ defmodule BusterClawWeb.VoiceLive do
 
   alias BusterClaw.Notifications.Sound
   alias BusterClaw.Voice.Chimes
+  alias BusterClaw.Voice.Clips
   alias BusterClaw.Voice.Config
   alias BusterClaw.Voice.Engine
   alias BusterClaw.Voice.Greeting
+  alias BusterClaw.Voice.Reference
   alias BusterClaw.Voice.Renderer
 
   @impl true
@@ -44,8 +46,22 @@ defmodule BusterClawWeb.VoiceLive do
      |> assign(:config_note, nil)
      |> load_chimes()
      |> load_greeting()
-     |> load_engine_config()}
+     |> load_engine_config()
+     # The recorder's capability report, the recordings, and the typed clips.
+     # `clip_jobs` maps a render key back to the text that asked for it, for the
+     # same reason `chime_jobs` does: the renderer addresses work by content hash
+     # and has no idea what it is for.
+     |> assign(:mic_state, nil)
+     |> assign(:ref_note, nil)
+     |> assign(:clip_text, "")
+     |> assign(:clip_jobs, %{})
+     |> assign(:clip_note, nil)
+     |> load_reference()
+     |> load_clips()}
   end
+
+  defp load_reference(socket), do: assign(socket, :references, Reference.list())
+  defp load_clips(socket), do: assign(socket, :clips, Clips.list())
 
   # The stored knobs plus the one number they change: how many chimes are already
   # made under them. The cache is keyed on the argv, so a new device or a
@@ -177,6 +193,115 @@ defmodule BusterClawWeb.VoiceLive do
      |> assign(:config_note, "Back to the engine's own defaults.")}
   end
 
+  # --- the reference clip -------------------------------------------------------
+
+  # The recorder reports what the browser found — ready, denied, unsupported —
+  # rather than the page assuming. Kept as a state the markup can read.
+  def handle_event("reference_report", %{"do" => "capability", "state" => state} = params, socket) do
+    {:noreply, assign(socket, :mic_state, {state, Map.get(params, "detail")})}
+  end
+
+  def handle_event("reference_report", _params, socket), do: {:noreply, socket}
+
+  def handle_event("reference_take", %{"pcm" => pcm, "sample_rate" => rate}, socket) do
+    note =
+      case Reference.save(pcm, rate) do
+        {:ok, %{duration_ms: ms, peak: peak, clipped?: clipped?}} ->
+          seconds = Float.round(ms / 1000, 1)
+          base = "Saved #{seconds}s. This is your voice now — every render clones it."
+
+          if clipped?,
+            do: base <> " It clipped; a quieter take will clone cleaner.",
+            else: base <> peak_hint(peak)
+
+        {:error, :too_short} ->
+          "Too short — the engine needs a few seconds to clone from. Ten is comfortable."
+
+        {:error, :silent_take} ->
+          "Nothing but silence came through. Check the input in System Settings → Sound."
+
+        {:error, reason} ->
+          "Could not save it: #{inspect(reason)}"
+      end
+
+    # A new reference makes every made chime a miss and the published greeting
+    # stale, so both counts re-read alongside the recordings list.
+    {:noreply,
+     socket
+     |> load_reference()
+     |> load_engine_config()
+     |> load_greeting()
+     |> assign(:ref_note, note)}
+  end
+
+  def handle_event("reference_use", %{"name" => name}, socket) do
+    note =
+      case Reference.use(name) do
+        :ok -> "Using that one."
+        {:error, reason} -> "Could not: #{inspect(reason)}"
+      end
+
+    {:noreply,
+     socket
+     |> load_reference()
+     |> load_engine_config()
+     |> load_greeting()
+     |> assign(:ref_note, note)}
+  end
+
+  def handle_event("reference_delete", %{"name" => name}, socket) do
+    Reference.delete(name)
+
+    {:noreply,
+     socket
+     |> load_reference()
+     |> load_engine_config()
+     |> load_greeting()
+     |> assign(:ref_note, "Deleted.")}
+  end
+
+  # --- say anything ----------------------------------------------------------
+
+  def handle_event("clip_make", %{"clip" => %{"text" => text}}, socket) do
+    case Clips.make(text) do
+      {:ok, _path} ->
+        {:noreply,
+         socket
+         |> load_clips()
+         |> assign(:clip_text, "")
+         |> assign(:clip_note, "Already made — it is in the list.")}
+
+      {:queued, key} ->
+        {:noreply,
+         socket
+         |> update(:clip_jobs, &Map.put(&1, key, String.trim(text)))
+         |> assign(:clip_text, "")
+         |> assign(:clip_note, "Making it. A short line is a few minutes on this machine.")}
+
+      {:error, :empty_text} ->
+        {:noreply, assign(socket, :clip_note, "Type something first.")}
+
+      {:error, :engine_unavailable} ->
+        {:noreply, assign(socket, :clip_note, "No engine — install it above.")}
+
+      {:error, :reference_missing} ->
+        {:noreply,
+         assign(
+           socket,
+           :clip_note,
+           "The reference clip is gone. Record a new one, or clear it in the engine settings."
+         )}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :clip_note, "Could not make it: #{inspect(reason)}")}
+    end
+  end
+
+  def handle_event("clip_forget", %{"path" => path}, socket) do
+    Clips.forget(path)
+    {:noreply, socket |> load_clips() |> assign(:clip_note, nil)}
+  end
+
   def handle_event("greeting-save", %{"greeting" => text}, socket) do
     Greeting.put_text(text)
 
@@ -248,18 +373,33 @@ defmodule BusterClawWeb.VoiceLive do
   @impl true
   def handle_info({:voice_render, render_key, result}, socket)
       when is_binary(render_key) do
-    if render_key == socket.assigns.greeting_job do
-      socket = assign(socket, :greeting_job, nil)
+    cond do
+      render_key == socket.assigns.greeting_job ->
+        socket = assign(socket, :greeting_job, nil)
 
-      case result do
-        {:ok, path} ->
-          {:noreply, socket |> publish_greeting(path) |> load_greeting()}
+        case result do
+          {:ok, path} ->
+            {:noreply, socket |> publish_greeting(path) |> load_greeting()}
 
-        {:error, reason} ->
-          {:noreply, assign(socket, :greeting_note, "Recording failed: #{inspect(reason)}")}
-      end
-    else
-      handle_chime_render(render_key, result, socket)
+          {:error, reason} ->
+            {:noreply, assign(socket, :greeting_note, "Recording failed: #{inspect(reason)}")}
+        end
+
+      Map.has_key?(socket.assigns.clip_jobs, render_key) ->
+        {text, jobs} = Map.pop(socket.assigns.clip_jobs, render_key)
+        socket = assign(socket, :clip_jobs, jobs)
+
+        case result do
+          {:ok, path} ->
+            Clips.record(text, path)
+            {:noreply, socket |> load_clips() |> assign(:clip_note, "Made: “#{text}”")}
+
+          {:error, reason} ->
+            {:noreply, assign(socket, :clip_note, "“#{text}” failed: #{inspect(reason)}")}
+        end
+
+      true ->
+        handle_chime_render(render_key, result, socket)
     end
   end
 
@@ -580,6 +720,160 @@ defmodule BusterClawWeb.VoiceLive do
 
         <div class="ic-panel overflow-hidden">
           <header class="border-b-2 border-base-content/20 px-5 py-4">
+            <p class="ic-eyebrow">Your voice</p>
+            <h2 class="font-display text-2xl font-black uppercase tracking-tight">
+              Record it once
+            </h2>
+            <p class="mt-1 text-sm text-base-content/65">
+              Ten seconds of you talking normally — read the next line out loud, or just say
+              anything. There is no training step: the recording <strong>is</strong>
+              the learning. The moment it saves, every chime, clip and greeting is spoken in
+              your voice.
+            </p>
+          </header>
+
+          <div class="flex flex-col gap-4 px-5 py-5 text-sm">
+            <p class="rounded border-2 border-base-content/10 bg-base-200 px-4 py-3 font-display text-base">
+              “The quick way to check a microphone is to read a sentence you didn't write,
+              at the speed you'd say it to a friend across a kitchen.”
+            </p>
+
+            <%!-- phx-update="ignore": the hook owns this subtree — the meter, the
+                  status line, the button label — and a LiveView re-render must not
+                  wipe them mid-take. Same discipline as the Studio's recorder. --%>
+            <div
+              id="voice-reference-recorder"
+              phx-hook="VoiceRecorder"
+              phx-update="ignore"
+              data-event-take="reference_take"
+              data-event-report="reference_report"
+              class="flex flex-col gap-3"
+            >
+              <div data-role="format" class="font-mono text-[0.65rem] text-base-content/60">
+                opening the microphone…
+              </div>
+
+              <div class="relative h-3 overflow-hidden rounded-sm border-2 border-base-content/20 bg-base-200">
+                <div data-role="target-zone" class="absolute inset-y-0 bg-success/20"></div>
+                <div
+                  data-role="meter"
+                  class="relative h-full w-0 bg-success transition-[width] duration-75"
+                >
+                </div>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-3 font-mono text-xs">
+                <span data-role="peak" class="text-base-content/60">peak —</span>
+                <span data-role="clip" class="text-error" hidden>clipped</span>
+                <button type="button" data-role="record" class="btn btn-primary btn-sm">
+                  ● Record
+                </button>
+                <span data-role="status" class="text-base-content/60"></span>
+              </div>
+            </div>
+
+            <p :if={match?({"denied", _}, @mic_state)} class="text-xs text-error">
+              The microphone was refused. macOS asks once — System Settings → Privacy &amp;
+              Security → Microphone, and allow Buster Claw.
+            </p>
+            <p :if={match?({"unsupported", _}, @mic_state)} class="text-xs text-base-content/55">
+              No microphone here. Recording works in the desktop app, not in a browser tab.
+            </p>
+
+            <span class="text-xs text-base-content/70">{@ref_note}</span>
+
+            <ul
+              :if={@references != []}
+              class="flex flex-col gap-2 border-t-2 border-base-content/10 pt-4"
+            >
+              <li :for={ref <- @references} class="flex flex-wrap items-center gap-3">
+                <audio controls preload="none" src={~p"/voice-audio/#{ref.name}"} class="h-8 max-w-xs">
+                </audio>
+                <span class="font-mono text-xs text-base-content/60">{ref.name}</span>
+                <span :if={ref.current?} class="text-xs text-primary">
+                  <.icon name="hero-check" class="size-4" /> in use
+                </span>
+                <button
+                  :if={not ref.current?}
+                  type="button"
+                  phx-click="reference_use"
+                  phx-value-name={ref.name}
+                  class="btn btn-ghost btn-xs"
+                >
+                  Use this one
+                </button>
+                <button
+                  type="button"
+                  phx-click="reference_delete"
+                  phx-value-name={ref.name}
+                  data-claw-confirm={"Delete #{ref.name}?" <> if(ref.current?, do: " It is the voice in use — renders go back to a designed voice.", else: "")}
+                  class="btn btn-ghost btn-xs text-error"
+                >
+                  Delete
+                </button>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="ic-panel overflow-hidden">
+          <header class="border-b-2 border-base-content/20 px-5 py-4">
+            <p class="ic-eyebrow">Say anything</p>
+            <h2 class="font-display text-2xl font-black uppercase tracking-tight">
+              Hear yourself
+            </h2>
+            <p class="mt-1 text-sm text-base-content/65">
+              Type a line, and it comes back in your voice. The fastest way to judge a
+              recording — one sentence is minutes, the whole chime set is most of an hour.
+            </p>
+          </header>
+
+          <div class="flex flex-col gap-4 px-5 py-5 text-sm">
+            <form phx-submit="clip_make" class="flex flex-col gap-3">
+              <textarea
+                name="clip[text]"
+                rows="2"
+                maxlength="400"
+                placeholder="Something you'd actually say."
+                class="textarea textarea-bordered w-full text-sm"
+              ><%= @clip_text %></textarea>
+
+              <div class="flex flex-wrap items-center gap-3">
+                <button type="submit" disabled={not @engine.available?} class="btn btn-primary btn-sm">
+                  <.icon name="hero-speaker-wave" class="size-4" /> Make it
+                </button>
+                <span :if={not Config.cloning?()} class="text-xs text-base-content/55">
+                  No recording yet — this will use a designed voice, not yours.
+                </span>
+                <span class="text-xs text-base-content/70">{@clip_note}</span>
+              </div>
+            </form>
+
+            <ul :if={@clips != []} class="flex flex-col gap-2 border-t-2 border-base-content/10 pt-4">
+              <li :for={clip <- @clips} class="flex flex-wrap items-center gap-3">
+                <audio
+                  controls
+                  preload="none"
+                  src={~p"/voice-audio/#{clip.name}"}
+                  class="h-8 max-w-xs"
+                >
+                </audio>
+                <span class="min-w-0 flex-1 truncate">{clip.text}</span>
+                <button
+                  type="button"
+                  phx-click="clip_forget"
+                  phx-value-path={clip.path}
+                  class="btn btn-ghost btn-xs"
+                >
+                  Forget
+                </button>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="ic-panel overflow-hidden">
+          <header class="border-b-2 border-base-content/20 px-5 py-4">
             <p class="ic-eyebrow">Spoken notifications</p>
             <h2 class="font-display text-2xl font-black uppercase tracking-tight">
               What it says
@@ -720,6 +1014,9 @@ defmodule BusterClawWeb.VoiceLive do
 
   defp absent_sentence(_),
     do: "Not installed. Replies are read by your Mac's own voices, which is the default."
+
+  defp peak_hint(peak) when peak < 0.1, do: " It is quiet — closer to the mic next time."
+  defp peak_hint(_peak), do: ""
 
   defp humanize(:reference_audio), do: "Reference clip"
   defp humanize(:inference_timesteps), do: "Steps"

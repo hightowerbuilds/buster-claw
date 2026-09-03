@@ -254,6 +254,37 @@ is still playing to callers in the old voice.
 parent. `/studio` stays reachable by URL for Mix and the Voice Library until the
 spin-off takes them with their thirty tests.
 
+### Record it, then say anything — BUILT 09-03-26
+
+Two more panels in Settings → Voice, and one misconception cleared in the copy:
+**there is no training step.** VoxCPM clones zero-shot, so "have the model learn
+my voice" is a file this app *saves*, not a job it runs. Saving a take sets the
+reference clip; from that moment every chime, clip and greeting is rendered in
+it. Fine-tuning stays out of scope until zero-shot has been measured.
+
+- **`Voice.Reference`** — the in-app recorder, reusing the Studio's
+  `VoiceRecorder` hook rather than copying its AudioWorklet and Float32 encoder.
+  The hook grew two `data-event-*` attributes so the same microphone, meter and
+  encoder can push to a different listener; the Studio's behaviour is unchanged
+  (it always set `data-armed` explicitly). `Capture.Take.decode/2` turns the
+  frames into a clip and is the one piece of Studio machinery this depends on —
+  **when the Studio is spun out, `decode/2` stays.** Refuses silence and anything
+  under two seconds; a half-second of "uh" is not a voice, and cloning it is a
+  stranger's voice with no warning.
+- **`Voice.Clips`** — type a line, hear yourself say it. `Renderer.render/2`
+  with the operator's settings, plus a small manifest beside the content-hashed
+  cache so a person can find their clips by text. Forgetting a clip drops the row
+  and leaves the file — it may *be* a chime.
+- **`/voice-audio/:name`** — a `:media` route serving recordings and clips to the
+  page's `<audio>` players. Allowlist over real listings, never a path join.
+
+**A flake worth recording.** One random seed had the batch "gap" test find its
+victim line already cached. Not reproduced in five runs; the likely leak is
+`workspace_root` being global app env — a render that finishes after its test
+has ended computes its cache path from whatever root is current. The
+`render_set/1` describe now wipes its cache dir in setup, asserting the
+precondition rather than assuming it.
+
 Output lands in `System.tmp_dir!` and is **atomically renamed** into the cache
 only after a probe says it is a real WAV of non-zero duration. A truncated render
 from a killed process must never become a cached line.

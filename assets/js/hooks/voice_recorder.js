@@ -232,7 +232,13 @@ export const VoiceRecorder = {
     const samples = this.chunks.reduce((total, chunk) => total + chunk.length, 0)
     if (!samples) return this.say("Nothing was captured — the take was too short.")
 
-    this.pushEvent("contribute_take", {
+    // The event name is the element's to choose (09-03-26). This hook grew up in
+    // the Studio's Voice Library and used to hard-code `contribute_take`; the
+    // reference-clip recorder in Settings → Voice needs the same microphone,
+    // meter and encoder and a different listener. One hook with a configurable
+    // destination beats a second copy of an AudioWorklet and a Float32 encoder
+    // that would drift from this one the first time either was touched.
+    this.pushEvent(this.el.dataset.eventTake || "contribute_take", {
       pcm: this.encode(samples),
       sample_rate: this.rate,
     })
@@ -267,7 +273,9 @@ export const VoiceRecorder = {
   // --- painting -------------------------------------------------------------
 
   paint() {
-    const armed = this.el.dataset.armed === "true"
+    // The Studio arms the button once a word is typed; a recorder with nothing to
+    // type is armed by leaving the attribute off.
+    const armed = this.el.dataset.armed !== "false"
     if (!this.els.record) return
 
     this.els.record.disabled = !armed && !this.recording
@@ -279,6 +287,6 @@ export const VoiceRecorder = {
   },
 
   report(state, detail) {
-    this.pushEvent("contribute", {do: "capability", state, detail})
+    this.pushEvent(this.el.dataset.eventReport || "contribute", {do: "capability", state, detail})
   },
 }

@@ -245,6 +245,119 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
     end
   end
 
+  describe "your voice — record, then say anything" do
+    setup do
+      root = Path.join(System.tmp_dir!(), "bc_vrec_live_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(Path.join(root, "sounds"))
+      previous = Application.get_env(:buster_claw, :workspace_root)
+      Application.put_env(:buster_claw, :workspace_root, root)
+      Application.put_env(:buster_claw, :voxcpm_device, "cpu")
+
+      on_exit(fn ->
+        if previous,
+          do: Application.put_env(:buster_claw, :workspace_root, previous),
+          else: Application.delete_env(:buster_claw, :workspace_root)
+
+        Application.delete_env(:buster_claw, :voxcpm_device)
+        File.rm_rf(root)
+      end)
+
+      {:ok, root: root}
+    end
+
+    test "the recorder is mounted with its own event names, so it does not talk to the Studio", %{
+      conn: conn
+    } do
+      absent()
+      {:ok, _view, html} = live(conn, ~p"/voice")
+
+      assert html =~ ~s(phx-hook="VoiceRecorder")
+      assert html =~ ~s(data-event-take="reference_take")
+      assert html =~ ~s(data-event-report="reference_report")
+      # Every handle the hook reaches for is present.
+      for role <- ~w(record meter peak clip format target-zone status) do
+        assert html =~ ~s(data-role="#{role}"), "no #{role} element for the recorder"
+      end
+
+      assert html =~ "There is no training step"
+    end
+
+    test "a take pushed by the recorder becomes the reference clip and re-costs the chimes", %{
+      conn: conn
+    } do
+      absent()
+      {:ok, view, _html} = live(conn, ~p"/voice")
+
+      html = render_hook(view, "reference_take", %{"pcm" => tone(2_500), "sample_rate" => 44_100})
+
+      assert html =~ "This is your voice now"
+      assert Config.cloning?()
+      assert html =~ "in use"
+      assert html =~ "0 of 16"
+    end
+
+    test "a too-short take says so and changes nothing", %{conn: conn} do
+      absent()
+      {:ok, view, _html} = live(conn, ~p"/voice")
+
+      html = render_hook(view, "reference_take", %{"pcm" => tone(500), "sample_rate" => 44_100})
+
+      assert html =~ "Too short"
+      refute Config.cloning?()
+    end
+
+    test "a refused microphone is explained, with where to fix it", %{conn: conn} do
+      absent()
+      {:ok, view, _html} = live(conn, ~p"/voice")
+
+      html =
+        render_hook(view, "reference_report", %{
+          "do" => "capability",
+          "state" => "denied",
+          "detail" => "NotAllowedError"
+        })
+
+      assert html =~ "Privacy"
+    end
+
+    test "typing a line makes a clip that lands in the list with a player", %{
+      conn: conn,
+      root: root
+    } do
+      stub_writing_wav(root)
+      {:ok, view, _html} = live(conn, ~p"/voice")
+
+      view
+      |> form("form[phx-submit=clip_make]", %{"clip" => %{"text" => "Hello from the test."}})
+      |> render_submit()
+
+      assert eventually(fn ->
+               render(view) =~ "Hello from the test." and render(view) =~ "/voice-audio/"
+             end),
+             "expected the clip to appear with an audio source"
+
+      assert [%{text: "Hello from the test."}] = BusterClaw.Voice.Clips.list()
+    end
+
+    test "without a recording, the clip panel says whose voice it will be", %{conn: conn} do
+      absent()
+      {:ok, _view, html} = live(conn, ~p"/voice")
+
+      assert html =~ "No recording yet"
+    end
+  end
+
+  defp tone(ms, rate \\ 44_100) do
+    count = div(rate * ms, 1000)
+
+    floats =
+      for i <- 0..(count - 1), into: <<>> do
+        <<:math.sin(2 * :math.pi() * 440 * i / rate) * 0.3::float-little-32>>
+      end
+
+    Base.encode64(floats)
+  end
+
   describe "the phone greeting" do
     # The wire half — upload, status, drift — is covered in
     # `BusterClaw.Voice.GreetingTest` against a Req.Test plug. What is asserted

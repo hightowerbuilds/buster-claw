@@ -6,6 +6,7 @@ defmodule BusterClaw.Voice.ChimesTest do
   alias BusterClaw.Notifications.Sound
   alias BusterClaw.Voice.Chimes
   alias BusterClaw.Voice.Engine
+  alias BusterClaw.Voice.Renderer
 
   setup do
     root = Path.join(System.tmp_dir!(), "bc_chimes_#{System.unique_integer([:positive])}")
@@ -138,13 +139,33 @@ defmodule BusterClaw.Voice.ChimesTest do
 
   describe "render_set/1 — the whole set in one model load" do
     setup do
+      previous_path = Application.get_env(:buster_claw, :voxcpm_path)
+      previous_device = Application.get_env(:buster_claw, :voxcpm_device)
+
       on_exit(fn ->
-        Application.delete_env(:buster_claw, :voxcpm_path)
-        Application.delete_env(:buster_claw, :voxcpm_device)
+        if previous_path,
+          do: Application.put_env(:buster_claw, :voxcpm_path, previous_path),
+          else: Application.delete_env(:buster_claw, :voxcpm_path)
+
+        if previous_device,
+          do: Application.put_env(:buster_claw, :voxcpm_device, previous_device),
+          else: Application.delete_env(:buster_claw, :voxcpm_device)
+
         Engine.refresh()
       end)
 
       Application.put_env(:buster_claw, :voxcpm_device, "cpu")
+
+      # These tests reason about what is and is not in the cache, so the cache
+      # must start empty — assert the precondition rather than assume it. Seen
+      # once on 09-03-26 (random seed, not reproduced in five more runs): the gap
+      # test found its victim line already cached, so it read {:ok, _} where
+      # :not_rendered was expected. The likely leak is `workspace_root`, which is
+      # global app env: a render from another test that finishes after that test
+      # has ended computes its cache path from whatever root is current, and
+      # writes a chime line into this test's directory. Wiping here closes that
+      # hole whatever its exact source.
+      File.rm_rf!(Renderer.cache_dir())
       :ok
     end
 
