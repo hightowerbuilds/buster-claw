@@ -2186,10 +2186,20 @@ defmodule BusterClawWeb.StatusLiveTest do
       refute "voice" in Enum.map(BusterClawWeb.Studio.Registry.placeholders(), & &1.key),
              "Voice is a placeholder again — this tutorial now overclaims what that tab does"
 
-      # And the tab it sends the reader to must exist. `path` is /studio now, not
-      # /cmd-list: the surface it describes was built, so a deep link into it is
-      # finally honest.
-      assert html =~ ~s(href="/studio")
+      # REMOVED 09-02-26, and worth a note because it looked like it was testing
+      # this tutorial and was not.
+      #
+      # It asserted `href="/studio"` appeared in the rendered page, believing that
+      # proved the tutorial deep-links to the surface it describes. It never did:
+      # `studio` is in `@built`, so this tab renders `Explained.Studio`, which has
+      # no such link — only the STUB renders a registry `path`. The href it
+      # matched came from the dock nav bar, three levels up and nothing to do with
+      # the tutorial.
+      #
+      # The dock's Studio tab was removed when the Sketch Pad took it, and the
+      # assertion went red — which is the only reason anyone found out it had been
+      # reading the wrong element all along. Nothing replaces it here, because the
+      # thing it claimed to check does not exist to check.
 
       # The framing is a contract, not decoration. Every other Explained tab
       # documents something the product depends on; this one documents a

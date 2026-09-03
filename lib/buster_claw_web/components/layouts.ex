@@ -35,16 +35,15 @@ defmodule BusterClawWeb.Layouts do
     # split pane), so its tab-strip label is preserved in @tab_labels below.
     # No brand PNG yet — the dock falls back to the text label (see render below).
     #
-    # Studio went the OTHER way on 08-16: it was a Home sub-tab and became a
-    # route, so it needs a door here. Home renders its panels behind `:if`,
-    # which destroyed and rebuilt the studio on every glance at Chat — the whole
-    # reason its selection, trim and undo stacks had to be hoisted into
-    # `StatusLive` to survive. On its own route that pressure is gone.
+    # This door said "Studio" until 09-02-26. The Studio is being spun out into
+    # its own project, and the Sketch Pad was the one surface at `/studio` worth
+    # keeping — it had no other entrance, so the tab became its rather than
+    # disappearing with the thing it was sharing a route with.
     %{
-      label: "Studio",
-      path: "/studio",
-      icon: "hero-musical-note",
-      role: "nav_studio"
+      label: "Sketch",
+      path: "/sketch",
+      icon: "hero-pencil",
+      role: "nav_sketch"
     },
     %{
       label: "Settings",

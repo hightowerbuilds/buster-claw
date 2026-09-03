@@ -85,6 +85,14 @@ defmodule BusterClawWeb.Router do
       live "/voice", VoiceLive, :index
       live "/notify-settings", NotifySettingsLive, :index
       live "/phone", PhoneLive, :index
+      live "/sketch", SketchLive, :index
+      # NO DOCK TAB as of 09-02-26 — the Studio is being spun out into its own
+      # project, and the Sketch Pad (the one surface here worth keeping) took the
+      # tab. The route stays: it is the only way to reach Mix and the Voice
+      # Library, and roughly thirty tests still exercise them through it. Deleting
+      # the route is the spin-off's job, together with those tests. An unreachable
+      # route is untidy; a route deleted out from under its own test suite is an
+      # afternoon of guessing which failures were intentional.
       live "/studio", StudioLive, :index
       live "/workspace", WorkspaceLive, :index
       live "/manual", UserGuideLive, :index
