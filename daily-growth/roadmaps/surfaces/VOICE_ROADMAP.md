@@ -274,17 +274,27 @@ work.** Today `supabase/functions/voice/index.ts:99` emits
 
 ## Loose ends no gate covers
 
-**`NSMicrophoneUsageDescription` is missing, and the comment saying it is
-unnecessary is false.** `desktop/tauri/Info.plist:19` reads *"there is no
-getUserMedia anywhere in assets/js."* There is —
-`assets/js/hooks/voice_recorder.js:117`. A hardened-runtime app that requests the
-microphone with no usage string is **terminated by TCC**, not merely given a
-generic prompt, so the failure will look like a WKWebView ceiling when it is a
-one-line plist omission. It is notarization-affecting (a re-sign) and it matters
-the moment any voice *input* is attempted — which is on the horizon, since input
-currently happens outside the app in Wispr Flow. `check_docs_drift.sh` does not
-scan `Info.plist`; that is why it survived, and it will survive again unless the
-script grows a `getUserMedia`-versus-plist assertion.
+**`NSMicrophoneUsageDescription` — FIXED 09-02-26.** The plist listed the
+microphone as "deliberately absent" on the grounds that *"there is no
+getUserMedia anywhere in assets/js"*. There was:
+`assets/js/hooks/voice_recorder.js` had been calling it twice since 08-16. A
+hardened-runtime app that requests the microphone with no usage string is
+**terminated by TCC**, not given a generic prompt — so the first person to press
+record would have watched the app die and concluded the webview cannot capture,
+which is the expensive half of the bug. The key is now declared and the false
+comment is gone. **It is notarization-affecting (a re-sign).**
+
+Guarded by `test/buster_claw/tcc_usage_lockstep_test.exs`, which fails in both
+directions — capture with no string, and a string with no capture — and is the
+first test in the repo to open `Info.plist` at all. It strips XML and JS comments
+first, because both files discuss these keys by name.
+
+> **Left open, and it is a security question rather than a plist one.** Whether an
+> arbitrary page in the embedded browser can now reach the microphone. The comment
+> that was removed asserted Tauri's `WKUIDelegate` denies capture before TCC is
+> consulted; [[browser-roadmap-status]]'s finding asserts wry owns the single
+> `uiDelegate` slot and **auto-grants** camera and mic. **Both cannot be true**,
+> and neither has been exercised in a packaged build.
 
 **`skill-seeds/sound-cutup.md` will outlive the feature in every existing
 workspace.** 183 lines teaching an agent 24 verbs, embedded at compile time

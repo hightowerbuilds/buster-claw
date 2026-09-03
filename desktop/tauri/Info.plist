@@ -14,13 +14,8 @@
 
   WHAT IS DELIBERATELY ABSENT, and why, so nobody adds it back on a hunch:
 
-    NSMicrophoneUsageDescription / NSCameraUsageDescription
-      Nothing captures. Voice is `say(1)`, which is output only (see
-      desktop/tauri/src/voice.rs), and there is no getUserMedia anywhere in
-      assets/js. The embedded webview browses arbitrary pages, but Tauri's
-      WKUIDelegate does not implement requestMediaCapturePermissionFor, so a
-      page's capture request is denied before TCC is ever consulted. Declaring a
-      permission we never exercise is its own small breach of the trust story.
+    NSCameraUsageDescription
+      Nothing captures video. No `getUserMedia({video})` anywhere in assets/js.
 
     NSAppleEventsUsageDescription
       The app scripts nothing. `osascript` appears only under scripts/, which
@@ -42,5 +37,29 @@
 
   <key>NSDownloadsFolderUsageDescription</key>
   <string>Buster Claw saves files your agent downloads to this folder, and reads the ones you point it at.</string>
+
+  <!-- ADDED 09-02-26, correcting a comment that had been false since 08-16.
+       This block used to list the microphone as "deliberately absent" on the
+       grounds that "there is no getUserMedia anywhere in assets/js". There is:
+       assets/js/hooks/voice_recorder.js calls it twice (lines 117 and 123).
+
+       This is not a cosmetic omission. Under the hardened runtime an app that
+       reaches for the microphone with NO usage string is TERMINATED by TCC — not
+       shown a generic prompt. So the first person to click record would have
+       watched the app die and reasonably concluded the webview cannot capture,
+       when the actual cause was one missing line in this file. That wrong
+       conclusion is the expensive part; the fix is here.
+
+       UNRESOLVED, and worth knowing before trusting either answer: whether an
+       arbitrary page in the embedded browser can also reach the microphone now
+       that the key exists. The comment removed above asserted Tauri's
+       WKUIDelegate denies capture requests before TCC is consulted. The browser
+       roadmap's finding asserts the opposite — that wry owns the single
+       uiDelegate slot and AUTO-GRANTS camera and mic. Both cannot be true, and
+       neither has been exercised in a packaged build. If wry auto-grants, this
+       key changes what a browsed page can do, and that is a security question
+       rather than a plist question. -->
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Buster Claw records audio only when you press record, and only into your own workspace folder. Nothing is sent anywhere — recording and playback both happen on this Mac.</string>
 </dict>
 </plist>
