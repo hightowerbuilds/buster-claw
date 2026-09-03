@@ -38,8 +38,10 @@ whose work.
 - **The chat SVG channel** — `BusterClaw.SvgViewer`, which already exists and
   already lets the model draw. Its relationship to this surface is settled in
   `D2`, but it is not changed by this map.
-- **The Studio shell** — the rail, the `/studio` route and the tab registry
-  belong to [`STUDIO`](STUDIO_ROADMAP.md).
+- **The Studio shell** — the rail, the `/studio` route and the tab registry.
+  Its map was deleted 09-02-26 when the cut-up engine was spun out into its
+  own project; the shell still exists in this repo and is still not this
+  map's to change.
 - **Image storage generally** — Pockets and the Appearance image pool own the
   operator's *collections* of media. A sketch's images are not a collection; they
   are parts of one document, and `D11` gives them a sidecar rather than a third
