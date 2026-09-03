@@ -34,6 +34,7 @@ defmodule BusterClawWeb.VoiceLive do
      # The renderer addresses work by content hash and has no idea these are
      # notification lines; this map is the only thing that does.
      |> assign(:chime_jobs, %{})
+     |> assign(:chime_task, nil)
      |> assign(:chime_note, nil)
      # The render key of a greeting being made, so its completion knows to
      # publish rather than just sit in the cache.
@@ -86,31 +87,29 @@ defmodule BusterClawWeb.VoiceLive do
     {:noreply, socket |> load_chimes() |> assign(:chime_note, "Back to the seeded lines.")}
   end
 
-  # Ask for the whole set. Cache hits install immediately; the rest arrive on the
-  # renderer's topic and are installed as they land, so the page fills in rather
-  # than waiting for the slowest line.
+  # One engine invocation for the whole set, in a task.
+  #
+  # The obvious alternative — one Renderer job per line — reports progress as each
+  # lands, which is nicer, and costs the model load sixteen times. Measured on
+  # this machine that is 2 min 29 s of warm-up each, so the pretty version takes
+  # roughly twice as long as the whole job needs to. For a forty-minute grind the
+  # operator runs whenever they change the voice, halving it beats watching a
+  # progress line.
   def handle_event("chime-render-all", _params, socket) do
-    {socket, queued} =
-      Enum.reduce(Chimes.render_all(), {socket, 0}, fn {key, result}, {acc, queued} ->
-        case result do
-          {:ok, path} ->
-            Chimes.install(key, path)
-            {acc, queued}
+    if socket.assigns.chime_task do
+      {:noreply, assign(socket, :chime_note, "Already making them.")}
+    else
+      task = Task.async(fn -> Chimes.render_set() end)
 
-          {:queued, render_key} ->
-            {update(acc, :chime_jobs, &Map.put(&1, render_key, key)), queued + 1}
-
-          {:error, _reason} ->
-            {acc, queued}
-        end
-      end)
-
-    note =
-      if queued == 0,
-        do: "Every line was already made — they are installed.",
-        else: "Making #{queued} line#{if queued == 1, do: "", else: "s"}. This takes a while."
-
-    {:noreply, socket |> load_chimes() |> assign(:chime_note, note)}
+      {:noreply,
+       socket
+       |> assign(:chime_task, task.ref)
+       |> assign(
+         :chime_note,
+         "Making all #{length(Chimes.keys())} — one model load for the set. " <>
+           "Expect tens of minutes; you can leave this page."
+       )}
+    end
   end
 
   def handle_event("greeting-save", %{"greeting" => text}, socket) do
@@ -153,6 +152,24 @@ defmodule BusterClawWeb.VoiceLive do
     {:noreply, socket |> load_greeting() |> assign(:greeting_note, note)}
   end
 
+  # Installing is fast and local — it is a copy and a settings write — so the
+  # whole set goes in at once rather than trickling.
+  defp install_set(socket, results) do
+    installed =
+      Enum.count(results, fn {key, result} ->
+        match?({:ok, _}, result) and match?({:ok, _}, Chimes.install(key, elem(result, 1)))
+      end)
+
+    failed = length(results) - installed
+
+    note =
+      if failed == 0,
+        do: "All #{installed} installed. That is what your notifications say now.",
+        else: "#{installed} installed, #{failed} failed — the rest are unchanged."
+
+    socket |> assign(:chime_note, note) |> load_chimes()
+  end
+
   defp publish_greeting(socket, path) do
     case Greeting.publish(path) do
       :ok ->
@@ -183,7 +200,17 @@ defmodule BusterClawWeb.VoiceLive do
 
   def handle_info({ref, result}, socket) when is_reference(ref) do
     Process.demonitor(ref, [:flush])
-    {:noreply, assign(socket, :engine_check, result)}
+
+    if ref == socket.assigns.chime_task do
+      socket = assign(socket, :chime_task, nil)
+
+      case result do
+        {:ok, results} -> {:noreply, install_set(socket, results)}
+        {:error, reason} -> {:noreply, assign(socket, :chime_note, "Failed: #{inspect(reason)}")}
+      end
+    else
+      {:noreply, assign(socket, :engine_check, result)}
+    end
   end
 
   def handle_info({:DOWN, _ref, :process, _pid, _reason}, socket), do: {:noreply, socket}

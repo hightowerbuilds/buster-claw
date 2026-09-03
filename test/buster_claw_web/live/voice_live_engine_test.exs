@@ -229,10 +229,33 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
 
     path = Path.join(root, "voxcpm-stub")
 
-    File.write!(
-      path,
-      "#!/bin/sh\nout=\"\"\nwhile [ $# -gt 0 ]; do\n  if [ \"$1\" = \"--output\" ]; then out=\"$2\"; fi\n  shift\ndone\ncp \"#{fixture}\" \"$out\"\nexit 0\n"
-    )
+    # Handles both shapes the app uses: `design --output FILE` and
+    # `batch --input LINES --output-dir DIR`, the latter numbering outputs from 1
+    # by line position exactly as voxcpm's own cli.py does.
+    script = """
+    #!/bin/sh
+    out=""
+    inp=""
+    outdir=""
+    while [ $# -gt 0 ]; do
+      if [ "$1" = "--output" ]; then out="$2"; fi
+      if [ "$1" = "--input" ]; then inp="$2"; fi
+      if [ "$1" = "--output-dir" ]; then outdir="$2"; fi
+      shift
+    done
+    if [ -n "$out" ]; then cp "#{fixture}" "$out"; fi
+    if [ -n "$inp" ] && [ -n "$outdir" ]; then
+      i=1
+      while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        cp "#{fixture}" "$outdir/output_$(printf '%03d' $i).wav"
+        i=$((i+1))
+      done < "$inp"
+    fi
+    exit 0
+    """
+
+    File.write!(path, script)
 
     File.chmod!(path, 0o755)
     Application.put_env(:buster_claw, :voxcpm_path, path)
