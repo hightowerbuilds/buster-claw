@@ -15,15 +15,39 @@ defmodule BusterClawWeb.VoiceLive do
   """
   use BusterClawWeb, :live_view
 
+  alias BusterClaw.Notifications.Sound
+  alias BusterClaw.Voice.Chimes
   alias BusterClaw.Voice.Engine
+  alias BusterClaw.Voice.Renderer
 
   @impl true
   def mount(_params, _session, socket) do
+    if connected?(socket), do: Renderer.subscribe()
+
     {:ok,
      socket
      |> assign(:page_title, "Voice")
      |> assign(:engine, Engine.probe())
-     |> assign(:engine_check, nil)}
+     |> assign(:engine_check, nil)
+     # render key -> chime key, so a finished render knows which chime it is.
+     # The renderer addresses work by content hash and has no idea these are
+     # notification lines; this map is the only thing that does.
+     |> assign(:chime_jobs, %{})
+     |> assign(:chime_note, nil)
+     |> load_chimes()}
+  end
+
+  defp load_chimes(socket) do
+    assign(socket, :chimes, Enum.map(Chimes.keys(), &chime_row/1))
+  end
+
+  defp chime_row(key) do
+    %{
+      key: key,
+      label: Sound.route_label(key),
+      line: Chimes.line(key),
+      installed?: Chimes.installed?(key)
+    }
   end
 
   @impl true
@@ -39,7 +63,67 @@ defmodule BusterClawWeb.VoiceLive do
     {:noreply, assign(socket, :engine_check, {:running, task.ref})}
   end
 
+  def handle_event("chime-lines-save", %{"lines" => lines}, socket) do
+    Enum.each(lines, fn {key, text} -> Chimes.put_line(key, text) end)
+
+    {:noreply, socket |> load_chimes() |> assign(:chime_note, "Lines saved.")}
+  end
+
+  def handle_event("chime-lines-reset", _params, socket) do
+    Chimes.reset_all()
+    {:noreply, socket |> load_chimes() |> assign(:chime_note, "Back to the seeded lines.")}
+  end
+
+  # Ask for the whole set. Cache hits install immediately; the rest arrive on the
+  # renderer's topic and are installed as they land, so the page fills in rather
+  # than waiting for the slowest line.
+  def handle_event("chime-render-all", _params, socket) do
+    {socket, queued} =
+      Enum.reduce(Chimes.render_all(), {socket, 0}, fn {key, result}, {acc, queued} ->
+        case result do
+          {:ok, path} ->
+            Chimes.install(key, path)
+            {acc, queued}
+
+          {:queued, render_key} ->
+            {update(acc, :chime_jobs, &Map.put(&1, render_key, key)), queued + 1}
+
+          {:error, _reason} ->
+            {acc, queued}
+        end
+      end)
+
+    note =
+      if queued == 0,
+        do: "Every line was already made — they are installed.",
+        else: "Making #{queued} line#{if queued == 1, do: "", else: "s"}. This takes a while."
+
+    {:noreply, socket |> load_chimes() |> assign(:chime_note, note)}
+  end
+
   @impl true
+  def handle_info({:voice_render, render_key, result}, socket) do
+    case Map.pop(socket.assigns.chime_jobs, render_key) do
+      {nil, _jobs} ->
+        # Somebody else's render. The topic is shared.
+        {:noreply, socket}
+
+      {chime_key, jobs} ->
+        note =
+          case result do
+            {:ok, path} ->
+              Chimes.install(chime_key, path)
+              "Installed #{Sound.route_label(chime_key)}."
+
+            {:error, reason} ->
+              "#{Sound.route_label(chime_key)} failed: #{inspect(reason)}"
+          end
+
+        {:noreply,
+         socket |> assign(:chime_jobs, jobs) |> assign(:chime_note, note) |> load_chimes()}
+    end
+  end
+
   def handle_info({ref, result}, socket) when is_reference(ref) do
     Process.demonitor(ref, [:flush])
     {:noreply, assign(socket, :engine_check, result)}
@@ -202,6 +286,61 @@ defmodule BusterClawWeb.VoiceLive do
               <span class="text-xs text-base-content/60">{check_sentence(@engine_check)}</span>
             </div>
           </div>
+        </div>
+
+        <div class="ic-panel overflow-hidden">
+          <header class="border-b-2 border-base-content/20 px-5 py-4">
+            <p class="ic-eyebrow">Spoken notifications</p>
+            <h2 class="font-display text-2xl font-black uppercase tracking-tight">
+              What it says
+            </h2>
+            <p class="mt-1 text-sm text-base-content/65">
+              A chime tells you something happened. A spoken one tells you <strong>what</strong>,
+              from across the room. These are your machine's words — change any of them.
+              Each is made once and kept, so nothing is rendered while a timer is going off.
+            </p>
+          </header>
+
+          <form phx-submit="chime-lines-save" class="flex flex-col gap-3 px-5 py-5">
+            <div :for={row <- @chimes} class="flex flex-wrap items-center gap-3">
+              <span class="w-28 shrink-0 text-xs uppercase tracking-wide text-base-content/60">
+                {row.label}
+              </span>
+              <input
+                type="text"
+                name={"lines[#{row.key}]"}
+                value={row.line}
+                maxlength="120"
+                class="input input-bordered input-sm min-w-0 flex-1 text-sm"
+              />
+              <span class="w-20 shrink-0 text-xs text-base-content/50">
+                <%= if row.installed? do %>
+                  <.icon name="hero-check" class="size-4 text-primary" /> spoken
+                <% end %>
+              </span>
+            </div>
+
+            <div class="mt-2 flex flex-wrap items-center gap-3">
+              <button type="submit" class="btn btn-primary btn-sm">Save lines</button>
+              <button type="button" phx-click="chime-lines-reset" class="btn btn-ghost btn-sm">
+                Reset to defaults
+              </button>
+              <button
+                type="button"
+                phx-click="chime-render-all"
+                disabled={not @engine.available?}
+                class="btn btn-ghost btn-sm"
+              >
+                <.icon name="hero-microphone" class="size-4" /> Speak them
+              </button>
+              <span class="text-xs text-base-content/60">{@chime_note}</span>
+            </div>
+
+            <p :if={not @engine.available?} class="text-xs text-base-content/55">
+              Editing works without an engine — speaking them needs one. Install it above,
+              then come back.
+            </p>
+          </form>
         </div>
       </section>
     </Layouts.app>

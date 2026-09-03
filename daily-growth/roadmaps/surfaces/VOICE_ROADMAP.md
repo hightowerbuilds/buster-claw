@@ -220,8 +220,28 @@ cold 2B load plus a long line is minutes.
 
 ## The spoken chime set
 
-**Twelve to fifteen short lines, rendered once, cached forever** — one `batch`
-invocation, one model load. One line per live route key:
+**BUILT 09-02-26** — `BusterClaw.Voice.Chimes`, plus the panel in Settings →
+Voice that edits the lines and installs them.
+
+**Sixteen short lines, rendered once, cached forever.** One line per live route
+key — and `order` deliberately has none: its routing slot survives but
+`SoundBoard.event_key/1` can no longer emit it, so a line for it is a line nobody
+will ever hear. A test asserts that absence rather than leaving it to be
+rediscovered.
+
+**Not built with `batch`, on purpose.** One model load for the whole set is the
+right optimisation and is left undone: `batch` writes into a directory under
+names this app does not choose, and guessing that mapping with no engine to check
+against is how a chime ends up routed to the wrong sound. It is a measurement
+away, not a design away.
+
+Install overwrites in place rather than going through the library's
+`install_file/2`, which picks a *free* name — that would have left
+`voice-alarm-2.wav` on disk with the old chime still routed, so editing a line
+and re-rendering would change nothing you could hear. There is a test named for
+that too.
+
+The seeded set:
 
 | Key | Fired by | A line like |
 |---|---|---|
