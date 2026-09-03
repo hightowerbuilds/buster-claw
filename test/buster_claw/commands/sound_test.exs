@@ -1912,6 +1912,108 @@ defmodule BusterClaw.Commands.SoundTest do
     end
   end
 
+  # A WAV this app did not write, shaped the way a foreign renderer really
+  # shapes one. The awkward part is not invented: `say -o out.wav
+  # --data-format=LEI16@22050` emits a **JUNK padding chunk ahead of `fmt `**, so
+  # `fmt ` begins at byte 48 rather than 12 and `data` is nowhere near byte 44.
+  # Measured on macOS 26.6.2 before this test was written. A parser that seeks to
+  # a fixed 44-byte header reads that padding as audio — a burst of noise at the
+  # head of every imported clip — which is exactly what `parse/1`'s chunk walk
+  # exists to prevent, and which nothing else here exercises with a header laid
+  # out by something other than us.
+  defp foreign_wav(rate, ms) do
+    count = trunc(rate * ms / 1000)
+
+    pcm =
+      for i <- 0..(count - 1), into: <<>> do
+        <<trunc(:math.sin(2 * :math.pi() * 440 * i / rate) * 8_000)::little-signed-16>>
+      end
+
+    block_align = 2
+
+    body =
+      <<"JUNK", 28::little-32>> <>
+        :binary.copy(<<0>>, 28) <>
+        <<"fmt ", 16::little-32, 1::little-16, 1::little-16, rate::little-32,
+          rate * block_align::little-32, block_align::little-16, 16::little-16, "data",
+          byte_size(pcm)::little-32>> <> pcm
+
+    <<"RIFF", 4 + byte_size(body)::little-32, "WAVE">> <> body
+  end
+
+  describe "the external-render bridge" do
+    # The acceptance walk above proves a file becomes a routed chime — but only
+    # for audio this app assembled itself. Every step it takes between import and
+    # apply (align, index_search, assemble) belongs to the cut-up engine. Remove
+    # that engine and the walk goes with it, taking the only end-to-end assertion
+    # that anything can become a routed chime at all.
+    #
+    # This is that assertion rebuilt on the half that does not depend on the
+    # cut-up engine: audio rendered by something ELSE — a speech engine on
+    # another machine, or `say(1)` on this one — arrives as a plain file and
+    # walks out a routed chime. The app cannot tell what produced it, and that
+    # indifference is the actual contract.
+    #
+    # Every step goes through `Commands.call/3` BY NAME, for the reason the
+    # acceptance walk gives: a handler nothing can reach through the dispatcher
+    # is not a command surface.
+
+    test "audio rendered elsewhere becomes a routed chime, from the CLI alone", %{root: root} do
+      # 1. Something that is not this app writes into the Library.
+      File.write!(Path.join([root, "library", "spoken.wav"]), foreign_wav(22_050, 400))
+
+      # 2. Look before importing — the agent's only substitute for ears.
+      assert {:ok, %{layer: "library", peak: heard}} =
+               Commands.call("sound_probe", %{"path" => "spoken.wav"})
+
+      assert heard > 0.0
+
+      # 3. Through the studio door. Already the internal format, so the cheap
+      #    path answers and the decoder is never reached — but the header still
+      #    has to be walked rather than assumed.
+      assert {:ok, %{name: "spoken.wav", internal: true, decoded: false}} =
+               Commands.call("sound_import", %{"path" => "spoken.wav"})
+
+      # 4. The gated step, unchanged and unaware that its input was synthesized
+      #    rather than recorded.
+      assert {:ok, applied} =
+               Commands.call("sound_apply", %{
+                 "source" => "spoken.wav",
+                 "route" => "voicemail",
+                 "name" => "spoken-chime"
+               })
+
+      assert applied.name == "spoken-chime.wav"
+      assert applied.duration_ms > 0
+      assert File.regular?(Path.join([root, "sounds", "spoken-chime.wav"]))
+
+      # 5. And it resolves the way a fired notification would resolve it.
+      assert Sound.resolved("voicemail") == "spoken-chime.wav"
+      assert Sound.for_notification(%{source: "voicemail", kind: "alarm"}) == "spoken-chime.wav"
+    end
+
+    if @decoder_available do
+      test "a foreign sample rate is converted on the way in", %{root: root} do
+        # 48 kHz is not the internal format, so this is the decode path. Most
+        # renderers emit 24 kHz or 48 kHz, and the caller must not have to know
+        # that before handing a file over.
+        File.write!(Path.join([root, "library", "hifi.wav"]), foreign_wav(48_000, 400))
+
+        assert {:ok, %{name: "hifi.wav", internal: true, decoded: true}} =
+                 Commands.call("sound_import", %{"path" => "hifi.wav"})
+
+        assert {:ok, %{route: "voicemail"}} =
+                 Commands.call("sound_apply", %{
+                   "source" => "hifi.wav",
+                   "route" => "voicemail",
+                   "name" => "hifi-chime"
+                 })
+
+        assert Sound.resolved("voicemail") == "hifi-chime.wav"
+      end
+    end
+  end
+
   describe "sound_find" do
     setup %{root: root} do
       source(root, "planted.wav", planted())
