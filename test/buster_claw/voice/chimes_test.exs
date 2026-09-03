@@ -192,6 +192,38 @@ defmodule BusterClaw.Voice.ChimesTest do
       assert {^key, {:error, :not_rendered}} = Enum.at(results, 2)
     end
 
+    test "a second run makes nothing — the set is already in the cache", %{root: root} do
+      counter = Path.join(root, "invocations")
+      batch_stub(root, skip: [], counter: counter)
+
+      assert {:ok, first} = Chimes.render_set()
+      assert File.read!(counter) |> String.trim() |> String.length() == 1
+
+      assert {:ok, second} = Chimes.render_set()
+
+      # The engine was NOT run again. On this hardware the difference between a
+      # cache hit and a re-render is about forty minutes, so "press it twice"
+      # must not mean "wait twice".
+      assert File.read!(counter) |> String.trim() |> String.length() == 1
+      assert Enum.map(first, &elem(&1, 0)) == Enum.map(second, &elem(&1, 0))
+
+      for {a, b} <- Enum.zip(first, second), do: assert(a == b)
+    end
+
+    test "only the lines that changed are re-rendered", %{root: root} do
+      counter = Path.join(root, "invocations")
+      batch_stub(root, skip: [], counter: counter)
+      assert {:ok, _} = Chimes.render_set()
+
+      # Change exactly one line. The batch that follows must carry one line, not
+      # sixteen — that is the whole reason the cache is consulted first.
+      assert :ok = Chimes.put_line("timer", "Time is up, entirely.")
+      assert {:ok, results} = Chimes.render_set()
+
+      assert File.read!(Path.join(root, "last_input_lines")) |> String.trim() == "1"
+      assert {"timer", {:ok, _}} = Enum.find(results, fn {k, _} -> k == "timer" end)
+    end
+
     test "with no engine it refuses rather than writing a temp file" do
       Application.put_env(:buster_claw, :voxcpm_path, "/nonexistent/voxcpm")
       Engine.refresh()
@@ -215,6 +247,8 @@ defmodule BusterClaw.Voice.ChimesTest do
 
     skip = Enum.map_join(opts[:skip] || [], " ", &to_string/1)
     empty = Enum.map_join(opts[:empty] || [], " ", &to_string/1)
+    counter = opts[:counter] || Path.join(root, "invocations")
+    seen = Path.join(root, "last_input_lines")
 
     script = """
     #!/bin/sh
@@ -225,6 +259,8 @@ defmodule BusterClaw.Voice.ChimesTest do
       if [ "$1" = "--input" ]; then inp="$2"; fi
       shift
     done
+    printf 'x' >> "#{counter}"
+    grep -c . "$inp" > "#{seen}"
     i=1
     while IFS= read -r line; do
       [ -z "$line" ] && continue

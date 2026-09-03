@@ -106,6 +106,32 @@ defmodule BusterClaw.Voice.Renderer do
     with {:ok, args} <- args_for(text, opts), do: {:ok, cached_path(key_for(args))}
   end
 
+  @doc """
+  Take a file rendered outside this process and file it in the cache.
+
+  **A line's identity is what was asked for, not how it was produced.** The
+  engine's `batch` subcommand renders many lines in one model load — the only sane
+  way to make a whole set — but it is a different invocation from the single
+  render, so a naive cache key would file the same sentence in two places and
+  re-render it the next time it was asked for singly. This puts a batch result
+  under the *single-render* key, which is the canonical one.
+
+  Copies rather than renames: the source may be a temp directory the caller still
+  wants, and a cache entry must never be a file somebody else can move.
+  """
+  @spec adopt(String.t(), String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
+  def adopt(text, source, opts \\ []) when is_binary(text) and is_binary(source) do
+    with {:ok, target} <- path_for(text, opts),
+         {:ok, %File.Stat{size: size}} when size > 44 <- File.stat(source),
+         :ok <- File.mkdir_p(Path.dirname(target)),
+         :ok <- File.cp(source, target) do
+      {:ok, target}
+    else
+      {:ok, %File.Stat{}} -> {:error, :empty_render}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   # ---------------------------------------------------------------------------
   # Server
   # ---------------------------------------------------------------------------

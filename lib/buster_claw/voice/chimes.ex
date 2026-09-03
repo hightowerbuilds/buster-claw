@@ -161,16 +161,46 @@ defmodule BusterClaw.Voice.Chimes do
   def render_set(opts \\ []) do
     ordered = Enum.map(keys(), fn key -> {key, line(key)} end)
 
-    cond do
-      not Engine.available?() ->
-        {:error, :engine_unavailable}
+    if Enum.any?(ordered, fn {_key, text} -> blank?(text) end) do
+      {:error, :blank_line}
+    else
+      {cached, missing} = Enum.split_with(ordered, fn {_key, text} -> cached?(text, opts) end)
 
-      Enum.any?(ordered, fn {_key, text} -> blank?(text) end) ->
-        {:error, :blank_line}
-
-      true ->
-        run_batch(ordered, opts)
+      cond do
+        missing == [] -> {:ok, merge(ordered, cached_results(cached, opts), [])}
+        not Engine.available?() -> {:error, :engine_unavailable}
+        true -> batch_missing(ordered, cached, missing, opts)
+      end
     end
+  end
+
+  # Only the lines that are not already made. Editing one chime and pressing the
+  # button again must cost one render, not sixteen — and on this hardware the
+  # difference between those is about forty minutes.
+  defp batch_missing(ordered, cached, missing, opts) do
+    case run_batch(missing, opts) do
+      {:ok, rendered} -> {:ok, merge(ordered, cached_results(cached, opts), rendered)}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp cached?(text, opts) do
+    match?({:ok, path} when is_binary(path), Renderer.path_for(text, opts)) and
+      Renderer.path_for(text, opts) |> elem(1) |> File.regular?()
+  end
+
+  defp cached_results(cached, opts) do
+    Enum.map(cached, fn {key, text} ->
+      {:ok, path} = Renderer.path_for(text, opts)
+      {key, {:ok, path}}
+    end)
+  end
+
+  # Put the answers back in `keys()` order, whichever half they came from.
+  defp merge(ordered, from_cache, from_engine) do
+    answers = Map.new(from_cache ++ from_engine)
+
+    Enum.map(ordered, fn {key, _text} -> {key, Map.get(answers, key, {:error, :not_rendered})} end)
   end
 
   defp run_batch(ordered, opts) do
@@ -183,24 +213,27 @@ defmodule BusterClaw.Voice.Chimes do
 
     case System.cmd(Engine.resolve(), args, stderr_to_stdout: true) do
       {_output, 0} ->
-        {:ok, collect(ordered, dir)}
+        {:ok, collect(ordered, dir, opts)}
 
       {output, code} ->
         {:error, {:exit, code, String.slice(output, -800, 800) || ""}}
     end
   end
 
-  defp collect(ordered, dir) do
+  # Each output is filed in the render cache under its single-render key, so the
+  # next press of the button finds it rather than making it again. The temp
+  # directory this batch wrote into is not somewhere a chime should live.
+  defp collect(ordered, dir, opts) do
     ordered
     |> Enum.with_index(1)
-    |> Enum.map(fn {{key, _text}, index} ->
+    |> Enum.map(fn {{key, text}, index} ->
       path = Path.join(dir, "output_#{String.pad_leading(to_string(index), 3, "0")}.wav")
 
-      # Size rather than existence: the failure that matters is a file that is
-      # there and empty, which would install as a chime nobody can hear.
-      case File.stat(path) do
-        {:ok, %File.Stat{size: size}} when size > 44 -> {key, {:ok, path}}
-        _ -> {key, {:error, :not_rendered}}
+      # `adopt/3` checks the size, so a file that is present and empty is a
+      # failure rather than a chime nobody can hear.
+      case Renderer.adopt(text, path, opts) do
+        {:ok, cached} -> {key, {:ok, cached}}
+        {:error, _reason} -> {key, {:error, :not_rendered}}
       end
     end)
   end
