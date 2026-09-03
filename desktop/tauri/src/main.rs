@@ -479,6 +479,7 @@ fn main() {
             app_icon::app_icon_set,
             voice::speak,
             voice::stop_speaking,
+            voice::list_voices,
             clinch::clinch_put,
             clinch::clinch_delete,
             clinch::clinch_reveal_recovery_key

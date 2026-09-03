@@ -4,7 +4,7 @@ import {CornerWidget} from "./corner_widget.js"
 import {Clock, DockClock} from "./clock.js"
 import {ScreenshotBridge, EmbeddedBrowser} from "./browser.js"
 import {AppIconBridge} from "./app_icon.js"
-import {VoiceBridge, VoiceToggle} from "./voice.js"
+import {VoiceBridge, VoiceToggle, VoicePicker} from "./voice.js"
 import {AgentChat, ThinkingTimer, QueueRail} from "./chat.js"
 import {CrtAberration} from "./crt.js"
 import {CalendarDrag} from "./calendar.js"
@@ -49,6 +49,7 @@ export const Hooks = {
   AppIconBridge,
   VoiceBridge,
   VoiceToggle,
+  VoicePicker,
   AgentChat,
   Composer,
   ThinkingTimer,

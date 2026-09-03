@@ -11,6 +11,7 @@ fn main() {
             "app_icon_set",
             "speak",
             "stop_speaking",
+            "list_voices",
             "terminal_open",
             "terminal_attach",
             "terminal_input",

@@ -36,6 +36,7 @@
     "allow-app-icon-set",
     "allow-speak",
     "allow-stop-speaking",
+    "allow-list-voices",
     "allow-clinch-put",
     "allow-clinch-delete",
     "allow-clinch-reveal-recovery-key"
