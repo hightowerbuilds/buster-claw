@@ -164,32 +164,46 @@ so it is mechanical rather than risky.
 
 ## The engine, when it is wanted
 
-**`BusterClaw.Voice.Engine` — probe and spawn.** Discovery per call, never cached
-at build time, because an operator who installs it later must not have to restart:
+**`BusterClaw.Voice.Engine` — BUILT 09-02-26.** Resolution, availability and
+command construction. It does not render; the queue below is still unbuilt.
 
-```
-@candidates [
-  Path.expand("~/.buster-claw/voxcpm/bin/voxcpm"),
-  "/opt/homebrew/bin/voxcpm",
-  "/usr/local/bin/voxcpm"
-]
-resolve: Enum.find(@candidates, &File.regular?/1) || System.find_executable("voxcpm")
-```
+**Three corrections to this section's original sketch, all found by reading
+voxcpm 2.0.3's own `cli.py` out of the published wheel rather than its docs:**
 
-`probe/0` returns `available?`, `path`, `version`, `device`, `model_id`,
-`weights_present?`, and on absence a `reason` plus the install line to show.
-Cached in `:persistent_term` with a short TTL and an explicit "re-check" button.
+1. **There is no `--version`.** The sketch had `probe/0` return one. Shelling
+   `voxcpm --version` gets an argparse error and a non-zero exit, so a working
+   install would have been reported broken. No version is exposed.
+2. **There is no `--seed`**, which the sketch listed among the `design` flags.
+3. **Resolution must not use `System.find_executable/1`**, which the sketch
+   specified. A double-clicked `.app` inherits launchd's `PATH` — this is the
+   exact bug the 08-15 signed build shipped, reporting `claude`, `codex` and
+   `opencode` all missing on a machine carrying all three. `ShellPath` exists to
+   close it, and a venv is a worse case than those three. The one hardcoded
+   candidate is `~/.buster-claw/voxcpm/bin/voxcpm`, which is not a guess but the
+   path the install line tells the operator to use.
 
-Invocation is `System.cmd/3`, `stderr_to_stdout: true`, an explicit `cd`, and a
-timeout. Always `--local-files-only` once weights are cached, and always an
-explicit `--device` — `auto` on a Mac under memory pressure is a decision made
-silently.
+Everything else in the sketch checked out: `design`, `clone`, `batch` (plus an
+unmentioned `validate`), and every flag except those two. `--normalize`,
+`--local-files-only` and `--no-denoiser` are `store_true`, so they appear alone
+or not at all — `--flag false` would be read as a positional argument.
 
-```
-voxcpm design --text "<line>" --output <tmp>.wav
-voxcpm clone  --text "<line>" --reference-audio <ref>.wav --output <tmp>.wav
-voxcpm batch  --input <lines>.txt --output-dir <dir>
-```
+**Availability is split in two, because running the binary is expensive.**
+`cli.py` imports only argparse, but the console script is `voxcpm.cli:main`, so
+Python imports the package first: `__init__` → `core` → numpy, huggingface_hub
+and the torch model modules. **Even `--help` pays a full torch import.** So
+`probe/0` never spawns anything — it answers from the filesystem and is safe to
+call while rendering — and `verify/0` actually runs the binary, is documented as
+slow, and belongs behind an explicit re-check. The `:persistent_term` TTL is
+long rather than short for the same reason plus a second one: persistent\_term
+writes trigger a global scan and are documented not to be for frequently updated
+values, so `refresh/0` is what makes a long TTL safe.
+
+Every command names a `--device`, because `auto` is the default and decides
+silently under memory pressure; `--local-files-only` defaults **on**, because a
+render that quietly reaches for huggingface is a render that hangs on a plane.
+
+On this machine the probe answers, correctly: `available? false`, `device cpu`,
+`reason :not_installed`, with the install line to show.
 
 `batch` is what makes the chime set cheap: one model load for the whole set.
 
