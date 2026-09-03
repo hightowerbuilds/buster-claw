@@ -37,6 +37,7 @@ defmodule BusterClawWeb.Status.Chat do
   alias BusterClaw.ChatSkin
   alias BusterClaw.ChatTextSize
   alias BusterClaw.SvgViewer
+  alias BusterClaw.Voice.Speech
   alias BusterClawWeb.Status.ChatAttachments
 
   # Cap the retained in-memory transcript / SVG bank on the always-open home tab
@@ -330,7 +331,19 @@ defmodule BusterClawWeb.Status.Chat do
   # Speak the model's replies aloud (client gates on the Voice toggle + desktop
   # app). Only `:assistant` text — never tool/meta/error lines. A turn emits one
   # `:assistant` message per text block; each is enqueued and spoken in order.
-  defp maybe_speak(socket, :assistant, text), do: push_event(socket, "bc:speak", %{text: text})
+  #
+  # What is spoken is NOT what is displayed, deliberately. The bubble renders the
+  # markdown; `Speech.to_spoken/1` rewrites it for a synthesizer, which otherwise
+  # reads a fenced block brace by brace and a URL segment by segment — measured at
+  # 23.6s of audio for a reply whose prose is 3.3s. An empty result means there
+  # was nothing but structure, and the right move is silence rather than saying so.
+  defp maybe_speak(socket, :assistant, text) do
+    case Speech.to_spoken(text) do
+      "" -> socket
+      spoken -> push_event(socket, "bc:speak", %{text: spoken})
+    end
+  end
+
   defp maybe_speak(socket, _role, _text), do: socket
 
   def activate_chat(socket, id) do

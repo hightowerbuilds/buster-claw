@@ -27,6 +27,28 @@ Now the voice and rate ride on each queued utterance, `list_voices` reports what
 that Mac actually has installed, and **Settings → Voice** is a picker with a
 speed slider and an audition instead of a page of prose.
 
+**And it speaks prose, not markdown.** Until now the reply went to the
+synthesizer verbatim, so `say` read every brace of a fenced block and every path
+segment of a URL. Measured on one ordinary reply — a sentence, a seven-line
+Elixir block, a link:
+
+| Spoken | Audio |
+|---|---|
+| The reply verbatim | **23.6 s** |
+| Through `Voice.Speech.to_spoken/1` | **5.6 s** |
+| Its bare prose, for reference | 3.3 s |
+
+`BusterClaw.Voice.Speech` drops structure that carries no sound (emphasis, heading
+hashes, bullets, rules) and *announces* structure a listener needs to know about
+but not hear: a fenced block becomes "elixir code block", a table becomes "a
+table", a URL becomes "a link to example.com". **Announcing beats silence** — a
+listener told there was code can go and look; one who hears a sentence quietly
+missing its middle cannot. Nothing is truncated.
+
+**What is spoken and what is displayed differ on purpose.** The bubble still
+renders the real markdown. A change that made them equal again is the regression,
+and `status_live_test.exs` asserts both halves.
+
 **This is the pragmatic layer and it is done.** Everything below is about giving
 the app a voice that is *its own* rather than one of Apple's — which is a
 different, slower job, and one that does not block anything.

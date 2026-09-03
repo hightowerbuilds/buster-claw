@@ -235,6 +235,45 @@ defmodule BusterClawWeb.StatusLiveTest do
       refute response =~ "Click to talk"
     end
 
+    test "an assistant reply is pushed for speech as prose, not as markdown", %{conn: conn} do
+      # Nothing asserted `bc:speak` before this: the whole readback path — server
+      # to hook to `say(1)` — was unguarded on the server side. What it must NOT
+      # do is hand the synthesizer raw markdown, which reads a fenced block brace
+      # by brace and a URL segment by segment.
+      {:ok, view, _html} = live(conn, ~p"/")
+      active = active_chat(view)
+
+      reply = """
+      Here is the fix.
+
+      ```elixir
+      def handle_event("save", _params, socket), do: {:noreply, socket}
+      ```
+
+      See https://example.com/owner/repo/pull/42 for the **details**.
+      """
+
+      send(view.pid, {:agent_chat, active, {:message, %{role: :assistant, text: reply}}})
+
+      assert_push_event(view, "bc:speak", %{text: spoken})
+
+      assert spoken =~ "Here is the fix."
+      assert spoken =~ "elixir code block"
+      assert spoken =~ "a link to example.com"
+      assert spoken =~ "the details."
+
+      # The code and the URL path never reach the synthesizer.
+      refute spoken =~ "handle_event"
+      refute spoken =~ ":noreply"
+      refute spoken =~ "/owner/repo/pull/42"
+      refute spoken =~ "**"
+
+      # The bubble still shows the real thing — spoken and displayed differ on
+      # purpose, and a change that made them equal again would be the regression.
+      html = render(view)
+      assert html =~ "handle_event"
+    end
+
     test "projects the active conversation's broadcast events into the transcript", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
       active = active_chat(view)
