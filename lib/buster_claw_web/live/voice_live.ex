@@ -18,6 +18,7 @@ defmodule BusterClawWeb.VoiceLive do
   alias BusterClaw.Notifications.Sound
   alias BusterClaw.Voice.Chimes
   alias BusterClaw.Voice.Engine
+  alias BusterClaw.Voice.Greeting
   alias BusterClaw.Voice.Renderer
 
   @impl true
@@ -34,7 +35,18 @@ defmodule BusterClawWeb.VoiceLive do
      # notification lines; this map is the only thing that does.
      |> assign(:chime_jobs, %{})
      |> assign(:chime_note, nil)
-     |> load_chimes()}
+     # The render key of a greeting being made, so its completion knows to
+     # publish rather than just sit in the cache.
+     |> assign(:greeting_job, nil)
+     |> assign(:greeting_note, nil)
+     |> load_chimes()
+     |> load_greeting()}
+  end
+
+  defp load_greeting(socket) do
+    socket
+    |> assign(:greeting_text, Greeting.text())
+    |> assign(:greeting_status, Greeting.status())
   end
 
   defp load_chimes(socket) do
@@ -101,8 +113,82 @@ defmodule BusterClawWeb.VoiceLive do
     {:noreply, socket |> load_chimes() |> assign(:chime_note, note)}
   end
 
+  def handle_event("greeting-save", %{"greeting" => text}, socket) do
+    Greeting.put_text(text)
+
+    note =
+      if Greeting.status().stale?,
+        do: "Saved — but callers still hear the old recording until you publish.",
+        else: "Saved."
+
+    {:noreply, socket |> load_greeting() |> assign(:greeting_note, note)}
+  end
+
+  # Render, then publish when it lands. Two steps rather than one because the
+  # render can take minutes and publishing is the part that changes what
+  # strangers hear.
+  def handle_event("greeting-publish", _params, socket) do
+    case Greeting.render() do
+      {:ok, path} ->
+        {:noreply, socket |> publish_greeting(path) |> load_greeting()}
+
+      {:queued, key} ->
+        {:noreply,
+         socket
+         |> assign(:greeting_job, key)
+         |> assign(:greeting_note, "Recording the greeting. This takes a while.")}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :greeting_note, "Could not record it: #{inspect(reason)}")}
+    end
+  end
+
+  def handle_event("greeting-unpublish", _params, socket) do
+    note =
+      case Greeting.unpublish() do
+        :ok -> "Taken down. Callers hear the synthesized voice again."
+        {:error, reason} -> "Could not take it down: #{inspect(reason)}"
+      end
+
+    {:noreply, socket |> load_greeting() |> assign(:greeting_note, note)}
+  end
+
+  defp publish_greeting(socket, path) do
+    case Greeting.publish(path) do
+      :ok ->
+        assign(socket, :greeting_note, "Published. That is what callers hear now.")
+
+      {:error, reason} ->
+        assign(socket, :greeting_note, "Recorded, but publishing failed: #{inspect(reason)}")
+    end
+  end
+
   @impl true
-  def handle_info({:voice_render, render_key, result}, socket) do
+  def handle_info({:voice_render, render_key, result}, socket)
+      when is_binary(render_key) do
+    if render_key == socket.assigns.greeting_job do
+      socket = assign(socket, :greeting_job, nil)
+
+      case result do
+        {:ok, path} ->
+          {:noreply, socket |> publish_greeting(path) |> load_greeting()}
+
+        {:error, reason} ->
+          {:noreply, assign(socket, :greeting_note, "Recording failed: #{inspect(reason)}")}
+      end
+    else
+      handle_chime_render(render_key, result, socket)
+    end
+  end
+
+  def handle_info({ref, result}, socket) when is_reference(ref) do
+    Process.demonitor(ref, [:flush])
+    {:noreply, assign(socket, :engine_check, result)}
+  end
+
+  def handle_info({:DOWN, _ref, :process, _pid, _reason}, socket), do: {:noreply, socket}
+
+  defp handle_chime_render(render_key, result, socket) do
     case Map.pop(socket.assigns.chime_jobs, render_key) do
       {nil, _jobs} ->
         # Somebody else's render. The topic is shared.
@@ -123,13 +209,6 @@ defmodule BusterClawWeb.VoiceLive do
          socket |> assign(:chime_jobs, jobs) |> assign(:chime_note, note) |> load_chimes()}
     end
   end
-
-  def handle_info({ref, result}, socket) when is_reference(ref) do
-    Process.demonitor(ref, [:flush])
-    {:noreply, assign(socket, :engine_check, result)}
-  end
-
-  def handle_info({:DOWN, _ref, :process, _pid, _reason}, socket), do: {:noreply, socket}
 
   @impl true
   def render(assigns) do
@@ -341,6 +420,82 @@ defmodule BusterClawWeb.VoiceLive do
               then come back.
             </p>
           </form>
+        </div>
+
+        <div class="ic-panel overflow-hidden">
+          <header class="border-b-2 border-base-content/20 px-5 py-4">
+            <p class="ic-eyebrow">Phone</p>
+            <h2 class="font-display text-2xl font-black uppercase tracking-tight">
+              What callers hear
+            </h2>
+            <p class="mt-1 text-sm text-base-content/65">
+              Right now anyone phoning your number hears Amazon's synthesized voice. This
+              records the greeting in <strong>your</strong>
+              voice instead. It is one recording, instructions included —
+              a greeting in your voice followed by a robot reading the access-code prompt
+              is worse than all-robot, so the whole line is yours to write.
+            </p>
+          </header>
+
+          <div class="flex flex-col gap-4 px-5 py-5 text-sm">
+            <div class="flex items-center gap-3">
+              <%= cond do %>
+                <% @greeting_status.stale? -> %>
+                  <.icon name="hero-exclamation-triangle" class="size-5 shrink-0 text-warning" />
+                  <span>
+                    Published — but <strong>callers hear the old recording</strong>.
+                    You have edited the words since. Publish again to catch them up.
+                  </span>
+                <% @greeting_status.published? -> %>
+                  <.icon name="hero-check-circle" class="size-5 shrink-0 text-primary" />
+                  <span>Published. This is what callers hear.</span>
+                <% true -> %>
+                  <.icon name="hero-x-circle" class="size-5 shrink-0 text-base-content/40" />
+                  <span class="text-base-content/70">
+                    Not published — callers hear the synthesized voice.
+                  </span>
+              <% end %>
+            </div>
+
+            <form phx-submit="greeting-save" class="flex flex-col gap-3">
+              <textarea
+                name="greeting"
+                rows="3"
+                maxlength="600"
+                class="textarea textarea-bordered w-full text-sm"
+              ><%= @greeting_text %></textarea>
+
+              <div class="flex flex-wrap items-center gap-3">
+                <button type="submit" class="btn btn-primary btn-sm">Save wording</button>
+
+                <button
+                  type="button"
+                  phx-click="greeting-publish"
+                  disabled={not @engine.available?}
+                  data-claw-confirm="This changes what every caller hears when they phone your number. Record and publish it?"
+                  class="btn btn-ghost btn-sm"
+                >
+                  <.icon name="hero-phone-arrow-up-right" class="size-4" /> Record and publish
+                </button>
+
+                <button
+                  :if={@greeting_status.published?}
+                  type="button"
+                  phx-click="greeting-unpublish"
+                  data-claw-confirm="Callers will go back to the synthesized voice. Take it down?"
+                  class="btn btn-ghost btn-sm"
+                >
+                  Take it down
+                </button>
+
+                <span class="text-xs text-base-content/60">{@greeting_note}</span>
+              </div>
+            </form>
+
+            <p :if={not @engine.available?} class="text-xs text-base-content/55">
+              Recording needs the engine above. The wording can be saved without it.
+            </p>
+          </div>
         </div>
       </section>
     </Layouts.app>

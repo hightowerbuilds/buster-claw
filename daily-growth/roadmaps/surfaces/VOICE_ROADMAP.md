@@ -1,19 +1,25 @@
 # The Voice — what Buster Claw sounds like
 
-**Scoped 09-02-26 · Status: BUILT, except the phone greeting.**
+**Scoped 09-02-26 · Status: BUILT.**
 
-> **Where this stands at the end of 09-02-26.** Readback, the voice picker, the
-> speech transform, the microphone plist fix, `Voice.Engine`, `Voice.Renderer`,
-> the spoken chime set and the skill-seed upgrade path are all **shipped to
-> main**. The phone greeting is **not built, on purpose** — see Part V; it needs
-> a live Supabase deploy and a real phone call, and building it blind would
-> produce something that looks finished and has never been heard.
+> **Where this stands at the end of 09-02-26.** Every part of this map is shipped
+> to main: readback, the voice picker, the speech transform, the microphone plist
+> fix, `Voice.Engine`, `Voice.Renderer`, the spoken chime set, the skill-seed
+> upgrade path, and the phone greeting.
 >
-> **Two things remain, and neither is code.** Install VoxCPM on a Mac that can
-> take it (not this one — see Part 0) and press *Speak them* in Settings → Voice,
-> which is the first time any of this will have made a real sound. And listen to
-> a clone of your own voice on `openbmb/VoxCPM-Demo` to settle whether "its own
-> voice" means *yours* or simply a better synthetic one.
+> **Three things remain and none of them is code**, because none of them can be
+> done from the machine this was written on:
+>
+> 1. **Install VoxCPM** on a Mac that can take it — not this one, see Part 0 —
+>    and press *Speak them*. **Nothing here has yet made a real sound.** Every
+>    render in every test is a stub copying a fixture WAV; the plumbing is proven
+>    and the audio is fiction.
+> 2. **Deploy the Edge Function** and phone the number. The greeting path is
+>    tested against a plug, not against Twilio.
+> 3. **Listen to a clone of your own voice** on `openbmb/VoxCPM-Demo`, which
+>    settles whether "its own voice" means *yours* or simply a better synthetic
+>    one — and therefore whether the greeting is worth recording in the first
+>    place.
 
 > **What this map is now.** It was written this morning as a plan to delete the
 > Studio's cut-up engine and put VoxCPM in its place. **That framing is gone.**
@@ -300,27 +306,57 @@ work.** Today `supabase/functions/voice/index.ts:99` emits
    change** and land together — the operator's voice followed by Polly is worse
    than all-Polly.
 
-> **BLOCKED, deliberately, 09-02-26 — the only part of this map not built.**
-> Everything it needs is outside this machine: an upload to a live Supabase
-> project, an Edge Function deploy, and — the map's own instruction — *listening
-> to the result over an actual phone call*. `Telephony.Relay` also has **zero
-> tests**, so an upload added there would be untestable code on top of untestable
-> code. Building it blind would produce something that looks finished and has
-> never once been heard. The local half (render a line in the chosen voice) is
-> already available through `Voice.Renderer`; what remains is transport.
+**BUILT 09-02-26** — `BusterClaw.Voice.Greeting`, `Telephony.Relay`'s three
+storage calls, the Edge Function's `<Play>` path, and the panel in Settings →
+Voice.
 
-**A third option, better than the two below.** The constraint is that Twilio
-`<Play>` needs a *publicly reachable* URL while the `recordings` bucket is
-private. The obvious answers are a long-expiry signed URL or a separate public
-object, and both have a flaw: a signed URL **expires**, so a greeting set once
-and left alone breaks the phone line on a date nobody wrote down, and a public
-object is a new public surface to keep track of.
+> **I was wrong that this could not be tested.** The earlier note here called
+> `Telephony.Relay` untestable because it has no test file. It has none, but it
+> was *built* for testing — its moduledoc says so: **"`req_options` (Req.Test
+> plugs) inject in tests."** Every wire call in the greeting path is now
+> exercised against a plug, including the upload body. What genuinely cannot be
+> verified here is only the last mile: a Supabase deploy and a real phone call.
 
-**The Edge Function can serve the audio itself.** It is already the public
-endpoint Twilio talks to, and it already holds the service-role key — so
-`<Play>${self}?event=greeting</Play>` lets it fetch the object from the private
-bucket and stream it back. No public bucket, no expiry, no new surface. That is
-the shape to build when this is unblocked.
+**The URL problem is solved by not having one.** Twilio `<Play>` needs a publicly
+reachable URL while the `recordings` bucket is private, and the two obvious
+answers both have a flaw: a signed URL **expires**, so a greeting set once and
+left alone breaks the phone line on a date nobody wrote down; a public object is
+a new public surface to keep track of. **The Edge Function serves the audio
+itself** — it is already Twilio's public endpoint and already holds the
+service-role key, so `<Play>${self}?event=greeting</Play>` streams the object out
+of the private bucket. No public bucket, no expiry, no new surface.
+
+That route sits **ahead of the POST check and the signature check**, because
+Twilio fetches media with an unsigned GET. That bypass is safe for this one
+object — the greeting is audio any stranger can get by dialling the number — and
+dangerous for anything else, so a test pins that `greeting` is the *only* event
+handled before verification.
+
+**Two guards, both broken to check them.** The storage path is one string living
+in Elixir and TypeScript, in processes that never talk and deploy separately, so
+a test asserts they agree; get it wrong and the phone answers in Polly forever
+while the settings page reports "published". Breaking it also exposed a real bug
+in the first draft: `greetingPublished()` had the path written out again instead
+of derived from the constant, so changing it would have moved what
+`serveGreeting` streams without moving what the check looks for.
+
+**A third guard caught the confirmation itself.** The first draft used LiveView's
+`data-confirm`, and `claw_confirm_test.exs` refused it: `window.confirm()` is a
+**no-op returning `false`** in the Tauri WKWebView, so every confirm-gated action
+silently never fires. The publish button would have been dead in the packaged
+app and perfect in every dev browser. `data-claw-confirm` is the house spelling.
+
+**Publishing is confirmed, and drift is reported.** Editing the words does not
+change what callers hear — publishing does — so a digest of the published text is
+stored, and the panel says *"callers hear the old recording"* rather than quietly
+disagreeing with the phone. `status/0` asks storage rather than trusting that
+flag, because a Mac restored from a backup can hold a flag for audio that is not
+there.
+
+> **Still unverified, and only you can do it:** `supabase functions deploy voice`,
+> then press *Record and publish*, then **phone the number**. The map's own rule
+> applies — quality claims made from a laptop speaker are not claims about a
+> phone.
 
 **Constraints:**
 

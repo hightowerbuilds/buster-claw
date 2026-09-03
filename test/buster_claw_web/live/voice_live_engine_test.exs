@@ -10,6 +10,7 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
 
   alias BusterClaw.Voice.Chimes
   alias BusterClaw.Voice.Engine
+  alias BusterClaw.Voice.Greeting
 
   setup do
     previous = Application.get_env(:buster_claw, :voxcpm_path)
@@ -163,6 +164,62 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
 
       # And the page says so.
       assert eventually(fn -> render(view) =~ "spoken" end)
+    end
+  end
+
+  describe "the phone greeting" do
+    # The wire half — upload, status, drift — is covered in
+    # `BusterClaw.Voice.GreetingTest` against a Req.Test plug. What is asserted
+    # here is the surface: that the words are editable, that publishing is
+    # confirmed rather than instant, and that an unpublished line says so.
+    test "the greeting is shown, editable, and honest about not being published", %{conn: conn} do
+      absent()
+      {:ok, view, html} = live(conn, ~p"/voice")
+
+      assert html =~ "What callers hear"
+      # A fragment without an apostrophe: the textarea's contents are HTML
+      # escaped, so the default text does not appear verbatim.
+      assert html =~ "access code, enter it now"
+      assert html =~ "Not published"
+
+      html =
+        view
+        |> form("form[phx-submit=greeting-save]", %{"greeting" => "Hi, it's the machine."})
+        |> render_submit()
+
+      assert html =~ "Hi, it&#39;s the machine." or html =~ "Hi, it's the machine."
+      assert Greeting.text() == "Hi, it's the machine."
+    end
+
+    test "publishing is behind a confirmation, because strangers hear the result",
+         %{conn: conn} do
+      stub()
+      {:ok, _view, html} = live(conn, ~p"/voice")
+
+      # Not a nicety: this is the one control in the app that changes what other
+      # people experience.
+      assert html =~ ~r/phx-click="greeting-publish"[^>]*data-claw-confirm/s
+      assert html =~ "every caller hears"
+    end
+
+    test "with no engine, the wording is still editable but recording is not offered",
+         %{conn: conn} do
+      absent()
+      {:ok, _view, html} = live(conn, ~p"/voice")
+
+      assert html =~ ~r/phx-click="greeting-publish"[^>]*disabled/s
+      assert html =~ "The wording can be saved without it"
+    end
+
+    test "a blank greeting resets rather than silencing the phone line", %{conn: conn} do
+      absent()
+      {:ok, view, _html} = live(conn, ~p"/voice")
+
+      view
+      |> form("form[phx-submit=greeting-save]", %{"greeting" => "   "})
+      |> render_submit()
+
+      assert Greeting.text() == Greeting.default_text()
     end
   end
 

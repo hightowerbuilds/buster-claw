@@ -37,7 +37,22 @@ import { hashPin, pinHashEquals } from "../_shared/pin.ts";
 
 const TWILIO_API = "https://api.twilio.com";
 
+// Where the Mac publishes the outgoing greeting. Must match
+// `BusterClaw.Telephony.Relay.greeting_path/0` — the two halves never talk, they
+// only agree on this string.
+const GREETING_PATH = "greeting/greeting.wav";
+
 Deno.serve(async (req) => {
+  // AHEAD OF BOTH GATES BELOW, deliberately. Twilio fetches `<Play>` media with a
+  // plain GET, and does not sign it the way it signs a webhook POST — so this
+  // route can require neither. That is safe for this one object and nothing else:
+  // the greeting is audio every caller already hears by dialling the number, so
+  // there is nothing served here a stranger could not get by phoning. Do not
+  // extend this bypass to any other event.
+  if (new URL(req.url).searchParams.get("event") === "greeting") {
+    return await serveGreeting();
+  }
+
   if (req.method !== "POST") {
     return new Response("method not allowed", { status: 405 });
   }
@@ -67,7 +82,7 @@ Deno.serve(async (req) => {
     case "transcription":
       return await handleTranscription(params);
     default:
-      return answerCall(url);
+      return await answerCall(url);
   }
 });
 
@@ -80,10 +95,8 @@ function publicUrl(req: Request): string {
   return base.replace(/\/+$/, "") + new URL(req.url).search;
 }
 
-function answerCall(selfUrl: string): Response {
+async function answerCall(selfUrl: string): Promise<Response> {
   const self = selfUrl.split("?")[0];
-  const greeting = Deno.env.get("GREETING_TEXT") ??
-    "You've reached Buster Claw.";
   // Everyone is prompted, uniformly — we do not reveal whether a given number
   // has a PIN configured. A caller with the code punches it; a caller without
   // one waits out the timeout and falls through to <Record> as a stranger
@@ -96,10 +109,83 @@ function answerCall(selfUrl: string): Response {
   return twimlResponse(`<Response>
   <Gather input="dtmf" finishOnKey="#" timeout="6" numDigits="10"
     action="${self}?event=pin" method="POST">
-    <Say voice="Polly.Matthew">${escapeXml(greeting)} If you have an access code, enter it now, then press pound. Otherwise, stay on the line to leave a message.</Say>
+    ${await greetingVerb(self)}
   </Gather>
   ${recordVerb(self, false)}
 </Response>`);
+}
+
+// <Play> the operator's own recording when there is one, otherwise <Say> exactly
+// what this always said.
+//
+// The greeting and the access-code instructions are ONE utterance, which is why
+// this returns one element rather than a greeting plus a fixed tail. A recording
+// in the operator's voice followed by Polly reading the instructions is worse
+// than all-Polly, and there is no way to have it both ways without splitting the
+// element.
+//
+// Any storage failure falls through to <Say>. A phone line that stops working
+// because a bucket was slow is a far worse outcome than one that answers in the
+// wrong voice, so this fails toward the thing that always works.
+async function greetingVerb(self: string): Promise<string> {
+  if (await greetingPublished()) {
+    return `<Play>${escapeXml(self + "?event=greeting")}</Play>`;
+  }
+
+  const greeting = Deno.env.get("GREETING_TEXT") ??
+    "You've reached Buster Claw.";
+  return `<Say voice="Polly.Matthew">${
+    escapeXml(greeting)
+  } If you have an access code, enter it now, then press pound. Otherwise, stay on the line to leave a message.</Say>`;
+}
+
+// A `list` rather than a download: this runs on every inbound call and only the
+// existence of the object matters here. Twilio fetches the bytes separately.
+//
+// Both halves are derived from GREETING_PATH rather than written out again. They
+// were two literals for about ten minutes, which is long enough to notice that
+// changing the constant would have moved what `serveGreeting` streams without
+// moving what this looks for — the phone would have answered in Polly while the
+// object sat exactly where it was published.
+async function greetingPublished(): Promise<boolean> {
+  const slash = GREETING_PATH.lastIndexOf("/");
+  const folder = slash === -1 ? "" : GREETING_PATH.slice(0, slash);
+  const file = GREETING_PATH.slice(slash + 1);
+
+  try {
+    const { data, error } = await serviceClient().storage
+      .from("recordings")
+      .list(folder, { search: file });
+    return !error && Array.isArray(data) && data.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+// Streams the published greeting to Twilio's media fetcher. 404 when nothing has
+// been published, which cannot strand a caller: `greetingVerb` only emits <Play>
+// when the object is there, and falls back to <Say> when it is not.
+//
+// A short max-age on purpose. Twilio caches media, and the operator re-recording
+// their greeting must not be waiting on someone else's cache to expire — a minute
+// of staleness is invisible, an hour of it is a bug report.
+async function serveGreeting(): Promise<Response> {
+  try {
+    const { data, error } = await serviceClient().storage
+      .from("recordings")
+      .download(GREETING_PATH);
+
+    if (error || !data) return new Response("no greeting", { status: 404 });
+
+    return new Response(data.stream(), {
+      headers: {
+        "content-type": "audio/wav",
+        "cache-control": "public, max-age=60",
+      },
+    });
+  } catch {
+    return new Response("greeting unavailable", { status: 502 });
+  }
 }
 
 // The <Record> verb, shared by the fall-through (unverified) and PIN-pass
