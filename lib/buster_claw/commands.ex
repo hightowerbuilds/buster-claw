@@ -596,6 +596,10 @@ defmodule BusterClaw.Commands do
   defdelegate notify_list(args \\ %{}), to: BusterClaw.Commands.Notify
   defdelegate notify_get(args), to: BusterClaw.Commands.Notify
   defdelegate notify_create(args), to: BusterClaw.Commands.Notify
+  defdelegate voice_message_create(args), to: BusterClaw.Commands.Notify
+  defdelegate voice_message_list(args \\ %{}), to: BusterClaw.Commands.Notify
+  defdelegate voice_message_fire(args), to: BusterClaw.Commands.Notify
+  defdelegate voice_message_delete(args), to: BusterClaw.Commands.Notify
   defdelegate notify_snooze(args), to: BusterClaw.Commands.Notify
   defdelegate notify_dismiss(args), to: BusterClaw.Commands.Notify
   defdelegate notify_delete(args), to: BusterClaw.Commands.Notify

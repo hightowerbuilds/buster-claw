@@ -15,6 +15,9 @@ defmodule BusterClawWeb.NotifySettingsLive do
   """
   use BusterClawWeb, :live_view
 
+  alias BusterClaw.Voice.Messages
+  alias BusterClaw.Voice.Renderer
+
   alias BusterClaw.Notifications
   alias BusterClaw.Notifications.Sound
 
@@ -66,6 +69,9 @@ defmodule BusterClawWeb.NotifySettingsLive do
      socket
      |> assign(:page_title, "Notify")
      |> assign(:rows, @rows)
+     |> assign(:message_note, nil)
+     |> assign(:message_form, %{"name" => "", "text" => ""})
+     |> subscribe_renders()
      |> refresh()
      # `audio/*` rather than the extension list: LiveView's accept validation
      # rejects extensions the MIME lib doesn't know (`.ogg`). The real gate is
@@ -77,7 +83,92 @@ defmodule BusterClawWeb.NotifySettingsLive do
      )}
   end
 
+  # Spoken messages render through `Voice.Renderer`, which broadcasts when a line
+  # lands. Readiness is read off the disk, so a broadcast is only a cue to re-list
+  # — nothing here tracks which render was ours.
+  defp subscribe_renders(socket) do
+    if connected?(socket), do: Renderer.subscribe()
+    socket
+  end
+
+  # Ready messages are installed into the library on the way past, so the
+  # preview button and a fired notification both find `message-<name>.wav`
+  # without a separate step the operator has to know about.
+  defp load_messages(socket) do
+    messages = Messages.list()
+
+    for %{ready?: true, installed?: false, name: name} <- messages,
+        do: Messages.ensure_installed(name)
+
+    assign(socket, :messages, Messages.list())
+  end
+
   @impl true
+  def handle_info({:voice_render, _key, _result}, socket) do
+    {:noreply, load_messages(socket)}
+  end
+
+  @impl true
+  def handle_event("message_create", %{"message" => %{"name" => name, "text" => text}}, socket) do
+    case Messages.create(name, text) do
+      {:ok, %{ready?: true}} ->
+        {:noreply,
+         socket
+         |> assign(:message_form, %{"name" => "", "text" => ""})
+         |> load_messages()
+         |> assign(:message_note, "Already made — it was in the cache.")}
+
+      {:ok, %{name: slug}} ->
+        {:noreply,
+         socket
+         |> assign(:message_form, %{"name" => "", "text" => ""})
+         |> load_messages()
+         |> assign(
+           :message_note,
+           "Making “#{slug}”. Minutes on this machine; it will appear ready on its own."
+         )}
+
+      {:error, :engine_unavailable} ->
+        {:noreply,
+         assign(socket, :message_note, "No speech engine — install it in Settings → Voice.")}
+
+      {:error, :invalid_name} ->
+        {:noreply, assign(socket, :message_note, "Name it with letters, digits or dashes.")}
+
+      {:error, :empty_text} ->
+        {:noreply, assign(socket, :message_note, "Type what it should say.")}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :message_note, "Could not: #{inspect(reason)}")}
+    end
+  end
+
+  def handle_event("message_fire", %{"name" => name} = params, socket) do
+    args = Map.take(params, ["in_seconds"])
+
+    note =
+      case Messages.fire(name, args) do
+        {:ok, %{kind: "reminder"}} ->
+          "Fired."
+
+        {:ok, %{kind: "timer", fire_at: at}} ->
+          "Set for #{Calendar.strftime(at, "%H:%M:%S")} UTC."
+
+        {:error, :not_ready} ->
+          "Not made yet — give it a minute."
+
+        {:error, reason} ->
+          "Could not: #{inspect(reason)}"
+      end
+
+    {:noreply, assign(socket, :message_note, note)}
+  end
+
+  def handle_event("message_delete", %{"name" => name}, socket) do
+    Messages.delete(name)
+    {:noreply, socket |> load_messages() |> assign(:message_note, "Deleted.")}
+  end
+
   def handle_event("assign", %{"key" => key, "sound" => sound}, socket) do
     case Sound.assign(key, sound) do
       :ok ->
@@ -166,6 +257,7 @@ defmodule BusterClawWeb.NotifySettingsLive do
     |> assign(:bundled, Sound.bundled_list())
     |> assign(:map, Sound.sound_map())
     |> assign(:sound_on, Sound.enabled?())
+    |> load_messages()
     # The walk, MATERIALIZED. Calling @resolved[row.key] inline in the
     # template read beautifully and was permanently stale: the expression's
     # only tracked assign was `row`, and @rows never changes, so LiveView
@@ -313,6 +405,102 @@ defmodule BusterClawWeb.NotifySettingsLive do
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <div class="ic-panel overflow-hidden">
+            <header class="border-b-2 border-base-content/20 px-5 py-4">
+              <p class="ic-eyebrow">Spoken messages</p>
+              <h2 class="font-display text-xl font-black uppercase tracking-tight">
+                Notes to yourself, in your voice
+              </h2>
+              <p class="mt-1 text-sm text-base-content/65">
+                Write a line; it is spoken in the voice recorded in Settings → Voice and kept as
+                a sound. Fire it now, or set it for later — it arrives like any other
+                notification, with the words on screen. The agent can leave you one too:
+                <code class="text-xs">voice_message_create</code>
+                and <code class="text-xs">voice_message_fire</code>.
+              </p>
+            </header>
+
+            <div class="flex flex-col gap-4 px-5 py-5 text-sm">
+              <form phx-submit="message_create" class="flex flex-col gap-3">
+                <div class="grid gap-3 sm:grid-cols-[12rem_1fr]">
+                  <input
+                    type="text"
+                    name="message[name]"
+                    value={@message_form["name"]}
+                    placeholder="stand-up"
+                    maxlength="41"
+                    class="input input-bordered input-sm font-mono text-xs"
+                  />
+                  <input
+                    type="text"
+                    name="message[text]"
+                    value={@message_form["text"]}
+                    placeholder="Stand up and stretch."
+                    maxlength="300"
+                    class="input input-bordered input-sm text-sm"
+                  />
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                  <button type="submit" class="btn btn-primary btn-sm">Make it</button>
+                  <span class="text-xs text-base-content/60">{@message_note}</span>
+                </div>
+              </form>
+
+              <ul
+                :if={@messages != []}
+                class="flex flex-col gap-2 border-t-2 border-base-content/10 pt-4"
+              >
+                <li :for={msg <- @messages} class="flex flex-wrap items-center gap-3">
+                  <span class="w-32 shrink-0 truncate font-mono text-xs text-base-content/60">
+                    {msg.name}
+                  </span>
+                  <span class="min-w-0 flex-1 truncate">{msg.text}</span>
+
+                  <%= if msg.ready? do %>
+                    <button
+                      type="button"
+                      data-preview-url={~p"/notify/sound/#{msg.sound}"}
+                      class="btn btn-ghost btn-xs"
+                      aria-label={"Preview #{msg.name}"}
+                    >
+                      <.icon name="hero-play" class="size-4" /> Preview
+                    </button>
+                    <button
+                      type="button"
+                      phx-click="message_fire"
+                      phx-value-name={msg.name}
+                      class="btn btn-ghost btn-xs"
+                    >
+                      <.icon name="hero-bell-alert" class="size-4" /> Fire now
+                    </button>
+                    <button
+                      type="button"
+                      phx-click="message_fire"
+                      phx-value-name={msg.name}
+                      phx-value-in_seconds="600"
+                      class="btn btn-ghost btn-xs"
+                    >
+                      In 10 min
+                    </button>
+                  <% else %>
+                    <span class="text-xs text-base-content/50">making…</span>
+                  <% end %>
+
+                  <button
+                    type="button"
+                    phx-click="message_delete"
+                    phx-value-name={msg.name}
+                    data-claw-confirm={"Delete “#{msg.name}”?"}
+                    class="btn btn-ghost btn-xs text-error"
+                    aria-label={"Delete #{msg.name}"}
+                  >
+                    Delete
+                  </button>
+                </li>
+              </ul>
             </div>
           </div>
 

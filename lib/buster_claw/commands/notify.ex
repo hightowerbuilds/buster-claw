@@ -11,6 +11,7 @@ defmodule BusterClaw.Commands.Notify do
   import BusterClaw.Commands.Helpers
 
   alias BusterClaw.Notifications
+  alias BusterClaw.Voice.Messages
 
   @default_snooze_seconds 300
 
@@ -39,6 +40,36 @@ defmodule BusterClaw.Commands.Notify do
   def notify_delete(%{"id" => id}) do
     with_resource(Notifications, :get_notification!, id, &Notifications.delete_notification/1)
   end
+
+  # --- spoken messages -----------------------------------------------------------
+  #
+  # Thin: `Voice.Messages` owns the rendering, the manifest and the install; these
+  # only shape arguments and answers for the wire. See its moduledoc for why a
+  # spoken message is "a notification whose sound is a rendered line".
+
+  def voice_message_create(%{"name" => name, "text" => text}) do
+    Messages.create(name, text)
+  end
+
+  def voice_message_create(%{"name" => _}), do: {:error, :missing_text}
+  def voice_message_create(_args), do: {:error, :missing_name}
+
+  def voice_message_list(_args \\ %{}) do
+    messages = Messages.list()
+    {:ok, %{count: length(messages), messages: messages}}
+  end
+
+  def voice_message_fire(%{"name" => name} = args) when is_binary(name) do
+    Messages.fire(name, Map.take(args, ["in_seconds", "at"]))
+  end
+
+  def voice_message_fire(_args), do: {:error, :missing_name}
+
+  def voice_message_delete(%{"name" => name}) when is_binary(name) do
+    with :ok <- Messages.delete(name), do: {:ok, %{deleted: name}}
+  end
+
+  def voice_message_delete(_args), do: {:error, :missing_name}
 
   # --- attrs ------------------------------------------------------------------
 

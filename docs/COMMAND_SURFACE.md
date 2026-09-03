@@ -22,7 +22,7 @@ result shape into their transport-specific response format.
 
 ## Active Domains
 
-215 commands as of 08-18 (`./buster-claw commands` is authoritative; the Explained
+219 commands as of 09-03 (`./buster-claw commands` is authoritative; the Explained
 tab's Command List renders the same counts from a contract test):
 
 - Runtime status, orchestration shifts, and in-shift role sessions

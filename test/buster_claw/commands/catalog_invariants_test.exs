@@ -283,9 +283,19 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
       terminal_tab_open
       terminal_theme_list
       voice_bank_list
+      voice_message_list
       web_search
     )
 
+    # `voice_message_list` reviewed and added 09-03 with the spoken-message
+    # surface (VOICE_ROADMAP). A read of a manifest in the workspace — name, text,
+    # whether the audio exists — plus a `File.regular?` per row. It opens no
+    # microphone, spawns no engine, fires nothing and reaches no network; the
+    # three verbs beside it that DO change things (`_create` renders and writes,
+    # `_fire` creates a notification, `_delete` removes files) are all
+    # :restricted, and that is the line: any token may ask what messages exist,
+    # only a trusted one may make the room speak.
+    #
     # `finance_sources` reviewed and added 08-03: a pure read of a static,
     # code-shipped catalogue of public API metadata. No outbound call, no user
     # data, no secret, nothing irreversible — it answers "where could financial

@@ -42,13 +42,18 @@ defmodule BusterClawWeb.Explained.Registry do
   # three of these numbers move and `read`/`trigger`/`safe` do not. Ten `phone_*`
   # verbs remain, all intake. Measured from `Catalog.entries/0`, not derived by
   # hand.
+  #
+  # Recomputed 09-03 for the four spoken-message verbs (VOICE_ROADMAP):
+  # `voice_message_list` is a :safe read; `_create`, `_fire` and `_delete` are
+  # :mutate, :restricted, none gated. total +4, read +1, mutate +3, safe +1,
+  # restricted +3.
   @command_stats %{
-    total: 215,
-    read: 88,
+    total: 219,
+    read: 89,
     trigger: 17,
-    mutate: 110,
-    safe: 91,
-    restricted: 124,
+    mutate: 113,
+    safe: 92,
+    restricted: 127,
     gated: 23
   }
 

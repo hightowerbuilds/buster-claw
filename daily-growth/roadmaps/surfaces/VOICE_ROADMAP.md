@@ -285,6 +285,30 @@ has ended computes its cache path from whatever root is current. The
 `render_set/1` describe now wipes its cache dir in setup, asserting the
 precondition rather than assuming it.
 
+### Spoken messages — BUILT 09-03-26
+
+Notes to yourself, in your voice, fired as notifications. Settings → Notify grew
+a "Spoken messages" panel, and the agent got four verbs:
+`voice_message_create`, `_list`, `_fire`, `_delete` — so the model can leave the
+operator a message in the operator's own voice, now or `in_seconds` or `at`.
+
+**The design is one sentence: a spoken message is a notification whose sound is
+a rendered line.** The line is rendered through `Voice.Renderer` and installed in
+the sound library as `message-<name>.wav`; the notification carries that
+filename in `metadata["sound"]`; `Sound.for_notification/1` honours it ahead of
+the routing walk. No new playback path, no new scheduler — the modal, snooze, the
+sound toggle and the audit feed come for free, because a fired message *is* a
+fired notification. A dangling sound name falls through to the walk rather than
+to silence, so a message whose audio was deleted still rings something.
+
+**Nothing waits on the render.** `create/2` returns at once; readiness is read
+off the disk each time, and installing into the library happens lazily the first
+time a ready message is listed or fired. There is no process listening for the
+render to finish — nothing to supervise, nothing left half-done.
+
+Command count 215 → **219**: `_list` a `:safe` read, the other three `:mutate`
+`:restricted`, none gated.
+
 Output lands in `System.tmp_dir!` and is **atomically renamed** into the cache
 only after a probe says it is a real WAV of non-zero duration. A truncated render
 from a killed process must never become a cached line.
