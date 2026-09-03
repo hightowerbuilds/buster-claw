@@ -50,6 +50,7 @@ defmodule BusterClaw.Voice.Engine do
   """
 
   alias BusterClaw.ShellPath
+  alias BusterClaw.Voice.Config
 
   @enforce_keys [:available?, :device]
   defstruct available?: false, path: nil, device: "cpu", reason: nil
@@ -92,8 +93,16 @@ defmodule BusterClaw.Voice.Engine do
     # depends on whether the developer happens to have VoxCPM installed is not a
     # suite. "Use this one" has to mean this one.
     case configured() do
-      nil -> Enum.find([installed_venv(), ShellPath.find_executable("voxcpm")], &regular_file?/1)
-      path -> if regular_file?(path), do: path
+      nil ->
+        # The operator's own setting comes before the guesses and after the
+        # app-env override (which is how tests and config files pin it). Read
+        # fail-soft inside `Config.get/0`, because this runs from processes with
+        # no database connection.
+        [Config.engine_path(), installed_venv(), ShellPath.find_executable("voxcpm")]
+        |> Enum.find(&regular_file?/1)
+
+      path ->
+        if regular_file?(path), do: path
     end
   end
 
@@ -216,6 +225,7 @@ defmodule BusterClaw.Voice.Engine do
   def batch_args(input_file, output_dir, opts \\ []) do
     ["batch", "--input", input_file, "--output-dir", output_dir]
     |> maybe_value("--reference-audio", opts[:reference_audio])
+    |> maybe_value("--control", opts[:control])
     |> common(opts)
   end
 

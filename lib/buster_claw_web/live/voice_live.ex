@@ -17,6 +17,7 @@ defmodule BusterClawWeb.VoiceLive do
 
   alias BusterClaw.Notifications.Sound
   alias BusterClaw.Voice.Chimes
+  alias BusterClaw.Voice.Config
   alias BusterClaw.Voice.Engine
   alias BusterClaw.Voice.Greeting
   alias BusterClaw.Voice.Renderer
@@ -40,8 +41,20 @@ defmodule BusterClawWeb.VoiceLive do
      # publish rather than just sit in the cache.
      |> assign(:greeting_job, nil)
      |> assign(:greeting_note, nil)
+     |> assign(:config_note, nil)
      |> load_chimes()
-     |> load_greeting()}
+     |> load_greeting()
+     |> load_engine_config()}
+  end
+
+  # The stored knobs plus the one number they change: how many chimes are already
+  # made under them. The cache is keyed on the argv, so a new device or a
+  # reference clip turns every made chime into a miss, and the page says so in
+  # numbers rather than letting the operator find out at the button.
+  defp load_engine_config(socket) do
+    socket
+    |> assign(:engine_config, Config.get())
+    |> assign(:chimes_made, Chimes.made_count())
   end
 
   defp load_greeting(socket) do
@@ -110,6 +123,58 @@ defmodule BusterClawWeb.VoiceLive do
            "Expect tens of minutes; you can leave this page."
        )}
     end
+  end
+
+  def handle_event("engine-config-save", %{"config" => attrs}, socket) do
+    case Config.put(attrs) do
+      :ok ->
+        # A new engine path changes what `probe/0` finds; a new device or clip
+        # changes which chimes count as made and whether the published greeting
+        # still matches. All three re-read, because all three may have moved.
+        socket =
+          socket
+          |> assign(:engine, Engine.refresh())
+          |> load_engine_config()
+          |> load_greeting()
+
+        {made, total} = socket.assigns.chimes_made
+
+        note =
+          cond do
+            made == total ->
+              "Saved. Every chime is already made with these settings."
+
+            made == 0 ->
+              "Saved. These settings change the voice — all #{total} chimes need making again."
+
+            true ->
+              "Saved. #{total - made} of #{total} chimes need making again."
+          end
+
+        {:noreply, assign(socket, :config_note, note)}
+
+      {:error, {field, :not_found}} ->
+        {:noreply, assign(socket, :config_note, "#{humanize(field)}: no file there.")}
+
+      {:error, {field, value}} ->
+        {:noreply,
+         assign(
+           socket,
+           :config_note,
+           "#{humanize(field)}: #{inspect(value)} is not a value the engine accepts."
+         )}
+    end
+  end
+
+  def handle_event("engine-config-reset", _params, socket) do
+    Config.reset()
+
+    {:noreply,
+     socket
+     |> assign(:engine, Engine.refresh())
+     |> load_engine_config()
+     |> load_greeting()
+     |> assign(:config_note, "Back to the engine's own defaults.")}
   end
 
   def handle_event("greeting-save", %{"greeting" => text}, socket) do
@@ -396,6 +461,125 @@ defmodule BusterClawWeb.VoiceLive do
 
         <div class="ic-panel overflow-hidden">
           <header class="border-b-2 border-base-content/20 px-5 py-4">
+            <p class="ic-eyebrow">Engine settings</p>
+            <h2 class="font-display text-2xl font-black uppercase tracking-tight">
+              How it speaks
+            </h2>
+            <p class="mt-1 text-sm text-base-content/65">
+              Leave anything blank to use the engine's own default. The one that matters is
+              the <strong>reference clip</strong>: point it at a few seconds of your own voice
+              and every line is spoken in it, instead of a voice the model invents.
+            </p>
+          </header>
+
+          <form phx-submit="engine-config-save" class="flex flex-col gap-4 px-5 py-5 text-sm">
+            <label class="flex flex-col gap-1">
+              <span class="ic-eyebrow">Reference clip — a WAV of your voice</span>
+              <input
+                type="text"
+                name="config[reference_audio]"
+                value={@engine_config.reference_audio}
+                placeholder="~/Desktop/me-ten-seconds.wav"
+                class="input input-bordered input-sm w-full font-mono text-xs"
+              />
+              <span class="text-xs text-base-content/55">
+                Ten seconds of clean speech on a laptop mic is enough. With this set, every
+                render clones it; without it, the engine designs a voice from the description below.
+              </span>
+            </label>
+
+            <label class="flex flex-col gap-1">
+              <span class="ic-eyebrow">Voice description — when not cloning</span>
+              <input
+                type="text"
+                name="config[control]"
+                value={@engine_config.control}
+                placeholder="warm, low, unhurried"
+                class="input input-bordered input-sm w-full text-sm"
+              />
+            </label>
+
+            <div class="grid gap-4 sm:grid-cols-3">
+              <label class="flex flex-col gap-1">
+                <span class="ic-eyebrow">Device</span>
+                <select
+                  name="config[device]"
+                  class="select select-bordered select-sm font-mono text-xs"
+                >
+                  <option value="" selected={is_nil(@engine_config.device)}>
+                    auto ({Engine.device()})
+                  </option>
+                  <option value="cpu" selected={@engine_config.device == "cpu"}>cpu</option>
+                  <option value="mps" selected={@engine_config.device == "mps"}>
+                    mps — Apple silicon
+                  </option>
+                  <option value="cuda" selected={@engine_config.device == "cuda"}>cuda</option>
+                </select>
+              </label>
+
+              <label class="flex flex-col gap-1">
+                <span class="ic-eyebrow">Steps</span>
+                <input
+                  type="number"
+                  name="config[inference_timesteps]"
+                  value={@engine_config.inference_timesteps}
+                  min="1"
+                  placeholder="engine default"
+                  class="input input-bordered input-sm font-mono text-xs"
+                />
+              </label>
+
+              <label class="flex flex-col gap-1">
+                <span class="ic-eyebrow">Guidance</span>
+                <input
+                  type="number"
+                  name="config[cfg_value]"
+                  value={@engine_config.cfg_value}
+                  min="0.1"
+                  step="0.1"
+                  placeholder="engine default"
+                  class="input input-bordered input-sm font-mono text-xs"
+                />
+              </label>
+            </div>
+
+            <p class="text-xs text-base-content/55">
+              Fewer steps is faster and rougher; more guidance follows the text more literally.
+              On this machine a line takes minutes, so these are real levers.
+            </p>
+
+            <label class="flex flex-col gap-1">
+              <span class="ic-eyebrow">Engine path — only if it is somewhere unusual</span>
+              <input
+                type="text"
+                name="config[engine_path]"
+                value={@engine_config.engine_path}
+                placeholder={Engine.resolve() || "~/.buster-claw/voxcpm/bin/voxcpm"}
+                class="input input-bordered input-sm w-full font-mono text-xs"
+              />
+            </label>
+
+            <div class="flex flex-wrap items-center gap-3 border-t-2 border-base-content/10 pt-4">
+              <button type="submit" class="btn btn-primary btn-sm">Save settings</button>
+              <button type="button" phx-click="engine-config-reset" class="btn btn-ghost btn-sm">
+                Engine defaults
+              </button>
+              <span class="text-xs text-base-content/60">{@config_note}</span>
+            </div>
+
+            <p class="text-xs text-base-content/70">
+              <strong>{elem(@chimes_made, 0)} of {elem(@chimes_made, 1)}</strong>
+              chimes are made with these settings.
+              <span :if={elem(@chimes_made, 0) < elem(@chimes_made, 1)}>
+                Changing the voice changes every line, so <em>Speak them</em> below will make the
+                other {elem(@chimes_made, 1) - elem(@chimes_made, 0)} — minutes each on this machine.
+              </span>
+            </p>
+          </form>
+        </div>
+
+        <div class="ic-panel overflow-hidden">
+          <header class="border-b-2 border-base-content/20 px-5 py-4">
             <p class="ic-eyebrow">Spoken notifications</p>
             <h2 class="font-display text-2xl font-black uppercase tracking-tight">
               What it says
@@ -536,6 +720,12 @@ defmodule BusterClawWeb.VoiceLive do
 
   defp absent_sentence(_),
     do: "Not installed. Replies are read by your Mac's own voices, which is the default."
+
+  defp humanize(:reference_audio), do: "Reference clip"
+  defp humanize(:inference_timesteps), do: "Steps"
+  defp humanize(:cfg_value), do: "Guidance"
+  defp humanize(:engine_path), do: "Engine path"
+  defp humanize(field), do: field |> to_string() |> String.capitalize()
 
   defp check_sentence(nil), do: ""
 

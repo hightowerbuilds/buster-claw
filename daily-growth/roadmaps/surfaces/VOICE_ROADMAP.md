@@ -225,6 +225,35 @@ On this machine the probe answers, correctly: `available? false`, `device cpu`,
 
 `batch` is what makes the chime set cheap: one model load for the whole set.
 
+### Engine settings — BUILT 09-03-26
+
+`BusterClaw.Voice.Config`, and a panel in Settings → Voice. Six knobs, all
+optional, all meaning "the engine's own default" when blank: **reference clip**,
+voice description (`--control`), device, steps, guidance, engine path.
+
+**Applied at the call site, never inside `Engine`.** `Config.render_opts/0` is
+merged *under* whatever a caller passed, by `Chimes` and `Greeting`. `Engine`
+reads no settings and its tests need no database. The one exception is the
+engine path, which `Engine.resolve/0` consults fail-soft — resolution takes no
+options and runs from processes with no connection.
+
+**The reference clip is the whole point.** With it set, every render is `clone`
+instead of `design`: the operator's own voice, the thing the map exists for. It
+is validated as a real file on save, because a clone of a missing file is not an
+error, it is a silent fall-back to a stranger's voice.
+
+**Every knob invalidates every chime**, correctly — the cache is keyed on the
+argv — and expensively on this hardware. So the panel shows *"N of 16 chimes are
+made with these settings"* and, after a save, says in plain numbers how many
+*Speak them* will now have to make. The greeting's staleness digest includes the
+render options for the same reason: a greeting recorded before the clip was set
+is still playing to callers in the old voice.
+
+**The Studio dock tab also went** (`95c5500`). The Sketch Pad took it — new
+`/sketch` route, thirty lines, because `SketchComponent` needs nothing from a
+parent. `/studio` stays reachable by URL for Mix and the Voice Library until the
+spin-off takes them with their thirty tests.
+
 Output lands in `System.tmp_dir!` and is **atomically renamed** into the cache
 only after a probe says it is a real WAV of non-zero duration. A truncated render
 from a killed process must never become a cached line.

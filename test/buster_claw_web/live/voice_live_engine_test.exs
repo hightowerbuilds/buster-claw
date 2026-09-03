@@ -9,6 +9,7 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
   import Phoenix.LiveViewTest
 
   alias BusterClaw.Voice.Chimes
+  alias BusterClaw.Voice.Config
   alias BusterClaw.Voice.Engine
   alias BusterClaw.Voice.Greeting
 
@@ -164,6 +165,83 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
 
       # And the page says so.
       assert eventually(fn -> render(view) =~ "spoken" end)
+    end
+  end
+
+  describe "engine settings" do
+    setup do
+      root = Path.join(System.tmp_dir!(), "bc_vcfg_live_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(Path.join(root, "sounds"))
+      previous = Application.get_env(:buster_claw, :workspace_root)
+      Application.put_env(:buster_claw, :workspace_root, root)
+      Application.put_env(:buster_claw, :voxcpm_device, "cpu")
+
+      on_exit(fn ->
+        if previous,
+          do: Application.put_env(:buster_claw, :workspace_root, previous),
+          else: Application.delete_env(:buster_claw, :workspace_root)
+
+        Application.delete_env(:buster_claw, :voxcpm_device)
+        File.rm_rf(root)
+      end)
+
+      {:ok, root: root}
+    end
+
+    test "every knob is on the page, and the count says what a change costs", %{conn: conn} do
+      absent()
+      {:ok, _view, html} = live(conn, ~p"/voice")
+
+      for field <- ~w(reference_audio control device inference_timesteps cfg_value engine_path) do
+        assert html =~ ~s(name="config[#{field}]"), "no control for #{field}"
+      end
+
+      assert html =~ "0 of 16"
+    end
+
+    test "saving a reference clip is refused when the file is not there, and says so", %{
+      conn: conn,
+      root: root
+    } do
+      absent()
+      {:ok, view, _html} = live(conn, ~p"/voice")
+
+      html =
+        view
+        |> form("form[phx-submit=engine-config-save]", %{
+          "config" => %{"reference_audio" => Path.join(root, "nope.wav")}
+        })
+        |> render_submit()
+
+      assert html =~ "Reference clip: no file there."
+      refute Config.cloning?()
+    end
+
+    test "saving a real clip switches every render to cloning and re-costs the chimes",
+         %{conn: conn, root: root} do
+      absent()
+      clip = Path.join(root, "me.wav")
+      File.write!(clip, "RIFF....")
+      {:ok, view, _html} = live(conn, ~p"/voice")
+
+      html =
+        view
+        |> form("form[phx-submit=engine-config-save]", %{"config" => %{"reference_audio" => clip}})
+        |> render_submit()
+
+      assert Config.cloning?()
+      assert html =~ "all 16 chimes need making again"
+    end
+
+    test "engine defaults clears the lot", %{conn: conn} do
+      absent()
+      assert :ok = Config.put(%{"control" => "gruff"})
+      {:ok, view, _html} = live(conn, ~p"/voice")
+
+      html = view |> element("button[phx-click=engine-config-reset]") |> render_click()
+
+      assert html =~ "Back to the engine"
+      assert Config.get().control == nil
     end
   end
 

@@ -30,6 +30,7 @@ defmodule BusterClaw.Voice.Chimes do
 
   alias BusterClaw.Notifications.Sound
   alias BusterClaw.Settings
+  alias BusterClaw.Voice.Config
   alias BusterClaw.Voice.Engine
   alias BusterClaw.Voice.Renderer
 
@@ -115,9 +116,14 @@ defmodule BusterClaw.Voice.Chimes do
   def render(key, opts \\ []) when is_binary(key) do
     case line(key) do
       nil -> {:error, :unknown_key}
-      text -> Renderer.render(text, opts)
+      text -> Renderer.render(text, with_config(opts))
     end
   end
+
+  # The operator's engine settings (device, reference clip, voice description,
+  # quality) sit under whatever the caller asked for explicitly. Applied here and
+  # nowhere lower, so `Engine` stays pure and its tests stay database-free.
+  defp with_config(opts), do: Keyword.merge(Config.render_opts(), opts)
 
   @doc """
   Ask for the whole set, one `Renderer` job per line.
@@ -159,6 +165,7 @@ defmodule BusterClaw.Voice.Chimes do
   @spec render_set(keyword()) ::
           {:ok, [{String.t(), {:ok, String.t()} | {:error, term()}}]} | {:error, term()}
   def render_set(opts \\ []) do
+    opts = with_config(opts)
     ordered = Enum.map(keys(), fn key -> {key, line(key)} end)
 
     if Enum.any?(ordered, fn {_key, text} -> blank?(text) end) do
@@ -271,6 +278,23 @@ defmodule BusterClaw.Voice.Chimes do
   @doc "True when `key` is currently routed at its spoken chime."
   @spec installed?(String.t()) :: boolean()
   def installed?(key), do: Sound.sound_map()[key] == installed_name(key)
+
+  @doc """
+  How many of the lines already exist in the cache **under the current engine
+  settings**.
+
+  This is the number the settings page shows next to a change: the cache is keyed
+  on the argv, so a new device or a reference clip makes every rendered line a
+  miss, and "0 of 16 made" is the honest way to say what pressing the button will
+  now cost.
+  """
+  @spec made_count(keyword()) :: {non_neg_integer(), non_neg_integer()}
+  def made_count(opts \\ []) do
+    opts = with_config(opts)
+    all = keys()
+    made = Enum.count(all, fn key -> cached?(line(key), opts) end)
+    {made, length(all)}
+  end
 
   # ---------------------------------------------------------------------------
 

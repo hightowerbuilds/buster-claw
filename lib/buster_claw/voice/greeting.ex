@@ -32,6 +32,7 @@ defmodule BusterClaw.Voice.Greeting do
 
   alias BusterClaw.Settings
   alias BusterClaw.Telephony.Relay
+  alias BusterClaw.Voice.Config
   alias BusterClaw.Voice.Renderer
 
   @text_key "voice_greeting_text"
@@ -80,11 +81,16 @@ defmodule BusterClaw.Voice.Greeting do
   `{:ok, path}` on a cache hit, `{:queued, key}` while it is being made.
   """
   @spec render(keyword()) :: {:ok, String.t()} | {:queued, String.t()} | {:error, term()}
-  def render(opts \\ []), do: Renderer.render(text(), opts)
+  def render(opts \\ []), do: Renderer.render(text(), with_config(opts))
 
   @doc "Where the current greeting's audio will be, whether or not it exists yet."
   @spec rendered_path(keyword()) :: {:ok, String.t()} | {:error, term()}
-  def rendered_path(opts \\ []), do: Renderer.path_for(text(), opts)
+  def rendered_path(opts \\ []), do: Renderer.path_for(text(), with_config(opts))
+
+  # The operator's engine settings under whatever the caller asked for. Same
+  # shape as `Chimes` and for the same reason: applied here so `Engine` stays
+  # pure.
+  defp with_config(opts), do: Keyword.merge(Config.render_opts(), opts)
 
   @doc """
   Upload the rendered audio so callers hear it.
@@ -97,7 +103,7 @@ defmodule BusterClaw.Voice.Greeting do
   def publish(path, opts \\ []) when is_binary(path) do
     with {:ok, bytes} <- read_audio(path),
          :ok <- Relay.upload_greeting(bytes, opts),
-         {:ok, _} <- Settings.put(@published_key, digest(text())) do
+         {:ok, _} <- Settings.put(@published_key, fingerprint()) do
       :ok
     end
   end
@@ -133,7 +139,7 @@ defmodule BusterClaw.Voice.Greeting do
 
     %{
       published?: published?,
-      stale?: published? and Settings.get(@published_key) != digest(text())
+      stale?: published? and Settings.get(@published_key) != fingerprint()
     }
   end
 
@@ -144,6 +150,12 @@ defmodule BusterClaw.Voice.Greeting do
       {:error, reason} -> {:error, reason}
     end
   end
+
+  # What was published is the words AND the voice they were spoken in. A greeting
+  # recorded before the operator set a reference clip is still playing to callers
+  # in the old voice, and "stale" is the only honest word for that — so the engine
+  # settings are part of the digest, not just the text.
+  defp fingerprint, do: digest(text() <> "\n" <> inspect(Config.render_opts()))
 
   defp digest(value), do: :sha256 |> :crypto.hash(value) |> Base.encode16(case: :lower)
 end
