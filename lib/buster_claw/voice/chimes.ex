@@ -30,6 +30,7 @@ defmodule BusterClaw.Voice.Chimes do
 
   alias BusterClaw.Notifications.Sound
   alias BusterClaw.Settings
+  alias BusterClaw.Voice.Engine
   alias BusterClaw.Voice.Renderer
 
   @settings_key "voice_chime_lines"
@@ -119,19 +120,92 @@ defmodule BusterClaw.Voice.Chimes do
   end
 
   @doc """
-  Ask for the whole set. Returns `{key, result}` for each.
+  Ask for the whole set, one `Renderer` job per line.
 
-  One `Renderer` job per line, which the queue runs in order. The engine's own
-  `batch` subcommand would be cheaper — one model load for the set rather than
-  one each — and is the obvious optimisation once anyone has measured a real
-  render. It is deliberately not done blind: batch writes into a directory with
-  names this app does not choose, and guessing at that mapping without an engine
-  to check against is how you get a chime routed to the wrong sound.
+  Correct but wasteful: each job is its own process and pays the model load
+  again. **Measured on the Intel dev machine 09-02-26: 2 min 29 s of warm-up
+  before any audio.** Sixteen of those is forty minutes spent loading the same
+  weights. Prefer `render_set/1`, which is the same work in one invocation.
+
+  This stays because it is the path that reports progress per line — the queue
+  broadcasts each result as it lands, so a surface can fill in rather than wait.
   """
   @spec render_all(keyword()) :: [{String.t(), term()}]
   def render_all(opts \\ []) do
     Enum.map(keys(), fn key -> {key, render(key, opts)} end)
   end
+
+  @doc """
+  Render the whole set in **one** engine invocation — one model load for sixteen
+  lines instead of sixteen.
+
+  Blocking and slow by nature; call it from a task, not a render.
+
+  ## The mapping, read out of `voxcpm/cli.py` rather than guessed
+
+  `batch` writes `output_001.wav`, `output_002.wav`, … into `--output-dir`, and
+  the number is the **position of the line in the input file**. Two properties of
+  its loop make that safe to rely on, and both were checked in the source:
+
+  * blank lines are dropped *before* indexing, so a blank would shift every file
+    after it — this writes no blank lines, and refuses if a line is empty;
+  * a line that raises still advances the counter, so a failure leaves a **gap**
+    rather than shifting the rest. A missing file is a missing chime, never the
+    wrong chime under the right name.
+
+  That second property is the whole reason this is safe to do positionally. Get
+  it wrong and a timer plays "Security event."
+  """
+  @spec render_set(keyword()) ::
+          {:ok, [{String.t(), {:ok, String.t()} | {:error, term()}}]} | {:error, term()}
+  def render_set(opts \\ []) do
+    ordered = Enum.map(keys(), fn key -> {key, line(key)} end)
+
+    cond do
+      not Engine.available?() ->
+        {:error, :engine_unavailable}
+
+      Enum.any?(ordered, fn {_key, text} -> blank?(text) end) ->
+        {:error, :blank_line}
+
+      true ->
+        run_batch(ordered, opts)
+    end
+  end
+
+  defp run_batch(ordered, opts) do
+    dir = Path.join(System.tmp_dir!(), "voice-set-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    input = Path.join(dir, "lines.txt")
+    File.write!(input, Enum.map_join(ordered, "\n", fn {_key, text} -> text end) <> "\n")
+
+    args = Engine.batch_args(input, dir, opts)
+
+    case System.cmd(Engine.resolve(), args, stderr_to_stdout: true) do
+      {_output, 0} ->
+        {:ok, collect(ordered, dir)}
+
+      {output, code} ->
+        {:error, {:exit, code, String.slice(output, -800, 800) || ""}}
+    end
+  end
+
+  defp collect(ordered, dir) do
+    ordered
+    |> Enum.with_index(1)
+    |> Enum.map(fn {{key, _text}, index} ->
+      path = Path.join(dir, "output_#{String.pad_leading(to_string(index), 3, "0")}.wav")
+
+      # Size rather than existence: the failure that matters is a file that is
+      # there and empty, which would install as a chime nobody can hear.
+      case File.stat(path) do
+        {:ok, %File.Stat{size: size}} when size > 44 -> {key, {:ok, path}}
+        _ -> {key, {:error, :not_rendered}}
+      end
+    end)
+  end
+
+  defp blank?(text), do: not is_binary(text) or String.trim(text) == ""
 
   @doc """
   Install a rendered line as the chime for `key`, and route the key at it.

@@ -5,6 +5,7 @@ defmodule BusterClaw.Voice.ChimesTest do
 
   alias BusterClaw.Notifications.Sound
   alias BusterClaw.Voice.Chimes
+  alias BusterClaw.Voice.Engine
 
   setup do
     root = Path.join(System.tmp_dir!(), "bc_chimes_#{System.unique_integer([:positive])}")
@@ -133,6 +134,124 @@ defmodule BusterClaw.Voice.ChimesTest do
       assert {:error, :unknown_key} = Chimes.install("order", source)
       assert {:error, :unknown_key} = Chimes.install("nope", source)
     end
+  end
+
+  describe "render_set/1 — the whole set in one model load" do
+    setup do
+      on_exit(fn ->
+        Application.delete_env(:buster_claw, :voxcpm_path)
+        Application.delete_env(:buster_claw, :voxcpm_device)
+        Engine.refresh()
+      end)
+
+      Application.put_env(:buster_claw, :voxcpm_device, "cpu")
+      :ok
+    end
+
+    test "every key gets the output at its own position", %{root: root} do
+      batch_stub(root, skip: [])
+
+      assert {:ok, results} = Chimes.render_set()
+      assert length(results) == length(Chimes.keys())
+
+      # Order is the contract: keys() order in, output_NNN.wav order out.
+      assert Enum.map(results, &elem(&1, 0)) == Chimes.keys()
+
+      for {_key, result} <- results, do: assert({:ok, _path} = result)
+    end
+
+    test "a line the engine failed on leaves a GAP, and never shifts the rest", %{root: root} do
+      # This is the property the whole positional mapping rests on. voxcpm's loop
+      # advances its counter even when a line raises, so a failure means
+      # output_005.wav is simply absent — not that output_006 slid down into its
+      # place. If it shifted, a timer would play "Security event."
+      keys = Chimes.keys()
+      victim_index = 5
+      victim_key = Enum.at(keys, victim_index - 1)
+
+      batch_stub(root, skip: [victim_index])
+
+      assert {:ok, results} = Chimes.render_set()
+
+      assert {^victim_key, {:error, :not_rendered}} = Enum.at(results, victim_index - 1)
+
+      # Everything after the hole still maps to its own key.
+      for {key, result} <- results, key != victim_key do
+        assert {:ok, path} = result
+        assert File.regular?(path)
+      end
+    end
+
+    test "an empty output file is a failure, not a silent chime", %{root: root} do
+      batch_stub(root, empty: [3])
+
+      assert {:ok, results} = Chimes.render_set()
+      key = Enum.at(Chimes.keys(), 2)
+
+      # A zero-byte WAV would install happily and play nothing at all.
+      assert {^key, {:error, :not_rendered}} = Enum.at(results, 2)
+    end
+
+    test "with no engine it refuses rather than writing a temp file" do
+      Application.put_env(:buster_claw, :voxcpm_path, "/nonexistent/voxcpm")
+      Engine.refresh()
+
+      assert {:error, :engine_unavailable} = Chimes.render_set()
+    end
+
+    test "a non-zero exit is reported with its output", %{root: root} do
+      failing_stub(root)
+
+      assert {:error, {:exit, 4, output}} = Chimes.render_set()
+      assert output =~ "out of memory"
+    end
+  end
+
+  # A stub that behaves the way voxcpm's `batch` actually does: read --input,
+  # write output_NNN.wav into --output-dir, numbered from 1 by line position.
+  defp batch_stub(root, opts) do
+    fixture = Path.join(root, "batch-fixture.wav")
+    File.write!(fixture, wav_bytes())
+
+    skip = Enum.map_join(opts[:skip] || [], " ", &to_string/1)
+    empty = Enum.map_join(opts[:empty] || [], " ", &to_string/1)
+
+    script = """
+    #!/bin/sh
+    outdir=""
+    inp=""
+    while [ $# -gt 0 ]; do
+      if [ "$1" = "--output-dir" ]; then outdir="$2"; fi
+      if [ "$1" = "--input" ]; then inp="$2"; fi
+      shift
+    done
+    i=1
+    while IFS= read -r line; do
+      [ -z "$line" ] && continue
+      n=$(printf '%03d' $i)
+      skipped=0
+      for s in #{skip}; do [ "$s" = "$i" ] && skipped=1; done
+      for e in #{empty}; do [ "$e" = "$i" ] && : > "$outdir/output_$n.wav" && skipped=1; done
+      [ $skipped -eq 0 ] && cp "#{fixture}" "$outdir/output_$n.wav"
+      i=$((i+1))
+    done < "$inp"
+    exit 0
+    """
+
+    install(root, script)
+  end
+
+  defp failing_stub(root) do
+    install(root, "#!/bin/sh\necho 'voxcpm: out of memory' >&2\nexit 4\n")
+  end
+
+  defp install(root, script) do
+    path = Path.join(root, "voxcpm-batch-stub")
+    File.write!(path, script)
+    File.chmod!(path, 0o755)
+    Application.put_env(:buster_claw, :voxcpm_path, path)
+    Engine.refresh()
+    path
   end
 
   defp wav_bytes(ms \\ 100) do

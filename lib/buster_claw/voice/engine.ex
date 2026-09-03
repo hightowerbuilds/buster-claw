@@ -82,13 +82,19 @@ defmodule BusterClaw.Voice.Engine do
   """
   @spec resolve() :: String.t() | nil
   def resolve do
-    # Each candidate is checked for existence rather than merely for being set.
-    # A configured override pointing at nothing must read as "no engine", not as
-    # "an engine that will not run" — the two get different sentences in the UI,
-    # and the un-checked version also handed `verify/0` a path that made
-    # `System.cmd/3` raise :enoent instead of returning an error.
-    [configured(), installed_venv(), ShellPath.find_executable("voxcpm")]
-    |> Enum.find(&regular_file?/1)
+    # A configured path is AUTHORITATIVE — set it and nothing else is consulted,
+    # even when it points at nothing.
+    #
+    # It used to be first-among-candidates instead, which was wrong in a way that
+    # only showed up once an engine was genuinely installed on the dev machine:
+    # a test setting the override to a nonexistent path fell *through* to the real
+    # venv and ran the actual model, hanging for a minute. A suite whose result
+    # depends on whether the developer happens to have VoxCPM installed is not a
+    # suite. "Use this one" has to mean this one.
+    case configured() do
+      nil -> Enum.find([installed_venv(), ShellPath.find_executable("voxcpm")], &regular_file?/1)
+      path -> if regular_file?(path), do: path
+    end
   end
 
   @doc """
