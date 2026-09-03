@@ -1,7 +1,19 @@
 # The Voice — what Buster Claw sounds like
 
-**Scoped 09-02-26 · Status: READBACK SHIPPED. The rest is unstarted and gated on
-one listen.**
+**Scoped 09-02-26 · Status: BUILT, except the phone greeting.**
+
+> **Where this stands at the end of 09-02-26.** Readback, the voice picker, the
+> speech transform, the microphone plist fix, `Voice.Engine`, `Voice.Renderer`,
+> the spoken chime set and the skill-seed upgrade path are all **shipped to
+> main**. The phone greeting is **not built, on purpose** — see Part V; it needs
+> a live Supabase deploy and a real phone call, and building it blind would
+> produce something that looks finished and has never been heard.
+>
+> **Two things remain, and neither is code.** Install VoxCPM on a Mac that can
+> take it (not this one — see Part 0) and press *Speak them* in Settings → Voice,
+> which is the first time any of this will have made a real sound. And listen to
+> a clone of your own voice on `openbmb/VoxCPM-Demo` to settle whether "its own
+> voice" means *yours* or simply a better synthetic one.
 
 > **What this map is now.** It was written this morning as a plan to delete the
 > Studio's cut-up engine and put VoxCPM in its place. **That framing is gone.**
@@ -288,12 +300,37 @@ work.** Today `supabase/functions/voice/index.ts:99` emits
    change** and land together — the operator's voice followed by Polly is worse
    than all-Polly.
 
+> **BLOCKED, deliberately, 09-02-26 — the only part of this map not built.**
+> Everything it needs is outside this machine: an upload to a live Supabase
+> project, an Edge Function deploy, and — the map's own instruction — *listening
+> to the result over an actual phone call*. `Telephony.Relay` also has **zero
+> tests**, so an upload added there would be untestable code on top of untestable
+> code. Building it blind would produce something that looks finished and has
+> never once been heard. The local half (render a line in the chosen voice) is
+> already available through `Voice.Renderer`; what remains is transport.
+
+**A third option, better than the two below.** The constraint is that Twilio
+`<Play>` needs a *publicly reachable* URL while the `recordings` bucket is
+private. The obvious answers are a long-expiry signed URL or a separate public
+object, and both have a flaw: a signed URL **expires**, so a greeting set once
+and left alone breaks the phone line on a date nobody wrote down, and a public
+object is a new public surface to keep track of.
+
+**The Edge Function can serve the audio itself.** It is already the public
+endpoint Twilio talks to, and it already holds the service-role key — so
+`<Play>${self}?event=greeting</Play>` lets it fetch the object from the private
+bucket and stream it back. No public bucket, no expiry, no new surface. That is
+the shape to build when this is unblocked.
+
 **Constraints:**
 
 - **Twilio `<Play>` wants a public URL.** The `recordings` bucket is private and
-  the Mac reaches it with a service-role key. Either a long-expiry signed URL
-  regenerated on set, or a separate public object. **Decide explicitly; do not
-  make the recordings bucket public.**
+  the Mac reaches it with a service-role key. **Do not make the recordings bucket
+  public** — see the serve-from-the-function option above, which avoids the
+  choice entirely.
+- **The greeting and the access-code prompt are one `<Say>` today**
+  (`voice/index.ts:99`), so they are one recording or none. That is the mechanical
+  reason the map says they must land together, not just an aesthetic one.
 - **8 kHz μ-law is what the caller hears** regardless of what we upload. Render
   at whatever the model gives and let Twilio downsample — but *listen over an
   actual phone call* before believing it. Quality claims made from a laptop
