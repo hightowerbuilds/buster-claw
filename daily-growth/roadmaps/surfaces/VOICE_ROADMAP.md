@@ -330,15 +330,25 @@ first, because both files discuss these keys by name.
 > `uiDelegate` slot and **auto-grants** camera and mic. **Both cannot be true**,
 > and neither has been exercised in a packaged build.
 
-**`skill-seeds/sound-cutup.md` will outlive the feature in every existing
-workspace.** 183 lines teaching an agent 24 verbs, embedded at compile time
-(`skills.ex:346`) and written by `Skills.ensure/0` via `maybe_write`, **which
-never overwrites**. `BusterClaw.Seed` — the upgrade path for a seed whose bytes
-still match a shipped version — **covers Jobs and not Skills**. So removing the
-file removes it from *new* workspaces and leaves it in *every existing one*.
-**This is exactly the failure BusterPhone's deletion caused on 08-18**, and it is
-the reason `Seed` was built. **Converting `Skills` to `Seed.write/3` is the fix.**
-It becomes urgent whenever the cut-up verbs actually leave.
+**`skill-seeds/sound-cutup.md` outliving the feature — FIXED 09-02-26.** 183
+lines teaching an agent 24 cut-up verbs, written by `Skills.ensure/0` via
+`maybe_write`, **which never overwrites**. Under that, removing the file would
+have removed it from *new* workspaces and left it in *every existing one*, with
+the agent still reaching for `sound_index_search` — **exactly the failure
+BusterPhone's deletion caused on 08-18**, which is why `Seed` exists.
+
+All six skill seeds now go through `Seed.write/3`, so a file the operator never
+touched upgrades and one they edited is left alone. `SeedTest` grew a Skills
+manifest block pinning each current digest, verified by editing a seed and
+watching it fail with the digest to append.
+
+> **A trap worth recording.** `Skills.ensure/0` looks uncalled — `grep` for
+> `Skills.ensure` finds nothing in `lib/`. It is invoked as
+> `seed: {BusterClaw.Skills, :ensure}` in `Workspace`'s registry, a `{module,
+> fun}` tuple that is invisible to grep *and* to `--warnings-as-errors`. This is
+> the same shape the 08-09 dead-code pass recorded, and it is still live. The
+> return shape changed from `:ok` to `{:ok, outcomes}`; `run_seed/1` discards it,
+> so boot is unaffected, but nothing would have told you that.
 
 ---
 

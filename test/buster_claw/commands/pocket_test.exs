@@ -387,7 +387,7 @@ defmodule BusterClaw.Commands.PocketTest do
   # --- the reference skill ----------------------------------------------
 
   test "ensure seeds the pockets skill, and it loads as a read-only reference" do
-    assert :ok = Skills.ensure()
+    assert {:ok, _outcomes} = Skills.ensure()
 
     assert {:ok, skill} = Skills.load("pockets")
     assert skill.handler_kind == :reference
@@ -407,7 +407,7 @@ defmodule BusterClaw.Commands.PocketTest do
     # command that cannot be run. It is also why the skill says "there is no
     # command for mounting" in words rather than by naming the verb it would
     # have been — naming it here would be teaching it.
-    assert :ok = Skills.ensure()
+    assert {:ok, _outcomes} = Skills.ensure()
     assert {:ok, skill} = Skills.load("pockets")
 
     catalog = MapSet.new(Commands.list_commands(), & &1.name)

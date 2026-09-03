@@ -127,7 +127,7 @@ defmodule BusterClaw.SkillsTest do
   # 08-08. `shader-designer` above still covers the reference-skill seed path.
 
   test "ensure seeds sound-cutup, and it loads as a read-only reference skill" do
-    assert :ok = Skills.ensure()
+    assert {:ok, _outcomes} = Skills.ensure()
 
     assert {:ok, skill} = Skills.load("sound-cutup")
     assert skill.handler_kind == :reference
@@ -146,7 +146,7 @@ defmodule BusterClaw.SkillsTest do
   # command that cannot be run — the one failure mode a doc file has, and the
   # only one a test can catch. Keeps the playbook in lockstep with the catalog.
   test "every sound_* verb the sound-cutup skill names exists in the live catalog" do
-    assert :ok = Skills.ensure()
+    assert {:ok, _outcomes} = Skills.ensure()
     assert {:ok, skill} = Skills.load("sound-cutup")
 
     catalog = MapSet.new(Commands.list_commands(), & &1.name)

@@ -12,7 +12,7 @@ defmodule BusterClaw.SeedTest do
   """
   use ExUnit.Case, async: true
 
-  alias BusterClaw.{Jobs, Seed}
+  alias BusterClaw.{Jobs, Seed, Skills}
 
   setup do
     root = Path.join(System.tmp_dir!(), "bc_seed_#{System.unique_integer([:positive])}")
@@ -125,6 +125,48 @@ defmodule BusterClaw.SeedTest do
       names = Jobs.seed_manifest() |> Enum.map(& &1.name) |> Enum.sort()
 
       assert names == ["README.md", "mail-triage.md", "sms-triage.md", "voicemail-triage.md"]
+    end
+  end
+
+  describe "the Skills manifest" do
+    # Same guard, same reason, for the seeds converted on 09-02-26. Skills were
+    # create-only until then, which meant a skill teaching an agent verbs that no
+    # longer exist would have survived the feature in every workspace already
+    # installed — `sound-cutup.md` is 183 lines of exactly that, waiting for the
+    # Studio to be spun out into its own project.
+    test "every current default's digest is the LAST entry in its version list" do
+      for %{name: name, content: content, versions: versions} <- Skills.seed_manifest() do
+        digest = Seed.digest(content)
+
+        assert List.last(versions) == digest, """
+        The current default for #{name} is not the last entry in its version list.
+
+        If you edited it, APPEND this digest to the matching @*_versions list in
+        lib/buster_claw/skills.ex — do not replace or reorder the existing
+        entries, they are what identify the installs still holding them:
+
+            "#{digest}"
+        """
+      end
+    end
+
+    test "no version is listed twice, which would mean a reverted edit lost its history" do
+      for %{name: name, versions: versions} <- Skills.seed_manifest() do
+        assert versions == Enum.uniq(versions), "#{name} lists a digest more than once"
+      end
+    end
+
+    test "the manifest covers every file Skills.ensure/0 writes" do
+      names = Skills.seed_manifest() |> Enum.map(& &1.name) |> Enum.sort()
+
+      assert names == [
+               "README.md",
+               "pockets.md",
+               "save-note.md",
+               "shader-designer.md",
+               "sound-cutup.md",
+               "terminal-paint.md"
+             ]
     end
   end
 

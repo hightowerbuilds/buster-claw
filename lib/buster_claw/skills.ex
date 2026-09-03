@@ -43,6 +43,7 @@ defmodule BusterClaw.Skills do
   require Logger
 
   alias BusterClaw.Library.{Artifact, Frontmatter}
+  alias BusterClaw.Seed
 
   @subdir "skills"
   @roster "README.md"
@@ -168,22 +169,68 @@ defmodule BusterClaw.Skills do
   end
 
   @doc """
-  Best-effort seed: create `skills/` with a roster README and one enabled
-  example. Never overwrites an existing operator-authored file.
+  Best-effort seed: create `skills/` with a roster README and the example skills.
+
+  Every seed goes through `BusterClaw.Seed`, so a file the operator has never
+  touched **upgrades** when its default improves, and one they have edited is
+  left alone. Returns `{:ok, outcomes}` mapping each basename to
+  `:created | :current | :upgraded | :kept | :error`.
+
+  ## Why this stopped being create-only
+
+  `maybe_write/2` — write if absent, otherwise do nothing — freezes every shipped
+  default at install time forever. That is fine until a default goes *wrong*, and
+  a skill goes wrong the moment it teaches an agent a verb that no longer exists.
+  It has already happened once at the job layer: BusterPhone went intake-only on
+  08-18 and every existing workspace was left holding a prompt naming a deleted
+  command.
+
+  `sound-cutup.md` is the same shape waiting to happen — 183 lines teaching 24
+  cut-up verbs that leave with the Studio when it is spun out into its own
+  project. Under `maybe_write` that file would survive the feature in every
+  workspace that already exists, and the agent would go on calling
+  `sound_index_search`. Now it can be replaced, or replaced with nothing, on the
+  next boot.
   """
   def ensure do
     File.mkdir_p!(dir())
-    maybe_write(roster_path(), default_roster())
-    maybe_write(skill_path("save-note"), default_save_note())
-    maybe_write(skill_path("shader-designer"), default_shader_designer())
-    maybe_write(skill_path("sound-cutup"), default_sound_cutup())
-    maybe_write(skill_path("pockets"), default_pockets())
-    maybe_write(skill_path("terminal-paint"), default_terminal_paint())
-    :ok
+
+    outcomes =
+      Map.new(seeds(), fn {path, content, versions} ->
+        {:ok, outcome} = Seed.write(path, content, versions)
+        {Path.basename(path), outcome}
+      end)
+
+    {:ok, outcomes}
   rescue
     error ->
       Logger.warning("Skills.ensure failed: #{Exception.message(error)}")
       :error
+  end
+
+  # Both halves go through accessor functions for the same reason the defaults
+  # already did: the attributes are declared at the foot of the file, and a
+  # module attribute read above its own definition is `nil`, silently.
+  defp seeds do
+    [
+      {roster_path(), default_roster(), roster_versions()},
+      {skill_path("save-note"), default_save_note(), save_note_versions()},
+      {skill_path("shader-designer"), default_shader_designer(), shader_designer_versions()},
+      {skill_path("sound-cutup"), default_sound_cutup(), sound_cutup_versions()},
+      {skill_path("pockets"), default_pockets(), pockets_versions()},
+      {skill_path("terminal-paint"), default_terminal_paint(), terminal_paint_versions()}
+    ]
+  end
+
+  @doc false
+  # Exposed for `BusterClaw.SeedTest`, which pins each current digest so that
+  # editing a default without appending its digest fails the build. Without that
+  # guard the version lists rot silently in the safe direction — every install
+  # would look "edited" and quietly stop upgrading forever.
+  def seed_manifest do
+    Enum.map(seeds(), fn {path, content, versions} ->
+      %{name: Path.basename(path), content: content, versions: versions}
+    end)
   end
 
   # --- internals ---------------------------------------------------------
@@ -302,10 +349,6 @@ defmodule BusterClaw.Skills do
 
   defp max_steps, do: Application.get_env(:buster_claw, :skill_max_steps, 20)
 
-  defp maybe_write(path, content) do
-    if File.exists?(path), do: :ok, else: File.write(path, content)
-  end
-
   defp present(value) when is_binary(value) do
     case String.trim(value) do
       "" -> nil
@@ -347,10 +390,37 @@ defmodule BusterClaw.Skills do
   @default_pockets File.read!(Path.join(@seed_dir, "pockets.md"))
   @default_terminal_paint File.read!(Path.join(@seed_dir, "terminal-paint.md"))
 
+  # Every version of each seed ever shipped, oldest first, current LAST. These
+  # are the whole mechanism: a file whose bytes match any entry here was never
+  # touched by the operator and is safe to replace.
+  #
+  # **Append, never edit.** Changing a seed without appending its new digest is
+  # caught by `BusterClaw.SeedTest`, which pins the last entry of each list
+  # against the file on disk. Removing an old entry is worse and is not caught:
+  # it makes every workspace still holding that version look edited, and they
+  # stop upgrading forever.
+  #
+  # These six start with one entry each because 09-02-26 is the first time any of
+  # them became upgradeable — before that they were create-only, so no earlier
+  # version was ever replaceable and there is nothing to reach back for.
+  @roster_versions ["b9f55d590a964e2ec7fb59aac42d690fc48b384a8a8e1dcc75969b378afe32c6"]
+  @save_note_versions ["fb532036dc4e02c57266cee3e7fa817e75e1c5afde25f396efab6cec33510d1f"]
+  @shader_designer_versions ["b2e2b6716c76f4589317771e85528feae7ea4440bb2d9963908a0665e7964832"]
+  @sound_cutup_versions ["f30c8bda9bad648e07ecd60b174b509ee52ee4c189a80dcf5cd0afebb26cbef4"]
+  @pockets_versions ["748a633983ebc025f679ef8643fcf3cbad2aedfaf3ffbd9e52814b5a742629b4"]
+  @terminal_paint_versions ["a04f345d81acafa03c5381674eb8566d98b643810b408894223c6c5882382376"]
+
   defp default_roster, do: @default_roster
   defp default_save_note, do: @default_save_note
   defp default_shader_designer, do: @default_shader_designer
   defp default_sound_cutup, do: @default_sound_cutup
   defp default_pockets, do: @default_pockets
   defp default_terminal_paint, do: @default_terminal_paint
+
+  defp roster_versions, do: @roster_versions
+  defp save_note_versions, do: @save_note_versions
+  defp shader_designer_versions, do: @shader_designer_versions
+  defp sound_cutup_versions, do: @sound_cutup_versions
+  defp pockets_versions, do: @pockets_versions
+  defp terminal_paint_versions, do: @terminal_paint_versions
 end
