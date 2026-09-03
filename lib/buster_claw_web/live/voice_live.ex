@@ -15,10 +15,37 @@ defmodule BusterClawWeb.VoiceLive do
   """
   use BusterClawWeb, :live_view
 
+  alias BusterClaw.Voice.Engine
+
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, :page_title, "Voice")}
+    {:ok,
+     socket
+     |> assign(:page_title, "Voice")
+     |> assign(:engine, Engine.probe())
+     |> assign(:engine_check, nil)}
   end
+
+  @impl true
+  def handle_event("engine-recheck", _params, socket) do
+    {:noreply, socket |> assign(:engine, Engine.refresh()) |> assign(:engine_check, nil)}
+  end
+
+  # `verify/0` runs the binary, which imports torch before it prints its own
+  # usage — seconds, not milliseconds. Done in a task so the LiveView stays
+  # answerable; blocking here would freeze the settings page on a slow disk.
+  def handle_event("engine-verify", _params, socket) do
+    task = Task.async(fn -> Engine.verify() end)
+    {:noreply, assign(socket, :engine_check, {:running, task.ref})}
+  end
+
+  @impl true
+  def handle_info({ref, result}, socket) when is_reference(ref) do
+    Process.demonitor(ref, [:flush])
+    {:noreply, assign(socket, :engine_check, result)}
+  end
+
+  def handle_info({:DOWN, _ref, :process, _pid, _reason}, socket), do: {:noreply, socket}
 
   @impl true
   def render(assigns) do
@@ -115,8 +142,91 @@ defmodule BusterClawWeb.VoiceLive do
             </div>
           </div>
         </div>
+
+        <div class="ic-panel overflow-hidden">
+          <header class="border-b-2 border-base-content/20 px-5 py-4">
+            <p class="ic-eyebrow">Engine</p>
+            <h2 class="font-display text-2xl font-black uppercase tracking-tight">
+              A voice of its own
+            </h2>
+            <p class="mt-1 text-sm text-base-content/65">
+              The voices above are your Mac's, and they read replies instantly.
+              <strong>VoxCPM</strong>
+              is a speech model that can be given a voice of its own — it is far slower than
+              real time, so it is used for sounds that are made once and kept: notification
+              chimes and the phone greeting. It is never used to read chat.
+            </p>
+          </header>
+
+          <div class="flex flex-col gap-4 px-5 py-5 text-sm">
+            <div class="flex items-center gap-3">
+              <%= if @engine.available? do %>
+                <.icon name="hero-check-circle" class="size-5 shrink-0 text-primary" />
+                <span>
+                  Installed at <code class="font-mono text-xs">{@engine.path}</code>, running on <code class="font-mono text-xs">{@engine.device}</code>.
+                </span>
+              <% else %>
+                <.icon name="hero-x-circle" class="size-5 shrink-0 text-base-content/40" />
+                <span class="text-base-content/70">
+                  {absent_sentence(@engine.reason)}
+                </span>
+              <% end %>
+            </div>
+
+            <%= unless @engine.available? do %>
+              <div class="flex flex-col gap-2">
+                <p class="text-base-content/65">
+                  It is not bundled — the weights alone are larger than this whole app. Install it
+                  yourself, then press Check again:
+                </p>
+                <pre class="overflow-x-auto rounded border-2 border-base-content/20 bg-base-200 p-3 text-xs"><code>{Engine.install_hint()}</code></pre>
+              </div>
+            <% end %>
+
+            <div class="flex flex-wrap items-center gap-3">
+              <button type="button" phx-click="engine-recheck" class="btn btn-ghost btn-sm">
+                <.icon name="hero-arrow-path" class="size-4" /> Check again
+              </button>
+
+              <%= if @engine.available? do %>
+                <button
+                  type="button"
+                  phx-click="engine-verify"
+                  disabled={match?({:running, _}, @engine_check)}
+                  class="btn btn-ghost btn-sm"
+                >
+                  Run it
+                </button>
+              <% end %>
+
+              <span class="text-xs text-base-content/60">{check_sentence(@engine_check)}</span>
+            </div>
+          </div>
+        </div>
       </section>
     </Layouts.app>
     """
   end
+
+  # Two different problems deserve two different sentences: nothing installed is
+  # a thing to go and do, a file that cannot be run is a broken install.
+  defp absent_sentence(:not_executable),
+    do: "Found, but it cannot be run — the install looks incomplete."
+
+  defp absent_sentence(_),
+    do: "Not installed. Replies are read by your Mac's own voices, which is the default."
+
+  defp check_sentence(nil), do: ""
+
+  defp check_sentence({:running, _ref}),
+    do: "Running it — this takes a few seconds, it loads a model to say hello."
+
+  defp check_sentence(:ok), do: "It answered."
+  defp check_sentence({:error, :timeout}), do: "It did not answer in time."
+  defp check_sentence({:error, :not_installed}), do: "It is gone."
+
+  defp check_sentence({:error, {:exit, code}}),
+    do: "It exited #{code} — the install is present but not working."
+
+  defp check_sentence(_), do: ""
 end

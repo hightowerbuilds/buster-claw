@@ -71,6 +71,11 @@ defmodule BusterClaw.Application do
         {Registry, keys: :unique, name: BusterClaw.BrowserControl.ScreencastRegistry},
         {DynamicSupervisor,
          strategy: :one_for_one, name: BusterClaw.BrowserControl.ScreencastSupervisor},
+        # Speech renders, serialised. Free at rest — it holds a queue and starts
+        # no process until something asks for a line, and asks for nothing at all
+        # on a machine with no engine installed (which is every machine until
+        # someone installs one).
+        BusterClaw.Voice.Renderer,
         # Start to serve requests, typically the last entry
         BusterClawWeb.Endpoint
       ]
