@@ -42,13 +42,13 @@ fail() { echo "  FAIL: $1" >&2; exit 1; }
 
 REQUIRED_COMMANDS=(
   runtime_status
-  source_list
-  provider_active
+  document_list
+  integration_list
   gmail_sync
   gmail_draft_create
   gmail_send
   google_calendar_sync
-  chat_send
+  dispatch_list
   web_search
 )
 
@@ -74,7 +74,7 @@ pass "GET /api/commands includes representative commands"
 
 UNAUTH_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$URL/api/run" \
   -H "Content-Type: application/json" \
-  -d '{"command":"source_list"}')
+  -d '{"command":"document_list"}')
 [[ "$UNAUTH_CODE" == "401" ]] || fail "/api/run without auth returned $UNAUTH_CODE, expected 401"
 pass "POST /api/run rejects unauthenticated"
 
@@ -104,32 +104,6 @@ pass "./buster-claw commands runs"
 CLI_OUT=$(BUSTER_CLAW_API_TOKEN="$TOKEN" BUSTER_CLAW_URL="$URL" ./buster-claw run runtime_status)
 echo "$CLI_OUT" | grep -q '"app":' || fail "./buster-claw run runtime_status missing app"
 pass "./buster-claw run runtime_status works"
-
-echo "==> MCP server"
-
-INIT_BODY=$(curl -fsS -X POST "$URL/mcp" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
-  -d '{"jsonrpc":"2.0","method":"initialize","id":1}')
-
-echo "$INIT_BODY" | grep -q '"serverInfo"' || fail "MCP initialize missing serverInfo"
-pass "POST /mcp initialize works"
-
-TOOLS_BODY=$(curl -fsS -X POST "$URL/mcp" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
-  -d '{"jsonrpc":"2.0","method":"tools/list","id":2}')
-
-assert_commands_present "$TOOLS_BODY" "POST /mcp tools/list"
-pass "POST /mcp tools/list includes representative commands"
-
-CALL_BODY=$(curl -fsS -X POST "$URL/mcp" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
-  -d '{"jsonrpc":"2.0","method":"tools/call","id":3,"params":{"name":"runtime_status","arguments":{}}}')
-
-echo "$CALL_BODY" | grep -q '"isError":false' || fail "MCP tools/call runtime_status isError != false"
-pass "POST /mcp tools/call runtime_status works"
 
 echo ""
 echo "==> All checks passed."

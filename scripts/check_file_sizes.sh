@@ -808,7 +808,16 @@ check lib/buster_claw/introduction.ex                         161 HELD
 # Phase 7's other half: three seed templates (162 lines of heredoc) became
 # `skill-seeds/*.md`, so the two skill seeds are now the same kind of file they
 # seed and can be validated as skills without being unpacked from a string.
-check lib/buster_claw/skills.ex                               379 HELD
+#
+# 379 -> 469 on 09-03. `dbbc54d` made skills upgradeable (SKILLS_UPGRADE_PATH's
+# open half) and that cost 356 -> 426. Most of it is not logic but a LEDGER: one
+# `@*_versions` list per seed holding every digest ever shipped, which grows by
+# one line each time a default is corrected and may never be edited or pruned.
+# A cap with no headroom would therefore fail on the next seed correction and
+# teach everyone to bump it without reading. 469 is +10% on the real size, the
+# HELD rule, and buys roughly forty corrections. If this trips again, the answer
+# is to move the ledger to its own module, not to raise it a second time.
+check lib/buster_claw/skills.ex                               469 HELD
 
 # Phase 1's fourth file, deliberately not split (15 small functions, reads fine).
 # Frozen instead: capping it was always the cheaper half of that decision.

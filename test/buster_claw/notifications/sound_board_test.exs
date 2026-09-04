@@ -135,7 +135,15 @@ defmodule BusterClaw.Notifications.SoundBoardTest do
 
       assert SoundBoard.ring("kazoo") == {:error, :unknown_key}
       assert SoundBoard.ring(nil) == {:error, :unknown_key}
-      refute_receive {:sound_ring, _}, 50
+
+      # `subscribe/0` joins ONE process-global topic, so this mailbox also sees
+      # every ring any other async test causes — `chat_test` settling a run into
+      # idle rings "chat" on this very topic. A bare `refute_receive {:sound_ring,
+      # _}` therefore asserts something this test doesn't own and fails on a
+      # neighbour's timing. Name the two keys this test actually attempted: if
+      # either refusal ever started broadcasting, it would arrive here.
+      refute_receive {:sound_ring, "kazoo"}, 50
+      refute_received {:sound_ring, nil}
     end
   end
 end

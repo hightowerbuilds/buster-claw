@@ -1,7 +1,7 @@
 defmodule BusterClaw.Repo.Migrations.RetypeResearchConversationsToChartbuild do
   @moduledoc """
   The Research chat is gone; Chart Build inherited its job (see
-  daily-growth/roadmaps/CHART_BUILD_WEB_DATA_ROADMAP.md Phase 0).
+  daily-growth/archive/08-05-26-chart-build-web-data.md Phase 0).
 
   This runs BEFORE `"research"` leaves `Conversation.@kinds`, which is the whole
   point of it existing. `kind` is validated by inclusion, so dropping the value

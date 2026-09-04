@@ -90,11 +90,11 @@ STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/run" \
 [ "$STATUS" = 401 ] || fail "bad token got $STATUS, expected 401"
 
 say "waiting for the ScreenshotBridge to connect (app webview LiveView)"
-# The API launders unknown error strings to "unexpected error" (by design —
-# ErrorFormatter never echoes raw internals), so this probe can only
-# distinguish bridge-down ("browser_unavailable"), bridge-timeout ("timeout"),
-# and bridge-up (ok or a laundered desktop-side error). The definitive ACL
-# check is the positive render below.
+# This probe distinguishes bridge-down ("browser_unavailable"), bridge-timeout
+# ("timeout"), and bridge-up. A connected desktop with no open browser tab
+# returns the named "browser: no active browser tab" error; older desktop-side
+# errors can still arrive as "unexpected error". The definitive ACL check is
+# the positive render below.
 BRIDGE=0
 for _ in $(seq 1 30); do
   BODY=$(curl -sS --max-time 15 -X POST "$BASE/api/run" \
@@ -103,7 +103,7 @@ for _ in $(seq 1 30); do
   case "$BODY" in
     *browser_unavailable*) sleep 1 ;;
     *'"error":"timeout"'*) fail "bridge subscriber present but the round-trip timed out: $BODY" ;;
-    *'"ok":true'*|*"unexpected error"*) BRIDGE=1; break ;;
+    *'"ok":true'*|*'"error":"browser: no active browser tab"'*|*"unexpected error"*) BRIDGE=1; break ;;
     *) sleep 1 ;;
   esac
 done

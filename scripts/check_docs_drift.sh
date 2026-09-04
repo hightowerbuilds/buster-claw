@@ -14,7 +14,8 @@ DOCS=(README.md docs/*.md user-guide/*.md)
 
 # --- source of truth 1: catalog command names -------------------------------
 CATALOG=$(mix run --no-start -e \
-  'BusterClaw.Commands.Catalog.entries() |> Enum.each(&IO.puts(&1.name))')
+  'BusterClaw.Commands.Catalog.entries() |> Enum.each(fn entry -> IO.puts("__BUSTER_CLAW_COMMAND__" <> entry.name) end)' |
+  sed -n 's/^__BUSTER_CLAW_COMMAND__//p')
 
 # --- source of truth 2: CLI dispatch verbs ----------------------------------
 # Route heads like `defp route(["dispatch", "claim" | rest], opts)` /

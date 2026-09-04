@@ -436,7 +436,6 @@ defmodule BusterClaw.Telephony.DrainTest do
     end
   end
 
-
   # The drain became always-on in Phase 3c: it used to be started only when
   # credentials existed at boot, which made a key added later invisible until
   # restart — and Clinch-stored credentials arrive after boot by definition.
@@ -486,5 +485,4 @@ defmodule BusterClaw.Telephony.DrainTest do
       assert BusterClaw.Telephony.Relay.configured?()
     end
   end
-
 end

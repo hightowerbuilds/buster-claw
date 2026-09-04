@@ -379,8 +379,7 @@ defmodule BusterClawWeb.SetupLive do
             <p class="text-sm leading-7 text-base-content/80">
               Buster Claw manages your Google Workspace on your behalf — Gmail, Calendar, Drive,
               Docs, Sheets, Slides, Contacts and Tasks. The consent screen will list each of these
-              permissions, so approve them all to give your agent full access.
-              {GoogleOAuth.reconnect_sentence()} Once it's done, emails from you are trusted
+              permissions, so approve them all to give your agent full access. {GoogleOAuth.reconnect_sentence()} Once it's done, emails from you are trusted
               automatically — and every action taken with this access lands in the Sentinel audit
               feed (Settings → Security), so you can always see exactly what your agent did.
             </p>
