@@ -223,7 +223,7 @@ defmodule BusterClaw.Voice.Chimes do
         {:ok, collect(ordered, dir, opts)}
 
       {output, code} ->
-        {:error, {:exit, code, String.slice(output, -800, 800) || ""}}
+        {:error, {:exit, code, String.slice(output, -800, 800)}}
     end
   end
 
@@ -267,7 +267,6 @@ defmodule BusterClaw.Voice.Chimes do
     else
       {:error, _reason} = error -> error
       false -> {:error, :unknown_key}
-      other -> other
     end
   end
 

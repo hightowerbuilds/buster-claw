@@ -134,10 +134,20 @@ defmodule BusterClaw.MixProject do
         "esbuild buster_claw --minify",
         "phx.digest"
       ],
+      # `--check-formatted` / `--check-unused`, not the mutating forms, and that
+      # is the whole point. Until 09-03 this ran bare `format` and `deps.unlock
+      # --unused`: both REWRITE files and exit 0, so precommit was structurally
+      # incapable of failing on the thing CI asserts. Worse, the rewrite lands in
+      # files outside the change being committed, and the house rule is to stage
+      # explicit paths -- so the repair was orphaned every time it was made.
+      # `mix format --check-formatted` had failed on EVERY push for a month (291
+      # runs, 0 green), and because it is step 5 of the CI build job, credo,
+      # sobelow, deps.audit and the entire test suite did not run there once in
+      # that window. A gate that silently repairs the evidence cannot report it.
       precommit: [
         "compile --warnings-as-errors",
-        "deps.unlock --unused",
-        "format",
+        "deps.unlock --check-unused",
+        "format --check-formatted",
         "credo --strict",
         "test",
         # The JS suite ran only in CI until 08-09, so a broken hook passed a

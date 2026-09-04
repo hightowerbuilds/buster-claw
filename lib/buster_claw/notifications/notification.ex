@@ -25,6 +25,11 @@ defmodule BusterClaw.Notifications.Notification do
     timestamps(type: :utc_datetime)
   end
 
+  # Ecto does not generate `t/0`; specs that name a persisted notification
+  # (`Voice.Messages.fire/2`) reference it, and without this Dialyzer reports an
+  # unknown type rather than checking them.
+  @type t :: %__MODULE__{}
+
   def kinds, do: @kinds
   def statuses, do: @statuses
   def sources, do: @sources

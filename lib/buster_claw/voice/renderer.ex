@@ -201,7 +201,7 @@ defmodule BusterClaw.Voice.Renderer do
 
     case Task.yield(task, @job_timeout_ms) || Task.shutdown(task, :brutal_kill) do
       {:ok, {_out, 0}} -> promote(temp, target)
-      {:ok, {out, code}} -> fail(temp, {:exit, code, String.slice(out, -800, 800) || ""})
+      {:ok, {out, code}} -> fail(temp, {:exit, code, String.slice(out, -800, 800)})
       nil -> fail(temp, :timeout)
     end
   rescue
@@ -265,7 +265,7 @@ defmodule BusterClaw.Voice.Renderer do
 
   defp key_for(args) do
     :sha256
-    |> :crypto.hash(Enum.join(args, " "))
+    |> :crypto.hash(Enum.join(args, "\x00"))
     |> Base.encode16(case: :lower)
     |> binary_part(0, 32)
   end
