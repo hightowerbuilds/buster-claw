@@ -57,6 +57,18 @@ const CONSTRAINTS = {
   channelCount: 1,
 }
 
+// ARMED IS ONE RULE, NOT TWO. `paint()` and `start()` used to decide this
+// separately — `!== "false"` and `!== "true"` — which agree whenever the
+// attribute is present and disagree exactly when it is absent. The Studio always
+// sets it (`data-armed={to_string(@recordable?)}`), so it never saw the gap; the
+// reference recorder in Settings → Voice leaves it off, which paint() calls
+// armed and start() called disarmed. The button rendered enabled and did
+// nothing. Absent means armed: a recorder with nothing to type has no reason to
+// be held back.
+export function isArmed(dataset) {
+  return dataset?.armed !== "false"
+}
+
 export const VoiceRecorder = {
   mounted() {
     this.recording = false
@@ -217,7 +229,7 @@ export const VoiceRecorder = {
   },
 
   start() {
-    if (this.el.dataset.armed !== "true") return
+    if (!isArmed(this.el.dataset)) return
     this.chunks = []
     this.hold.reset()
     this.els.clip?.classList.add("hidden")
@@ -274,8 +286,8 @@ export const VoiceRecorder = {
 
   paint() {
     // The Studio arms the button once a word is typed; a recorder with nothing to
-    // type is armed by leaving the attribute off.
-    const armed = this.el.dataset.armed !== "false"
+    // type is armed by leaving the attribute off. Same rule start() uses.
+    const armed = isArmed(this.el.dataset)
     if (!this.els.record) return
 
     this.els.record.disabled = !armed && !this.recording
