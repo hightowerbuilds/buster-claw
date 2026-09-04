@@ -185,7 +185,15 @@ decides whether step 1 means anything at all.
 - [ ] The app opens on **`/setup`**, not the homepage (`FM-9`).
 - [ ] `security find-generic-password -s BusterClaw -a api_token -w` returns a
       token (`FM-1`).
-- [ ] **No plaintext `api_token` file exists** anywhere in the app's data dir.
+- [ ] **No plaintext token file of ANY name exists** in the app's data dir:
+
+          ls -la "$HOME/Library/Application Support/BusterClaw/" | grep token
+
+      **This must print nothing.** Say *any* name, not `api_token` — as worded
+      before 08-23 this line named one file and there are four tokens. A
+      `terminal_token` or `agent_token` sitting here is not debris; it is the
+      shell's injection having been ignored, and the app having minted its own
+      replacement in cleartext (Part IV trap 6).
 - [ ] No migration error in the log (`FM-6`).
 
 ### 3. Onboarding, all five steps — `FM-3`, `FM-7`
@@ -218,6 +226,13 @@ The one thing the dev Mac cannot test, and it shipped today.
 ### 5. The app actually works
 
 - [ ] Terminal opens; `./buster-claw commands` returns **215**.
+- [ ] **`./buster-claw run runtime_status` returns a status block, not
+      `error: unauthorized`.** The line above cannot tell you this: `commands`
+      hits `/api/commands`, which takes **no token at all** (`cli.ex:121`), so it
+      prints all 215 from a terminal whose credentials are entirely broken. It is
+      the one verb in the CLI that cannot detect the failure it sits next to.
+      Anything routed through `/api/run` is the real test — `run`, `dispatch
+      list`, `on-duty` (trap 6).
 - [ ] Chat sends and streams, if an agent CLI is installed.
 - [ ] Phone tab renders and says **"No number configured"** — the `nil` branch
       added 08-18, which the dev Mac cannot show while a number is configured.
@@ -253,6 +268,19 @@ Named so a failure is recognised rather than debugged from scratch.
    account in `en_US`.
 5. **A slow first paint reads as a hang.** The window is withheld until
    `/_health` answers. There is no progress indication during that window.
+6. **The in-app terminal is unauthorized on every authenticated call, and the
+   obvious check says it is fine.** Found 08-23 on the dev Mac, so it is not a
+   fresh-machine-only fault — but this walk is where it should have surfaced, and
+   both checks it would have tripped were worded past it.
+   `config/runtime.exs` reads three of the four `BUSTER_CLAW_*_API_TOKEN`
+   variables into app env and has no clause for the terminal one, so
+   `ApiToken.terminal_value/0` falls through to `load_or_generate/1` and mints a
+   token on disk that is **not** the one `terminal.rs` injected into the PTY.
+   Every `/api/run` call is refused; `commands` passes anyway because it needs no
+   token. See [`CLINCH_ROADMAP`](../integrations/CLINCH_ROADMAP.md) #7, 08-23.
+   **The tell on a fresh machine is a file, not an error**: a `terminal_token`
+   appearing in the data dir at step 2 is the whole bug, visible before you ever
+   open a terminal.
 
 ---
 

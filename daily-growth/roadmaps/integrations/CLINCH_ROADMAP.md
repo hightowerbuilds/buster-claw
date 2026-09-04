@@ -518,7 +518,7 @@ message naming what to do.
 | Retire `Google.Vault` (#6) | **DONE** `2f157d1` |
 | Invariant 5's visibility half | **DONE** `3efe94e` — "nothing configured" and "everything unreadable" rendered identically; now they do not |
 | Revocation as a first-class event | **DONE** `c683f00` — no separate `revoke/1`, because a second verb leaves a path that removes a credential *without* the event |
-| Scope the terminal's token (#7) | **DONE** `b8721aa` — a fourth token, trusted-equivalent for commands and refused for management |
+| Scope the terminal's token (#7) | **DONE** `b8721aa` — a fourth token, trusted-equivalent for commands and refused for management. **Reopened 08-23: the Elixir half was never wired — see below** |
 
 **The acceptance is met**, and operably: `./buster-claw clinch rotate --confirm`
 rotates the key, preserves every integration, `$secret`, `:app_key` and Google
@@ -552,6 +552,61 @@ account, and a revoked credential's next use is recorded with what to do about i
 > **`secret_provisioning.rs` refused the new secret until it was declared** — the
 > named-inventory guard written after `agent_token` was provisioned nowhere and
 > quietly wrote itself to disk in cleartext on every packaged install. It worked.
+
+> ### …and then the Elixir half was never wired — 08-23
+>
+> **`b8721aa` provisioned the secret, injected it, and stopped one file short.**
+> `config/runtime.exs` reads `BUSTER_CLAW_API_TOKEN`, `_MCP_API_TOKEN` and
+> `_AGENT_API_TOKEN` into app env. It has **no clause for
+> `BUSTER_CLAW_TERMINAL_API_TOKEN`** — grep the whole of `config/` and the only
+> hit is `test.exs:62`.
+>
+> So at boot `ApiToken.terminal_value/0` finds nothing in app env, falls through
+> to `load_or_generate/1`, and **mints a different token on disk** at
+> `~/Library/Application Support/BusterClaw/terminal_token`. `terminal.rs`
+> meanwhile injects the Keychain one into the PTY. The two never match, and every
+> in-app terminal command that authenticates is refused:
+>
+> | Called from the in-app terminal | Result |
+> |---|---|
+> | `./buster-claw commands` | **works** — `/api/commands` needs no token |
+> | `./buster-claw run <anything>` | `error: unauthorized` |
+> | `./buster-claw dispatch list` | `error: unauthorized` |
+> | `./buster-claw on-duty` | `error: unauthorized` |
+>
+> **This is the `agent_token` failure one layer down.** The note above records
+> `secret_provisioning.rs` catching a secret that was "provisioned nowhere"; that
+> guard covers the Rust inventory only, so it passed here — the secret *is*
+> declared and *is* injected. Nothing checks that the app on the other end reads
+> it. The named-inventory idea was right and stopped at the language boundary.
+>
+> **Why every gate stayed green.** `config/test.exs:62` presets
+> `:terminal_api_token`, so the `:terminal` tier tests — including the
+> `gmail_send`/`document_save` guard the note above is proud of — assert against a
+> value that only exists in tests. They prove the *authorization* tier is correct
+> while the *token* never reaches it in a packaged build.
+>
+> **Fix.** Three lines in `config/runtime.exs`, beside their three siblings:
+>
+>     if terminal_token = System.get_env("BUSTER_CLAW_TERMINAL_API_TOKEN") do
+>       config :buster_claw, :terminal_api_token, terminal_token
+>     end
+>
+> Verified by evaluating the patched file with `Config.Reader.read!(..., env:
+> :prod)`: `terminal_api_token` goes from `nil` to the injected value, the other
+> three unchanged. Needs a rebuild to ship — the bundled `runtime.exs` is inside
+> the code-signature seal (`_CodeSignature/CodeResources`), so the installed app
+> cannot be hand-patched without breaking notarization.
+>
+> **The regression test this wants** is not another tier test. It is a check that
+> every `BUSTER_CLAW_*_API_TOKEN` in `secret_provisioning.rs`'s `EXPECTED` table
+> has a matching `config` clause in `runtime.exs` — the cross-language half the
+> inventory guard is missing. Per `QA_BACKLOG` V.1, that lands before the fix
+> merges.
+>
+> **Stopgap while unfixed:** `--token <full token>` overrides the env var, at the
+> cost of putting the full token in shell history and re-opening exactly the hole
+> #7 exists to close. One shift, knowingly, not a habit.
 
 ---
 

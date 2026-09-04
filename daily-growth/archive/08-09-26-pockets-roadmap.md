@@ -1,3 +1,67 @@
+> ## ARCHIVED 2026-08-09 — shipped whole, in two days
+>
+> Scoped 08-08, complete 08-09. Phases 0–4 shipped **with their surfaces**,
+> Phase 5 resolved (half shipped free, half refused with three named triggers),
+> Phase 6 left as open space, and Part XI — the app's own dock icons and homepage
+> banner — swappable by an operator.
+>
+> **One item goes to `LAUNCH_ROADMAP` G-40**: the packaged-build walk. Everything
+> here is asserted by tests that cannot reach a real webview, and the day proved
+> exactly why that matters.
+>
+> **Three questions in Part IX close UNANSWERED, and deliberately.** Chat
+> drop-into-Pocket, whether `sounds/`/`shaders/` become Pockets too, and what verb
+> deletes a Pocket versus unmounts one. Each needs a decision rather than an
+> afternoon, and `LEFTOVERS.md`'s own rule is that an item needing a design
+> belongs in a roadmap, not in a list. If any of them returns, it returns on its
+> own terms.
+>
+> ### What this roadmap got right
+>
+> **The reframe, and it was in the first hour.** The ask was to strengthen the
+> symlink. Reading the code said the honest answer was to *replace* it — three
+> layers of this codebase exist specifically to defeat symlinks, so a Pocket built
+> on one would have been fought by our own security code on every read. A mount is
+> the same idea with the missing half supplied: an author, a record, a permission,
+> and an off switch.
+>
+> **Phase 0 paid for itself on a question nobody asked it.** Writing the manifest
+> example exposed that `source:` and `writable:` cannot be frontmatter fields at
+> all, because `POCKET.md` sits in the workspace and the agent can write there.
+> *The manifest holds description; it never holds permission* is what makes D4
+> structural rather than a policy check — and it was found by writing an example,
+> not by reasoning.
+>
+> **D7 was the load-bearing decision.** Requiring `backgrounds/` to migrate onto
+> Pockets *inside* this roadmap is the only thing that stopped it repeating the
+> extension mechanism's death — built, consumer-less, deleted a day later. It
+> migrated cleanly, and Part XI then made the whole app the consumer.
+>
+> ### What it got wrong, and what caught it
+>
+> **Guards written before this roadmap caught it twice.** The D4 call-graph
+> lockstep failed the build when *I* put `mount/3` on `Pockets`, making the writer
+> reachable from the command surface — the guard was right and the fix was
+> `Pockets.Operator`, not a weaker guard. And `ClawConfirmTest` caught an Unmount
+> button using `data-confirm`, which silently does nothing in the packaged webview.
+>
+> **The status header lied within the hour.** It read "PHASES 0–4 SHIPPED" while
+> Phase 3's surface did not exist — counting a phase as done because its *code*
+> was. The phase was titled "the mount, **and the surface that owns it**" for
+> exactly that reason, and the title did not save it.
+>
+> ### The lesson worth carrying out of here
+>
+> **A test that passes on the surface you changed proves less than it looks like
+> it does.** It held three times in two days: the seam that belonged to nobody in
+> the attachments work, the D4 guard catching its own author, and — most sharply —
+> a dock that every LiveView test insisted was fine, because `render/1` re-renders
+> the whole tree server-side while a browser only ever receives the diff. The
+> replacement test asserts on a *second open surface*, which is the only thing
+> that tells those two apart.
+
+---
+
 # Pockets — folders that know what they are for
 
 **Scoped 08-08-26 · Status: Phases 0–4 SHIPPED, surfaces included. Phase 5

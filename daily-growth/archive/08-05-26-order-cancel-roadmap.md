@@ -1,7 +1,19 @@
 # Cancelling an order — the second thing that reaches the broker
 
-**Scoped 08-04-26 · Status: BUILT 08-04-26 as option B — the chat holds the
-verb.**
+**Scoped 08-04-26 · Status: CLOSED + ARCHIVED 08-05-26. Built 08-04-26 as option
+B — the chat holds the verb.**
+
+**Nothing left this file, and that is deliberate.** Phase 0 and Phase 3 are done
+and verified in code (`@cancel_tools` in `trading.ex`, handed to `Agent.Chat`
+through `audit_tools:`). Phases 1 and 2 are the **option A** design the operator
+overrode — the road not taken, not work outstanding — so they are not leftovers
+and must not be inherited as such. If the confirmation card is ever wanted, it
+needs a fresh operator decision, not a checkbox: the argument for it is in this
+file, and it lost once already.
+
+The one real cost — the agentic-account restriction is no longer a guarantee
+*this app* makes, only one we ask for and Robinhood enforces — is a property
+that was traded, not a task anyone could pick up.
 
 > **Operator decision, against the recommendation below.** This roadmap
 > recommended **A** (a `cancel` fence and a confirmation card). The operator

@@ -809,6 +809,34 @@ Settings, and one on the **order confirmation card** — because loud means at t
 moment of the decision, not on a settings page visited days earlier. The card
 resolves it itself so no call site can forget to pass it.
 
+### And then the choice turned out not to exist
+
+Both warnings were built. Neither will ever fire, and finding out why reversed
+the decision the same day.
+
+The money surfaces do not merely *prefer* claude — their Robinhood confinement is
+written in claude's flag vocabulary (`--allowedTools`, `--disallowedTools`,
+`--strict-mcp-config`, all three load-bearing per the probe at `trading.ex:290`),
+and codex rejects it outright: `error: unexpected argument '--disallowedTools'`.
+So a codex trading run does not run cheaply, and does not run unsafely. **It does
+not run.** "Allow it with a loud warning" was a decision made before that was
+known; kept afterwards, it would have offered the operator a choice whose only
+possible outcome is a failed run, with a paragraph of prose explaining the risk of
+something that cannot happen.
+
+So `:trading_read` and `:order_submit` are **pinned** (`ModelPolicy.@claude_only`):
+the Settings picker does not render for them, `put_backend/2` refuses them, and
+`backend_for/1` answers claude whatever is stored. The operator's call was
+reversed with the reason recorded at the pin — a capability fact outranks a
+preference, and this one was discovered after the preference was expressed.
+
+The two warnings stayed in the tree. `unfloored_money_surfaces/0` now returns an
+always-empty list guarded by a test, and the order card's branch is unreachable
+by construction — both kept as **live assertions** rather than dead code. Lift the
+pin without a per-backend measurement behind it and they start speaking again, at
+the two moments they were built to speak. That is the pin and the floor moving
+together, which is the only way either is honest.
+
 ## Two bugs found by tests, both invisible to reading
 
 `backend_for/1` matched the absent case with an `is_atom/1` guard. **`nil` is an
@@ -892,6 +920,27 @@ And Phase 4 is deferred on purpose: **a per-backend floor must not be invented
 before a per-backend measurement exists.** The 07-28 fabrication number is
 Claude's and says nothing about kimi or glm. A floor built on a guessed ranking
 would be worse than no floor, because it reads as protection. Cost reporting is
-the happier half of that phase — OpenCode reports real dollars and Codex reports
-tokens, which makes it *cheaper* on the two new harnesses than on the one we
-started with.
+the happier half of that phase — and half a day was spent believing it was harder
+than it is, which is the last thing worth recording here.
+
+## The seventh time a written claim and the code came apart
+
+"The CLI does not report spend back to us" was in both roadmaps, the Explore
+tutorial and `AgentBackend`'s own descriptor (`reports_usage: :none`). It was
+never true. Claude's `result` event carries `total_cost_usd`, `usage`, `num_turns`
+and `modelUsage` — **measured today at `total_cost_usd = 0.0802325` on a one-word
+prompt** — and `StreamEvent` has parsed that cost field the whole time. The app's
+own parser contradicted the app's own documentation, which is how it was finally
+noticed: not by re-reading the sentence, but by reading the code beside it.
+
+Corrected in all five places. The bookkeeping shifts too — cost reporting is not
+*cheaper on the new harnesses*, it is available on all three, in two shapes:
+dollars from claude and OpenCode, tokens from codex. What is actually missing is
+the aggregation, and the honesty problem inside it — this app owns no price table,
+so converting codex's tokens to dollars would mean inventing a number the operator
+would then trust. The remaining work is presentation, not capture.
+
+One pattern, seven times now: a claim written once gets copied forward, and each
+copy makes it look better attested rather than less. Both of today's harness
+findings are the same shape — `--model` ("claude-only by construction", except
+codex had taken it all along) and now this — and both cost one command to settle.

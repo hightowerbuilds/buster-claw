@@ -1,7 +1,17 @@
 # Chart Build gets the web — and a source of truth for where data comes from
 
-**Scoped 08-03-26 · Status: ACTIVE · Phases 0–3 SHIPPED. FRED dropped by operator
-decision. Only Phase 4 (deferred on purpose) remains.**
+**Scoped 08-03-26 · Status: CLOSED + ARCHIVED 08-05-26. Phases 0–3 SHIPPED. FRED
+dropped by operator decision.**
+
+**One thing left this file: Phase 4 (persisting external series) → `LEFTOVERS.md`
+on archive.** It was deferred with a written trigger — build it when repeated
+fetches of the same series are actually costing something — and a deferral
+waiting on *evidence from real use* is not a roadmap holding itself open. The
+full reasoning stays here; the leftover entry carries the trigger so the
+condition is somewhere a person will look.
+
+FRED did **not** leave, in either direction: it is closed, not deferred, and
+re-opening it needs a fresh operator decision rather than an adapter.
 
 > ### FRED: DROPPED, 08-03 (operator)
 >

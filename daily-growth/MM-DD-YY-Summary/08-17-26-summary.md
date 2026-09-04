@@ -1,8 +1,10 @@
-# 08-17-26 — Everything that described the code, and none of it still did
+# 08-17-26 — Everything that described the code, then the DMG that made us prove it
 
-A short day, all of it one thread. No feature shipped. What moved is the layer
+The day began as one thread. No feature shipped. What moved first was the layer
 *above* the code — the index, the moduledocs, the module names, the roadmap
-folder — and every one of them was out of true.
+folder — and every one of them was out of true. It ended at the other edge of
+the same problem: asking whether the thing described as releasable was actually
+ready to leave this Mac.
 
 The thread started by accident. Filing the Sketch Pad into the SUPERMAP meant
 adding a row to **Part II — Home**, and before adding a true row under a heading
@@ -176,3 +178,102 @@ first `git add` used directory paths and swept in six of another session's files
 predate this session. Caught by reading the staged diff before committing.
 Directory-level `git add` in a shared tree is how that happens, and the staged
 diff is the only place it shows.
+
+---
+
+## The DMG is real. The release is not.
+
+The second thread began with a concrete question: **can we build a DMG, put it
+on the Buster Claw website, and copy it to the Desktop?** The honest answer split
+in two.
+
+**We can build and exercise a local candidate. We cannot publish that candidate
+as the release.**
+
+The host has the whole build toolchain and enough disk. The app compiled into an
+Intel `x86_64` bundle, Tauri produced a DMG, `hdiutil verify` accepted its
+checksum, and the macOS-floor gate found 25 Mach-O files with no requirement
+above the advertised macOS 14.0 floor. The bundled BEAM booted, served Phoenix,
+rejected a bad token, and exposed 218 production commands.
+
+Then the packaged shell itself passed the part that actually matters. It opened
+its loopback listener, connected the ScreenshotBridge, rendered real
+`example.com` text through the hidden webview, and launched installed Chrome
+through the CDP pipe, navigated it, read back `bc-probe`, and shut it down. The
+HTTP and CLI command surfaces also completed end to end against the packaged
+release.
+
+That last sentence took three attempts, and the bundle was not the problem.
+`smoke_command_surface.sh` still demanded `source_list`, `provider_active`, and
+`chat_send` — commands deleted in the 05-31 terminal-driven cut — and still
+called `POST /mcp`, deleted in the 06-09 agent-harness cut. The release smoke had
+spent more than two months asserting that removed architecture still existed.
+It now uses `document_list`, `integration_list`, and `dispatch_list`, and tests
+the two surfaces the app actually ships: HTTP and the CLI. `smoke_desktop.sh`
+had one smaller fossil of the same kind: it treated the now-specific
+`browser: no active browser tab` reply as bridge failure. That named error is
+proof the desktop answered, so the smoke recognizes it before performing the
+definitive positive render.
+
+### The dependency gate found something the ordinary suite could not
+
+The first `mix precommit` was green — 4,203 Elixir tests, 352 JavaScript tests,
+and 46 Rust tests — but `mix deps.audit` was not. `Req 0.5.17` carried two
+advisories, including a high-severity decompression issue, and `hackney` carried
+four. Hackney existed only under stale `tzdata` baggage; the application already
+uses Elixir's built-in calendar database and no code used Tzdata.
+
+Tzdata and its unused chain are gone. Req is now `0.7.2`, with Finch, Plug, and
+Plug Crypto updated beneath it, and the dependency audit reports no known
+vulnerabilities. Req 0.7 also removed the private redirect-step state that
+`URLGuard` had been reaching into. The guard now relies on Req's current
+contract — request steps naturally run again on every redirect — and all 25 URL
+guard tests passed, including blocked redirect targets, per-hop DNS
+re-resolution, and IP pinning. Dialyzer is green after the adaptation.
+
+The docs-drift gate exposed one more false signal. Mix compilation-status text
+was being captured as if it were generated command-catalog content, inflating
+217 commands to 219 depending on whether the project had just compiled. The
+generator now prefixes only real catalog lines before the shell filters them;
+the documented development catalog remains 217, while the packaged production
+catalog legitimately reports 218.
+
+### Why the website did not receive this file
+
+This Mac has no Developer ID signing identity and none of the notarization or
+updater-signing credentials. The build therefore says exactly what it is:
+**unsigned**, not notarized, Intel-only, and unsuitable for another Mac. The
+release workflow is the path that builds both Intel and Apple Silicon artifacts,
+signs and notarizes them, staples the result, and emits updater metadata — but
+there is no release tag, the working tree contains multiple sessions' uncommitted
+work, and local `gh` authentication is invalid.
+
+Those mechanical blockers are not the whole no-go. The release ledger still has
+the real Amazon checkout/payment-stop walk open, plus packaged first-open and
+media walks, signed/notarized two-architecture verification, and an Apple
+Silicon hardware launch/exit test. A locally healthy Intel DMG cannot answer any
+of those for us. The website source still points at a placeholder download URL,
+and replacing that placeholder with this file would turn a test artifact into a
+public promise it cannot keep.
+
+So nothing was uploaded. That is not an unfinished copy operation; it is the
+release gate doing its job.
+
+### What did land on the Desktop
+
+The verified local candidate was copied without overwriting anything, with its
+status made part of the filename:
+
+```text
+/Users/lukehightower/Desktop/Buster Claw_0.1.0_x64-UNSIGNED-CANDIDATE.dmg
+28,372,344 bytes
+SHA-256 98967d62f43a73d1260524a1f310fec70cc7447efaab8a58e02c3820a2631329
+```
+
+The Desktop copy and the build artifact have the same digest. It is a useful
+local proof built from the current dirty working tree, not the artifact to put
+behind the Download button.
+
+> **A DMG existing is a build fact. A DMG being publishable is a chain of
+> evidence.** Today produced the first and made the missing links in the second
+> explicit.
