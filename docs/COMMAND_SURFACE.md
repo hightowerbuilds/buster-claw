@@ -38,15 +38,24 @@ tab's Command List renders the same counts from a contract test):
   (`agent_run_*`), flows and saved site checks, bookmarks and history
 - BusterPhone intake: voicemail, inbound SMS, trusted callers and PINs (nothing
   outbound — the phone sends no texts and places no calls)
-- Notifications (timers, alarms, reminders) and sound
+- Notifications (timers, alarms, reminders)
+- Sound (`sound_*` — the largest single family): the clip editor and arranger,
+  recording and input levels, the transcript/word index, chime routing
+- Voice (`voice_*`): reference-voice banks (`voice_bank_*`) and spoken messages
+  (`voice_message_*`), which fire as notifications whose sound is a rendered line
 - The Dispatch pull-queue (list/claim/done/block/reply)
-- Memory (`memory_search`) and skill suggestions
+- Memory (`memory_search`), skill suggestions, jobs and backgrounds, and the
+  model-policy / runtime-status probes
 
 ## Trust Tiers
 
 The tier follows the **token presented**, not the route:
 
 - `:trusted` — the operator's CLI and `/api/run`. Runs anything.
+- `:terminal` — the in-app PTY. Trusted-equivalent *for the command surface*,
+  deliberately and explicitly (`PolicyEngine`), because a shell has to be able to
+  work. It is separated at the router instead: `RequireTrusted` refuses it on
+  `/api/clinch`, so credential **management** is unreachable from a prompt.
 - `:agent_untrusted` — an autonomous run that has touched untrusted-origin
   content. Runs anything **except** the `gated` set (outbound sends, deletes,
   shares). `:restricted` alone does not stop it; `gated` does.

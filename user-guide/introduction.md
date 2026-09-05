@@ -35,24 +35,34 @@ stops the polling you can see; it does not end the shift.
 The dock at the bottom switches between five surfaces:
 
 - **Home** — the main screen, with its own row of sub-tabs: **Chat** (talk to
-  your agent), **Notes** (your Markdown notebook), **Calendar**, **Phone**
-  (BusterPhone's message machine), **Studio** (sound editing), **Explained**
-  (guided tours of each feature), and **Activity** (the one log of what your
-  agent did).
-- **Workspace** — file browser for everything Buster Claw keeps (your
-  trusted-senders list, the jobs roster, the Library archive).
+  your agent), **Vox2B** (your recorded voice: record it, make spoken alerts,
+  have messages read aloud), **Pockets** (your own folders of media — the
+  background pool, the dock icon), **Phone** (BusterPhone's message machine),
+  **Explained** (guided tours of each feature), and **Activity** (the one log of
+  what your agent did).
+- **Workspace** — three tabs: **Directory**, the file browser for everything
+  Buster Claw keeps (your trusted-senders list, the jobs roster, the Library
+  archive); **Notes**, your Markdown notebook; and **Calendar**.
 - **Browser** — a real browser your agent can drive, not just a reader. It works
   the tab you are looking at, and Agent Mode runs longer errands in their own
   window with a payment gate that stops before money moves.
-- **Terminal** — your agent's shell, inside the app. `/split` puts two panes
-  side by side.
-- **Settings** — Google Workspace, models and harnesses, appearance, and the
-  rest of the configuration.
+- **Terminal** — your agent's shell, inside the app. Each click of the dock
+  button opens a new one.
+- **Settings** — six tabs: **Appearance**, **Notify**, **Integrations**,
+  **Configuration**, **Cmd List**, and **Security**. Connecting Google
+  Workspace and choosing which model runs where are both on **Configuration**.
 
-A few surfaces have no dock button and are reached by link or URL — most
-importantly **Security** (`/security`), the **Sentinel audit feed**: every
-command that changes something, every outbound send, and every untrusted fetch
-is logged there. Plain reads are not, so the feed stays legible.
+**Security** (the last Settings tab, or `/security` directly) is the **Sentinel
+audit feed**: every command that changes something, every outbound send, and
+every untrusted fetch is logged there. Plain reads are not, so the feed stays
+legible.
+
+One surface has no dock button at all: the **Studio** (`/studio`), where you cut
+sounds (**Mix**) and build the word corpus your voice is spliced from (**Voice
+Library**).
+
+Every one of these opens as a tab across the top. Drag one tab onto another to
+join them into a side-by-side split — a terminal beside the browser, say.
 
 Everything the agent creates lives under your **workspace folder**: `library/`
 (archived docs), `memory/`, `jobs/` (the jobs it can run), and `Dispatch.md` —

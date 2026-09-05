@@ -42,7 +42,7 @@ flowchart TB
         Google & Integrations & Dispatch & Workspace & Jobs
         Finance & Telephony2["Clinch"] & Notes & BrowserControl2["AgentRuns"]
         Telephony & Notifications & Music & Contacts
-        Orchestration & Sentinel & Settings
+        Orchestration & Sentinel & Settings & Voice
     end
 
     subgraph Infra["Infrastructure"]
@@ -348,7 +348,7 @@ From `lib/buster_claw_web/router.ex`.
 ```mermaid
 flowchart LR
     subgraph browser["pipe :browser (session, CSRF, LiveView)"]
-        R1["/ , /browse, /split, /terminal, /calendar,<br/>/gws, /integrations, /security, /settings,<br/>/appearance, /workspace, /manual, /setup"]
+        R1["/ , /browse, /split, /terminal, /calendar,<br/>/integrations, /security, /settings, /cmd-list,<br/>/appearance, /voice, /notify-settings, /phone,<br/>/studio, /workspace, /manual, /setup"]
         R2["/google/oauth/callback"]
     end
     subgraph raw["raw scopes (loopback, no auth)"]
@@ -361,7 +361,19 @@ flowchart LR
         H2["POST /integrations/:name/webhook<br/>(secret verified)"]
         H4["GET /api/commands (catalog metadata)"]
     end
-    subgraph auth["pipe :api_authenticated (Bearer token)"]
+    subgraph auth["pipe :api_authenticated (Bearer token → caller tier)"]
         A1["POST /api/run"]
     end
+    subgraph trusted["pipe :api_trusted (FULL token only — RequireTrusted)"]
+        C1["POST /api/clinch · DELETE /api/clinch<br/>POST /api/clinch/rotate"]
+    end
 ```
+
+`:api_authenticated` derives the caller tier from which of the four tokens was
+presented (`ApiAuth.classify/1`): full → `:trusted`, terminal → `:terminal`,
+agent → `:agent_untrusted`, mcp → `:mcp`.
+
+`:api_trusted` is the Clinch's floor and accepts **only** the full token, so
+credential management is unreachable from the in-app terminal, from a headless
+run, and from the command catalog. There is deliberately no `GET` — nothing on
+this scope returns a stored value.

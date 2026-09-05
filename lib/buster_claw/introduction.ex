@@ -37,6 +37,15 @@ defmodule BusterClaw.Introduction do
   @dir Path.expand(Path.join([__DIR__, "..", "..", "introduction"]))
 
   # Order is the document's order. A new section is a file plus a line here.
+  #
+  # `{{COMMAND_SURFACE}}` lives at the END of the LAST file, and that is load-
+  # bearing twice over. `01-orientation.md` tells the model the generated catalog
+  # is "at the end of this file" — it was not, until 09-05: the placeholder sat in
+  # `08-…`, leaving ~110 lines of hand-written prose stranded below a 213-row
+  # table. And `introduction_test.exs` splits the document on the sentence that
+  # introduces that table to test the half a human wrote; with the placeholder
+  # mid-document, every guard silently stopped short of the last section. A new
+  # section goes ABOVE the command surface, not after it.
   @sections [
     "01-orientation.md",
     "02-activity-record.md",
@@ -133,9 +142,16 @@ defmodule BusterClaw.Introduction do
     commands
     |> Enum.sort_by(&Map.fetch!(&1, :name))
     |> Enum.map_join("\n", fn cmd ->
-      "- `#{Map.fetch!(cmd, :name)}` — #{Map.get(cmd, :description, "")}"
+      "- `#{Map.fetch!(cmd, :name)}`#{gate_marker(cmd)} — #{Map.get(cmd, :description, "")}"
     end)
   end
+
+  # The prose above names roughly a dozen commands as "gated" in passing, and
+  # nothing in the generated list agreed with it — leaving the model to guess
+  # which of 100-odd restricted verbs stop for a human every time. Read off the
+  # same `gated:` field `PolicyEngine` enforces, so the two cannot drift.
+  defp gate_marker(%{gated: true}), do: " **(gated)**"
+  defp gate_marker(_cmd), do: ""
 
   defp tier(cmd), do: Map.get(cmd, :tier, :safe)
 end

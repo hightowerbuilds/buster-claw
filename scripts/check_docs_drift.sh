@@ -10,7 +10,16 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-DOCS=(README.md docs/*.md user-guide/*.md)
+# `introduction/*.md` joined on 09-05, and it is the reason this line is worth a
+# comment. That directory is the MODEL's briefing — 44 `./buster-claw` examples,
+# more than the rest of this list put together — and it was the one front-door
+# document the gate did not read. Which is structurally why a whole section
+# teaching six deleted `sketch_*` commands survived the day they were deleted:
+# every other doc that mentioned them went red, and this one could not.
+#
+# A gate that covers the documents a person reads and not the one a model obeys
+# has the priority backwards.
+DOCS=(README.md docs/*.md user-guide/*.md introduction/*.md)
 
 # --- source of truth 1: catalog command names -------------------------------
 CATALOG=$(mix run --no-start -e \
@@ -48,8 +57,17 @@ while IFS= read -r hit; do
 
   ok=0
   if [[ $tok1 == run ]]; then
-    # `run <name>` — the name must be a real catalog command.
-    [[ -n ${tok2:-} ]] && known_command "$tok2" && ok=1
+    # `run <name>` — the name must be a real catalog command, UNLESS the doc is
+    # showing the shape rather than an example. `./buster-claw run <skill-name>`
+    # is a template, and a gate that cannot tell a placeholder from a typo
+    # teaches people to write worse documentation to keep it quiet. Same
+    # convention `PolicyEngine.parse_line/1` already uses for `policy.md`:
+    # angle brackets mean "your value here".
+    if [[ ${tok2:-} == \<*\> ]]; then
+      ok=1
+    else
+      [[ -n ${tok2:-} ]] && known_command "$tok2" && ok=1
+    fi
   elif [[ -n ${tok2:-} ]] && known_verb "$tok1 $tok2"; then
     ok=1 # explicit two-word dispatch verb (dispatch claim, jobs show, ...)
   elif known_verb "$tok1"; then
@@ -66,7 +84,7 @@ while IFS= read -r hit; do
     echo "DRIFT $file:$line: \`./buster-claw $tok1${tok2:+ $tok2}\` is not a CLI verb or catalog command" >&2
     fail=1
   fi
-done < <(grep -rnoE '\./buster-claw +[a-z][a-z0-9_-]*( +[a-z][a-z0-9_-]*)?' "${DOCS[@]}")
+done < <(grep -rnoE '\./buster-claw +[a-z][a-z0-9_-]*( +(<[a-z][a-z0-9_-]*>|[a-z][a-z0-9_-]*))?' "${DOCS[@]}")
 
 if [[ $fail -ne 0 ]]; then
   echo "" >&2
@@ -126,4 +144,4 @@ if [[ $count_fail -ne 0 ]]; then
   exit 1
 fi
 
-echo "docs drift check: OK (README, docs/, user-guide against CLI + catalog + token source + $CATALOG_COUNT commands)"
+echo "docs drift check: OK (README, docs/, user-guide, introduction/ against CLI + catalog + token source + $CATALOG_COUNT commands)"

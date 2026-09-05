@@ -1,6 +1,6 @@
 defmodule BusterClawWeb.Explained.Studio do
   @moduledoc """
-  The Studio tutorial — one tab covering all three sub-tabs at `/studio`.
+  The Studio tutorial — one tab covering both sub-tabs at `/studio`.
 
   ## It was two tabs, and merging them was the operator's call
 
@@ -53,7 +53,12 @@ defmodule BusterClawWeb.Explained.Studio do
             The Studio is where this app tries things.
           </span>
           Everything else in Explained documents something the product depends on.
-          This is a workshop: three sub-tabs at <code>/studio</code>, at three
+          <%!-- "three sub-tabs" until 09-05. The third was the Sketch Pad, and
+                it is not named here on purpose: `status_live_test.exs` refutes
+                the string, because a deleted surface's ghost in the copy is the
+                drift this page keeps having. The deletion is recorded in the
+                moduledoc, which is where a reader who needs it will look. --%>
+          This is a workshop: two sub-tabs at <code>/studio</code>, at two
           different stages of finished, and it will keep changing shape. Some of
           what is here will grow into features you use every day; some of it will
           be deleted. Both are the point.
@@ -141,12 +146,14 @@ defmodule BusterClawWeb.Explained.Studio do
           Two surfaces, and what each is for
         </h3>
         <p class="text-sm leading-relaxed text-base-content/80">
-          Unlike the cut-up engine on the Voice tab, this half has real screens — and
-          they split along the same line as the verbs do.
+          The cut-up on Voice Library shows you a corpus, but everything it can
+          actually do it does through verbs. This half is the other way round: two
+          screens you drive by hand, and they split along the same line as the
+          verbs do.
         </p>
         <ul class="ic-unfold" style="list-style: none; padding-left: 0;">
           <li>
-            <span class="font-mono font-bold text-base-content">Home → Studio → Mix</span>
+            <span class="font-mono font-bold text-base-content">/studio → Mix</span>
             — the editor. Every piece of working material down the left, the selected
             one open on the right. The facts it shows — duration, peak, format, which
             layer it came from — are <span class="font-semibold text-base-content">read from the file, not guessed from its name</span>, so what the panel
@@ -266,6 +273,13 @@ defmodule BusterClawWeb.Explained.Studio do
           and now your own recordings — word by word, then splices those words into
           sentences nobody said. No model, no training, no network.
         </p>
+        <p class="text-sm leading-relaxed text-base-content/70">
+          <span class="font-semibold text-base-content">Not the same thing as Vox2B.</span>
+          Voice Library can only ever say words you have already said, cut out of
+          real recordings. Vox2B synthesizes new speech from a model that clones a
+          few seconds of you, so it can say anything and nothing it produces was
+          ever spoken. Different machinery, different tab, different tutorial.
+        </p>
         <p class="text-sm leading-relaxed text-base-content/80">
           Every index records an <code>origin</code>, and origin is a property of
           the whole file rather than of a word. It is how much to trust each timing:
@@ -298,7 +312,7 @@ defmodule BusterClawWeb.Explained.Studio do
           <span class="font-semibold text-base-content">
             The engine is command-only, and that is why these are here.
           </span>
-          The Voice tab shows you the corpus and builds a sentence, but everything
+          Voice Library shows you the corpus and builds a sentence, but everything
           the cut-up can actually do it does through verbs — so the verbs are the
           feature, and each is offered in a form you can lift straight into a
           terminal.
@@ -375,8 +389,9 @@ defmodule BusterClawWeb.Explained.Studio do
           </li>
         </ul>
         <p class="text-sm leading-relaxed text-base-content/70">
-          Worth noticing what the shape of this surface says: sixteen verbs write
-          files, one changes behaviour, one is destructive, and one is the undo. The
+          Worth noticing what the shape of this surface says: of everything here,
+          exactly one verb changes behaviour, one destroys, and one is the undo.
+          Every other one writes a file and stops. The
           gate is on the smallest possible thing rather than on the whole family —
           which is why an agent can do the tedious ninety percent of an edit without
           ever being in a position to change what your machine does.
@@ -396,7 +411,8 @@ defmodule BusterClawWeb.Explained.Studio do
         </p>
         <p>
           <span class="font-semibold text-base-content">Want a sentence nobody ever said?</span>
-          That is the neighbouring tab. Ramshackle indexes recordings word by word and
+          That is Voice Library, the other tab at <code>/studio</code>. Ramshackle
+          indexes recordings word by word and
           splices new sentences out of them — and what it produces is an ordinary
           studio source, which means it arrives back here, at <code>sound_apply</code>, like anything else.
         </p>

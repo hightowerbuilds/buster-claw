@@ -29,7 +29,8 @@ defmodule BusterClawWeb.Explained.Intro do
 
       <p class="text-sm leading-relaxed text-base-content/80">
         Buster Claw is a lot of surfaces — a browser the agent can drive, a phone
-        line, Google Workspace, a live shader on this very page. Each square below
+        line, Google Workspace, a voice cloned from yours, a live shader on this
+        very page. Each square below
         opens a short tour of one of them: what it does, how to drive it yourself,
         and how to hand it to the agent. The grid grows as tutorials are written.
       </p>

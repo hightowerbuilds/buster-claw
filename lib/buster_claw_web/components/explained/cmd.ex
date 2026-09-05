@@ -266,7 +266,7 @@ defmodule BusterClawWeb.Explained.Cmd do
         needs="Nothing. The notebook is local Markdown in your workspace."
         touches="Searches and reads your notes, then writes one. `note_save` overwrites a whole note; `note_create` makes a new one."
         confirm="No gate, but a real guard on overwrites: `note_save` requires the revision that `note_read` returned. Changed underneath and the save is refused with the current revision instead of quietly winning."
-        result="A note on the Notes tab, greppable Markdown on disk. A stale revision comes back as a refusal you can re-read and merge, not as lost writing."
+        result="A note on Workspace → Notes, greppable Markdown on disk. A stale revision comes back as a refusal you can re-read and merge, not as lost writing."
       >
         <.prompt text="Find my note about the launch checklist, add the two things we settled today, and start a fresh note for the follow-ups." />
         <ol class="ic-unfold">
@@ -277,8 +277,8 @@ defmodule BusterClawWeb.Explained.Cmd do
           </li>
           <li>
             <code>note_save</code> hands that revision back with the new body. If the
-            file moved on since — you edited it in the Notes tab, another run touched
-            it — the save is refused rather than clobbering you. Last writer does not
+            file moved on since — you edited it on Workspace → Notes, another run
+            touched it — the save is refused rather than clobbering you. Last writer does not
             win by default.
           </li>
           <li>

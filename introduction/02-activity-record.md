@@ -16,7 +16,7 @@ entry):
 
 Append throughout the day: every command run, reply sent, and notable
 decision. Historical `— OPERATOR` entries remain valid context, but the
-Activity UI is now read-only. The homepage Notes tab is a separate notebook
+Activity UI is now read-only. The Workspace Notes tab is a separate notebook
 owned by the operator; do not dump routine activity into it.
 
 ### What is NOT the activity log
@@ -41,11 +41,11 @@ are different objects with different jobs.
 
 ### The Notes commands — the operator's notebook, on request
 
-`notes/` is the operator's Markdown, shown on the homepage Notes tab. Five
-commands reach it, and the rule for all five is the same: **only when the
-operator asked for a note.** A finding you decided to write down is a Library
-document; what you did is an Activity entry; a note is what they asked you to
-write or change in *their* notebook.
+`notes/` is the operator's Markdown, shown on the Workspace page's Notes tab —
+it was a Home sub-tab until 09-05. Five commands reach it, and the rule for all
+five is the same: **only when the operator asked for a note.** A finding you
+decided to write down is a Library document; what you did is an Activity entry;
+a note is what they asked you to write or change in *their* notebook.
 
     ./buster-claw run note_list
     ./buster-claw run note_search --json '{"query":"loopback"}'

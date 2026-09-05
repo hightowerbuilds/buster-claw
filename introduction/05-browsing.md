@@ -121,11 +121,11 @@ product page's default.** The cart is ground truth.
 
 ### The user can watch
 
-A run is mirrored live in the app's **Browse tab** — the viewport streams
-there while it works, with the trajectory beside it. When you start a run,
-say so, and tell the user they can watch it in Browse. Dialogs, file pickers
-and popups appear only in the real window, which they can raise from that
-same panel.
+A run is mirrored live in the app's **Browser tab** (the third dock item) —
+the viewport streams there while it works, with the trajectory beside it. When
+you start a run, say so, and tell the user they can watch it in Browser.
+Dialogs, file pickers and popups appear only in the real window, which they can
+raise from that same panel.
 
 ### Flows and saved site checks — work you do more than once
 

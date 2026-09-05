@@ -10,8 +10,8 @@ defmodule BusterClawWeb.VoxComponent do
   ## An embeddable component, and why
 
   This renders inline with no layout of its own, so a host page provides the
-  chrome. Two hosts use it: `BusterClawWeb.VoiceLive` (the `/voice` route, which
-  the Settings rail points at) and `BusterClawWeb.StatusLive` (the homepage "Vox"
+  chrome. Two hosts use it: `BusterClawWeb.VoiceLive` (the `/voice` route, kept for
+  deep links and split panes — it left the Settings rail on 09-05) and `BusterClawWeb.StatusLive` (the homepage "Vox"
   sub-tab). Keeping the behavior here means both surfaces stay in sync — the same
   reason `PhoneComponent` and `CalendarComponent` exist, and the shape
   `VOX_TAB_ROADMAP` `D2` asks for by name.

@@ -73,7 +73,7 @@ defmodule BusterClaw.Commands.Catalog.Library do
         type: :read,
         tier: :restricted,
         description:
-          "List the operator's notes (paths and titles, no bodies). Notes is the operator's own Markdown notebook on the homepage Notes tab — never the activity log; that is journal_append.",
+          "List the operator's notes (paths and titles, no bodies). Notes is the operator's own Markdown notebook on the Workspace page's Notes tab — never the activity log; that is journal_append.",
         args: %{}
       },
       %{

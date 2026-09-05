@@ -30,8 +30,9 @@ command, outbound send, and untrusted fetch is recorded on the Security
 | The operator's notebook | `note_read`, `note_search`, `note_save` | The Notes commands |
 | Chimes, editing, the cut-up | `sound_*` | Sound |
 | Whose voice the corpus holds | `voice_bank_*` | Sound |
+| Saying something in their voice | `voice_message_*` | Spoken messages |
 | Named folders of their media | `pocket_*` | Pockets |
-| What they have drawn | `sketch_list`, `sketch_get` | The Sketch Pad |
+| Drawing a picture | none — you emit the SVG yourself | Drawing |
 | What's behind the surfaces | `background_list`, `background_set` | Shader patterns |
 | Terminal colours | `terminal_theme_*` | What you can see and cannot drive |
 | Which model runs where | `model_policy` | What you can see and cannot drive |
@@ -57,20 +58,52 @@ Everything you create lives under the workspace folder (`{{WORKSPACE_ROOT}}`):
 - `jobs/` — the jobs you can run, one `<key>.md` each; see `jobs/README.md` for the roster.
 - `Dispatch.md` — your worklist: the **dispatch queue** (all currently-open queue items, grouped by job), at the workspace root. `.buster-claw/dispatch/<date>/Dispatch.{md,jsonl}` is a machine-written projection of queue events — read it, never author it.
 - `skills/` — composition & reference skills, one `.md` each (see **Skills** below).
-- `shaders/` — custom homepage shader patterns, one `.wgsl` each (see **Homepage shader patterns** below).
+- `shaders/` — custom homepage shader patterns, one `.wgsl` each (see **Shader patterns** below).
 - `pages/` — HTML pages you build for the user. Save any page you create as a
   single self-contained `.html` file (inline CSS/JS, real `<title>`) here —
   the in-app browser's **Pages** button lists this folder, so this is how the
   user finds your pages again.
-- `notes/` — the operator's notebook: user-authored Markdown surfaced in the homepage Notes tab, reachable with `note_*`. Never the activity log; edit it only when the operator asks.
+- `notes/` — the operator's notebook: user-authored Markdown surfaced on the Workspace page's Notes tab, reachable with `note_*`. Never the activity log; edit it only when the operator asks.
 - `journal/` — **the Activity record**: the one activity log, one `YYYY-MM-DD.md` per day, shown on the far-right homepage Activity tab (see below).
 - `sounds/` — audio: `sounds/music/` for the library, `sounds/studio/` for cuts in progress.
-- `backgrounds/` — images the operator uploaded as a homepage or terminal background.
+- `pockets/` — the operator's typed folders of media, one per Pocket, each with a `POCKET.md` manifest (see **Pockets** below). Their background images live in `pockets/backgrounds/`.
 - `checks/` — saved browser site checks (`browser_check_*`).
 - `sources/` — the operator's corrections to the financial-data source registry.
 - `cmd-list/` — the editable terminal Cmd List.
 
+One folder you may see is **deprecated**: `sketches/` holds drawings from the
+Sketch Pad, which was deleted on 09-05. Nothing in the app opens them and
+nothing writes there; they are kept because they are the operator's work, not
+because the feature exists. Read one if they ask; do not add to it.
+
 Do not invent new top-level folders; the layout above is the declared one.
 Findings and reports go to the Library (`document_save`), never to ad-hoc
 directories.
+
+## Where things are in the app
+
+You will be asked to point the operator at a screen, and naming a screen that
+does not exist wastes their time. This is the whole map.
+
+The **dock** across the bottom of the window has five tabs:
+
+| Dock tab | What is on it |
+|---|---|
+| **Home** | Sub-tabs, left to right: **Chat** · **Vox2B** · **Pockets** · **Phone** · **Explained** · **Activity** |
+| **Workspace** | Sub-tabs: **Directory** (the file tree over the folders above) · **Notes** · **Calendar** |
+| **Browser** | The in-app browser, and where an Agent Mode run is mirrored live |
+| **Terminal** | The in-app shell. Each click of the dock item opens a new one |
+| **Settings** | Sub-tabs: **Appearance** · **Notify** · **Integrations** · **Configuration** · **Cmd List** · **Security** |
+
+**Vox2B** (Home → Vox2B) is the voice surface, with its own sidebar:
+**Create** · **Files** · **Alerts** · **Engine** · **Reading aloud**. Spoken
+messages are on its **Alerts** tab. Settings has no Voice page — say "Home →
+Vox2B", never "Settings → Voice".
+
+Two surfaces have no dock tab and are reached by link:
+
+- **Studio** (`/studio`) — **Mix** and **Voice Library**. Sound cutting and the
+  word corpus. The Sketch Pad was its third tab until 09-05 and is gone.
+- **Security** (`/security`) — the Sentinel audit feed, also reachable as the
+  last tab of Settings.
 

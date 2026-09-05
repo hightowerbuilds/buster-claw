@@ -39,9 +39,16 @@ The Tauri shell (`desktop/tauri/src/main.rs`) performs the following on launch:
    - `DATABASE_PATH=<data_dir>/buster_claw.db`
    - `BUSTER_CLAW_WORKSPACE_ROOT=<workspace root>`
    - `SECRET_KEY_BASE=<key from Keychain>`
-   - `BUSTER_CLAW_API_TOKEN=<token from Keychain>`
-   - `BUSTER_CLAW_MCP_API_TOKEN=<token from Keychain>`
+   - `BUSTER_CLAW_API_TOKEN=<token from Keychain>` (account `api_token`)
+   - `BUSTER_CLAW_MCP_API_TOKEN=<token from Keychain>` (account `mcp_token`)
+   - `BUSTER_CLAW_AGENT_API_TOKEN=<token from Keychain>` (account `agent_token`)
+   - `BUSTER_CLAW_TERMINAL_API_TOKEN=<token from Keychain>` (account `terminal_token`)
    - `RELEASE_DISTRIBUTION=none`
+
+   All four tokens are distinct and each maps to its own caller tier
+   (`BusterClawWeb.ApiAuth`). The terminal token is the one injected into the
+   in-app PTY — as `BUSTER_CLAW_API_TOKEN`, so a shell inside the app sees the
+   variable it expects but not the full token.
 6. Redirects child stdout/stderr to `<data_dir>/logs/release.{stdout,stderr}.log`.
 7. Polls `http://127.0.0.1:<port>/_health` (250 ms interval, 30 s timeout).
 8. On healthy: navigates the (initially hidden) webview to the Phoenix URL and shows the window.
@@ -74,5 +81,5 @@ unrecoverable — back the key up from **Settings → Recovery key**.
 - macOS code signing and notarization — planned for the website download channel (see the distribution roadmap, Channel B).
 - Windows and Linux installers (the runtime and Tauri config support them; only build/test paths are missing).
 - Log rotation and crash report collection.
-- Auto-update mechanism — intentionally out of scope for v1 (users re-download the latest `.dmg`).
+- Auto-update — **half built, and the installed app does not update itself.** The release workflow already assembles and publishes the updater feed (`scripts/build_update_feed.sh` → `latest.json`, served from `https://busterclaw.lol/updates/latest.json`). The client half does not exist: there is no updater plugin in `tauri.conf.json` or `Cargo.toml` and no updater code in the shell, so nothing polls that feed. Users re-download the latest `.dmg`.
 - Dock/app menu customization.

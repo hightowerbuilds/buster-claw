@@ -192,7 +192,15 @@ check lib/buster_claw_web/components/explained/shared.ex       182 HELD
 # themselves are a hand-maintained mirror of the live catalog, and a drift test
 # compares the two — the comment is what makes the next recompute reviewable
 # rather than a diff of seven integers.
-check lib/buster_claw_web/components/explained/registry.ex     252 HELD
+#
+# 252 -> 275 on 09-05 for the `vox` feature entry: the voice stopped being a
+# Settings page and became a Home sub-tab, so Explained owed it a tile. A
+# feature entry is ~15 lines of `body` prose by construction, and this one
+# carries a comment as well — its `path` is the home screen rather than
+# `/voice`, which is a real route to the same component with none of the home
+# chrome. The alternative to the comment is the next reader "fixing" the path
+# to the deep link and sending everyone to the wrong place.
+check lib/buster_claw_web/components/explained/registry.ex     275 HELD
 # The ninth tutorial (08-15). Pockets earns a tile where five parked candidates
 # did not, and the argument is worth keeping: it is already load-bearing in three
 # other surfaces — backgrounds, brand art and contact faces all live in Pockets —
@@ -200,6 +208,14 @@ check lib/buster_claw_web/components/explained/registry.ex     252 HELD
 # arrival.
 check lib/buster_claw_web/components/explained/pockets.ex      365 HELD
 check lib/buster_claw_web/components/explained/intro.ex        151 HELD
+# The tenth tutorial (09-05), capped on arrival. Vox2B earns a tile for the
+# reason Pockets did: it is a top-level Home sub-tab a user meets before any
+# page explains it. The page carries two claims that are expensive to get wrong
+# and cheap to state — the two engines on it are not interchangeable (VoxCPM
+# pre-renders files, `say` reads chat live), and four verbs reach the whole
+# surface while recording, engine settings and publishing the greeting have
+# none. Growth here should be a third claim, not a longer version of these two.
+check lib/buster_claw_web/components/explained/vox.ex          331 HELD
 
 # The Message Machine's three panels, and the registry that decides which of
 # them a sub-tab shows. `registry.ex` is capped on arrival: it is data-only by

@@ -1,7 +1,17 @@
 # Quality
 
-Run these checks before meaningful refactors. `mix precommit` runs the Phoenix
-gate and the Tauri gate together.
+Run these checks before meaningful refactors. `mix precommit` runs nine gates —
+the Phoenix, JS and Tauri ones together: `compile --warnings-as-errors`,
+`deps.unlock --check-unused`, `format --check-formatted`, `credo --strict`,
+`test`, `bun test assets/js`, then `check_cycles.sh`, `check_file_sizes.sh` and
+`check_rust.sh`.
+
+`mix lint` is the slower set kept out of the commit path: `credo --strict`,
+`sobelow --config`, `deps.audit`, and `check_docs_drift.sh`.
+
+Precommit **asserts**; it must not repair. `format` and `deps.unlock` run in
+their checking form on purpose — a gate that rewrites the evidence cannot report
+on it, and the rewrite lands outside the staged paths.
 
 ## Phoenix
 
@@ -28,8 +38,22 @@ runs as the `rust` job in CI. Toolchain pinned by `desktop/tauri/rust-toolchain.
 bun test assets/js
 ```
 
-Pure-logic tests (URL heuristics, ANSI parsing, tab state). Runs as the `js`
-job in CI.
+Pure-logic tests (URL heuristics, ANSI parsing, tab state). Runs as the `js` job
+in CI **and** as a step of `mix precommit` — it was CI-only until 08-09, so a
+broken hook passed a green precommit and failed after push.
+
+## Docs
+
+```sh
+./scripts/check_docs_drift.sh
+```
+
+Every `./buster-claw` example in `README.md`, `docs/` and `user-guide/` must name
+a verb the CLI actually dispatches or a command the catalog actually carries, and
+a stated command count must match the live catalog. Part of `mix lint`, not
+`mix precommit`. Two things it does **not** cover: `BUILD.md` is outside its file
+list, and **busterclaw.lol states the command count too** and lives in another
+repository — that number has no gate on it and is updated by hand.
 
 ## Packaged app (pre-release)
 

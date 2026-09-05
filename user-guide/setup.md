@@ -12,7 +12,7 @@ When the app first opens, the setup wizard walks you through five steps:
    `opencode`) is installed and signed in. Buster Claw has no AI of its own, so
    this is the step that decides whether anything can run at all.
 4. **Google Workspace** — connect Gmail/Calendar via OAuth (also available later
-   under **Settings → Google Workspace**).
+   under **Settings → Configuration**).
 5. **Live** — you're set up; the app hands you off to the Home screen.
 
 On first launch Buster Claw seeds starter jobs in `jobs/` (`mail-triage.md`,

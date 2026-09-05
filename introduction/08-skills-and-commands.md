@@ -39,11 +39,3 @@ Settings UI, land on the Sentinel audit feed, and refresh the terminal
 flyout live. Two roles are **protected and refused**: `mailman` (On Duty)
 and `agent-setup` (Setup wizard) — they are the shift safety surface, not a
 preference.
-
-## Command surface (CLI)
-
-These are the commands you can run (via the `buster-claw` CLI or HTTP
-API). **Safe** commands you may run directly; **restricted** commands change
-state or send data and require the user's confirmation before they execute.
-
-{{COMMAND_SURFACE}}

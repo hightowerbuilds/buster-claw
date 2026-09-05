@@ -86,8 +86,8 @@ a stale read.
 - **Contacts** — `contacts_list`, `contacts_search`, `contacts_get`,
   `contacts_create`, `contacts_update`, `contacts_delete`.
 
-Six of these are **gated** — they need the operator's confirmation every
-time, no matter how routine the errand feels: `gmail_send`, `gmail_delete`,
+Six of these are **gated** — confirm them with the operator every time, no
+matter how routine the errand feels: `gmail_send`, `gmail_delete`,
 `gcal_event_delete`, `drive_delete`, `tasks_delete`, `contacts_delete`. The
 pattern is the obvious one — **things that leave the machine, and things that
 cannot be undone.** `gmail_trash` is not gated because trash is reversible

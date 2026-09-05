@@ -249,6 +249,48 @@ defmodule BusterClaw.IntroductionTest do
     end
   end
 
+  # The Sketch Pad was deleted on 09-05 — its route, its Studio tab, and six
+  # `sketch_*` commands. The briefing carried a whole section teaching the model
+  # to call them, which is the worse of the two stale shapes: not a capability it
+  # never hears about, but one it OFFERS and only discovers is gone after telling
+  # the operator a drawing exists.
+  #
+  # Both directions, tied to the catalog, for the reason the outbound guard below
+  # states at length: a bare `refute` here would be a promise this test stopped
+  # checking the moment anyone re-added the verbs.
+  test "the briefing agrees with the catalog about drawing" do
+    md = Introduction.markdown()
+    [prose, _generated] = String.split(md, "These are the commands you can run", parts: 2)
+    flat = String.replace(prose, ~r/\s+/, " ")
+
+    if Commands.command_type("sketch_get") do
+      assert flat =~ "sketch_get",
+             "the sketch verbs are back in the catalog; the briefing must teach them"
+    else
+      # Naming the family in a *negative* sentence is deliberate and allowed —
+      # what may not come back is an instruction to call one.
+      refute flat =~ "sketch_list"
+      refute flat =~ "sketch_get"
+      refute flat =~ "a surface in the Studio"
+    end
+
+    # Absence is not enough. The model CAN draw, by a channel that never had a
+    # command and was untouched by the deletion, and a briefing that merely
+    # stopped mentioning the Pad would leave it believing it cannot.
+    #
+    # The fence marker is asserted on both sides rather than remembered on one:
+    # if `SvgViewer` ever changes what it extracts, the first assertion fails and
+    # whoever changes it is standing in front of the prose that teaches it.
+    marker = "```svg"
+    assert BusterClaw.SvgViewer.guide() =~ marker
+    assert flat =~ marker, "the briefing must teach the fence the SVG viewer extracts"
+
+    # Where it works, and the one constraint whose absence fails silently —
+    # a viewBox-less SVG is cropped to its top-left corner, not scaled.
+    assert flat =~ "Chat tab on Home"
+    assert flat =~ "viewBox"
+  end
+
   test "routes web work by consequence, not by convenience" do
     md = Introduction.markdown()
 
@@ -276,8 +318,10 @@ defmodule BusterClaw.IntroductionTest do
     # The 07-25 field-test lesson, in the model's own guide.
     assert md =~ "verify a chosen variant against the cart line"
 
-    # And where the human watches it.
-    assert md =~ "Browse tab"
+    # And where the human watches it. Named for the DOCK LABEL ("Browser"), not
+    # the route (`/browse`) or the page title ("Browse") — the model repeats this
+    # to the operator, who is looking at the dock.
+    assert md =~ "Browser tab"
   end
 
   test "documents the workspace layout, role model, and corrected summary convention" do
@@ -308,8 +352,20 @@ defmodule BusterClaw.IntroductionTest do
     assert md =~ "exactly one activity log"
     assert md =~ "What is NOT the activity log"
     assert md =~ "homepage Activity tab"
-    assert md =~ "homepage Notes tab is a separate notebook"
-    refute md =~ "homepage Notes tab.**"
+
+    # Notes LEFT Home on 09-05 for the Workspace page's rail; Activity did not.
+    # Both halves are asserted, because the failure this catches is the briefing
+    # keeping one name after the surface moved and sending the operator to a tab
+    # that no longer holds their notebook.
+    #
+    # The refute is scoped to the PROSE. The generated catalog carries command
+    # descriptions written elsewhere (`note_list`'s still says "homepage Notes
+    # tab" as of 09-05, in `commands/catalog/library.ex`), and a doc test that
+    # fails on another module's string teaches the next person to loosen this
+    # guard rather than fix that description.
+    [notes_prose, _] = String.split(md, "These are the commands you can run", parts: 2)
+    assert notes_prose =~ "Workspace Notes tab is a separate notebook"
+    refute notes_prose =~ "homepage Notes tab"
     refute md =~ "daily minutes"
     refute md =~ "dated diary"
 
@@ -324,7 +380,11 @@ defmodule BusterClaw.IntroductionTest do
     # "only when asked" rule is how Notes becomes a second activity log again.
     assert md =~ "note_read"
     assert md =~ "note_save"
-    assert md =~ "only when the\noperator asked for a note"
+    # Flattened: this prose is hard-wrapped, and the earlier version of this
+    # assertion pinned the newline between "the" and "operator", so a reflow
+    # that changed no words failed it. Same treatment the appearance guard above
+    # already gives its hard-wrapped sentences.
+    assert String.replace(md, ~r/\s+/, " ") =~ "only when the operator asked for a note"
     assert md =~ "there is no note delete"
     assert md =~ "revision"
 

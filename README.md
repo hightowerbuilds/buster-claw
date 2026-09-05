@@ -22,7 +22,7 @@ That indirection is the whole design. It means work survives a crash, an agent c
 
 ## Features
 
-- **One command surface.** 213 commands across documents, browser, Google Workspace, integrations, finance, phone, notes, memory, skills, and orchestration — reachable from the CLI and an HTTP API, with per-caller trust tiers and an audit trail covering everything that changes state.
+- **One command surface.** 213 commands across documents, browser, Google Workspace, integrations, finance, phone, sound and voice, notes, memory, skills, and orchestration — reachable from the CLI and an HTTP API, with per-caller trust tiers and an audit trail covering everything that changes state.
 - **A real browser the agent can drive.** Not a headless scraper: the agent reads and acts inside **the tab you're actually looking at**, logged-in session and all (`browser_read`, `browser_click`, `browser_fill`), plus SSRF-guarded fetch for everything else.
 - **Google Workspace.** One-click connect, then sync and act on Gmail, Calendar, Drive, Docs, and Contacts.
 - **Integrations.** GitHub — polled on demand (by you or the agent; there is no background poller) or webhook-triggered, with signature verification that fails closed.
@@ -30,8 +30,10 @@ That indirection is the whole design. It means work survives a crash, an agent c
 - **Unattended shifts.** Go `on-duty` and a supervised Elixir janitor works the queue without you — with a kill switch (a `STOP` file), a crash-loop brake, and a hard budget cap that stops the shift rather than burning tokens.
 - **BusterPhone.** An answering machine and inbound SMS archive for your agent. Voice greets the caller, records, transcribes, and files the message in the Library; signed inbound SMS is archived, and a text from a trusted number enters the `sms-triage` job. The trusted-caller and PIN gates decide which of those messages becomes queue work — a stranger's voicemail is still recorded, just never enqueued. **It sends nothing: no outbound SMS, no outbound calling.** That is the design rather than a gap — a phone that cannot send carries no carrier registration, no consent obligation, and no way to be talked into texting a stranger. See `daily-growth/roadmaps/integrations/PHONE_INTAKE_ROADMAP.md`.
 - **Sentinel.** The security spine. Mutations are recorded and redacted (by key name *and* value shape — card numbers and API keys don't leak into the log). Untrusted callers can't run restricted commands, and refusals surface on the Security feed rather than being dropped silently. Two limits worth knowing up front: audit writes are **best-effort** — a failed write is logged and the action still proceeds — and a refusal is currently **visible, not approvable**. Reviewing and approving a refused action is not built yet.
+- **It can draw.** The model emits a fenced ` ```svg ` block and the chat renders it as a real, crisp SVG instead of raw markup (`BusterClaw.SvgViewer`) — sanitized first, behind a CSP that allows no inline script at all. There is no shared drawing canvas: the model writes the SVG, the app renders it.
+- **Vox2B.** Record a reference of your own voice and the app renders text in it, locally. The engine (VoxCPM) is **bring-your-own** — discovered at runtime, never bundled, because the weights are larger than the whole app. A rendered line installs into the sound library, so a spoken message is just a notification whose sound is your voice saying the words. Two limits stated up front: a render takes **minutes, not seconds**, so it pre-renders and never speaks live; and reading chat replies aloud is macOS `say`, not your voice.
 - **A workspace you own.** Everything is markdown on your disk. No lock-in; `grep` works.
-- **WebGPU shaders.** The homepage runs a live WGSL background. Drop a `.wgsl` file into your workspace and it compiles at runtime — no rebuild.
+- **WebGPU shaders.** The homepage runs a live WGSL background. Drop a `.wgsl` file into your workspace and it compiles at runtime — no rebuild. If the machine has no WebGPU the canvas simply stays blank; nothing else changes.
 
 ## Quick Start
 
@@ -77,21 +79,24 @@ The Phoenix endpoint binds to `127.0.0.1` only; the API token defends against ot
 
 | Running | Token | How to get it |
 |---|---|---|
-| **Packaged app**, terminal *inside* the app | macOS Keychain (service `BusterClaw`, account `api_token`) | Already exported as `$BUSTER_CLAW_API_TOKEN` — nothing to look up |
-| **Packaged app**, any other shell | same | `security find-generic-password -s BusterClaw -a api_token -w` |
+| **Packaged app**, terminal *inside* the app | macOS Keychain, service `BusterClaw`, account `terminal_token` | Already exported as `$BUSTER_CLAW_API_TOKEN` — nothing to look up |
+| **Packaged app**, any other shell | same service, account `api_token` | `security find-generic-password -s BusterClaw -a api_token -w` |
 | **Dev** (`mix phx.server`) | a fixed literal in `config/dev.exs` | `dev-token-loopback-only` |
 
 `BUSTER_CLAW_API_TOKEN` overrides all of it.
 
-> There is no `api_token` **file** to read. The desktop shell generates the token straight into the Keychain, and if it finds a plaintext file from an older build it migrates the value and **deletes the file** (`desktop/tauri/src/main.rs`), so secret material never lingers on disk. Dev never writes one either — it uses the literal above.
+> There is no token **file** to read. The desktop shell generates each token straight into the Keychain, and if it finds a plaintext file from an older build it migrates the value and **deletes the file** (`desktop/tauri/src/main.rs`), so secret material never lingers on disk. Dev never writes one either — it uses the literal above.
 
-Three tokens exist, and **the trust tier is derived from which one you present** — not from the route:
+Four tokens exist, and **the trust tier is derived from which one you present** — not from the route:
 
 | Caller | May run |
 |---|---|
 | `trusted` (you, your CLI) | anything |
+| `terminal` (the in-app PTY) | everything `trusted` runs — but credential *management* (`/api/clinch`) is refused |
 | `agent_untrusted` (a run that has touched untrusted content) | anything *except* gated commands (sends, deletes, shares) |
 | `agent` / `mcp` | safe-tier reads only |
+
+The `terminal` row is the point of the split: the in-app terminal is a shell, and a shell holding the full token could store, delete, or rotate your credentials. It gets its own token instead, and `BusterClawWeb.RequireTrusted` refuses it — a caller may *use* a credential and never *manage* one.
 
 ### CLI
 
@@ -138,7 +143,7 @@ curl -X POST http://127.0.0.1:4000/api/run \
 
 ## Contributing
 
-`mix precommit` must pass. It runs eight gates: compile with warnings-as-errors, `deps.unlock --unused`, format, `credo --strict`, the full test suite, and the `check_cycles.sh` / `check_file_sizes.sh` / `check_rust.sh` scripts. The JS tests (`bun test assets/js`) run separately — see [docs/QUALITY.md](docs/QUALITY.md). Contributions ship under the repository license (PolyForm Shield 1.0.0) — no CLA, no copyright assignment.
+`mix precommit` must pass. It runs nine gates in order: compile with warnings-as-errors, `deps.unlock --check-unused`, `format --check-formatted`, `credo --strict`, the full Elixir suite, `bun test assets/js`, then the `check_cycles.sh` / `check_file_sizes.sh` / `check_rust.sh` scripts. `mix lint` runs the slower set separately — `credo --strict`, `sobelow`, `deps.audit`, and `check_docs_drift.sh`. See [docs/QUALITY.md](docs/QUALITY.md). Contributions ship under the repository license (PolyForm Shield 1.0.0) — no CLA, no copyright assignment.
 
 ## License
 

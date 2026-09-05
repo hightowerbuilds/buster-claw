@@ -31,11 +31,15 @@ Buster Claw has no built-in LLM and needs no API keys: the intelligence is an ag
 - `BusterClaw.BrowserControl` (+ `BusterClaw.AgentRuns`): co-presence verbs against the live tab, plus Agent Mode — a separate Chromium with a frozen scope and a payment gate.
 - `BusterClaw.Clinch`: the credential store — one chokepoint for encrypted values, with use (in-BEAM) split from management (Tauri IPC → loopback `/api/clinch`). See `daily-growth/roadmaps/integrations/CLINCH_ROADMAP.md`.
 - `BusterClaw.Notifications`: timers, alarms, reminders, and the SoundBoard chime routing.
+- `BusterClaw.Voice.*` (+ `BusterClawWeb.VoxComponent`, the Home "Vox2B" sub-tab; there is no `BusterClaw.Voice` facade, only the namespace): the reference voice, the clip library, and spoken messages. The synthesis engine (VoxCPM) is **bring-your-own** — probed at runtime, never bundled. `Voice.Engine` finds it and builds argv and deliberately does no rendering and no liveness check; `Voice.Messages` renders a line once and installs it into the sound library, so a spoken message is a notification whose sound happens to be the operator's voice. `Voice.Speech` is separate and unrelated to VoxCPM: it strips code fences and URLs out of a chat reply before `say(1)` reads it aloud.
+- `BusterClaw.SvgViewer`: the chat's SVG channel — the model emits a fenced ` ```svg ` block, `extract/1` lifts it out of the reply, `sanitize/1` strips scripts/handlers/`<foreignObject>`/external refs, and it renders as a real SVG. This, not a canvas, is how the model draws.
 - `BusterClaw.Appearance` (+ `BusterClaw.Shaders`): one background catalog — built-in WGSL shaders, workspace `shaders/*.wgsl`, and uploaded images — shared by the homepage and the terminal.
 - `BusterClaw.Memory`: `Memory.RunSummary` rows capturing each headless run, full-text searched by `memory_search`.
 - `BusterClaw.Settings`: app settings.
 
 > The Trading, Portfolio, MarketData, Watchlist and Chart Build contexts were **deleted whole on 08-08** (`293f47f`, ~22k lines). `BusterClaw.Finance` above is what survived — it never held broker credentials.
+
+> `BusterClaw.Sketch` was **deleted whole on 09-05** with the Sketch Pad — its route, its Studio tab, its six `sketch_*` commands and its JS hooks. It is not deprecated; it is gone. The model's ability to draw was never in it and is unaffected: that is `BusterClaw.SvgViewer` above. Drawings made before the deletion stay on disk under `<workspace>/sketches/`, which the workspace registry now marks `:deprecated`.
 
 ## Desktop Shell
 

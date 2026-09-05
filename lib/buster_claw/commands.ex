@@ -98,13 +98,25 @@ defmodule BusterClaw.Commands do
   Dispatch a command by string name with the given args. Returns
   `{:error, :unknown_command}` if the name is not in the catalog.
 
-  Accepts an optional `:caller` (`:trusted | :agent_untrusted | :agent | :mcp`,
-  default `:trusted`):
+  Accepts an optional `:caller`
+  (`:trusted | :terminal | :agent_untrusted | :agent | :mcp`, default
+  `:trusted`):
 
   - `:trusted` — internal callers and the user's own CLI/`/api/run`; runs anything.
+  - `:terminal` — the in-app PTY. Trusted-equivalent HERE, deliberately: the
+    operator's own shell must keep running dispatch work, sends and deletes.
+    What it does not get is credential MANAGEMENT, and that is refused at the
+    router by `RequireTrusted`, because those routes never reach this function
+    and so have no tier to consult. See `BusterClaw.PolicyEngine.baseline/2`.
   - `:agent_untrusted` — an autonomous run working untrusted-origin content; runs
     anything EXCEPT the `gated` (outbound/irreversible) set, which is refused.
   - `:agent` / `:mcp` — may only run `:safe`-tier commands.
+
+  **`:terminal` was missing from this list until 09-05**, and it did not stay a
+  local error: the omission was copied into `README.md`, `docs/LOCAL_TRUST.md`
+  and `docs/COMMAND_SURFACE.md`, each of which then told a reader there were
+  three or four callers rather than five. A docstring is a source, and a wrong
+  one propagates.
 
   A refused command returns `{:error, :requires_confirmation}`, is recorded via
   `Sentinel.Pending`, and is NOT executed.
