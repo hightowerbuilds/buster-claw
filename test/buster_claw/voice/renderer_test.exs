@@ -39,6 +39,74 @@ defmodule BusterClaw.Voice.RendererTest do
     {:ok, root: root}
   end
 
+  # The second source guard, and the one that matters most, because what it
+  # protects has no reachable behavioural test: the job runs in a spawned process
+  # whose pid this suite never sees.
+  #
+  # `run/3` used `Task.start/1` — neither linked nor monitored. A job that died
+  # without sending `{:done, …}` left `running` set with nothing alive to clear
+  # it, and the queue wedged PERMANENTLY: every later render sat in it forever.
+  # `do_render/3` rescues exceptions, which is why this read as impossible, but a
+  # rescue does not cover an exit or a kill and a process dying that way sends
+  # nothing.
+  #
+  # That is the 09-05 flake — seventeen voice tests failing together with empty
+  # mailboxes, nothing in the log, green on the next run because the app had
+  # restarted. Four consecutive full suites were clean after this changed, where
+  # two of the previous eight had failed.
+  test "a render job is monitored, so a dead one cannot wedge the queue" do
+    source = File.read!("lib/buster_claw/voice/renderer.ex")
+
+    assert source =~ "spawn_monitor",
+           "the render job must be monitored; `Task.start/1` leaves a dead job " <>
+             "undetectable and `running` set forever"
+
+    refute source =~ "Task.start(",
+           "`Task.start/1` is unlinked AND unmonitored — the wedge this guard exists for"
+
+    assert source =~ "{:DOWN, ref, :process, _pid, reason}, %{running_ref: ref}",
+           "there must be a clause that clears `running` when the job dies " <>
+             "without reporting, or the queue cannot recover"
+  end
+
+  # A source guard, in the spirit of this repo's other lockstep checks, because
+  # the property it protects is invisible to every behavioural test: the render
+  # JOB must make no database call.
+  #
+  # `Voice.Renderer` runs its jobs in a `Task` spawned from the GenServer, which
+  # no test owns. `Config.get/0` survives an unowned Ecto checkout by rescuing and
+  # catching exits — so a DB read from that task does not fail loudly, it blocks
+  # for the connection timeout and returns defaults. The single queue then holds
+  # every other voice suite past its 5s budget, which is how seventeen tests come
+  # to fail together with an empty mailbox, no crash logged, and a green re-run.
+  #
+  # That is not hypothetical — it is the 09-05 flake, and this is the assertion
+  # that keeps the fix. `Engine.resolve/0` reads a Settings row, so it belongs in
+  # `render/2` (the caller's process, which owns the sandbox connection) and
+  # nowhere below it.
+  test "the render job resolves nothing — settings are read in the caller" do
+    source = File.read!("lib/buster_claw/voice/renderer.ex")
+
+    [caller, job] = String.split(source, "defp do_render(", parts: 2)
+
+    assert caller =~ "Engine.resolve()",
+           "render/2 must resolve the engine path in the CALLER's process"
+
+    code =
+      job
+      |> String.split("\n")
+      |> Enum.reject(&String.starts_with?(String.trim_leading(&1), "#"))
+      |> Enum.join("\n")
+
+    refute code =~ "Engine.resolve",
+           "the render job called Engine.resolve/0, which reads a Settings row " <>
+             "from a process no test owns. Pass the path in from render/2."
+
+    refute code =~ "Config.",
+           "the render job read Voice.Config, which is a database call from an " <>
+             "unowned process. Read it at the call site and pass the value in."
+  end
+
   describe "with a working engine" do
     setup %{root: root} do
       install_stub(root, :ok)

@@ -66,9 +66,11 @@ can find.
 it, and took the `LocalTime` alias with it. A mount that computes a value nothing
 reads is the kind of thing that survives three refactors.
 
-## Not fixed here, and filed
+## Found here, fixed here
 
-The `Voice.Renderer` full-suite flake found the same day
-([`LEFTOVERS_SURFACES`](LEFTOVERS_SURFACES.md)). It touches no code this map
-changed and reproduces without it; it is recorded there with what was ruled out
-and what would settle it.
+The `Voice.Renderer` full-suite flake surfaced while verifying this move and was
+**fixed the same day** — `Task.start/1` left a dead job undetectable, so the
+single queue wedged permanently and seventeen voice tests failed together with
+nothing in the log. It touches no code this map changed; it was simply the run
+that exposed it. The diagnosis, including the two wrong theories that cost the
+most time, is in [`LEFTOVERS_SURFACES`](LEFTOVERS_SURFACES.md).

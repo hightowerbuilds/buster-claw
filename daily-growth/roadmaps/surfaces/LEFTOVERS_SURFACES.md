@@ -535,41 +535,48 @@ here. Their detail travelled with them; nothing was lost.
 
 ---
 
-## The voice suites flake under full-suite load (found 09-05, NOT fixed)
+## The voice-suite flake — FOUND AND FIXED 09-05, same day
 
-**Characterised and left, deliberately, because it is infrastructure rather than
-a defect in anything shipped.**
+Kept rather than deleted, because the diagnosis is the useful part and the two
+wrong theories are worth more than the right one.
 
-Symptom: in a full `mix test`, all seventeen tests that wait on `Voice.Renderer`
-can fail together — `ClipsTest`, `RendererTest`, `voice_live_engine_test`,
-`notify_spoken_messages_test`, `commands/voice_message_test` — each with
-`assert_receive` timing out at 5s and **an empty mailbox**. No crash is logged.
-The next identical run is green. Seen twice in eight full runs on 09-05.
+**Symptom.** In a full `mix test`, all seventeen tests waiting on
+`Voice.Renderer` could fail together — each `assert_receive` timing out with an
+**empty mailbox**, no crash logged, and the next identical run green. Two of
+eight runs.
 
-What was ruled out:
+**Cause.** `Renderer.run/2` spawned its job with `Task.start/1`, which is
+**neither linked nor monitored**. A job that died without sending `{:done, …}`
+left `state.running` set with nothing alive to clear it, and the single queue
+wedged **permanently** — every later render sat in it forever. `do_render/3`
+rescues exceptions, which is exactly why this read as impossible: a rescue does
+not cover an exit or a kill, and a process dying that way sends nothing at all.
+Hence no crash in the log. The "green re-run" was a fresh app, not a fresh roll
+of the dice.
 
-- **Not the render taking too long.** The stubs write a fixture WAV and exit.
-- **Not test-local budgets.** Two were raised (1s → 5s) and it still occurred.
-- **Not a leaked in-flight render.** One WAS found and fixed the same day (a
-  test that walked away from a job while `on_exit` deleted its workspace, worth
-  thirteen failures on its own) — this outlives that fix.
-- **Not contention between the voice suites themselves.** They pass 3/3 in
-  isolation, 136 tests, no failures.
-- **Not today's tab move.** It touches no voice code, and the flake reproduces
-  without it.
+**Fix.** `spawn_monitor`, the ref in the state, and a `:DOWN` clause that treats
+a dead job as an ordinary failed render — so the worst it costs is that one line.
+Four consecutive full suites clean afterwards.
 
-What is actually suspected, and what would settle it: `Voice.Renderer` is a
-**singleton GenServer in the app supervision tree**, so it is shared by every
-test module and lives *outside* any test's Ecto sandbox ownership. It reaches
-`Voice.Config` (a Settings row) on the render path. Under full-suite load a
-connection checkout from a non-owning process is the kind of thing that blocks
-past 5s and then clears — and a `DBConnection.ConnectionError ... client exited`
-does appear in a failing run's log. **Confirm by instrumenting the queue rather
-than by raising another budget**: log entry/exit per job with timestamps and see
-whether the gap is the checkout.
+**Two wrong theories, recorded because both were plausible and both cost time:**
 
-Worth fixing because it is the shape of failure that teaches people to re-run CI
-instead of reading it.
+1. *Test budgets.* Raised two from 1s to 5s. It still happened. A budget is the
+   first thing you reach for and the last thing that is ever the cause.
+2. *An unowned Ecto checkout.* `Renderer` is a singleton outside every test's
+   sandbox and `do_render` called `Engine.resolve/0`, which reads a Settings row;
+   `Config.get/0` survives that by rescuing AND catching exits, so it would not
+   crash — it would block for the connection timeout. A good story, and a real
+   defect: **that was fixed too** (the engine path is resolved in `render/2`, in
+   the caller's process) and it is worth keeping on its own merits. It was not
+   the flake.
+
+**A third thing fell out.** A test that starts a render and walks away leaves the
+job running while `on_exit` deletes its workspace. One was found in
+`voice_live_engine_test` (thirteen failures on its own) and fixed by draining;
+`messages_test.exs:60` still does it, harmlessly now that the queue cannot wedge.
+
+Both fixes are pinned by source guards in `renderer_test.exs` — source guards
+because the job runs in a spawned process no test can see.
 
 ## Completed, kept as evidence
 
