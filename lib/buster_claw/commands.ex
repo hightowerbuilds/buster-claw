@@ -567,6 +567,9 @@ defmodule BusterClaw.Commands do
   defdelegate notify_create(args), to: BusterClaw.Commands.Notify
   defdelegate voice_message_create(args), to: BusterClaw.Commands.Notify
   defdelegate voice_message_list(args \\ %{}), to: BusterClaw.Commands.Notify
+  defdelegate voice_clip_make(args), to: BusterClaw.Commands.Notify
+  defdelegate voice_clip_list(args \\ %{}), to: BusterClaw.Commands.Notify
+  defdelegate voice_clip_delete(args), to: BusterClaw.Commands.Notify
   defdelegate voice_message_fire(args), to: BusterClaw.Commands.Notify
   defdelegate voice_message_delete(args), to: BusterClaw.Commands.Notify
   defdelegate notify_snooze(args), to: BusterClaw.Commands.Notify

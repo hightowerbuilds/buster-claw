@@ -180,7 +180,7 @@ defmodule BusterClawWeb.ExplainedPanelTest do
       end
     end
 
-    test "the claim that four verbs reach the whole surface is asserted, not asserted-ish" do
+    test "the claim that seven verbs reach the whole surface is asserted, not asserted-ish" do
       # The page tells a reader that recording a voice, changing the engine
       # settings and publishing the phone greeting have NO command — so asking
       # an agent for them gets a refusal. That is a claim about absence, and the
@@ -189,6 +189,12 @@ defmodule BusterClawWeb.ExplainedPanelTest do
       #
       # `voice_bank_*` is excluded because it is not this surface: those are the
       # Studio's corpus verbs, taught on the Studio tab.
+      #
+      # Four became seven on 09-05 when the clip verbs landed, and this assertion
+      # is what forced the page's copy to be rewritten rather than quietly going
+      # stale. That is the whole reason to guard a claim about ABSENCE with a
+      # universal: the page says what an agent CANNOT do, and only the catalog
+      # knows when that stops being true.
       voice_verbs =
         BusterClaw.Commands.list_commands()
         |> Enum.map(& &1.name)
@@ -197,7 +203,8 @@ defmodule BusterClawWeb.ExplainedPanelTest do
         |> Enum.sort()
 
       assert voice_verbs ==
-               ~w(voice_message_create voice_message_delete voice_message_fire
+               ~w(voice_clip_delete voice_clip_list voice_clip_make
+                  voice_message_create voice_message_delete voice_message_fire
                   voice_message_list)
     end
 

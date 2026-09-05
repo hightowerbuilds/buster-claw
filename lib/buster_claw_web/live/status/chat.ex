@@ -37,6 +37,7 @@ defmodule BusterClawWeb.Status.Chat do
   alias BusterClaw.ChatSkin
   alias BusterClaw.ChatTextSize
   alias BusterClaw.SvgViewer
+  alias BusterClaw.Voice.Clips
   alias BusterClaw.Voice.Speech
   alias BusterClawWeb.Status.ChatAttachments
 
@@ -135,12 +136,15 @@ defmodule BusterClawWeb.Status.Chat do
     # appended inline as a persistent message.
     conv_id = socket.assigns.active_chat
 
-    # Start the conversation taught the drawing vocabulary (idempotent — the
-    # guide is fixed at first start; a no-op once the process exists). This was
-    # two guides until Scene3D was deleted on 08-16; the surviving one no longer
-    # has to say when the other channel is the right one.
+    # Start the conversation taught what it can make (idempotent — the guides are
+    # fixed at first start; a no-op once the process exists). This was two guides
+    # until Scene3D was deleted on 08-16, one until Vox2B got a verb on 09-05.
+    #
+    # Both teach a CHANNEL rather than a command: drawing is a fenced block this
+    # app extracts, and a phrase is a render that outlives the turn that asked
+    # for it. A model that knows neither has both capabilities and uses neither.
     Chat.ensure_started(conv_id,
-      append_system_prompt: SvgViewer.guide(),
+      append_system_prompt: SvgViewer.guide() <> "\n\n" <> Clips.guide(),
       agent: BusterClaw.ModelPolicy.backend_for(:chat)
     )
 

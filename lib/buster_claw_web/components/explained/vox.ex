@@ -278,12 +278,15 @@ defmodule BusterClawWeb.Explained.Vox do
         </p>
         <p class="rounded-sm border-l-2 border-warning pl-3 text-sm leading-relaxed text-base-content/70">
           <span class="font-semibold text-base-content">
-            Four verbs reach this whole surface, and all four are about messages.
+            Seven verbs reach this whole surface: four for messages, three for
+            clips.
           </span>
-          Recording your voice, changing the engine settings and publishing the
-          greeting have no commands — an agent cannot do them, and asking it to
-          will get you a refusal rather than a near-miss. Those are things you do
-          on the screen.
+          The clip three arrived 09-05 so you can ask for a phrase in chat —
+          <code class="text-xs">voice_clip_make</code>
+          renders it and it lands on Files. Recording your voice, changing the
+          engine settings and publishing the greeting still have no commands — an
+          agent cannot do them, and asking it to will get you a refusal rather
+          than a near-miss. Those are things you do on the screen.
         </p>
       </section>
 

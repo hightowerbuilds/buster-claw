@@ -1,6 +1,7 @@
 defmodule BusterClaw.Voice.ClipsTest do
   use BusterClaw.DataCase, async: false
 
+  alias BusterClaw.Commands
   alias BusterClaw.Notifications.Sound
   alias BusterClaw.Voice.{Clips, Engine, Renderer}
 
@@ -201,6 +202,104 @@ defmodule BusterClaw.Voice.ClipsTest do
 
     test "a path that is not a clip is refused" do
       assert {:error, :not_found} = Clips.install("/nope/not-a-clip.wav")
+    end
+  end
+
+  describe "the chat guide — what the model is told it can do" do
+    # THE lockstep for this feature, and it exists because this repo has now
+    # shipped a system prompt naming deleted verbs twice: `sketch_*` survived the
+    # Sketch Pad by a day, and `terminal_command_*` survived the Cmd List until
+    # somebody read the briefing. A prompt is not covered by the compiler, not by
+    # the docs-drift gate, and not by any LiveView test — it is a string handed
+    # to a model, and a wrong one costs the operator a turn spent on a refusal.
+    test "every verb the guide names is a real catalog command" do
+      guide = Clips.guide()
+      catalog = MapSet.new(BusterClaw.Commands.list_commands(), & &1.name)
+
+      named =
+        ~r/`(voice_[a-z_]+)`/
+        |> Regex.scan(guide)
+        |> Enum.map(&Enum.at(&1, 1))
+        |> Enum.uniq()
+
+      assert named != [], "the guide should name the verbs it is teaching"
+
+      for name <- named do
+        assert MapSet.member?(catalog, name),
+               "the chat's system prompt teaches `#{name}`, which is not in the catalog"
+      end
+    end
+
+    # The timing claim is the one the model gets wrong by default: it replies in
+    # seconds and the render takes minutes, so "here is your clip" is wrong every
+    # time. If this sentence ever leaves the guide, the lie comes back.
+    test "the guide says the audio is not ready when the model replies" do
+      guide = Clips.guide()
+
+      assert guide =~ "minutes"
+      assert guide =~ "does NOT exist"
+      assert guide =~ "never that it is ready"
+    end
+  end
+
+  describe "the commands" do
+    test "make queues a render and says plainly that it is not ready", %{root: root} do
+      stub(root)
+
+      assert {:ok, %{status: "queued", key: key, note: note}} =
+               Commands.call("voice_clip_make", %{"text" => "The build is done."})
+
+      assert is_binary(key)
+
+      # The note is load-bearing: it is what the model reads back to the operator.
+      assert note =~ "NOT ready"
+
+      assert_receive {:voice_render, ^key, {:ok, _path}}, 5_000
+    end
+
+    test "a line already rendered comes back ready, not queued", %{root: root} do
+      stub(root)
+      {:queued, key} = Clips.make("Twice asked.")
+      assert_receive {:voice_render, ^key, {:ok, _path}}, 5_000
+
+      assert {:ok, %{status: "ready", path: path}} =
+               Commands.call("voice_clip_make", %{"text" => "Twice asked."})
+
+      assert File.regular?(path)
+    end
+
+    test "list reports what has landed, and delete forgets one", %{root: root} do
+      stub(root)
+      {:queued, key} = Clips.make("Findable line.")
+      assert_receive {:voice_render, ^key, {:ok, path}}, 5_000
+      Clips.record("Findable line.", path)
+
+      assert {:ok, %{count: 1, clips: [%{text: "Findable line."}]}} =
+               Commands.call("voice_clip_list", %{})
+
+      assert {:ok, %{forgotten: ^path}} = Commands.call("voice_clip_delete", %{"path" => path})
+      assert {:ok, %{count: 0}} = Commands.call("voice_clip_list", %{})
+
+      # Forgetting drops the ROW, not the audio — asking again is a cache hit
+      # rather than another several-minute render.
+      assert File.regular?(path)
+    end
+
+    test "text is required" do
+      assert {:error, :missing_text} = Commands.call("voice_clip_make", %{})
+    end
+
+    # `R1` of the roadmap: a bare `{:error, :engine_unavailable}` leaves the model
+    # guessing, and guessing in front of the operator reads as the app being
+    # broken rather than as a thing they can fix. The refusal has to carry what
+    # to do about it.
+    test "a refusal reaches the model as something it can say out loud" do
+      Application.put_env(:buster_claw, :voxcpm_path, "/nonexistent/voxcpm")
+      Engine.refresh()
+
+      assert {:error, message} = Commands.call("voice_clip_make", %{"text" => "No engine."})
+      assert message =~ "bring-your-own"
+      assert message =~ "Vox2B"
     end
   end
 end

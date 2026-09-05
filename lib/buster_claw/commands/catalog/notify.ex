@@ -77,6 +77,34 @@ defmodule BusterClaw.Commands.Catalog.Notify do
           "at" => %{type: :string, required: false}
         }
       },
+      # Clips — an ad-hoc phrase, distinct from a named message. See
+      # `Commands.Notify` for why these are their own verbs.
+      %{
+        name: "voice_clip_make",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Render a line in the operator's own voice and keep it. Use this when the operator asks you to make, say, or record a phrase. Returns at once with status=queued: the render takes MINUTES on this machine, so the audio does NOT exist when you reply — say it is being made, never that it is ready. status=ready means this exact line was already in the cache and the file exists now. The clip appears under Vox2B → Files, where the operator can play it or install it as a notification sound; voice_clip_list reports what has landed. Needs the speech engine installed, and sounds like the operator only if they have recorded a reference clip — without one the engine designs a voice instead.",
+        args: %{
+          "text" => %{
+            type: :string,
+            required: true,
+            description: "The words to say. One or two sentences renders fastest."
+          }
+        }
+      },
+      Helpers.list_entry(
+        "voice_clip_list",
+        "List the phrases rendered in the operator's voice: the text, the file, and when it was made. A clip that is still rendering is not listed — it appears once its audio lands, which is how you check whether a voice_clip_make has finished."
+      ),
+      %{
+        name: "voice_clip_delete",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Forget one clip by its path (from voice_clip_list). This drops the row; the rendered audio stays in the cache, so asking for the same line again is instant rather than another several-minute render.",
+        args: %{"path" => %{type: :string, required: true}}
+      },
       %{
         name: "voice_message_delete",
         type: :mutate,

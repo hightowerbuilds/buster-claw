@@ -280,6 +280,7 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
       terminal_tab_open
       terminal_theme_list
       voice_bank_list
+      voice_clip_list
       voice_message_list
       web_search
     )

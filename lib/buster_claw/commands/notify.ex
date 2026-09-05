@@ -11,6 +11,7 @@ defmodule BusterClaw.Commands.Notify do
   import BusterClaw.Commands.Helpers
 
   alias BusterClaw.Notifications
+  alias BusterClaw.Voice.Clips
   alias BusterClaw.Voice.Messages
 
   @default_snooze_seconds 300
@@ -53,6 +54,76 @@ defmodule BusterClaw.Commands.Notify do
 
   def voice_message_create(%{"name" => _}), do: {:error, :missing_text}
   def voice_message_create(_args), do: {:error, :missing_name}
+
+  # --- clips: an ad-hoc phrase, not a named notification -----------------------
+  #
+  # `Messages` and `Clips` both render a line in the operator's voice and are
+  # deliberately different things. A message is NAMED and installed as a
+  # notification sound; a clip is a phrase somebody asked for. Forcing a slug on
+  # "say the build is done" would be friction invented by the data model, which
+  # is why these are their own verbs rather than an option on the message ones.
+  def voice_clip_make(%{"text" => text}) when is_binary(text) do
+    case Clips.make(text) do
+      # A cache hit: this exact line, with these exact engine settings, has been
+      # rendered before. The file is on disk right now.
+      {:ok, path} ->
+        {:ok, %{status: "ready", text: String.trim(text), path: path}}
+
+      # The normal case. Minutes, not seconds — the shape of the reply says so,
+      # because a model that reports this as done sends the operator to look for
+      # a file that is not there yet.
+      {:queued, key} ->
+        {:ok,
+         %{
+           status: "queued",
+           key: key,
+           text: String.trim(text),
+           note:
+             "Rendering. This takes minutes on this machine — it is NOT ready yet. " <>
+               "It appears under Vox2B → Files when it lands; voice_clip_list says when."
+         }}
+
+      # Refusals reach the model as a SENTENCE, not a bare atom. A model handed
+      # `{:error, :queue_full}` has to guess; handed the reason it can tell the
+      # operator something true and decide whether to retry. `:queue_full` in
+      # particular is temporary and self-clearing, and nothing else in the reply
+      # would say so.
+      {:error, reason} ->
+        {:error, clip_refusal(reason)}
+    end
+  end
+
+  def voice_clip_make(_args), do: {:error, :missing_text}
+
+  defp clip_refusal(:queue_full),
+    do:
+      "The render queue is full (32 waiting). Nothing is lost — wait for it to drain " <>
+        "and ask again; renders run one at a time and take minutes each."
+
+  defp clip_refusal(:engine_unavailable),
+    do:
+      "No speech engine installed. VoxCPM is bring-your-own — the operator installs " <>
+        "it from Vox2B → Engine, and nothing here can do it for them."
+
+  defp clip_refusal(:reference_missing),
+    do:
+      "The reference recording is gone, so there is no voice to clone. The operator " <>
+        "records a new one on Vox2B → Create."
+
+  defp clip_refusal(:empty_text), do: "There were no words to say."
+  defp clip_refusal(other), do: other
+
+  def voice_clip_list(_args \\ %{}) do
+    clips = Clips.list()
+    {:ok, %{count: length(clips), clips: clips}}
+  end
+
+  def voice_clip_delete(%{"path" => path}) when is_binary(path) do
+    Clips.forget(path)
+    {:ok, %{forgotten: path}}
+  end
+
+  def voice_clip_delete(_args), do: {:error, :missing_path}
 
   def voice_message_list(_args \\ %{}) do
     messages = Messages.list()

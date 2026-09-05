@@ -60,6 +60,35 @@ defmodule BusterClaw.Voice.Clips do
   end
 
   @doc """
+  What the chat's system prompt tells the model about making a phrase.
+
+  Appended beside `SvgViewer.guide/0`, and for the same reason: a capability the
+  model is never told about is a capability nobody uses. That is not theoretical
+  here — `voice_clip_make` is reachable from the CLI the moment it is catalogued,
+  and would have gone unused indefinitely without this paragraph.
+
+  The wording is doing two jobs, and the second is the important one. It teaches
+  the verb, and it **pre-empts the lie the timing invites**: the render takes
+  minutes, the reply is sent in seconds, so a model reporting "here is your clip"
+  is wrong every single time. Saying that once here is worth more than any
+  error message, because by the time an error could fire the model has already
+  told the operator it was done.
+  """
+  @spec guide() :: String.t()
+  def guide do
+    """
+    When the operator asks you to make, say, or record a phrase in their voice, \
+    call `voice_clip_make` with the words. It renders through VoxCPM in the \
+    operator's own voice and lands under Vox2B -> Files, where they can play it \
+    or install it as a notification sound. **It takes minutes, not seconds** - \
+    the call returns immediately with status=queued and the audio does NOT exist \
+    when you reply, so say you have started it, never that it is ready; \
+    `voice_clip_list` shows what has landed. Only use it when asked: a phrase in \
+    someone's own voice is not a thing to produce unprompted.\
+    """
+  end
+
+  @doc """
   Copy a clip into the sound library, so a notification can be routed at it.
 
   **This is the whole of what Vox2B has to do to reach Settings → Notify.** That

@@ -55,13 +55,17 @@ defmodule BusterClawWeb.Explained.Registry do
   # Recomputed 09-05 again: Settings → Cmd List was removed with both
   # `terminal_command_*` verbs — `_list` was a `:safe` read, `_set` a `:mutate`
   # `:restricted`, neither gated. Which is why `trigger` and `gated` do not move.
+  #
+  # And once more the same day for the three `voice_clip_*` verbs (211 -> 214):
+  # `_list` a `:safe` read, `_make` and `_delete` `:mutate` + `:restricted`, none
+  # gated — a clip is a file you can forget, not an outbound send.
   @command_stats %{
-    total: 211,
-    read: 86,
+    total: 214,
+    read: 87,
     trigger: 17,
-    mutate: 108,
-    safe: 89,
-    restricted: 122,
+    mutate: 110,
+    safe: 90,
+    restricted: 124,
     gated: 23
   }
 
