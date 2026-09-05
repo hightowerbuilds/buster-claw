@@ -17,25 +17,13 @@ operator-editable, no recompile). Two kinds:
 
 See `skills/README.md` for the roster. A skill only runs when `enabled: true`.
 
-## Editing the terminal Cmd List
+## The terminal's command list
 
-The desktop terminal has a **Cmd List** (Settings → Cmd List) — a catalog of
-one-click commands and canned **prompts**, grouped into roles (**queue**,
-**toolbox**, **prompts**, plus any user roles). You can edit it yourself
-from here — it's the same catalog a human edits in Settings:
+The desktop terminal has a flyout of one-click commands and canned **prompts**,
+grouped into roles (**queue**, **toolbox**, **prompts**). It is **read-only as
+of 09-05**: the Settings page that edited it and the two `terminal_command_*`
+verbs were both removed. Do not offer to add or change a command there.
 
-- `terminal_command_list` (safe) — list the editable roles and each
-  command's `key`, `label`, text, `kind`, and default flag. Read this first
-  to get the `role_key` + `command_key`.
-- `terminal_command_set` (restricted) — upsert one command/prompt by
-  `role_key` + `command_key`. An existing key updates only the fields you
-  pass (`command`, `label`, `description`); an unknown key carrying a
-  `command` adds a new one (its `kind` is inferred — `prompt` for the
-  `prompts` role or multiline text, else `shell`; shell commands stay
-  single-line).
-
-Edits run through the same validation → persist → broadcast path as the
-Settings UI, land on the Sentinel audit feed, and refresh the terminal
-flyout live. Two roles are **protected and refused**: `mailman` (On Duty)
-and `agent-setup` (Setup wizard) — they are the shift safety surface, not a
-preference.
+Skills are how new capability gets added now — a composition skill is a named
+sequence of existing commands, and it shows up in the terminal's prompts role
+automatically. That is the mechanism above, not this list.

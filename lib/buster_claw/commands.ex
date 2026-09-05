@@ -771,8 +771,7 @@ defmodule BusterClaw.Commands do
   defdelegate activity_report(args \\ %{}), to: BusterClaw.Commands.Orchestration
   defdelegate model_policy(args \\ %{}), to: BusterClaw.Commands.Orchestration
   defdelegate terminal_tab_open(args \\ %{}), to: BusterClaw.Commands.Orchestration
-  defdelegate terminal_command_list(args \\ %{}), to: BusterClaw.Commands.Orchestration
-  defdelegate terminal_command_set(args \\ %{}), to: BusterClaw.Commands.Orchestration
+
   defdelegate shift_status(args \\ %{}), to: BusterClaw.Commands.Orchestration
   defdelegate shift_start(args \\ %{}), to: BusterClaw.Commands.Orchestration
   defdelegate shift_stop(args \\ %{}), to: BusterClaw.Commands.Orchestration

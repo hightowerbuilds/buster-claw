@@ -200,7 +200,10 @@ check lib/buster_claw_web/components/explained/shared.ex       182 HELD
 # `/voice`, which is a real route to the same component with none of the home
 # chrome. The alternative to the comment is the next reader "fixing" the path
 # to the deep link and sending everyone to the wrong place.
-check lib/buster_claw_web/components/explained/registry.ex     275 HELD
+# 275 -> 290 on 09-05. The Vox2B entry earned the first raise; this one is the
+# comment recording why the Cmd List removal moved six numbers in @command_stats
+# at once. A stats block whose history is deleted is a block nobody can audit.
+check lib/buster_claw_web/components/explained/registry.ex     290 HELD
 # The ninth tutorial (08-15). Pockets earns a tile where five parked candidates
 # did not, and the argument is worth keeping: it is already load-bearing in three
 # other surfaces — backgrounds, brand art and contact faces all live in Pockets —
@@ -1278,7 +1281,13 @@ check lib/buster_claw/commands.ex                             850 HELD
 # terminal_commands.ex — a different catalog entirely (the whitelisted cmd-list
 # the in-app terminal reads). Pre-named seams: the merge/normalize block (~200)
 # and skill-prompt synthesis (~50).
-check lib/buster_claw/terminal_commands.ex                    840 HELD
+# 840 -> 640 on 09-05: the whole editing layer left with Settings → Cmd List and
+# both `terminal_command_*` verbs — the editor entry points, the persistence
+# helpers that only they called, and the two orphans the compiler named once they
+# had no caller. 795 -> 581. What is left is the read path the terminal flyout
+# and the on-duty startup profile depend on, which is the half that was always
+# load-bearing.
+check lib/buster_claw/terminal_commands.ex                    640 HELD
 # attachments.ex — the file IS its security argument: generated filenames,
 # magic-byte sniffing, size-before-read, symlink refusal, read-back
 # re-validation are one argument that splitting would scatter.

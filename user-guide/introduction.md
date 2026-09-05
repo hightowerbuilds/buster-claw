@@ -49,7 +49,7 @@ The dock at the bottom switches between five surfaces:
 - **Terminal** — your agent's shell, inside the app. Each click of the dock
   button opens a new one.
 - **Settings** — six tabs: **Appearance**, **Notify**, **Integrations**,
-  **Configuration**, **Cmd List**, and **Security**. Connecting Google
+  **Configuration**, and **Security**. Connecting Google
   Workspace and choosing which model runs where are both on **Configuration**.
 
 **Security** (the last Settings tab, or `/security` directly) is the **Sentinel

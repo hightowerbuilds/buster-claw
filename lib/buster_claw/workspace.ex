@@ -131,16 +131,22 @@ defmodule BusterClaw.Workspace do
     },
 
     # --- on demand: real features, but nothing until you use them ----------
+    # READ-ONLY as of 09-05, and still `:on_demand` rather than `:deprecated` —
+    # which the registry's own guard insisted on, correctly. Settings → Cmd List
+    # and both `terminal_command_*` verbs were removed, so nothing writes here any
+    # more; but `TerminalCommands.load/1` still READS a `catalog.json` an older
+    # version persisted, so an operator's customised flyout keeps working.
+    #
+    # `:deprecated` would be a lie while live code reads it, and
+    # `sweep_deprecated/0` would then be entitled to remove it. It becomes
+    # deprecated on the day the read path collapses to `Builtins`, not before.
     %{
       name: "cmd-list",
       kind: :dir,
       tier: :on_demand,
       owner: BusterClaw.TerminalCommands,
-      # No seeder: the palette runs on built-in defaults until you customize it
-      # (TerminalCommands.user_doc/0 falls back), and `write_catalog/1` creates
-      # the folder on that first save. Merely opening the editor writes nothing.
       seed: nil,
-      note: "The terminal's command palette (catalog.json)."
+      note: "The terminal's command palette (catalog.json) — read-only since 09-05."
     },
     %{
       name: "pages",

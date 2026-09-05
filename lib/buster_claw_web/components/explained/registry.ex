@@ -52,13 +52,16 @@ defmodule BusterClawWeb.Explained.Registry do
   # `_update` and `_delete` were `:mutate` + `:restricted` and none was gated —
   # which is why `gated` and `trigger` are the two numbers that do not move.
   # Measured from `Catalog.entries/0`, not derived by hand.
+  # Recomputed 09-05 again: Settings → Cmd List was removed with both
+  # `terminal_command_*` verbs — `_list` was a `:safe` read, `_set` a `:mutate`
+  # `:restricted`, neither gated. Which is why `trigger` and `gated` do not move.
   @command_stats %{
-    total: 213,
-    read: 87,
+    total: 211,
+    read: 86,
     trigger: 17,
-    mutate: 109,
-    safe: 90,
-    restricted: 123,
+    mutate: 108,
+    safe: 89,
+    restricted: 122,
     gated: 23
   }
 
@@ -183,8 +186,17 @@ defmodule BusterClawWeb.Explained.Registry do
         "Agent-addressable backend operations share one canonical command " <>
           "surface — CLI and HTTP, with operation types, caller trust tiers, " <>
           "policy flags, and audit receipts for mutations and triggers.",
-      path: "/cmd-list",
-      path_label: "Open the command list"
+      # `/cmd-list` until 09-05, and it was wrong even then: that route edited the
+      # terminal cheatsheet, not this atlas — `cmd.ex`'s own comment says so. The
+      # route is now deleted, and the command list has no page of its own: it IS
+      # this tutorial, plus `./buster-claw commands`. So the deep link goes where
+      # you would actually run one.
+      #
+      # Only a STUB renders `path` (see `stub.ex`), and `cmd` is built — so this
+      # never draws today. It is correct anyway, because the day someone unbuilds
+      # this tab is not the day to discover the link 404s.
+      path: "/terminal",
+      path_label: "Open the terminal"
     },
     # Studio is one tab covering the whole workshop: the library, the routing
     # table, the four editing verbs, the single gated `sound_apply`, and the

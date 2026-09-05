@@ -10,8 +10,7 @@ describe("canonicalGroupKey", () => {
       "/appearance",
       "/notify-settings",
       "/integrations",
-      "/security",
-      "/cmd-list"
+      "/security"
     ]) {
       expect(canonicalGroupKey(p)).toBe("/settings")
     }
@@ -41,8 +40,8 @@ describe("canonicalGroupKey", () => {
 
 describe("labelForPath", () => {
   test("labels a Settings sub-route from the provided map", () => {
-    const labels = {"/appearance": "Settings", "/cmd-list": "Settings"}
+    const labels = {"/appearance": "Settings", "/notify-settings": "Settings"}
     expect(labelForPath("/appearance", labels)).toBe("Settings")
-    expect(labelForPath("/cmd-list", labels)).toBe("Settings")
+    expect(labelForPath("/notify-settings", labels)).toBe("Settings")
   })
 })

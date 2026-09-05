@@ -20,8 +20,7 @@ const TAB_GROUPS = [
       "/appearance",
       "/notify-settings",
       "/integrations",
-      "/security",
-      "/cmd-list"
+      "/security"
     ])
   }
 ]

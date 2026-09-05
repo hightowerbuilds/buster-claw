@@ -399,16 +399,23 @@ defmodule BusterClaw.IntroductionTest do
     assert md =~ "dispatch claim"
   end
 
-  test "documents editing the terminal Cmd List (roles, prompts, the two commands)" do
+  # Inverted 09-05, not deleted. The Cmd List editor and both
+  # `terminal_command_*` verbs were removed, so the briefing must now tell the
+  # model the OPPOSITE — and a model that offers to edit a list it cannot edit
+  # wastes the operator's turn on a refusal. Asserted as an absence for the same
+  # reason the Sketch Pad's was: the failure mode is prose outliving its feature.
+  test "tells the model the terminal command list is read-only, and points at skills" do
     md = Introduction.markdown()
 
-    assert md =~ "Editing the terminal Cmd List"
-    assert md =~ "`terminal_command_list`"
-    assert md =~ "`terminal_command_set`"
-    # Names the editable prompts role and the protected safety surface.
+    refute md =~ "terminal_command_list"
+    refute md =~ "terminal_command_set"
+    refute md =~ "Editing the terminal Cmd List"
+
+    assert md =~ "read-only"
+    assert md =~ "Skills are how new capability gets added"
+
+    # The roles it still lists are real, and the flyout still exists.
     assert md =~ "**prompts**"
-    assert md =~ "protected and refused"
-    assert md =~ "`mailman`"
   end
 
   # The trading section left the agent's guide on 08-08 with the stack it

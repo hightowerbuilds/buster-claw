@@ -69,7 +69,8 @@ Everything you create lives under the workspace folder (`{{WORKSPACE_ROOT}}`):
 - `pockets/` — the operator's typed folders of media, one per Pocket, each with a `POCKET.md` manifest (see **Pockets** below). Their background images live in `pockets/backgrounds/`.
 - `checks/` — saved browser site checks (`browser_check_*`).
 - `sources/` — the operator's corrections to the financial-data source registry.
-- `cmd-list/` — the editable terminal Cmd List.
+- `cmd-list/` — the terminal's command flyout. Read-only since 09-05; the
+  shipped catalog plus anything an older version persisted.
 
 One folder you may see is **deprecated**: `sketches/` holds drawings from the
 Sketch Pad, which was deleted on 09-05. Nothing in the app opens them and
@@ -93,7 +94,7 @@ The **dock** across the bottom of the window has five tabs:
 | **Workspace** | Sub-tabs: **Directory** (the file tree over the folders above) · **Notes** · **Calendar** |
 | **Browser** | The in-app browser, and where an Agent Mode run is mirrored live |
 | **Terminal** | The in-app shell. Each click of the dock item opens a new one |
-| **Settings** | Sub-tabs: **Appearance** · **Notify** · **Integrations** · **Configuration** · **Cmd List** · **Security** |
+| **Settings** | Sub-tabs: **Appearance** · **Notify** · **Integrations** · **Configuration** · **Security** |
 
 **Vox2B** (Home → Vox2B) is the voice surface, with its own sidebar:
 **Create** · **Files** · **Alerts** · **Engine** · **Reading aloud**. Spoken

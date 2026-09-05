@@ -80,7 +80,6 @@ defmodule BusterClawWeb.Router do
       live "/integrations", IntegrationsLive, :index
       live "/security", SecurityLive, :index
       live "/settings", SettingsLive, :index
-      live "/cmd-list", CmdListLive, :index
       live "/appearance", AppearanceLive, :index
       live "/voice", VoiceLive, :index
       live "/notify-settings", NotifySettingsLive, :index

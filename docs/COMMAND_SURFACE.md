@@ -22,11 +22,11 @@ result shape into their transport-specific response format.
 
 ## Active Domains
 
-213 commands as of 09-05 (`./buster-claw commands` is authoritative; the Explained
+211 commands as of 09-05 (`./buster-claw commands` is authoritative; the Explained
 tab's Command List renders the same counts from a contract test):
 
 - Runtime status, orchestration shifts, and in-shift role sessions
-- Visible in-app terminal tabs, and the editable terminal Cmd List
+- Visible in-app terminal tabs
 - Workspace document library
 - The operator's Notes vault (`note_*`) and the Activity record (`journal_*`)
 - Calendar events (the app's own, distinct from Google's)
@@ -122,6 +122,11 @@ These older command-surface areas were removed or retired:
   run, full-text searched by the catalogued `memory_search`.
 - Trading, Portfolio, MarketData, Watchlist and Chart Build — deleted whole on
   08-08 (`293f47f`). `finance_*` (SEC EDGAR + Finnhub) is unrelated and survives.
+- Settings → Cmd List and both `terminal_command_*` verbs, deleted 09-05. The
+  terminal's command flyout is still there and still shipped; what went is the
+  ability to EDIT it — from the page or from an agent. Skills are how new
+  capability gets added now, and a composition skill appears in the terminal's
+  prompts role on its own.
 - The Sketch Pad — six `sketch_*` verbs, its whole context and both its hosts,
   deleted 09-05. **The model's ability to draw is unaffected**: that has always
   been `BusterClaw.SvgViewer`, the chat's SVG channel, which shares nothing with

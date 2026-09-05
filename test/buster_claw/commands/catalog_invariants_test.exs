@@ -277,7 +277,6 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
       sound_transcript_words
       tasks_get
       tasks_list
-      terminal_command_list
       terminal_tab_open
       terminal_theme_list
       voice_bank_list

@@ -27,7 +27,6 @@ defmodule BusterClaw.TerminalCommands do
   alias BusterClaw.Settings
   alias BusterClaw.TerminalCommands.Catalog
   alias BusterClaw.TerminalCommands.Command
-  alias BusterClaw.TerminalCommands.RoleEdit
 
   # File-first storage: the catalog the terminal cmd-list dropdown reads lives
   # in the workspace as `<workspace>/cmd-list/catalog.json` (git-diffable,
@@ -352,229 +351,23 @@ defmodule BusterClaw.TerminalCommands do
     end
   end
 
-  # ---- Editing ---------------------------------------------------------------
-
-  @doc """
-  Build the editor base for a non-protected role: the full merged command list
-  as a `RoleEdit` struct. Returns `nil` for protected or unknown roles.
-  """
-  def role_edit(role_key) when is_binary(role_key) do
-    case Enum.find(load(), &(&1.key == role_key)) do
-      %{protected: false} = role ->
-        %RoleEdit{
-          key: role.key,
-          default_key: Enum.find_value(role.commands, fn c -> if c.default?, do: c.key end),
-          commands:
-            Enum.map(role.commands, fn c ->
-              %Command{
-                id: Ecto.UUID.generate(),
-                key: c.key,
-                label: c.label,
-                description: c.description,
-                command: c.command,
-                kind: Atom.to_string(c.kind),
-                builtin: c.builtin
-              }
-            end)
-        }
-
-      _other ->
-        nil
-    end
-  end
-
-  def role_edit(_role_key), do: nil
-
-  @doc """
-  Apply editor params to a `RoleEdit` base, compute the diff against the
-  shipped catalog, and persist it. New rows get server-minted keys. Returns
-  `{:ok, %{commands_changed: boolean}}` (whether what the terminal would run
-  changed — commands or default, not just labels), `{:error, changeset}`, or
-  `{:error, :protected}`.
-  """
-  def save_role_edit(%RoleEdit{key: role_key} = base, params) do
-    if protected?(role_key) do
-      {:error, :protected}
-    else
-      case Ecto.Changeset.apply_action(RoleEdit.changeset(base, params), :update) do
-        {:ok, edit} -> persist_role_edit(role_key, edit)
-        {:error, changeset} -> {:error, changeset}
-      end
-    end
-  end
-
-  @doc """
-  Agent-facing single-command upsert for a non-protected role — the programmatic
-  equivalent of editing one row in Settings → cmd-list. `attrs` (string keys):
-  `"role_key"` + `"command_key"` are required; optional `"command"` (the
-  command/prompt text), `"label"`, `"description"`. Editing an existing command
-  overrides only the fields supplied; an unknown `command_key` carrying a
-  `"command"` adds a new user command (its `kind` is inferred — `prompt` for the
-  `prompts` role or multiline text, else `shell`).
-
-  Goes through the same diff → `Catalog` validation → persist → broadcast path as
-  the UI, so the terminal flyout refreshes live and On Duty (`mailman`/
-  `agent-setup`) roles are refused. Returns `{:ok, %{commands_changed: boolean}}`
-  (whether what the terminal would run changed), `{:error, :protected |
-  :not_found | :missing_command}`, or `{:error, %Ecto.Changeset{}}`.
-  """
-  def set_command(attrs) when is_map(attrs) do
-    role_key = string_arg(attrs, "role_key")
-    command_key = string_arg(attrs, "command_key")
-
-    cond do
-      is_nil(role_key) or is_nil(command_key) ->
-        {:error, :not_found}
-
-      protected?(role_key) ->
-        {:error, :protected}
-
-      true ->
-        case role_edit(role_key) do
-          nil ->
-            {:error, :not_found}
-
-          %RoleEdit{commands: commands} = base ->
-            case upsert_command(commands, role_key, command_key, command_fields(attrs)) do
-              {:ok, commands} -> persist_role_edit(role_key, %{base | commands: commands})
-              {:error, reason} -> {:error, reason}
-            end
-        end
-    end
-  end
-
-  def set_command(_attrs), do: {:error, :not_found}
-
-  defp upsert_command(commands, role_key, command_key, fields) do
-    case Enum.find_index(commands, &(&1.key == command_key)) do
-      nil ->
-        case Map.get(fields, :command) do
-          text when is_binary(text) and text != "" ->
-            new = %Command{
-              id: Ecto.UUID.generate(),
-              key: command_key,
-              label: Map.get(fields, :label),
-              description: Map.get(fields, :description),
-              command: text,
-              kind: infer_kind(role_key, text),
-              builtin: false
-            }
-
-            {:ok, commands ++ [new]}
-
-          _ ->
-            {:error, :missing_command}
-        end
-
-      index ->
-        updated =
-          commands
-          |> Enum.at(index)
-          |> apply_command_fields(fields)
-
-        {:ok, List.replace_at(commands, index, updated)}
-    end
-  end
-
-  defp apply_command_fields(%Command{} = command, fields) do
-    %Command{
-      command
-      | command: Map.get(fields, :command, command.command),
-        label: Map.get(fields, :label, command.label),
-        description: Map.get(fields, :description, command.description)
-    }
-  end
-
-  # Only the keys actually supplied end up in the field map, so an absent field
-  # keeps its current value; a supplied blank label/description clears it.
-  defp command_fields(attrs) do
-    %{}
-    |> put_field(attrs, "command", :command)
-    |> put_field(attrs, "label", :label)
-    |> put_field(attrs, "description", :description)
-  end
-
-  defp put_field(fields, attrs, str_key, atom_key) do
-    case Map.fetch(attrs, str_key) do
-      {:ok, value} when is_binary(value) -> Map.put(fields, atom_key, blank_to_nil(value))
-      _ -> fields
-    end
-  end
-
-  defp infer_kind("prompts", _text), do: "prompt"
-
-  defp infer_kind(_role_key, text) do
-    if String.contains?(text, "\n"), do: "prompt", else: "shell"
-  end
-
-  defp string_arg(attrs, key) do
-    case Map.get(attrs, key) do
-      value when is_binary(value) -> blank_to_nil(value)
-      _ -> nil
-    end
-  end
-
-  defp blank_to_nil(value) when is_binary(value) do
-    case String.trim(value) do
-      "" -> nil
-      trimmed -> trimmed
-    end
-  end
-
-  defp blank_to_nil(_value), do: nil
+  # ---- Editing: REMOVED 09-05 ------------------------------------------------
+  #
+  # The Settings → Cmd List page and the `terminal_command_set` verb were the
+  # only two ways to write here, and both are gone (operator: "I don't want us
+  # to be having this version of changing commands for our app anymore" — skills
+  # are how new commands get made now).
+  #
+  # What is left is a READ path, and deliberately so. The merge below still
+  # applies a `terminal_commands.catalog` document an earlier version wrote, so
+  # an operator who customised their terminal menu keeps those commands; nothing
+  # can write a new one. The same posture as `sketches/` — stop offering the
+  # feature, do not reach into somebody's data to erase it.
+  #
+  # If a later pass confirms no install carries a customised document, the whole
+  # user-document layer below collapses to `Builtins` and this module halves.
 
   # ---- Private: persistence helpers ------------------------------------------
-
-  defp persist_role_edit(role_key, %RoleEdit{} = edit) do
-    before_snapshot = execution_snapshot(role_key)
-    entry = role_entry(role_key, edit)
-    existing = current_doc_roles()
-
-    roles =
-      if Enum.any?(existing, &(&1["key"] == role_key)) do
-        Enum.flat_map(existing, fn role ->
-          if role["key"] == role_key, do: List.wrap(entry), else: [role]
-        end)
-      else
-        existing ++ List.wrap(entry)
-      end
-
-    case put_catalog(%{"version" => Catalog.version(), "roles" => roles}) do
-      :ok -> {:ok, %{commands_changed: before_snapshot != execution_snapshot(role_key)}}
-      {:error, _reason} = error -> error
-    end
-  end
-
-  # The persisted entry for one role — the FULL role (every command with its
-  # fields), so the workspace `catalog.json` always shows the complete list
-  # rather than a sparse diff. New rows get server-minted keys.
-  defp role_entry(role_key, %RoleEdit{} = edit) do
-    taken = MapSet.new(Enum.map(edit.commands, & &1.key) |> Enum.reject(&is_nil/1))
-
-    {commands, _taken} =
-      Enum.map_reduce(edit.commands, taken, fn c, taken ->
-        key = c.key || mint_key(taken)
-
-        entry =
-          %{"key" => key, "command" => c.command, "kind" => c.kind}
-          |> put_present("label", c.label)
-          |> put_present("description", c.description)
-
-        {entry, MapSet.put(taken, key)}
-      end)
-
-    %{"key" => role_key, "commands" => commands}
-    |> put_present("default_key", edit.default_key)
-  end
-
-  # What the terminal would actually run for a role: command strings + the
-  # startup default. Label/description edits don't count.
-  defp execution_snapshot(role_key) do
-    case Enum.find(load(), &(&1.key == role_key)) do
-      nil -> nil
-      role -> Enum.map(role.commands, &{&1.key, &1.command, &1.default?})
-    end
-  end
 
   defp current_doc_roles do
     case Catalog.migrate(user_doc()) do
@@ -632,13 +425,6 @@ defmodule BusterClaw.TerminalCommands do
 
   defp put_present(map, _key, nil), do: map
   defp put_present(map, key, value), do: Map.put(map, key, value)
-
-  defp mint_key(taken) do
-    key = "cmd-" <> Base.encode16(:crypto.strong_rand_bytes(4), case: :lower)
-    if MapSet.member?(taken, key), do: mint_key(taken), else: key
-  end
-
-  # ---- Private: merge helpers -------------------------------------------------
 
   defp valid_doc_role?(%{"key" => key}) when is_binary(key) do
     String.match?(key, Command.key_format()) and not protected?(key)
