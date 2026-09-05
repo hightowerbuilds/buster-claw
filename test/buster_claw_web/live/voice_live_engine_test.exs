@@ -30,7 +30,8 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
   test "with no engine, it says so and gives the line to fix it", %{conn: conn} do
     absent()
 
-    {:ok, _view, html} = live(conn, ~p"/voice")
+    {:ok, view, _html} = live(conn, ~p"/voice")
+    html = open_tab(view, "engine")
 
     assert html =~ "Not installed"
     assert html =~ "pip install voxcpm"
@@ -51,7 +52,8 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
     Application.put_env(:buster_claw, :voxcpm_path, path)
     Engine.refresh()
 
-    {:ok, _view, html} = live(conn, ~p"/voice")
+    {:ok, view, _html} = live(conn, ~p"/voice")
+    html = open_tab(view, "engine")
 
     assert html =~ "cannot be run"
     refute html =~ "Not installed."
@@ -60,7 +62,8 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
   test "an installed engine reports its path and device, and nothing to click", %{conn: conn} do
     path = stub()
 
-    {:ok, _view, html} = live(conn, ~p"/voice")
+    {:ok, view, _html} = live(conn, ~p"/voice")
+    html = open_tab(view, "engine")
 
     assert html =~ path
     # The install instructions are for people who need them.
@@ -77,7 +80,8 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
 
   test "Check again re-reads the disk, which is the whole point of it", %{conn: conn} do
     absent()
-    {:ok, view, html} = live(conn, ~p"/voice")
+    {:ok, view, _html} = live(conn, ~p"/voice")
+    html = open_tab(view, "engine")
     assert html =~ "Not installed"
 
     # Install it underneath, exactly as an operator would while the page is open.
@@ -111,7 +115,8 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
 
     test "every line is shown and editable", %{conn: conn} do
       absent()
-      {:ok, _view, html} = live(conn, ~p"/voice")
+      {:ok, view, _html} = live(conn, ~p"/voice")
+      html = open_tab(view, "alerts")
 
       for key <- Chimes.keys() do
         assert html =~ ~s(name="lines[#{key}]")
@@ -123,6 +128,7 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
     test "editing a line persists it, and reset puts it back", %{conn: conn} do
       absent()
       {:ok, view, _html} = live(conn, ~p"/voice")
+      _ = open_tab(view, "alerts")
 
       html =
         view
@@ -139,7 +145,8 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
 
     test "with no engine, speaking them is offered but disabled", %{conn: conn} do
       absent()
-      {:ok, _view, html} = live(conn, ~p"/voice")
+      {:ok, view, _html} = live(conn, ~p"/voice")
+      html = open_tab(view, "alerts")
 
       assert html =~ "chime-render-all"
       assert html =~ "Editing works without an engine"
@@ -151,6 +158,7 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
     test "with an engine, the set renders and installs itself", %{conn: conn, root: root} do
       stub_writing_wav(root)
       {:ok, view, _html} = live(conn, ~p"/voice")
+      _ = open_tab(view, "alerts")
 
       view |> element("button[phx-click=chime-render-all]") |> render_click()
 
@@ -188,7 +196,8 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
 
     test "every knob is on the page, and the count says what a change costs", %{conn: conn} do
       absent()
-      {:ok, _view, html} = live(conn, ~p"/voice")
+      {:ok, view, _html} = live(conn, ~p"/voice")
+      html = open_tab(view, "engine")
 
       for field <- ~w(reference_audio control device inference_timesteps cfg_value engine_path) do
         assert html =~ ~s(name="config[#{field}]"), "no control for #{field}"
@@ -203,6 +212,7 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
     } do
       absent()
       {:ok, view, _html} = live(conn, ~p"/voice")
+      _ = open_tab(view, "engine")
 
       html =
         view
@@ -221,6 +231,7 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
       clip = Path.join(root, "me.wav")
       File.write!(clip, "RIFF....")
       {:ok, view, _html} = live(conn, ~p"/voice")
+      _ = open_tab(view, "engine")
 
       html =
         view
@@ -235,6 +246,7 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
       absent()
       assert :ok = Config.put(%{"control" => "gruff"})
       {:ok, view, _html} = live(conn, ~p"/voice")
+      _ = open_tab(view, "engine")
 
       html = view |> element("button[phx-click=engine-config-reset]") |> render_click()
 
@@ -267,7 +279,8 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
       conn: conn
     } do
       absent()
-      {:ok, _view, html} = live(conn, ~p"/voice")
+      {:ok, view, _html} = live(conn, ~p"/voice")
+      html = open_tab(view, "create")
 
       assert html =~ ~s(phx-hook="VoiceRecorder")
       assert html =~ ~s(data-event-take="reference_take")
@@ -285,18 +298,24 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
     } do
       absent()
       {:ok, view, _html} = live(conn, ~p"/voice")
+      _ = open_tab(view, "create")
 
       html = push_take(view, tone(2_500))
 
       assert html =~ "This is your voice now"
       assert Config.cloning?()
-      assert html =~ "in use"
-      assert html =~ "0 of 16"
+
+      # The take is made on Create; what it CHANGED shows on the tabs that own
+      # those facts. Following it across is the point — a recording that saves
+      # and leaves the rest of the surface stale would pass a one-tab assertion.
+      assert open_tab(view, "files") =~ "in use"
+      assert open_tab(view, "engine") =~ "0 of 16"
     end
 
     test "a too-short take says so and changes nothing", %{conn: conn} do
       absent()
       {:ok, view, _html} = live(conn, ~p"/voice")
+      _ = open_tab(view, "create")
 
       html = push_take(view, tone(500))
 
@@ -307,6 +326,7 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
     test "a refused microphone is explained, with where to fix it", %{conn: conn} do
       absent()
       {:ok, view, _html} = live(conn, ~p"/voice")
+      _ = open_tab(view, "create")
 
       html =
         view
@@ -340,6 +360,7 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
       # of occupancy on a queue shared with every other voice suite.
       stub_writing_wav(root)
       {:ok, view, _html} = live(conn, ~p"/voice")
+      _ = open_tab(view, "create")
 
       html =
         view
@@ -364,10 +385,12 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
       #
       # Draining also makes the assertion stronger: the pending row is supposed
       # to BECOME the player, and now that is asserted rather than assumed.
-      assert eventually(fn -> render(view) =~ "/voice-audio/" end),
+      assert eventually(fn -> open_tab(view, "files") =~ "/voice-audio/" end),
              "the pending row never became a player — the render did not land"
 
-      refute render(view) =~ ~s(data-label-running="Making")
+      # And the in-flight row is gone from where it was, rather than lingering
+      # beside a clip that has already landed.
+      refute open_tab(view, "create") =~ ~s(data-label-running="Making")
     end
 
     test "typing a line makes a clip that lands in the list with a player", %{
@@ -376,13 +399,16 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
     } do
       stub_writing_wav(root)
       {:ok, view, _html} = live(conn, ~p"/voice")
+      # Typed on Create, landing on Files — the split the sidebar introduced.
+      _ = open_tab(view, "create")
 
       view
       |> form("form[phx-submit=clip_make]", %{"clip" => %{"text" => "Hello from the test."}})
       |> render_submit()
 
       assert eventually(fn ->
-               render(view) =~ "Hello from the test." and render(view) =~ "/voice-audio/"
+               html = open_tab(view, "files")
+               html =~ "Hello from the test." and html =~ "/voice-audio/"
              end),
              "expected the clip to appear with an audio source"
 
@@ -391,7 +417,8 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
 
     test "without a recording, the clip panel says whose voice it will be", %{conn: conn} do
       absent()
-      {:ok, _view, html} = live(conn, ~p"/voice")
+      {:ok, view, _html} = live(conn, ~p"/voice")
+      html = open_tab(view, "create")
 
       assert html =~ "No recording yet"
     end
@@ -422,6 +449,13 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
   # receives what carries its `phx-target` — which is exactly what the real hook
   # does now (`voice_recorder.js` pushes with `pushEventTo(this.el, …)`). A bare
   # `render_hook(view, …)` would test a path the browser no longer takes.
+  # Vox2B is a SIDEBAR now (09-05): one tab renders at a time, so a test has to
+  # open the one it is about. Written as a helper rather than inline so the tab a
+  # test depends on is one word and stays visible.
+  defp open_tab(view, tab) do
+    view |> element("button[phx-value-tab='#{tab}']") |> render_click()
+  end
+
   defp push_take(view, pcm) do
     view
     |> element("#voice-recorder")
@@ -446,7 +480,8 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
     # confirmed rather than instant, and that an unpublished line says so.
     test "the greeting is shown, editable, and honest about not being published", %{conn: conn} do
       absent()
-      {:ok, view, html} = live(conn, ~p"/voice")
+      {:ok, view, _html} = live(conn, ~p"/voice")
+      html = open_tab(view, "alerts")
 
       assert html =~ "What callers hear"
       # A fragment without an apostrophe: the textarea's contents are HTML
@@ -466,7 +501,8 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
     test "publishing is behind a confirmation, because strangers hear the result",
          %{conn: conn} do
       stub()
-      {:ok, _view, html} = live(conn, ~p"/voice")
+      {:ok, view, _html} = live(conn, ~p"/voice")
+      html = open_tab(view, "alerts")
 
       # Not a nicety: this is the one control in the app that changes what other
       # people experience.
@@ -477,7 +513,8 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
     test "with no engine, the wording is still editable but recording is not offered",
          %{conn: conn} do
       absent()
-      {:ok, _view, html} = live(conn, ~p"/voice")
+      {:ok, view, _html} = live(conn, ~p"/voice")
+      html = open_tab(view, "alerts")
 
       assert html =~ ~r/phx-click="greeting-publish"[^>]*disabled/s
       assert html =~ "The wording can be saved without it"
@@ -486,6 +523,7 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
     test "a blank greeting resets rather than silencing the phone line", %{conn: conn} do
       absent()
       {:ok, view, _html} = live(conn, ~p"/voice")
+      _ = open_tab(view, "alerts")
 
       view
       |> form("form[phx-submit=greeting-save]", %{"greeting" => "   "})

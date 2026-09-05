@@ -40,7 +40,8 @@ defmodule BusterClawWeb.VoxSpokenMessagesTest do
 
   test "the panel is there, and says how the agent reaches it", %{conn: conn} do
     absent()
-    {:ok, _view, html} = live(conn, ~p"/voice")
+    {:ok, view, _html} = live(conn, ~p"/voice")
+    html = open_tab(view, "alerts")
 
     # The heading became "Notes to yourself" when the panel moved into Vox2B's
     # idiom — sections there carry a name, not an eyebrow-plus-shout.
@@ -60,6 +61,7 @@ defmodule BusterClawWeb.VoxSpokenMessagesTest do
   test "with no engine, making one says where to get an engine", %{conn: conn} do
     absent()
     {:ok, view, _html} = live(conn, ~p"/voice")
+    _ = open_tab(view, "alerts")
 
     html =
       view
@@ -74,6 +76,7 @@ defmodule BusterClawWeb.VoxSpokenMessagesTest do
        %{conn: conn, root: root} do
     stub(root)
     {:ok, view, _html} = live(conn, ~p"/voice")
+    _ = open_tab(view, "alerts")
 
     html =
       view
@@ -116,7 +119,8 @@ defmodule BusterClawWeb.VoxSpokenMessagesTest do
     {:ok, %{path: path}} = Messages.create("gone", "Going.")
     assert_receive {:voice_render, _, {:ok, ^path}}, 5_000
 
-    {:ok, view, html} = live(conn, ~p"/voice")
+    {:ok, view, _html} = live(conn, ~p"/voice")
+    html = open_tab(view, "alerts")
     assert html =~ "gone"
 
     html =
@@ -175,4 +179,10 @@ defmodule BusterClawWeb.VoxSpokenMessagesTest do
 
   defp restore(key, nil), do: Application.delete_env(:buster_claw, key)
   defp restore(key, value), do: Application.put_env(:buster_claw, key, value)
+
+  # Vox2B is a sidebar since 09-05: one tab renders at a time, and spoken
+  # messages live under Alerts, beside the routing they end up in.
+  defp open_tab(view, tab) do
+    view |> element("button[phx-value-tab='#{tab}']") |> render_click()
+  end
 end

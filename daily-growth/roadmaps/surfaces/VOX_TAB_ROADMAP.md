@@ -1,8 +1,7 @@
 # Vox — record it, make it say something, put it somewhere
 
-**Scoped 2026-09-05 · Status: Phases 0–2 SHIPPED 09-05, plus `D6`–`D9`. Phase 3
-is three-quarters done sideways — four panels extracted, the rail unbuilt.
-Phase 4 next.**
+**Scoped 2026-09-05 · Status: Phases 0–3 SHIPPED 09-05, plus `D6`–`D10`.
+Phase 4 next — and half of it arrived early, see `D10`.**
 
 > **Green at the close of Phase 1:** 4,343 Elixir tests / 0 failures, bun 352 / 0,
 > credo strict clean, size gate holds on the new file. **Unwalked** — no part of
@@ -198,18 +197,40 @@ every re-list rather than tracked as a job, so this panel does not know when a
 render started and cannot honestly show a clock. `making…` is the whole of what
 it knows.
 
-### Phase 3 — the three-act arrangement
+### Phase 3 — the sidebar ✅ 09-05
 
 Nine panels in a flat stack is the settings page it is trying to stop being.
 Rearrange behind an internal rail — **Train · Make · Assign** — the way
 `PhoneComponent` uses a two-tab rail rather than one long column.
 
-- [x] The panels are their own modules — `components/vox/{engine_settings,
-      chimes,greeting,messages}.ex`, plus `progress.ex`. **Every one of them was
-      extracted to pay for a feature arriving**, never as tidying: the FROZEN cap
-      turned "this needs room" into "then something else leaves", six times.
-- [ ] The rail itself — the keys and the guard as one list (the `F5` lesson)
-- [ ] Engine probe sits in Train; it is the precondition for everything
+- [x] The panels are their own modules — nine files under `components/vox/`.
+      **The first six were extracted to pay for a feature arriving**, never as
+      tidying: the FROZEN cap turned "this needs room" into "then something else
+      leaves", every time.
+- [x] The rail itself — **a SIDEBAR, not a top strip** (operator, 09-05: the flat
+      stack was "quite busy and rough on the eyes"). One list feeds the rail and
+      the `select_vox_tab` guard, the third surface in two days built that way.
+- [x] Engine probe sits with the engine settings, not in Create — it is the
+      machinery, and the operator's split put making first.
+
+**Five tabs, and the split is the operator's own words** — *"the audio creation,
+audio files, and the rest of what is there"*:
+
+| Tab | What it holds |
+|---|---|
+| **Create** | the recorder, the phrase box, and the in-flight row with its clock |
+| **Files** | every take and every clip — and `Use as a sound` |
+| **Alerts** | the 16 chime lines, spoken messages, the phone greeting |
+| **Engine** | is it installed, and the six knobs |
+| **Reading aloud** | `say(1)` — a different engine, and its own tab for that reason |
+
+The in-flight row stays on **Create** rather than moving with the files:
+feedback belongs next to the box you typed in, and a clip appearing on another
+tab while you are still looking at this one is a surprise, not feedback.
+
+`vox_component.ex` went **931 → 741** — the smallest it has ever been, while the
+surface does the most it ever has. What is left there is state, handlers, and a
+five-way dispatch.
 
 ### Phase 4 — one phrase, anywhere (the new part)
 
@@ -286,6 +307,33 @@ when the render lands.
 had to be funded by an extraction: `What it says` is now
 `components/vox/chimes.ex`. Cap went 1026 → 1005 — the feature landed and the
 file got *smaller*, which is the fourth time this tier has produced that outcome.
+
+**`D10` — a clip can become a library sound, and Notify needed no change.**
+Operator, 09-05: *"the assigning of audio to the alerts in the app is overlapping
+with notify… let's just add the clips a user creates with Vox2B to the UI there"*
+— followed by *"Notify doesn't need changing."* Both are satisfied at once,
+because Notify's routing menu is `Sound.list/0`, which reads `sounds/` — and a
+clip lives in `sounds/voice/`, the render cache, which is a **subdirectory and
+therefore invisible to it**. `Clips.install/1` copies one up; the clip appears in
+Notify's dropdown with **not one line changed there**.
+
+It deliberately does **not** call `Sound.assign/2`. Making a clip *available* and
+choosing *where it plays* are different decisions, and the second one stays in
+Notify beside every other sound competing for the slot. `Chimes.install/2` does
+assign, and the difference is the point: a chime IS a routing key's line, a clip
+is a sound you might route anywhere or nowhere.
+
+> **Found while testing it, and it is not ours:** `Sound.resolved/1` falls
+> through to `Sound.path/0` for any key with no explicit assignment, and that is
+> `named_notify() || first_audio()` — **the first audio file in the library,
+> alphabetically**. So adding any file can change what an unrouted alert plays,
+> and `clip-` sorts ahead of most things. Pre-existing library behaviour, pinned
+> by a test that says so out loud rather than asserting something comfortable
+> and false.
+
+This is half of Phase 4 arriving early: a phrase you already made can now be
+heard somewhere, without a second render. What is still missing is doing it from
+*inside* Vox2B — picking the routing key here rather than walking to Notify.
 
 ## Risks
 

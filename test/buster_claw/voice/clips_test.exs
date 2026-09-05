@@ -1,6 +1,7 @@
 defmodule BusterClaw.Voice.ClipsTest do
   use BusterClaw.DataCase, async: false
 
+  alias BusterClaw.Notifications.Sound
   alias BusterClaw.Voice.{Clips, Engine, Renderer}
 
   setup do
@@ -127,4 +128,79 @@ defmodule BusterClaw.Voice.ClipsTest do
 
   defp restore(key, nil), do: Application.delete_env(:buster_claw, key)
   defp restore(key, value), do: Application.put_env(:buster_claw, key, value)
+
+  describe "install/1 — the bridge to Settings → Notify" do
+    test "a clip becomes a library sound, named from its text", %{root: root} do
+      stub(root)
+      {:queued, key} = Clips.make("Stand up and stretch.")
+      assert_receive {:voice_render, ^key, {:ok, path}}, 5_000
+      Clips.record("Stand up and stretch.", path)
+
+      assert {:ok, "clip-stand-up-and-stretch.wav"} = Clips.install(path)
+
+      # The whole point: Notify's routing menu is `Sound.list/0`, and a clip in
+      # `sounds/voice/` is invisible to it until it is copied up. This assertion
+      # is the one that says the feature works, because Notify itself was not
+      # changed at all to offer these.
+      assert "clip-stand-up-and-stretch.wav" in Sound.list()
+    end
+
+    test "installing twice suffixes rather than overwriting", %{root: root} do
+      stub(root)
+      {:queued, key} = Clips.make("Take a break.")
+      assert_receive {:voice_render, ^key, {:ok, path}}, 5_000
+      Clips.record("Take a break.", path)
+
+      assert {:ok, "clip-take-a-break.wav"} = Clips.install(path)
+      assert {:ok, "clip-take-a-break-1.wav"} = Clips.install(path)
+
+      # The library holds the operator's own uploads too. Silently replacing one
+      # of those is the worst available reading of "install".
+      assert "clip-take-a-break.wav" in Sound.list()
+      assert "clip-take-a-break-1.wav" in Sound.list()
+    end
+
+    test "installing does not route it anywhere", %{root: root} do
+      stub(root)
+      {:queued, key} = Clips.make("Nothing routes this.")
+      assert_receive {:voice_render, ^key, {:ok, path}}, 5_000
+      Clips.record("Nothing routes this.", path)
+
+      before = Sound.sound_map()
+      {:ok, name} = Clips.install(path)
+
+      # Available is not the same as chosen. `Chimes.install/2` DOES assign,
+      # because a chime is a routing key's line; a clip is a sound you might
+      # route anywhere or nowhere, and that decision stays in Notify.
+      assert Sound.sound_map() == before
+      refute name in Map.values(Sound.sound_map())
+    end
+
+    # Asserted on `sound_map/0` — the stored ASSIGNMENTS — and not on
+    # `resolved/1`, because the two answer different questions and only the first
+    # one is this function's business.
+    #
+    # `resolved/1` falls through to `Sound.path/0` for any key with no explicit
+    # assignment, and that is `named_notify() || first_audio()` — **the first
+    # audio file in the library, alphabetically**. So adding ANY file can change
+    # what unassigned alerts play, and `clip-` sorts ahead of most things. That
+    # is pre-existing behaviour of the library, not something installing a clip
+    # does, but it is real and this test says so out loud rather than asserting
+    # something comfortable and false.
+    test "a clip can change what UNASSIGNED keys fall back to — by sort order", %{root: root} do
+      stub(root)
+      {:queued, key} = Clips.make("Aaa first alphabetically.")
+      assert_receive {:voice_render, ^key, {:ok, path}}, 5_000
+      Clips.record("Aaa first alphabetically.", path)
+
+      {:ok, name} = Clips.install(path)
+
+      assert Sound.resolved("default") == name,
+             "with nothing assigned, the library's first file IS the fallback"
+    end
+
+    test "a path that is not a clip is refused" do
+      assert {:error, :not_found} = Clips.install("/nope/not-a-clip.wav")
+    end
+  end
 end

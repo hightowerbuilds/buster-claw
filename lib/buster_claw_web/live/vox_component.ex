@@ -52,10 +52,34 @@ defmodule BusterClawWeb.VoxComponent do
   alias BusterClaw.Voice.Messages
   alias BusterClaw.Voice.Reference
   alias BusterClawWeb.Vox.Chimes, as: ChimePanel
+  alias BusterClawWeb.Vox.Create
+  alias BusterClawWeb.Vox.EngineProbe
   alias BusterClawWeb.Vox.EngineSettings
+  alias BusterClawWeb.Vox.Files
   alias BusterClawWeb.Vox.Greeting, as: GreetingPanel
   alias BusterClawWeb.Vox.Messages, as: MessagePanel
-  alias BusterClawWeb.Vox.Progress
+  alias BusterClawWeb.Vox.Reading
+
+  # The sidebar's tabs, in order — ONE list, feeding both the rail and the
+  # `select_vox_tab` guard. Two lists is how Home once shipped a button the
+  # server refused, and it is the third surface in two days to be built this way
+  # on purpose.
+  #
+  # The split is the operator's (09-05): *"the audio creation, audio files, and
+  # the rest of what is there."* Create MAKES audio, Files holds what was made,
+  # Alerts decides where it is heard, Engine is the machinery, and Reading aloud
+  # is a different synthesizer entirely.
+  @vox_tabs [
+    {"create", "Create"},
+    {"files", "Files"},
+    {"alerts", "Alerts"},
+    {"engine", "Engine"},
+    {"reading", "Reading aloud"}
+  ]
+  @vox_tab_keys Enum.map(@vox_tabs, &elem(&1, 0))
+
+  @doc "The Vox2B sidebar tabs, in order. The rail and the guard share this."
+  def vox_tabs, do: @vox_tabs
 
   @doc """
   Forward a host's `Voice.Renderer` broadcast, or a `Task` reply. See the
@@ -83,6 +107,7 @@ defmodule BusterClawWeb.VoxComponent do
   # StatusLive re-renders on every streamed chat token.
   defp load_initial(socket) do
     socket
+    |> assign(:vox_tab, "create")
     |> assign(:engine, Engine.probe())
     # render key -> chime key, so a finished render knows which chime it is.
     # The renderer addresses work by content hash and has no idea these are
@@ -168,6 +193,11 @@ defmodule BusterClawWeb.VoxComponent do
   end
 
   @impl true
+  def handle_event("select_vox_tab", %{"tab" => tab}, socket)
+      when tab in @vox_tab_keys do
+    {:noreply, assign(socket, :vox_tab, tab)}
+  end
+
   def handle_event("engine-recheck", _params, socket) do
     {:noreply, assign(socket, :engine, Engine.refresh())}
   end
@@ -367,6 +397,18 @@ defmodule BusterClawWeb.VoxComponent do
       {:error, reason} ->
         {:noreply, assign(socket, :clip_note, "Could not make it: #{inspect(reason)}")}
     end
+  end
+
+  # The bridge to Settings → Notify, and the reason that page needed no change:
+  # its routing menu is `Sound.list/0`, which cannot see the render cache.
+  def handle_event("clip_install", %{"path" => path}, socket) do
+    note =
+      case Clips.install(path) do
+        {:ok, name} -> "Added #{name} to the sound library — pick it in Settings → Notify."
+        {:error, reason} -> "Could not add it: #{inspect(reason)}"
+      end
+
+    {:noreply, assign(socket, :clip_note, note)}
   end
 
   def handle_event("clip_forget", %{"path" => path}, socket) do
@@ -589,336 +631,104 @@ defmodule BusterClawWeb.VoxComponent do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="ic-vox ic-panel">
-      <%!-- Four acts, in the order the work happens: teach it a voice, make
-            something with it, put that somewhere, and — separately — the Mac's
-            own synthesizer that reads chat aloud. The act labels are sticky, so
-            scrolling nine sections never loses which half of the surface you are
-            in. See `.ic-vox` in app.css for why this is hairlines rather than
-            nine bordered cards. --%>
-      <p class="ic-vox-act">Train</p>
+    <div class="ic-vox ic-panel flex min-h-0 flex-1 gap-0">
+      <%!-- The sidebar. Nine panels in one column was "quite busy and rough on
+            the eyes" (operator, 09-05) — and it was, because the surface holds
+            four unrelated jobs and showed all of them at once. One list feeds the
+            rail and the `select_vox_tab` guard, which is the shape both Home and
+            the Workspace page arrived at the hard way. --%>
+      <nav
+        class="flex w-36 shrink-0 flex-col gap-0.5 border-r border-base-content/12 p-2"
+        role="tablist"
+        aria-label="Vox2B"
+      >
+        <button
+          :for={{key, label} <- vox_tabs()}
+          type="button"
+          role="tab"
+          aria-selected={@vox_tab == key}
+          phx-click="select_vox_tab"
+          phx-value-tab={key}
+          phx-target={@myself}
+          class={[
+            "rounded-sm px-2.5 py-1.5 text-left font-mono text-[0.6875rem] uppercase tracking-wider transition",
+            if(@vox_tab == key,
+              do: "bg-primary text-primary-content",
+              else: "text-base-content/55 hover:bg-base-200 hover:text-base-content"
+            )
+          ]}
+        >
+          {label}
+        </button>
+      </nav>
 
-      <section class="ic-vox-section">
-        <h3>A voice of its own</h3>
-        <p class="ic-vox-hint">
-          <strong>VoxCPM</strong>
-          can be given a voice of its own. It is far slower than real time, so it is used for
-          sounds made once and kept — chimes and the phone greeting, never chat.
-        </p>
-
-        <div class="flex flex-col gap-3 text-sm">
-          <div class="flex items-center gap-2">
-            <%= if @engine.available? do %>
-              <.icon name="hero-check-circle" class="size-4 shrink-0 text-primary" />
-              <span class="ic-vox-note">
-                {@engine.path} · {@engine.device}
-              </span>
-            <% else %>
-              <.icon name="hero-x-circle" class="size-4 shrink-0 text-base-content/40" />
-              <span class="ic-vox-note">{absent_sentence(@engine.reason)}</span>
-            <% end %>
-          </div>
-
-          <pre
-            :if={not @engine.available?}
-            class="overflow-x-auto rounded border border-base-content/15 bg-base-200 p-2.5 text-[0.6875rem]"
-          ><code>{Engine.install_hint()}</code></pre>
-
-          <div class="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              phx-click="engine-recheck"
-              phx-target={@myself}
-              class="btn btn-ghost btn-xs"
-            >
-              Check again
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <EngineSettings.panel
-        config={@engine_config}
-        note={@config_note}
-        made={@chimes_made}
-        target={@myself}
-      />
-
-      <section class="ic-vox-section">
-        <h3>Record it once</h3>
-        <p class="ic-vox-hint">
-          Ten seconds of you talking normally. There is no training step: the recording
-          <strong>is</strong>
-          the learning, and the moment it saves every chime, clip and greeting is spoken in your
-          voice.
-        </p>
-
-        <div class="flex flex-col gap-3 text-sm">
-          <p class="border-l-2 border-base-content/20 pl-3 text-sm italic text-base-content/70">
-            “The quick way to check a microphone is to read a sentence you didn't write,
-            at the speed you'd say it to a friend across a kitchen.”
-          </p>
-
-          <%!-- phx-update="ignore": the hook owns this subtree — the meter, the
-                status line, the button label — and a LiveView re-render must not
-                wipe them mid-take. Same discipline as the Studio's recorder.
-
-                `phx-target` is what routes the hook's two pushes at this component
-                rather than at the host LiveView. A container's ATTRIBUTES still
-                patch when its children are ignored, so the two directives do not
-                fight. See `voice_recorder.js`: it pushes with `pushEventTo(this.el,
-                …)`, which resolves to the LiveView when no `phx-target` is present
-                — which is how the Studio's recorder keeps working untouched. --%>
-          <div
-            id={"#{@id}-recorder"}
-            phx-hook="VoiceRecorder"
-            phx-update="ignore"
-            phx-target={@myself}
-            data-event-take="reference_take"
-            data-event-report="reference_report"
-            class="flex flex-col gap-2"
-          >
-            <div data-role="format" class="font-mono text-[0.625rem] text-base-content/55">
-              opening the microphone…
-            </div>
-
-            <div class="relative h-2 overflow-hidden rounded-sm bg-base-300">
-              <div data-role="target-zone" class="absolute inset-y-0 bg-success/25"></div>
-              <div
-                data-role="meter"
-                class="relative h-full w-0 bg-success transition-[width] duration-75"
-              >
-              </div>
-            </div>
-
-            <div class="flex flex-wrap items-center gap-2 font-mono text-[0.6875rem]">
-              <button type="button" data-role="record" class="btn btn-primary btn-xs">
-                ● Record
-              </button>
-              <span data-role="peak" class="text-base-content/55">peak —</span>
-              <span data-role="clip" class="text-error" hidden>clipped</span>
-              <span data-role="status" class="text-base-content/55"></span>
-            </div>
-          </div>
-
-          <p :if={match?({"denied", _}, @mic_state)} class="ic-vox-note text-error">
-            The microphone was refused. macOS asks once — System Settings → Privacy &amp;
-            Security → Microphone, and allow Buster Claw.
-          </p>
-          <p :if={match?({"unsupported", _}, @mic_state)} class="ic-vox-note">
-            No microphone here. Recording works in the desktop app, not in a browser tab.
-          </p>
-
-          <span class="ic-vox-note">{@ref_note}</span>
-
-          <ul :if={@references != []} class="flex flex-col gap-1.5">
-            <li :for={ref <- @references} class="flex flex-wrap items-center gap-2">
-              <audio
-                controls
-                preload="none"
-                src={~p"/voice-audio/#{ref.name}"}
-                class="h-7 max-w-[15rem]"
-              >
-              </audio>
-              <span class="font-mono text-[0.6875rem] text-base-content/55">{ref.name}</span>
-              <span :if={ref.current?} class="text-[0.6875rem] text-primary">in use</span>
-              <button
-                :if={not ref.current?}
-                type="button"
-                phx-click="reference_use"
-                phx-target={@myself}
-                phx-value-name={ref.name}
-                class="btn btn-ghost btn-xs"
-              >
-                Use this one
-              </button>
-              <button
-                type="button"
-                phx-click="reference_delete"
-                phx-target={@myself}
-                phx-value-name={ref.name}
-                data-claw-confirm={"Delete #{ref.name}?" <> if(ref.current?, do: " It is the voice in use — renders go back to a designed voice.", else: "")}
-                class="btn btn-ghost btn-xs text-error"
-              >
-                Delete
-              </button>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <p class="ic-vox-act">Make</p>
-
-      <section class="ic-vox-section">
-        <h3>Hear yourself</h3>
-        <p class="ic-vox-hint">
-          Type a line and it comes back in your voice — the fastest way to judge a recording.
-        </p>
-
-        <div class="flex flex-col gap-3 text-sm">
-          <form phx-submit="clip_make" phx-target={@myself} class="flex flex-col gap-2">
-            <textarea
-              name="clip[text]"
-              rows="2"
-              maxlength="400"
-              placeholder="Something you'd actually say."
-              class="textarea textarea-bordered w-full text-sm"
-            ><%= @clip_text %></textarea>
-
-            <div class="flex flex-wrap items-center gap-2">
-              <button type="submit" disabled={not @engine.available?} class="btn btn-primary btn-xs">
-                Make it
-              </button>
-              <span :if={not Config.cloning?()} class="ic-vox-note">
-                No recording yet — a designed voice, not yours.
-              </span>
-              <span class="ic-vox-note">{@clip_note}</span>
-            </div>
-          </form>
-
-          <%!-- In flight. `@clip_jobs` has been tracked since this surface was
-                written and rendered NOWHERE — a queued clip showed one sentence
-                and an empty textarea, and the line you had just typed vanished
-                for the several minutes it took to make. These rows are the
-                answer to that: your text stays on screen with a clock beside it,
-                and the row becomes the player when the render lands. --%>
-          <ul :if={@clip_jobs != %{}} class="flex flex-col gap-1.5">
-            <li
-              :for={{key, job} <- @clip_jobs}
-              class="flex flex-wrap items-center gap-2 text-base-content/60"
-            >
-              <Progress.chip id={"#{@id}-clip-#{key}"} since={job.since} />
-              <span class="min-w-0 flex-1 truncate text-xs italic">{job.text}</span>
-            </li>
-          </ul>
-
-          <ul :if={@clips != []} class="flex flex-col gap-1.5">
-            <li :for={clip <- @clips} class="flex flex-wrap items-center gap-2">
-              <audio
-                controls
-                preload="none"
-                src={~p"/voice-audio/#{clip.name}"}
-                class="h-7 max-w-[15rem]"
-              >
-              </audio>
-              <span class="min-w-0 flex-1 truncate text-xs">{clip.text}</span>
-              <button
-                type="button"
-                phx-click="clip_forget"
-                phx-target={@myself}
-                phx-value-path={clip.path}
-                class="btn btn-ghost btn-xs"
-              >
-                Forget
-              </button>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <p class="ic-vox-act">Assign</p>
-
-      <ChimePanel.panel
-        chimes={@chimes}
-        engine={@engine}
-        note={@chime_note}
-        since={@chime_since}
-        target={@myself}
-      />
-
-      <GreetingPanel.panel
-        text={@greeting_text}
-        status={@greeting_status}
-        engine={@engine}
-        note={@greeting_note}
-        since={@greeting_since}
-        id={@id}
-        target={@myself}
-      />
-
-      <MessagePanel.panel
-        messages={@messages}
-        form={@message_form}
-        note={@message_note}
-        id={@id}
-        target={@myself}
-      />
-
-      <%!-- A different engine entirely, and last for that reason: everything
-            above is VoxCPM making a file, this is the Mac's own synthesizer
-            reading chat as it arrives. Keeping them on one surface was the
-            operator's call (`D1`); keeping them in one ACT would have been a
-            claim that they are the same feature. --%>
-      <p class="ic-vox-act">Reading aloud</p>
-
-      <section class="ic-vox-section">
-        <h3>Spoken replies</h3>
-        <p class="ic-vox-hint">
-          Your Mac's own speech synthesizer reads each reply as it arrives — <strong>on-device</strong>, nothing is sent anywhere. Toggle
-          <strong>Voice on / off</strong>
-          in the chat header; a new message stops whatever is being spoken. macOS desktop app only.
-        </p>
-      </section>
-
-      <%!-- The picker's DOM id is namespaced by the component id: two hosts render
-            this surface, and `SplitLive` can put both on one page. A duplicate id
-            would leave `VoicePicker` bound to whichever half mounted first. --%>
-      <section class="ic-vox-section" id={"#{@id}-picker"} phx-hook="VoicePicker">
-        <h3>Which voice</h3>
-        <p class="ic-vox-hint">
-          Choosing one plays it straight away. More install from <strong>System Settings → Accessibility → Spoken Content → System Voice</strong>.
-        </p>
-
-        <div data-voice-unavailable hidden class="ic-vox-note">
-          The speech synthesizer belongs to the desktop app, so there is nothing to pick from in a
-          browser.
+      <div class="min-h-0 flex-1 overflow-y-auto">
+        <div :if={@vox_tab == "create"}>
+          <Create.panel
+            engine={@engine}
+            mic_state={@mic_state}
+            ref_note={@ref_note}
+            clip_text={@clip_text}
+            clip_jobs={@clip_jobs}
+            clip_note={@clip_note}
+            id={@id}
+            target={@myself}
+          />
         </div>
 
-        <div data-voice-controls hidden class="flex flex-col gap-3 text-sm">
-          <label class="flex flex-col gap-1">
-            <span class="ic-eyebrow">Voice</span>
-            <select
-              data-voice-select
-              class="select select-bordered select-sm w-full max-w-sm font-mono text-xs"
-            >
-            </select>
-          </label>
-
-          <label class="flex flex-col gap-1">
-            <span class="ic-eyebrow">
-              Speed <span data-voice-rate-label class="font-mono normal-case"></span>
-            </span>
-            <input
-              type="range"
-              data-voice-rate
-              min="100"
-              max="400"
-              step="5"
-              class="range range-primary range-xs w-full max-w-sm"
-            />
-          </label>
-
-          <div class="flex flex-wrap gap-2">
-            <button type="button" data-voice-audition class="btn btn-ghost btn-xs">
-              Hear it
-            </button>
-            <button type="button" data-voice-reset class="btn btn-ghost btn-xs">
-              Use system default
-            </button>
-          </div>
+        <div :if={@vox_tab == "files"}>
+          <Files.panel
+            references={@references}
+            clips={@clips}
+            ref_note={@ref_note}
+            clip_note={@clip_note}
+            target={@myself}
+          />
         </div>
-      </section>
+
+        <div :if={@vox_tab == "alerts"}>
+          <ChimePanel.panel
+            chimes={@chimes}
+            engine={@engine}
+            note={@chime_note}
+            since={@chime_since}
+            target={@myself}
+          />
+          <MessagePanel.panel
+            messages={@messages}
+            form={@message_form}
+            note={@message_note}
+            id={@id}
+            target={@myself}
+          />
+          <GreetingPanel.panel
+            text={@greeting_text}
+            status={@greeting_status}
+            engine={@engine}
+            note={@greeting_note}
+            since={@greeting_since}
+            id={@id}
+            target={@myself}
+          />
+        </div>
+
+        <div :if={@vox_tab == "engine"}>
+          <EngineProbe.panel engine={@engine} target={@myself} />
+          <EngineSettings.panel
+            config={@engine_config}
+            note={@config_note}
+            made={@chimes_made}
+            target={@myself}
+          />
+        </div>
+
+        <div :if={@vox_tab == "reading"}>
+          <Reading.panel id={@id} />
+        </div>
+      </div>
     </div>
     """
   end
-
-  # Two different problems deserve two different sentences: nothing installed is
-  # a thing to go and do, a file that cannot be run is a broken install.
-  defp absent_sentence(:not_executable),
-    do: "Found, but it cannot be run — the install looks incomplete."
-
-  defp absent_sentence(_),
-    do: "Not installed. Replies are read by your Mac's own voices, which is the default."
 
   defp peak_hint(peak) when peak < 0.1, do: " It is quiet — closer to the mic next time."
   defp peak_hint(_peak), do: ""

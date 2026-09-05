@@ -88,7 +88,12 @@ defmodule BusterClawWeb.RemoteNoticesTest do
     end
 
     test "the voice toggle says where it works rather than sitting dead", %{conn: conn} do
-      {:ok, _view, html} = live(conn, ~p"/voice")
+      {:ok, view, _html} = live(conn, ~p"/voice")
+
+      # Vox2B became a sidebar on 09-05, and the `say(1)` half is its own tab —
+      # a different engine from the rest of the surface. The honesty this asserts
+      # is unchanged; only where it is rendered moved.
+      html = view |> element("button[phx-value-tab='reading']") |> render_click()
 
       text = String.replace(html, ~r/\s+/, " ")
 

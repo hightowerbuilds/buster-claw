@@ -23,7 +23,9 @@ defmodule BusterClaw.Voice.Clips do
   cache, which owns it.
   """
 
+  alias BusterClaw.Notifications.Sound
   alias BusterClaw.Voice.Config
+  alias BusterClaw.Voice.Messages
   alias BusterClaw.Voice.Renderer
 
   @manifest "clips.json"
@@ -55,6 +57,58 @@ defmodule BusterClaw.Voice.Clips do
     rest = Enum.reject(read(), &(&1["text"] == text))
     row = %{"text" => text, "path" => path, "at" => DateTime.utc_now() |> DateTime.to_iso8601()}
     write([row | rest])
+  end
+
+  @doc """
+  Copy a clip into the sound library, so a notification can be routed at it.
+
+  **This is the whole of what Vox2B has to do to reach Settings → Notify.** That
+  page's routing menu is `Sound.list/0`, which reads `sounds/` — and a clip lives
+  in `sounds/voice/`, the render cache, which is a *subdirectory* and therefore
+  invisible to it. Copying one up is all that stands between "a line I made" and
+  "a sound my timer can play", and it means Notify needed no change at all to
+  offer them.
+
+  The library name is derived from the TEXT, not from the cache's content hash:
+  `clip-stand-up-and-stretch.wav` is pickable from a dropdown and
+  `a3f9c1….wav` is not. A name already taken gets a numeric suffix rather than
+  overwriting — the library holds the operator's uploads too, and silently
+  replacing one of those would be the worst possible reading of "install".
+
+  Deliberately does NOT call `Sound.assign/2`. Installing makes a clip
+  *available*; choosing where it plays stays a decision made in Notify, next to
+  every other sound competing for the same slot. `Chimes.install/2` does assign,
+  and that difference is the point: a chime IS a routing key's line, a clip is a
+  sound you might route anywhere or nowhere.
+  """
+  @spec install(String.t()) :: {:ok, String.t()} | {:error, term()}
+  def install(path) when is_binary(path) do
+    with %{text: text} <- Enum.find(list(), &(&1.path == path)) || {:error, :not_found},
+         {:ok, name} <- library_name(text),
+         :ok <- File.mkdir_p(Sound.dir()),
+         :ok <- File.cp(path, Path.join(Sound.dir(), name)) do
+      {:ok, name}
+    else
+      {:error, _} = error -> error
+      other -> {:error, other}
+    end
+  end
+
+  # `clip-` prefixed so the library says where a file came from, and suffixed
+  # rather than overwritten when the name is taken.
+  defp library_name(text) do
+    with {:ok, slug} <- Messages.slug(String.slice(text, 0, 40)) do
+      {:ok, available("clip-#{slug}")}
+    end
+  end
+
+  defp available(base) do
+    taken = Sound.list()
+
+    Enum.find_value(0..99, "#{base}.wav", fn
+      0 -> if "#{base}.wav" not in taken, do: "#{base}.wav"
+      n -> if "#{base}-#{n}.wav" not in taken, do: "#{base}-#{n}.wav"
+    end)
   end
 
   @doc "Every clip whose audio still exists, newest first."
