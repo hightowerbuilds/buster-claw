@@ -1,5 +1,9 @@
 # 09-05-26 — Four things left, and one that never did
 
+**Later-session update:** the on-duty footer indicator became a conditional
+workspace tab, and saved Settings navigation was repaired. See the addendum
+below for that work and its separate validation results.
+
 Seven commits, and five of them are a removal or a move. Voice left Settings, the
 engine's liveness button left, the Sketch Pad left whole, Notes and Calendar left
 Home. The day's last find was the opposite: **a render job that died without
@@ -262,3 +266,56 @@ test can reach either property. Both were verified by reintroducing the defect.
 - **Nothing here has made a real sound yet.** The engine is installed now, which
   makes **Make → Hear yourself** the first thing that would change that. Short
   line first: measured RTF on this Intel means minutes, not seconds.
+
+---
+
+## Later session: a quiet place to watch the shift
+
+Going on duty now reveals an **On duty** tab without taking the operator out
+of Chat. A sticky `DutyTabLive` follows shift broadcasts; `DutyLive` is now the
+routed page at `/duty`. The footer indicator is gone, and **Stand down** lives
+on the page. Ending the shift removes the tab and returns an open duty page to
+Home. The brake still stops new work; an in-flight run finishes.
+
+The page brings together phone/email connection readiness, recent phone events,
+queue status, audit activity, and BC Minutes. `DutyActivity` reads existing
+records from the shift's start, retaining the latest 100 in the feed. The
+original Activity, Security, and phone archive remain intact. Connection
+readiness is labelled **Configured**, not asserted as verified live monitoring:
+Gmail polling still belongs to the existing `on-duty` CLI flow. The agent guide
+now explains that distinction and how to start that flow from Chat.
+
+The operator asked for the same quiet density as chat: small monospace text,
+hairline borders, compact rows, and a restrained stop button. BC Minutes gets
+those refinements only inside the duty page. **Live activity and BC Minutes are
+independently collapsible** using native disclosure controls; LiveView preserves
+their open state during updates while the contents keep receiving activity.
+**Open Email** links directly to `/settings?tab=google`, opening Settings →
+Configuration → Google Workspace.
+
+### A saved URL outlived its page
+
+Clicking Settings exposed a `NoRouteError` at `/cmd-list`: the tab strip had
+remembered a subpage that an earlier commit deleted. Remembered Settings
+destinations are now checked against the current group before navigation, and
+`/cmd-list` redirects to Appearance so an already-open error page recovers on
+reload. Verified against the running app: HTTP 302 to `/appearance`. Tab
+renaming was extracted to its own helper to keep the tab-strip module within
+its existing size cap; the smaller DutyLive module's cap was ratcheted down.
+
+### Validation for this batch
+
+- Assets build, formatting, strict Credo, docs drift, and the two accepted
+  dependency cycles passed. JavaScript reached **346 tests / 0 failures**;
+  the separate Rust check passed **52 tests**, formatting, and Clippy.
+- A full Elixir run passed **4,081 tests plus 7 doctests** before the final
+  presentation changes. The final collapse run had nine database checkout
+  timeouts; all nine passed on targeted rerun. The final duty and Google
+  Workspace navigation checks passed **12 tests**.
+- The duty CSS initially landed after the chat-skin banner, whose test treats
+  the remainder of the file as chat CSS. Moving the scoped duty rules beside
+  the other page styles fixed that failure; the affected CSS and duty tests
+  then passed. A separate voice-chime failure also passed on rerun.
+- **Precommit is not green:** the pre-existing `place_panel.ex` change is 237
+  lines against a 205-line cap. That widget change and the previously generated
+  desktop schema/permission files are outside this commit.

@@ -58,7 +58,7 @@ defmodule BusterClawWeb.RequireOnboarding do
     BusterClawWeb.SoundBoardLive,
     BusterClawWeb.DockLive,
     BusterClawWeb.DockNavLive,
-    BusterClawWeb.DutyLive,
+    BusterClawWeb.DutyTabLive,
     BusterClawWeb.MusicPlayerLive
   ]
 

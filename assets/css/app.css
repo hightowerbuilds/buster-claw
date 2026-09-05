@@ -1014,6 +1014,42 @@ body { background-color: var(--color-base-100); }
   outline-offset: 2px;
 }
 
+/* Duty uses a compact reading surface, including its embedded BC Minutes.
+   Scope these refinements here so the original Activity page keeps its design. */
+#duty-journal .ic-panel {
+  border-width: 1px;
+  border-color: color-mix(in oklch, var(--color-base-content) 10%, transparent);
+  border-radius: 0.25rem;
+  box-shadow: none;
+  background: transparent;
+}
+#duty-journal .font-display {
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.5;
+  text-transform: none;
+  letter-spacing: normal;
+}
+#duty-journal .uppercase {
+  text-transform: none;
+  letter-spacing: normal;
+}
+#duty-journal aside { width: 10rem; }
+#duty-journal aside header { border-width: 0 0 1px; padding: 0.625rem 0.75rem; }
+#duty-journal #activity-summary .absolute { display: none; }
+#duty-journal #activity-summary .font-display { font-size: 1rem; }
+#duty-journal #activity-reading { font-size: 0.75rem; line-height: 1.7; }
+#duty-journal #activity-empty-state { padding: 1.5rem; }
+#duty-journal #activity-empty-state::before,
+#duty-journal #activity-empty-state::after { display: none; }
+#duty-journal #activity-empty-state .rounded-full { display: none; }
+#duty-journal #activity-empty-state p { margin-top: 0.375rem; }
+@media (max-width: 640px) {
+  #duty-journal #home-activity { flex-direction: column; }
+  #duty-journal aside { width: 100%; max-height: 10rem; }
+}
+
 /* ============================================================
    CHAT SKINS — three looks for the homepage chat panel, and the text size that
    scales all three.

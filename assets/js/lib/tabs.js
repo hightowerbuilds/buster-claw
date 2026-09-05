@@ -32,6 +32,18 @@ export function canonicalGroupKey(path) {
   return null
 }
 
+// A remembered Settings subpage can outlive its route (or leave Settings).
+// Validate it against today's group before links and keyboard shortcuts use it.
+export function tabDestination(tab) {
+  if (!tab) return undefined
+  const group = canonicalGroupKey(tab.path)
+  if (group && tab.href) {
+    const [path] = splitPathQuery(tab.href.split("#")[0])
+    return canonicalGroupKey(path) === group ? tab.href : "/appearance"
+  }
+  return tab.href || tab.path
+}
+
 const TAB_STORAGE_KEY = "bc:tabs"
 export const SPLIT_RATIO_KEY = "bc:split-ratio"
 

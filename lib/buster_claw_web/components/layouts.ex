@@ -59,6 +59,7 @@ defmodule BusterClawWeb.Layouts do
                   # no longer a dock item — label it here so the tab strip still
                   # names it when opened directly.
                   "/calendar" => "Calendar",
+                  "/duty" => "On duty",
                   # Left the dock 08-08 (now a Home sub-tab); still reachable by
                   # deep link and in a split pane, so it still needs a label.
                   "/phone" => "Phone",
@@ -216,6 +217,8 @@ defmodule BusterClawWeb.Layouts do
       ]}
     >
       <header class="sticky top-0 z-30">
+        {@socket &&
+          live_render(@socket, BusterClawWeb.DutyTabLive, id: "bc-duty-tab", sticky: true)}
         <%!-- Browser-style tab strip; populated client-side by the TabStrip hook. --%>
         <div
           id="tab-strip"
@@ -275,13 +278,7 @@ defmodule BusterClawWeb.Layouts do
               page (or inside the Music tab's :if) is destroyed on navigation,
               which would stop the music every time you changed tabs. Here it
               outlives both. --%>
-        <%!-- The visible brake (G-30). Sticky for the same reason as its
-              neighbours, and FIRST in this group on purpose: it is the only
-              control here that stops something, and it renders nothing at all
-              when no shift is running — so it costs no width in the common case
-              and is unmissable in the one that matters. --%>
         <div class="ml-auto flex shrink-0 items-center gap-3">
-          {@socket && live_render(@socket, BusterClawWeb.DutyLive, id: "bc-duty-dock", sticky: true)}
           {@socket &&
             live_render(@socket, BusterClawWeb.MusicPlayerLive, id: "bc-music", sticky: true)}
           {@socket && live_render(@socket, BusterClawWeb.DockLive, id: "bc-dock", sticky: true)}

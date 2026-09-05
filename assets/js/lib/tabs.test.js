@@ -1,7 +1,26 @@
 // bun test — pure-logic tests for the tab-strip grouping helpers.
 // Run: bun test assets/js/lib/ (from the repo root)
 import {describe, expect, test} from "bun:test"
-import {canonicalGroupKey, labelForPath} from "./tabs.js"
+import {canonicalGroupKey, labelForPath, tabDestination} from "./tabs.js"
+
+describe("remembered Settings destination", () => {
+  test("removed and moved subpages fall back to Appearance", () => {
+    for (const href of ["/cmd-list", "/cmd-list?tab=commands", "/voice", "/gws", "/get-started"]) {
+      expect(tabDestination({path: "/settings", href})).toBe("/appearance")
+    }
+  })
+
+  test("current subpages retain their query and fragment", () => {
+    expect(tabDestination({path: "/settings", href: "/security?filter=recent#events"}))
+      .toBe("/security?filter=recent#events")
+    expect(tabDestination({path: "/settings", href: "/appearance"})).toBe("/appearance")
+  })
+
+  test("ordinary tabs and Settings with no remembered page keep their destination", () => {
+    expect(tabDestination({path: "/terminal?session=one"})).toBe("/terminal?session=one")
+    expect(tabDestination({path: "/settings"})).toBe("/settings")
+  })
+})
 
 describe("canonicalGroupKey", () => {
   test("Settings sub-routes collapse onto /settings", () => {

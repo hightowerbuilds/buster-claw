@@ -13,6 +13,12 @@
    This opens a shift, syncs Gmail on an interval, and drops **trusted-sender**
    mail onto the queue. `./buster-claw off-duty` stands down — Ctrl-C only stops
    the polling in front of you; the shift keeps running.
+   An **On duty** tab appears at the top of the app without switching your
+   current tab. Open it to see phone/email connection readiness, incoming phone
+   activity, queue progress, and the activity record. **Stand down** now lives
+   there; it stops new work while a run already in progress finishes. The tab
+   disappears when the shift ends. Activity and Security keep their existing
+   records.
 3. **The agent reads its worklist** — the "fridge": `Dispatch.md`. A live,
    always-current list of open items grouped by job. Tell your agent to read it.
 4. **The agent pulls and acts:**

@@ -71,8 +71,12 @@ defmodule BusterClawWeb.Router do
   scope "/", BusterClawWeb do
     pipe_through :browser
 
+    # Older tab storage can still point at the retired command-list editor.
+    get "/cmd-list", LegacySettingsController, :index
+
     live_session :default, on_mount: [BusterClawWeb.RequireOnboarding] do
       live "/", StatusLive, :home
+      live "/duty", DutyLive, :index
       live "/browse", BrowseLive, :index
       live "/split", SplitLive, :index
       live "/terminal", TerminalLive, :index

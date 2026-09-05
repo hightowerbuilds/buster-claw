@@ -1,10 +1,13 @@
-import {canonicalGroupKey, loadTabs, saveTabs, labelForPath, openNewTerminalTab, anyTerminalBusy} from "../lib/tabs.js"
+import {canonicalGroupKey, loadTabs, saveTabs, labelForPath, openNewTerminalTab, anyTerminalBusy, tabDestination} from "../lib/tabs.js"
 import {escapeHtml} from "../lib/html.js"
+import {TabRename} from "./tab_rename.js"
+import {dutyTabs} from "./duty_tab.js"
 
 // Browser-style tab strip. Open routes are persisted client-side in
 // localStorage so they survive LiveView navigations; the dock buttons open
 // routes, and each open route shows up here as a tab with a close (×) button.
 export const TabStrip = {
+  ...TabRename,
   mounted() {
     this.labels = this.parseLabels()
     this.el.addEventListener("click", (e) => this.onClick(e))
@@ -25,6 +28,8 @@ export const TabStrip = {
     this.el.addEventListener("keydown", (e) => this.onRenameKeydown(e))
     this.el.addEventListener("focusout", (e) => this.onRenameBlur(e))
     this.onNav = () => {this.closeMenu(); this.sync(); this.render()}
+    this.onDuty = () => {this.sync(); this.render()}
+    window.addEventListener("bc:duty-changed", this.onDuty)
     // Re-render on every LiveView navigation so the active tab tracks the URL.
     window.addEventListener("phx:page-loading-stop", this.onNav)
     // BrowseLive pushes the loaded page's title/url so the tab reflects it.
@@ -55,6 +60,7 @@ export const TabStrip = {
     this.reconcileBrowserSurfaces()
   },
   destroyed() {
+    window.removeEventListener("bc:duty-changed", this.onDuty)
     this.closeMenu()
     if (window.__bcMenuShortcut) delete window.__bcMenuShortcut
     window.removeEventListener("phx:page-loading-stop", this.onNav)
@@ -81,7 +87,9 @@ export const TabStrip = {
   parseLabels() {
     try { return JSON.parse(this.el.dataset.labels || "{}") } catch (_e) { return {} }
   },
-  load() { return loadTabs() },
+  load() {
+    return dutyTabs(loadTabs(), document.getElementById("duty-tab-state")?.dataset.active === "true")
+  },
   save(tabs) { saveTabs(tabs) },
   // Tab key is the full path incl. query, so multiple /browse tabs
   // (each /browse?t=<id>) are distinct, independent tabs. Any Settings
@@ -130,7 +138,7 @@ export const TabStrip = {
   // group tab it's the remembered last sub-route (`href`), so Settings reopens
   // on the sub-tab you were last on rather than the canonical default.
   navTarget(tab) {
-    return (tab && tab.href) || (tab && tab.path)
+    return tabDestination(tab)
   },
   // A loaded page tells us its title/url; reflect both on the current tab so
   // it shows the page title (not "Browse") and can carry the url into a split.
@@ -189,52 +197,16 @@ export const TabStrip = {
         `class="w-32 max-w-[12rem] bg-transparent text-sm outline-none" /></span>`
     }
     const href = escapeHtml(this.navTarget(tab))
+    if (tab.path === "/duty") {
+      return `<span class="${wrap} text-primary" data-path="/duty">` +
+        `<span class="size-2 rounded-full bg-primary animate-pulse" aria-hidden="true"></span>` +
+        `<a id="duty-tab" href="/duty" data-phx-link="redirect" data-phx-link-state="push">On duty</a></span>`
+    }
     return `<span class="${wrap}" data-path="${path}" draggable="true">` +
       `<a href="${href}" draggable="false" data-phx-link="redirect" data-phx-link-state="push" class="max-w-[12rem] truncate">${label}</a>` +
       `<button type="button" data-close="${path}" aria-label="Close ${label}" ` +
       `class="grid size-4 shrink-0 place-items-center rounded text-base-content/40 hover:bg-base-300 hover:text-base-content">&times;</button>` +
       `</span>`
-  },
-  // ----- Double-click rename -----
-  onRenameStart(e) {
-    const tab = e.target.closest("[data-path]")
-    if (!tab) return
-    e.preventDefault()
-    this.editingPath = tab.getAttribute("data-path")
-    this.render()
-  },
-  onRenameKeydown(e) {
-    if (!e.target.closest("[data-tab-edit]")) return
-    if (e.key === "Enter") {
-      e.preventDefault()
-      this.commitRename(e.target.value)
-    } else if (e.key === "Escape") {
-      e.preventDefault()
-      this.cancelRename()
-    }
-  },
-  onRenameBlur(e) {
-    const input = e.target.closest("[data-tab-edit]")
-    if (input) this.commitRename(input.value)
-  },
-  commitRename(value) {
-    if (!this.editingPath) return
-    const path = this.editingPath
-    this.editingPath = null
-    const name = String(value || "").trim()
-    if (name) {
-      const tabs = this.load()
-      const tab = tabs.find((t) => t.path === path)
-      if (tab) {
-        tab.label = name
-        this.save(tabs)
-      }
-    }
-    this.render()
-  },
-  cancelRename() {
-    this.editingPath = null
-    this.render()
   },
   onClick(e) {
     const newTab = e.target.closest("[data-newtab]")
@@ -305,6 +277,7 @@ export const TabStrip = {
     return tabPath
   },
   joinTabs(a, b) {
+    if (a === "/duty" || b === "/duty") return
     // Don't join a tab to itself or nest splits inside splits.
     if (!a || !b || a === b) return
     if (a.split("?")[0] === "/split" || b.split("?")[0] === "/split") return
@@ -546,6 +519,7 @@ export const TabStrip = {
     this.menuPath = null
   },
   async closeTab(path) {
+    if (path === "/duty") return
     const tabs = this.load()
     const idx = tabs.findIndex((t) => t.path === path)
     if (idx === -1) return

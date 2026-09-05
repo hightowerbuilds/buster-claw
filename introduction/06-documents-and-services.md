@@ -41,6 +41,19 @@ deliberately.
 A **shift** is the unit of "Buster Claw is on duty". It runs until stopped —
 there is no fixed window.
 
+When the operator asks in Chat to go on duty, use `./buster-claw on-duty`.
+It starts an unattended shift and runs the Gmail polling loop; keep that
+long-running command alive using your background-process facility. Starting a
+shift alone does not start email polling. Phone intake uses the app's existing
+relay drain, which needs its connection configured.
+
+An **On duty** tab appears automatically while the shift is active, without
+switching away from Chat. It shows phone and email connection readiness, live
+activity, and BC Minutes. The operator can **Stand down** there to stop new
+work; a run already in progress finishes. Existing Activity and Security views
+keep their records. Do not claim a service is connected just because a shift
+started.
+
     ./buster-claw run runtime_status        # process + system snapshot
     ./buster-claw run shift_status          # active? plus counts
     ./buster-claw run shift_start --json '{…}'
@@ -113,4 +126,3 @@ Filings and fundamentals come from SEC EDGAR and are as authoritative as
 finance data gets — prefer them to a web search when the question is about
 what a company actually reported. Quotes and news need `FINNHUB_API_KEY`; if
 it isn't configured, say so rather than substituting a number off a webpage.
-

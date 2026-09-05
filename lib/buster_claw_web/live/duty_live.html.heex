@@ -1,0 +1,126 @@
+<Layouts.app flash={@flash} socket={@socket}>
+  <section :if={@shift} id="duty-page" class="space-y-4 font-mono text-xs leading-relaxed">
+    <header class="flex flex-wrap items-start justify-between gap-4 border-b border-base-content/10 pb-4">
+      <div>
+        <p class="flex items-center gap-2 text-[11px] font-medium text-base-content/60">
+          <span class="size-1.5 rounded-full bg-primary" aria-hidden="true"></span> On duty
+        </p>
+        <h1 class="mt-1 text-sm font-medium tracking-normal">
+          Buster Claw is on watch
+        </h1>
+        <p id="duty-mode" class="mt-1 text-[11px] text-base-content/50">
+          {if @shift.unattended,
+            do: "Working on its own",
+            else: "Working with your terminal agent"} · Since {Calendar.strftime(
+            @shift.started_at,
+            "%H:%M UTC · %b %d"
+          )}
+        </p>
+      </div>
+      <div class="max-w-xs sm:text-right">
+        <button
+          id="bc-duty-stand-down"
+          type="button"
+          phx-click="stand_down"
+          class="rounded border border-base-content/20 px-3 py-1.5 text-[11px] font-medium text-base-content/70 transition hover:border-primary/50 hover:bg-primary/5 hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          Stand down
+        </button>
+        <p id="duty-stop-limit" class="mt-1.5 text-[10px] leading-relaxed text-base-content/45">
+          Stops new work at once · a run in progress finishes.
+        </p>
+      </div>
+    </header>
+
+    <div class="grid gap-3 sm:grid-cols-2">
+      <.channel
+        id="duty-phone"
+        icon="hero-phone"
+        label="Phone"
+        ready={@phone_ready}
+        detail="Incoming calls, voicemail, and texts. Trusted requests become queue work."
+        href={~p"/phone"}
+      />
+      <.channel
+        id="duty-email"
+        icon="hero-envelope"
+        label="Email"
+        ready={@email_ready}
+        detail={
+          if @email_ready,
+            do: @email_label,
+            else: "Connect Google to receive trusted email requests."
+        }
+        href={~p"/settings?tab=google"}
+      />
+    </div>
+
+    <details
+      id="duty-live-section"
+      open
+      phx-mounted={JS.ignore_attributes(["open"])}
+      class="group overflow-hidden rounded border border-base-content/10"
+    >
+      <summary
+        id="duty-live-toggle"
+        class="flex cursor-pointer list-none flex-wrap items-center gap-2 px-3 py-2.5 transition hover:bg-base-content/3 focus-visible:outline-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden"
+      >
+        <.icon
+          name="hero-chevron-right"
+          class="size-3 text-base-content/40 transition-transform group-open:rotate-90"
+        />
+        <span class="flex-1 text-xs font-medium">Live activity</span>
+        <span class="text-[10px] text-base-content/40">
+          Latest 100 records since this shift began
+        </span>
+      </summary>
+      <div
+        id="duty-activity"
+        phx-update="stream"
+        class="max-h-[32rem] overflow-y-auto divide-y divide-base-content/10 border-t border-base-content/10"
+      >
+        <div id="duty-activity-empty" class="hidden only:block px-4 py-8 text-center">
+          <.icon name="hero-signal" class="mx-auto size-4 text-base-content/30" />
+          <p class="mt-2 text-xs font-medium text-base-content/65">Ready for the next request</p>
+          <p class="mt-1 text-[11px] text-base-content/45">
+            Phone events, queue progress, and agent activity appear here as they arrive.
+          </p>
+        </div>
+        <article
+          :for={{id, event} <- @streams.activity}
+          id={id}
+          class="px-3 py-2.5 transition hover:bg-base-content/3"
+        >
+          <div class="flex flex-wrap justify-between gap-2 font-mono text-[10px] text-base-content/40">
+            <span class="text-base-content/55">{event.label}</span>
+            <time datetime={DateTime.to_iso8601(event.at)}>
+              {Calendar.strftime(event.at, "%H:%M:%S UTC")}
+            </time>
+          </div>
+          <p class="mt-0.5 break-words text-xs text-base-content/80">{event.message}</p>
+        </article>
+      </div>
+    </details>
+
+    <details
+      id="duty-journal"
+      open
+      phx-mounted={JS.ignore_attributes(["open"])}
+      class="group overflow-hidden rounded border border-base-content/10"
+    >
+      <summary
+        id="duty-journal-toggle"
+        class="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 transition hover:bg-base-content/3 focus-visible:outline-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden"
+      >
+        <.icon
+          name="hero-chevron-right"
+          class="size-3 text-base-content/40 transition-transform group-open:rotate-90"
+        />
+        <span class="text-xs font-medium">BC Minutes</span>
+      </summary>
+      <div class="flex min-h-[20rem] flex-col border-t border-base-content/10 p-3">
+        <.live_component module={BusterClawWeb.ActivityComponent} id="duty-minutes" />
+      </div>
+    </details>
+  </section>
+</Layouts.app>

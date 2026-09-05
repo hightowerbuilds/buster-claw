@@ -9,6 +9,7 @@ import {AgentChat, ThinkingTimer, QueueRail} from "./chat.js"
 import {CrtAberration} from "./crt.js"
 import {CalendarDrag} from "./calendar.js"
 import {TabStrip} from "./tab_strip.js"
+import {DutyTab} from "./duty_tab.js"
 import {SplitResizer} from "./split.js"
 import {TerminalView, TermThemePicker} from "./terminal.js"
 import {DockNewTerminal} from "./dock_terminal.js"
@@ -56,6 +57,7 @@ export const Hooks = {
   EmbeddedBrowser,
   CalendarDrag,
   TabStrip,
+  DutyTab,
   SplitResizer,
   TerminalView,
   TermThemePicker,
