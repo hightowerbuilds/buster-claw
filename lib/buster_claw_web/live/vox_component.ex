@@ -50,6 +50,8 @@ defmodule BusterClawWeb.VoxComponent do
   alias BusterClaw.Voice.Engine
   alias BusterClaw.Voice.Greeting
   alias BusterClaw.Voice.Reference
+  alias BusterClawWeb.Vox.Chimes, as: ChimePanel
+  alias BusterClawWeb.Vox.Progress
 
   @doc """
   Forward a host's `Voice.Renderer` broadcast, or a `Task` reply. See the
@@ -83,10 +85,15 @@ defmodule BusterClawWeb.VoxComponent do
     # notification lines; this map is the only thing that does.
     |> assign(:chime_jobs, %{})
     |> assign(:chime_task, nil)
+    # Monotonic ms from when each slow job started, so the render chip's clock
+    # survives the homepage discarding this panel on a tab switch. nil means
+    # nothing is in flight — which is also what hides each chip.
+    |> assign(:chime_since, nil)
     |> assign(:chime_note, nil)
     # The render key of a greeting being made, so its completion knows to
     # publish rather than just sit in the cache.
     |> assign(:greeting_job, nil)
+    |> assign(:greeting_since, nil)
     |> assign(:greeting_note, nil)
     |> assign(:config_note, nil)
     |> load_chimes()
@@ -170,6 +177,7 @@ defmodule BusterClawWeb.VoxComponent do
       {:noreply,
        socket
        |> assign(:chime_task, task.ref)
+       |> assign(:chime_since, System.monotonic_time(:millisecond))
        |> assign(
          :chime_note,
          "Making all #{length(Chimes.keys())} — one model load for the set. " <>
@@ -309,11 +317,15 @@ defmodule BusterClawWeb.VoxComponent do
          |> assign(:clip_note, "Already made — it is in the list.")}
 
       {:queued, key} ->
+        job = %{text: String.trim(text), since: System.monotonic_time(:millisecond)}
+
         {:noreply,
          socket
-         |> update(:clip_jobs, &Map.put(&1, key, String.trim(text)))
+         |> update(:clip_jobs, &Map.put(&1, key, job))
          |> assign(:clip_text, "")
-         |> assign(:clip_note, "Making it. A short line is a few minutes on this machine.")}
+         # The note is gone: the pending row below now says the same thing with a
+         # clock attached, and two places describing one job disagree eventually.
+         |> assign(:clip_note, nil)}
 
       {:error, :empty_text} ->
         {:noreply, assign(socket, :clip_note, "Type something first.")}
@@ -362,7 +374,8 @@ defmodule BusterClawWeb.VoxComponent do
         {:noreply,
          socket
          |> assign(:greeting_job, key)
-         |> assign(:greeting_note, "Recording the greeting. This takes a while.")}
+         |> assign(:greeting_since, System.monotonic_time(:millisecond))
+         |> assign(:greeting_note, nil)}
 
       {:error, reason} ->
         {:noreply, assign(socket, :greeting_note, "Could not record it: #{inspect(reason)}")}
@@ -387,7 +400,7 @@ defmodule BusterClawWeb.VoxComponent do
   defp handle_notify({:voice_render, render_key, result}, socket) when is_binary(render_key) do
     cond do
       render_key == socket.assigns.greeting_job ->
-        socket = assign(socket, :greeting_job, nil)
+        socket = socket |> assign(:greeting_job, nil) |> assign(:greeting_since, nil)
 
         case result do
           {:ok, path} ->
@@ -398,7 +411,7 @@ defmodule BusterClawWeb.VoxComponent do
         end
 
       Map.has_key?(socket.assigns.clip_jobs, render_key) ->
-        {text, jobs} = Map.pop(socket.assigns.clip_jobs, render_key)
+        {%{text: text}, jobs} = Map.pop(socket.assigns.clip_jobs, render_key)
         socket = assign(socket, :clip_jobs, jobs)
 
         case result do
@@ -424,7 +437,7 @@ defmodule BusterClawWeb.VoxComponent do
   defp handle_notify({:task, ref, result}, socket) when is_reference(ref) do
     if ref == socket.assigns.chime_task do
       Process.demonitor(ref, [:flush])
-      socket = assign(socket, :chime_task, nil)
+      socket = socket |> assign(:chime_task, nil) |> assign(:chime_since, nil)
 
       case result do
         {:ok, results} -> install_set(socket, results)
@@ -780,6 +793,22 @@ defmodule BusterClawWeb.VoxComponent do
             </div>
           </form>
 
+          <%!-- In flight. `@clip_jobs` has been tracked since this surface was
+                written and rendered NOWHERE — a queued clip showed one sentence
+                and an empty textarea, and the line you had just typed vanished
+                for the several minutes it took to make. These rows are the
+                answer to that: your text stays on screen with a clock beside it,
+                and the row becomes the player when the render lands. --%>
+          <ul :if={@clip_jobs != %{}} class="flex flex-col gap-1.5">
+            <li
+              :for={{key, job} <- @clip_jobs}
+              class="flex flex-wrap items-center gap-2 text-base-content/60"
+            >
+              <Progress.chip id={"#{@id}-clip-#{key}"} since={job.since} />
+              <span class="min-w-0 flex-1 truncate text-xs italic">{job.text}</span>
+            </li>
+          </ul>
+
           <ul :if={@clips != []} class="flex flex-col gap-1.5">
             <li :for={clip <- @clips} class="flex flex-wrap items-center gap-2">
               <audio
@@ -806,69 +835,13 @@ defmodule BusterClawWeb.VoxComponent do
 
       <p class="ic-vox-act">Assign</p>
 
-      <section class="ic-vox-section">
-        <h3>What it says</h3>
-        <p class="ic-vox-hint">
-          One line per notification. Each is made once and kept, so nothing renders while a timer
-          is going off.
-        </p>
-
-        <form phx-submit="chime-lines-save" phx-target={@myself} class="flex flex-col gap-3">
-          <div class="ic-vox-lines">
-            <%!-- Three columns rather than sixteen flex rows that each decide
-                  their own width: at this density the labels not lining up is
-                  the first thing the eye catches.
-
-                  The per-row wrapper is `display: contents` so the three cells
-                  are the grid's items, not the wrapper. `:for` has to wrap SOME
-                  element, and the tempting one — `<template>` — is a trap: its
-                  contents are inert, so the rows would render invisible and the
-                  inputs would never submit, while every string assertion in the
-                  suite still passed because the markup is present in the HTML. --%>
-            <div :for={row <- @chimes} class="ic-vox-line">
-              <span class="font-mono text-[0.6875rem] uppercase tracking-wide text-base-content/55">
-                {row.label}
-              </span>
-              <input
-                type="text"
-                name={"lines[#{row.key}]"}
-                value={row.line}
-                maxlength="120"
-                class="input input-bordered input-xs min-w-0 text-sm"
-              />
-              <span class="w-4 text-primary">
-                <.icon :if={row.installed?} name="hero-check" class="size-3.5" />
-              </span>
-            </div>
-          </div>
-
-          <div class="flex flex-wrap items-center gap-2">
-            <button type="submit" class="btn btn-primary btn-xs">Save lines</button>
-            <button
-              type="button"
-              phx-click="chime-lines-reset"
-              phx-target={@myself}
-              class="btn btn-ghost btn-xs"
-            >
-              Reset
-            </button>
-            <button
-              type="button"
-              phx-click="chime-render-all"
-              phx-target={@myself}
-              disabled={not @engine.available?}
-              class="btn btn-ghost btn-xs"
-            >
-              Speak them
-            </button>
-            <span class="ic-vox-note">{@chime_note}</span>
-          </div>
-
-          <p :if={not @engine.available?} class="ic-vox-note">
-            Editing works without an engine — speaking them needs one.
-          </p>
-        </form>
-      </section>
+      <ChimePanel.panel
+        chimes={@chimes}
+        engine={@engine}
+        note={@chime_note}
+        since={@chime_since}
+        target={@myself}
+      />
 
       <section class="ic-vox-section">
         <h3>What callers hear</h3>
@@ -911,7 +884,7 @@ defmodule BusterClawWeb.VoxComponent do
                 type="button"
                 phx-click="greeting-publish"
                 phx-target={@myself}
-                disabled={not @engine.available?}
+                disabled={not @engine.available? or @greeting_since != nil}
                 data-claw-confirm="This changes what every caller hears when they phone your number. Record and publish it?"
                 class="btn btn-ghost btn-xs"
               >
@@ -929,7 +902,13 @@ defmodule BusterClawWeb.VoxComponent do
                 Take it down
               </button>
 
-              <span class="ic-vox-note">{@greeting_note}</span>
+              <Progress.chip
+                :if={@greeting_since}
+                id={"#{@id}-greeting"}
+                since={@greeting_since}
+                label="Recording"
+              />
+              <span :if={is_nil(@greeting_since)} class="ic-vox-note">{@greeting_note}</span>
             </div>
           </form>
 

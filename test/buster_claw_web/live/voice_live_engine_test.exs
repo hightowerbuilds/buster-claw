@@ -320,6 +320,33 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
       assert html =~ "Privacy"
     end
 
+    # The operator, 09-05: "we need a little animation that shows that the model
+    # is building out the line that we're creating instead of just having it as
+    # text." Before this, a queued clip showed one sentence and an empty
+    # textarea — the line you had just typed left the screen for the several
+    # MINUTES the render takes on a CPU.
+    test "a line being made stays on screen with a live clock beside it", %{
+      conn: conn,
+      root: root
+    } do
+      stub_writing_wav_slowly(root, 2)
+      {:ok, view, _html} = live(conn, ~p"/voice")
+
+      html =
+        view
+        |> form("form[phx-submit=clip_make]", %{"clip" => %{"text" => "Still being made."}})
+        |> render_submit()
+
+      # The text survives the submit rather than vanishing into a note.
+      assert html =~ "Still being made."
+
+      # And it carries the timer, with the server's own elapsed baseline — the
+      # attribute that stops a tab switch from restarting the clock at zero.
+      assert html =~ ~s(phx-hook="ThinkingTimer")
+      assert html =~ ~s(data-label-running="Making")
+      assert html =~ "data-elapsed-ms"
+    end
+
     test "typing a line makes a clip that lands in the list with a player", %{
       conn: conn,
       root: root
@@ -443,6 +470,22 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
 
       assert Greeting.text() == Greeting.default_text()
     end
+  end
+
+  # The in-flight state is invisible against the instant stub — the render lands
+  # before the first `render/1`. This one sleeps first, so "being made" is a state
+  # the page is actually in when we look at it. Kept short: the assertion is that
+  # the row EXISTS, not how long it lasts.
+  defp stub_writing_wav_slowly(root, seconds) do
+    path = stub_writing_wav(root)
+
+    File.write!(
+      path,
+      File.read!(path) |> String.replace("#!/bin/sh\n", "#!/bin/sh\nsleep #{seconds}\n")
+    )
+
+    File.chmod!(path, 0o755)
+    path
   end
 
   defp stub_writing_wav(root) do

@@ -48,14 +48,30 @@ export const AgentChat = {
   },
 }
 
-// Live chat "thinking" timer. While data-state="running" it ticks up from the
-// moment it mounted (no server round-trips); when the first token lands the
-// server flips data-state="done" with the authoritative data-ms, and we freeze
-// the label to that. The element only exists while a turn is in flight, so
-// mount/destroy bound the timer's lifetime.
+// Live "something slow is happening" timer. While data-state="running" it ticks
+// up client-side (no server round-trips); when the work lands the server flips
+// data-state="done" with the authoritative data-ms and we freeze the label to
+// that. The element only exists while the work is in flight, so mount/destroy
+// bound the timer's lifetime.
+//
+// Two call sites, and the differences between them are data attributes rather
+// than a second copy of this — the same move `voice_recorder.js` made when the
+// Vox2B recorder needed its event names (09-03):
+//
+//   * data-label-running / data-label-done — the chat says "Thinking"/"Thought",
+//     Vox2B says "Making"/"Made". Defaulted, so the chat's markup is unchanged.
+//   * data-elapsed-ms — how long the work had ALREADY been running when this
+//     element mounted. The chat needs no offset: its chip exists for the whole
+//     turn. Vox2B does, because the homepage discards the tab's panel on a tab
+//     switch — without this, wandering off to Chat and back would remount the
+//     timer and cheerfully report "0.2s" into a four-minute render. Read ONCE in
+//     mounted() on purpose: re-reading it on every update would make the label
+//     jump every time an unrelated assign changed.
 export const ThinkingTimer = {
   mounted() {
     this.labelEl = this.el.querySelector("[data-thinking-label]")
+    const offset = parseInt(this.el.dataset.elapsedMs, 10)
+    this.offsetMs = isNaN(offset) ? 0 : Math.max(0, offset)
     this.render()
   },
   updated() {
@@ -68,7 +84,7 @@ export const ThinkingTimer = {
     if (this.el.dataset.state === "done") {
       this.stop()
       const ms = parseInt(this.el.dataset.ms, 10)
-      this.setLabel("Thought " + this.fmt(isNaN(ms) ? 0 : ms))
+      this.setLabel(this.doneLabel() + " " + this.fmt(isNaN(ms) ? 0 : ms))
     } else {
       if (this.startedAt == null) this.startedAt = performance.now()
       if (!this.timer) this.timer = setInterval(() => this.tick(), 100)
@@ -76,7 +92,15 @@ export const ThinkingTimer = {
     }
   },
   tick() {
-    if (this.startedAt != null) this.setLabel("Thinking " + this.fmt(performance.now() - this.startedAt))
+    if (this.startedAt == null) return
+    const ms = (this.offsetMs || 0) + performance.now() - this.startedAt
+    this.setLabel(this.runningLabel() + " " + this.fmt(ms))
+  },
+  runningLabel() {
+    return this.el.dataset.labelRunning || "Thinking"
+  },
+  doneLabel() {
+    return this.el.dataset.labelDone || "Thought"
   },
   stop() {
     if (this.timer) {

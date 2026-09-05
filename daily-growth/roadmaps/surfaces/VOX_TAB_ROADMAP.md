@@ -1,6 +1,7 @@
 # Vox — record it, make it say something, put it somewhere
 
-**Scoped 2026-09-05 · Status: Phases 0–1 SHIPPED 09-05, plus `D6`–`D8`. Phase 2 next.**
+**Scoped 2026-09-05 · Status: Phases 0–1 SHIPPED 09-05, plus `D6`–`D9` and the
+first cut of Phase 3. Phase 2 next.**
 
 > **Green at the close of Phase 1:** 4,343 Elixir tests / 0 failures, bun 352 / 0,
 > credo strict clean, size gate holds on the new file. **Unwalked** — no part of
@@ -230,6 +231,33 @@ The `ic-vox-*` utilities are scoped rather than a change to `.ic-panel`: this
 surface is the exception and the twenty other panels are not. Phase 3's grouping
 has therefore arrived as presentation; **the rail itself is still unbuilt**, and
 that is what keeps the file FROZEN.
+
+**`D9` — a render shows a clock, not just a spinner.** Operator: *"a little
+animation that shows that the model is building out the line we're creating."*
+Two constraints shaped it: `Voice.Renderer` broadcasts one message per job (at
+the end), so there is no percentage and never will be without the engine
+reporting one; and these waits are **minutes**, so a spinner that has turned for
+four of them says what it said at four seconds. The chip is therefore a pulse
+**and** a running clock — `BusterClawWeb.Vox.Progress`, reusing the chat's
+`ThinkingTimer` hook with `data-label-running` / `data-elapsed-ms` rather than
+forking it (the `voice_recorder.js` precedent).
+
+`data-elapsed-ms` is the load-bearing part and is specific to this tab: Home
+renders the panel behind `:if={@home_tab == "vox"}`, so a wander to Chat and back
+**destroys and remounts** the element. A purely client-side timer would restart
+and report "0.2s" into a four-minute render — worse than no number, because it
+reads as authoritative. The three start times are therefore server state.
+
+It also fixed something older: **`@clip_jobs` had been tracked since the surface
+was written and rendered nowhere.** A queued clip showed one sentence and an
+empty textarea, so the line you had just typed left the screen for the whole
+render. It stays now, in italic, with the clock beside it, and becomes the player
+when the render lands.
+
+**Phase 3 has begun, sideways.** The chip is an addition to a FROZEN file, so it
+had to be funded by an extraction: `What it says` is now
+`components/vox/chimes.ex`. Cap went 1026 → 1005 — the feature landed and the
+file got *smaller*, which is the fourth time this tier has produced that outcome.
 
 ## Risks
 

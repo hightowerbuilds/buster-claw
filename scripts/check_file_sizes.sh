@@ -681,7 +681,15 @@ check lib/buster_claw_web/components/notes/switcher.ex         134 HELD
 # when the operator reported the control produced no experience. A feature
 # leaving is the cheapest way a FROZEN file shrinks, and it is banked here for
 # the same reason a decomposition would be.
-check lib/buster_claw_web/live/vox_component.ex              1026 FROZEN
+#
+# 1026 -> 1005, and this one is the tier doing precisely what it is for. The
+# operator asked for a render animation, which is an ADDITION to a file with no
+# headroom — so the panel that needed it least came out first: `What it says` is
+# now `components/vox/chimes.ex` (a `Progress.chip` went with it), and the
+# feature landed inside the space that made. A raised cap would have bought the
+# same feature and left the file bigger; the freeze bought it and left the file
+# smaller. Fourth time. It is also Phase 3's first real cut.
+check lib/buster_claw_web/live/vox_component.ex              1005 FROZEN
 
 # Phase 3. 20% markup, so ~987 lines of logic in a live_component. The source
 # catalog comes out to core, where the missing sound_* CLI will need it.
