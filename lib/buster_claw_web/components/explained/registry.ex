@@ -47,13 +47,18 @@ defmodule BusterClawWeb.Explained.Registry do
   # `voice_message_list` is a :safe read; `_create`, `_fire` and `_delete` are
   # :mutate, :restricted, none gated. total +4, read +1, mutate +3, safe +1,
   # restricted +3.
+  # Recomputed 09-05: the Sketch Pad was deleted whole, taking its six verbs.
+  # `sketch_list` and `sketch_get` were `:safe` reads; `sketch_create`, `_add`,
+  # `_update` and `_delete` were `:mutate` + `:restricted` and none was gated —
+  # which is why `gated` and `trigger` are the two numbers that do not move.
+  # Measured from `Catalog.entries/0`, not derived by hand.
   @command_stats %{
-    total: 219,
-    read: 89,
+    total: 213,
+    read: 87,
     trigger: 17,
-    mutate: 113,
-    safe: 92,
-    restricted: 127,
+    mutate: 109,
+    safe: 90,
+    restricted: 123,
     gated: 23
   }
 
@@ -162,8 +167,9 @@ defmodule BusterClawWeb.Explained.Registry do
       path_label: "Open the command list"
     },
     # Studio is one tab covering the whole workshop: the library, the routing
-    # table, the four editing verbs, the single gated `sound_apply`, the cut-up,
-    # and the sketch pad.
+    # table, the four editing verbs, the single gated `sound_apply`, and the
+    # cut-up. The Sketch Pad was its third sub-tab until 09-05, when it was
+    # deleted whole.
     #
     # Studio and Ramshackle were TWO tabs from 08-09 to 08-16, on the argument
     # that someone wanting a custom chime should not have to read about dynamic
@@ -176,12 +182,12 @@ defmodule BusterClawWeb.Explained.Registry do
       key: "studio",
       label: "Studio",
       eyebrow: "The workshop",
-      blurb: "The experimental corner: cut audio, splice your own voice, sketch.",
+      blurb: "The experimental corner: cut audio and splice your own voice.",
       body:
-        "Three sub-tabs at /studio. Mix cuts and arranges; Voice Library splices " <>
-          "words you already said into sentences nobody said; Sketch Pad is a " <>
-          "canvas. Framed as experimental on purpose — it is where this app tries " <>
-          "things, and it will keep changing shape.",
+        "Two sub-tabs at /studio. Mix cuts and arranges; Voice Library splices " <>
+          "words you already said into sentences nobody said. Framed as " <>
+          "experimental on purpose — it is where this app tries things, and it " <>
+          "will keep changing shape.",
       path: "/studio",
       path_label: "Open the Studio"
     }

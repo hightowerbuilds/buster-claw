@@ -2214,10 +2214,12 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert html =~ "where this app tries things"
 
       # And it must keep admitting what is unfinished rather than smoothing it
-      # over — the recorder's unproven microphone and the sketch pad with no save
-      # are the two honest limits on the page.
+      # over. There were two honest limits on this page; the second was the
+      # Sketch Pad's missing save, and it left on 09-05 with the Pad itself —
+      # which is the good way for an admission to disappear. The recorder's
+      # unproven microphone is the one that remains, and it must keep saying so.
       assert html =~ "never been exercised in a packaged build"
-      assert html =~ "no save"
+      refute html =~ "Sketch Pad"
 
       # sound_sentence writes a SOURCE and nothing else. The tutorial promises
       # that twice, so assert the verb has not quietly grown a routing side

@@ -68,13 +68,19 @@ defmodule BusterClaw.Commands.UpdateTest do
     end
   end
 
-  # `sketch_update` and `note_save` and friends update DATA. The distinction this
-  # file draws is the application itself, and stating it keeps the guard from
-  # being widened into nonsense by someone reading only its title.
+  # `contacts_update` and `note_save` and friends update DATA. The distinction
+  # this file draws is the application itself, and stating it keeps the guard
+  # from being widened into nonsense by someone reading only its title.
+  #
+  # The control was `sketch_update` until 09-05, when the Sketch Pad was deleted.
+  # A positive control that stops existing is a test that stops testing — this
+  # one would have gone green against an empty catalog — so it is replaced rather
+  # than removed, with a verb chosen for the same reason: `update` in the name,
+  # data in the body.
   test "updating data is fine, and the guard does not pretend otherwise" do
     names = Enum.map(Commands.list_commands(), & &1.name)
 
-    assert "sketch_update" in names,
+    assert "contacts_update" in names,
            "the guard should not have swept up ordinary data-updating verbs"
   end
 end

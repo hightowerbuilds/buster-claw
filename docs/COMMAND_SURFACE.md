@@ -22,7 +22,7 @@ result shape into their transport-specific response format.
 
 ## Active Domains
 
-219 commands as of 09-03 (`./buster-claw commands` is authoritative; the Explained
+213 commands as of 09-05 (`./buster-claw commands` is authoritative; the Explained
 tab's Command List renders the same counts from a contract test):
 
 - Runtime status, orchestration shifts, and in-shift role sessions
@@ -113,6 +113,11 @@ These older command-surface areas were removed or retired:
   run, full-text searched by the catalogued `memory_search`.
 - Trading, Portfolio, MarketData, Watchlist and Chart Build — deleted whole on
   08-08 (`293f47f`). `finance_*` (SEC EDGAR + Finnhub) is unrelated and survives.
+- The Sketch Pad — six `sketch_*` verbs, its whole context and both its hosts,
+  deleted 09-05. **The model's ability to draw is unaffected**: that has always
+  been `BusterClaw.SvgViewer`, the chat's SVG channel, which shares nothing with
+  the Pad. It reads a fenced ```` ```svg ```` block out of a reply, sanitizes it,
+  and renders it as a real SVG.
 - Outbound telephony — `sms_send` and `phone_call`, deleted 08-18. BusterPhone is
   intake only; the ten surviving `phone_*` commands read the message archive or
   edit the trusted-caller and PIN lists. See

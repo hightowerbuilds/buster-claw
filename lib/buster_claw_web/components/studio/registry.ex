@@ -53,11 +53,6 @@ defmodule BusterClawWeb.Studio.Registry do
       key: "voice",
       label: "Voice Library",
       blurb: "Ramshackle: your words, the sentences they make, and the mic that adds more."
-    },
-    %{
-      key: "sketch",
-      label: "Sketch Pad",
-      blurb: "Draw something. Deliberately the simplest thing in the Studio."
     }
   ]
 
@@ -68,11 +63,11 @@ defmodule BusterClawWeb.Studio.Registry do
   # placeholder copy went with it: a built tab writes its own, and leaving the
   # old `eyebrow`/`body` here would have left the tab's honest "nothing here
   # yet" text sitting in the registry to be rendered again by mistake.
-  # `sketch` joined 08-16 with the move to `/studio`. It is deliberately the
-  # smallest thing here — a canvas, a few colours, an eraser, clear — because
-  # the Studio's other two tabs each took a roadmap and this one is meant to
-  # start by existing.
-  @built ~w(mix voice sketch)
+  # `sketch` joined 08-16 and was DELETED 09-05 (operator) along with its route,
+  # its six commands and its whole context. The model keeps its ability to draw:
+  # that lives in `BusterClaw.SvgViewer`, the chat's SVG channel, which shared
+  # nothing with the Sketch Pad and is untouched.
+  @built ~w(mix voice)
 
   @doc "The sub-tabs, in rail order."
   def tabs, do: @tabs

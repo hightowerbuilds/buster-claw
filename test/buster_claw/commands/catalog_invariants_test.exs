@@ -270,8 +270,6 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
       sound_index_words
       sound_input_level
       sound_list
-      sketch_get
-      sketch_list
       sound_probe
       sound_routes
       sound_sources
@@ -326,17 +324,13 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
     # `voice_bank_select`, `voice_bank_delete` — are all `:restricted`, and
     # `delete` is `gated` on top.
     #
-    # `sketch_get` and `sketch_list` reviewed and added 08-16 with SKETCH_ROADMAP
-    # Phase 2. Both are reads over `<workspace>/sketches/`: nothing outbound,
-    # nothing irreversible, no setting touched. Two questions were worth asking
-    # before promoting them. **Does a sketch leak more than the tier already
-    # allows?** No — a drawing is operator content of the same class as a note,
-    # and `note_read` is already `:safe`. **Does the PREVIEW widen the reach?**
-    # It renders only what is already in the document, into the sketch's own
-    # sidecar, and returns a path rather than bytes; it cannot be pointed at
-    # anything else. Their Phase 3 write siblings will NOT be safe — `sketch_add`
-    # is `:restricted`, and touching an operator-authored element is gated on top
-    # (D6).
+    # `sketch_get` and `sketch_list` were reviewed onto this list on 08-16 and
+    # LEFT it on 09-05, when the Sketch Pad was deleted whole. The review that put
+    # them here is worth keeping in one line, because it is the reasoning any
+    # future read over operator-authored files inherits: a drawing is operator
+    # content of the same class as a note, `note_read` is already `:safe`, and the
+    # preview widened nothing because it rendered only what was already in the
+    # document into that document's own sidecar.
     #
     # (Note lives out here because ~w() has no comment syntax; putting it inside
     # the sigil turns every word into a command name, which this very test

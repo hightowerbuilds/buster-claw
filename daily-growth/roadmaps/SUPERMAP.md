@@ -68,7 +68,7 @@ in flight for this area?" without opening anything.
 roadmaps/
 ├── SUPERMAP.md ·············· this file — the only index
 ├── shell/ ·················· Part I    TERMINAL_PAINT
-├── surfaces/ ··············· Parts II–III  STUDIO · SKETCH · IMAGE_SHADER · LEFTOVERS_SURFACES
+├── surfaces/ ··············· Parts II–III  STUDIO · VOX_TAB · IMAGE_SHADER · LEFTOVERS_SURFACES
 ├── agent-core/ ············· Part V    LEFTOVERS_AGENT_CORE
 ├── integrations/ ··········· Part VI   CLINCH · BUSTERPHONE (+NUMBER_VENDING) · PHONE_INTAKE · PHONE_ACCESS · GOOGLE_VERIFICATION
 ├── platform/ ··············· Part VII  APPLE · UPDATE · RELEASE_GATE · TRUST_AND_SUPPORT · QA_BACKLOG (+FRESH_MACHINE_WALK) · LEFTOVERS_PLATFORM
@@ -111,7 +111,7 @@ the section tables below point at it from wherever else it applies.**
    rebuild and then says the product needs usage data first, which is the
    argument against acting on it yet.
 
-8. **[The Sketch Pad](#part-ii-b--the-studio)** — **Phases 0–4 built 08-16, none of it walked.** The Studio's third tab became a surface the operator and the model share: strokes, images and text as addressable elements, six `sketch_*` commands, and a boundary drawn by **authorship rather than tier** — the model may change and delete what the model drew, and asking about yours. Three things only the parallel build found: **no command had ever known its caller** (`D13`), a `gated` flag would have made the feature impossible, and the gate **did not actually surface** until the refusal was wired into Sentinel.
+8. ~~**The Sketch Pad**~~ — **DELETED 09-05-26** (operator), map archived. Built 08-16 across four phases and never once walked; what people actually wanted from it — *the model draws something and I look at it* — was already met by `BusterClaw.SvgViewer`, the chat's SVG channel, which shared no code with it and is untouched. ~7,350 lines, 246 tests, 219 → 213 commands. **Two general mechanisms went with it** because `D6` was their only caller: caller-aware dispatch and `surface_confirmation/4`. They were deleted rather than left unreachable, and `commands.ex` carries the note saying they return together or not at all. The operator's drawings stay on disk. See [`SKETCH` (archived)](../archive/SKETCH_ROADMAP.md) — **do not rebuild speculatively.**
 9. **[The update path](#part-vii--platform--release)** — **`G-42` and `G-18` shipped 08-16; `G-44`'s first half shipped 08-18.** The seed-rot phase stopped being a `[R2]` design note the day BusterPhone's deletion left every existing workspace holding a job brief that named a deleted command — `BusterClaw.Seed` now upgrades a seed whose bytes still match any version we shipped, and leaves an edited one alone. Jobs' four files are converted; Skills and TerminalCommands are not, and `policy.md` is deliberately excluded. **`G-42` and `G-18` shipped 08-16.** The app can finally say what version it is, and CI can publish a signed feed. **Neither has run**: the workflow is tag-only, and the minisign keypair does not exist yet. `G-19` — the button itself — is next, and its one sharp edge is already written down (the release monitor will respawn the BEAM into a bundle being swapped unless `shutting_down` is set first).
 
 **Seven of those wait on the operator rather than an agent**, and the list grew
@@ -126,8 +126,6 @@ again on 08-18 rather than shrank:
   meant to reach
 - the update feed's endpoint needs a **rewrite in the website repo**, which
   nothing here can add and nothing here fails without
-- the Sketch Pad needs someone to watch a model be **refused** — the one
-  behaviour its whole design exists for
 - BusterPhone's **toll-free verification must be withdrawn** — it is a live
   application for a capability that was deleted on 08-18. Tidiness rather than
   urgency: verification governs *messaging*, so the number answers calls either
@@ -331,18 +329,20 @@ build will name what stopped it. `Entitlements.plist` is deliberately untouched
 |---|---|---|---|
 | **Studio → Mix** | `SoundStudioComponent` | SHIPPED | [`LEFTOVERS_AGENT_CORE`](agent-core/LEFTOVERS_AGENT_CORE.md) — `commands/sound.ex` is owed a split |
 | **Studio → Voice Library** | `Studio.VoiceLibrary`, `Studio.VoiceState`, `Studio.RecorderState` | **BUILT 08-16 — one tab, sidebar over Words / Sentence / Record.** Voice banks (V.0), audition (VI.1 pane 2), sentence build-and-play through the same `Cutup.Sentence` an agent uses, and a recorder for a word *or* a whole sentence. **The microphone is unproven** — V.4a has never run, so the capability gate reports what the browser found rather than claiming | `STUDIO` (map deleted 09-02-26 — the cut-up engine is its own project now) |
-| **Studio → Sketch Pad** | `SketchComponent`, `Sketch.*`, `commands/sketch.ex` | **PHASES 0–4 COMPLETE 08-16, and UNWALKED.** A drawing the operator and the model share. Strokes, images and text as **addressable elements** — the substrate reversed from a canvas, because you cannot delete a stroke from a bitmap. Drop/paste/drag images, undo, autosave to `sketches/*.json`. Six `sketch_*` commands: the model reads a sketch as elements **and** a rendered PNG, and draws on it bounded by **authorship, not tier** | [`SKETCH`](surfaces/SKETCH_ROADMAP.md) |
 
 **Voice Library is now the whole loop rather than half of it**: browse the words,
 hear a take, build a sentence, hear that, record what was missing. The binding
 constraint is still measured — **144 of 237 words are single-take**, none ever
 hand-corrected — and the recorder is what changes it.
 
-**Two of the three are built and unwalked, for different reasons.** Voice Library
-needs a person at a microphone (`getUserMedia` has never run in a packaged
-build). The Sketch Pad needs a person to watch the one thing its whole design is
-for — a model trying to delete the operator's mark and being **gated, not
-obeyed**. Both are asserted in code; neither has been seen.
+**Voice Library is built and unwalked**: it needs a person at a microphone,
+because `getUserMedia` has never run in a packaged build. It is asserted in code
+and has not been seen.
+
+The Studio had a third tab until 09-05 — the Sketch Pad, also built and also
+never walked. It was deleted rather than kept waiting for a walk that was not
+coming, which is the honest end for a surface nobody reached for. Its map is
+[archived](../archive/SKETCH_ROADMAP.md).
 
 ---
 

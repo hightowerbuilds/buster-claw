@@ -221,18 +221,20 @@ defmodule BusterClaw.Workspace do
       seed: nil,
       note: "Saved site checks the agent can re-run."
     },
-    # No seed and no scaffolding: `Sketch.Store.save/2` creates the directory on
-    # the first stroke, so an operator who never opens the Studio never grows an
-    # empty folder. Declared anyway, because an undeclared directory is one the
-    # registry cannot describe and `sweep_deprecated/0` cannot be told to leave
-    # alone — which is exactly how `notes/` came to be deleted on boot.
+    # The Sketch Pad was DELETED 09-05 (operator) — route, context, six commands,
+    # both hosts. This entry is `:deprecated` rather than gone, which is the
+    # difference between removing a feature and removing someone's work:
+    # `sweep_deprecated/0` takes the husk away once it is EMPTY, and leaves every
+    # drawing the operator actually made sitting exactly where they left it, as
+    # readable JSON. Nothing in the app opens them any more; that is a reason to
+    # stop writing there, not a licence to delete.
     %{
       name: "sketches",
       kind: :dir,
-      tier: :on_demand,
-      owner: BusterClaw.Sketch.Store,
+      tier: :deprecated,
+      owner: nil,
       seed: nil,
-      note: "Sketch Pad drawings — one JSON document per sketch."
+      note: "Sketch Pad drawings — the Pad is gone; kept until you empty it."
     },
     # MOVED 08-08 to `pockets/backgrounds/` — a pile of the operator's images is
     # a Pocket. Declared `:deprecated` rather than deleted so `sweep_deprecated/0`

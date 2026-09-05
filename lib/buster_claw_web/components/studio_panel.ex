@@ -1,7 +1,7 @@
 defmodule BusterClawWeb.StudioPanel do
   @moduledoc """
   The Studio's three tabs: `Mix` — the cutting-and-arranging studio — `Voice
-  Library`, and the `Sketch Pad`.
+  Library`.
 
   Presentation only. `select_studio_tab` is handled by the parent LiveView
   (`StudioLive`), which owns the `:studio_tab` assign for the same reason it
@@ -157,15 +157,6 @@ defmodule BusterClawWeb.StudioPanel do
           notice={@voice_notice}
           recorder={@recorder}
         />
-      </div>
-
-      <%!-- Sketch Pad. It takes no assigns from here on purpose: unlike Mix and
-            Voice, whose state is the parent's, the sketch document is loaded and
-            saved by `SketchComponent` itself. That is what lets it survive this
-            `:if` removing the whole subtree on a tab switch — the drawing is on
-            disk, not in an assign. See SKETCH_ROADMAP Phase 1. --%>
-      <div :if={@tab == "sketch"} data-studio-tab="sketch" class="flex min-h-0 flex-1 flex-col">
-        <.live_component module={BusterClawWeb.SketchComponent} id="studio-sketch-pad" />
       </div>
 
       <.placeholder :for={p <- @placeholders} :if={@tab == p.key} sub_tab={p} />

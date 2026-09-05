@@ -35,16 +35,10 @@ defmodule BusterClawWeb.Layouts do
     # split pane), so its tab-strip label is preserved in @tab_labels below.
     # No brand PNG yet — the dock falls back to the text label (see render below).
     #
-    # This door said "Studio" until 09-02-26. The Studio is being spun out into
-    # its own project, and the Sketch Pad was the one surface at `/studio` worth
-    # keeping — it had no other entrance, so the tab became its rather than
-    # disappearing with the thing it was sharing a route with.
-    %{
-      label: "Sketch",
-      path: "/sketch",
-      icon: "hero-pencil",
-      role: "nav_sketch"
-    },
+    # This door said "Studio" until 09-02-26, then "Sketch" until 09-05-26, and
+    # now it says nothing: the Sketch Pad was deleted whole (route, context, six
+    # commands, both hosts) and there is no surface left for it to open. A dock
+    # item pointing at a deleted route is worse than one fewer dock item.
     %{
       label: "Settings",
       path: "/appearance",

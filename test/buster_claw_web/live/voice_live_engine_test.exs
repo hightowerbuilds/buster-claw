@@ -329,7 +329,7 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
       conn: conn,
       root: root
     } do
-      stub_writing_wav_slowly(root, 2)
+      stub_writing_wav_slowly(root, 1)
       {:ok, view, _html} = live(conn, ~p"/voice")
 
       html =
@@ -345,6 +345,23 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
       assert html =~ ~s(phx-hook="ThinkingTimer")
       assert html =~ ~s(data-label-running="Making")
       assert html =~ "data-elapsed-ms"
+
+      # Then WAIT for it, and this is not politeness. `Voice.Renderer` is one
+      # global queue that runs a single job at a time, so a test that walks away
+      # from an in-flight render leaves the next test queued behind a sleeping
+      # stub — and `on_exit` deletes this workspace out from under the job while
+      # it runs. Written the first way, this cost thirteen unrelated voice
+      # failures in the very next full run.
+      #
+      # Draining also makes the assertion stronger: the pending row is supposed
+      # to BECOME the player, and now that is asserted rather than assumed.
+      # 250 attempts x 20ms = 5s. `eventually/1`'s default budget is exactly 1s,
+      # which is exactly how long the stub sleeps — so the default could never
+      # have caught this render, only timed out beside it.
+      assert eventually(fn -> render(view) =~ "/voice-audio/" end, 250),
+             "the pending row never became a player — the render did not land"
+
+      refute render(view) =~ ~s(data-label-running="Making")
     end
 
     test "typing a line makes a clip that lands in the list with a player", %{

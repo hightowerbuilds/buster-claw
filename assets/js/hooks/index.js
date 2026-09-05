@@ -31,8 +31,6 @@ import {NotifySound, SoundPreview} from "./notify_sound.js"
 import {MusicPlayer} from "./music_player.js"
 import {Composer} from "./composer.js"
 import {NoteEditor} from "./note_editor.js"
-import SketchPad from "./sketch_pad.js"
-import SketchDropzone from "./sketch_dropzone.js"
 import StudioMenuBar from "./studio_menu_bar.js"
 import {NotesKeys} from "./notes_keys.js"
 import {NoteContextMenu, NoteTitle} from "./note_context.js"
@@ -78,8 +76,6 @@ export const Hooks = {
   NotifySound,
   SoundPreview,
   NoteEditor,
-  SketchPad,
-  SketchDropzone,
   StudioMenuBar,
   NotesKeys,
   NoteContextMenu,

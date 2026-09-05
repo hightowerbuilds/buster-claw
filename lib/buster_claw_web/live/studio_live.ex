@@ -1,7 +1,7 @@
 defmodule BusterClawWeb.StudioLive do
   @moduledoc """
   The Studio, at `/studio` — a full-screen surface with one rail: **Mix**,
-  **Voice Library**, **Sketch Pad**.
+  **Voice Library**.
 
   ## Why it left Home
 
@@ -17,9 +17,11 @@ defmodule BusterClawWeb.StudioLive do
 
   ## The rail is flat, on purpose
 
-  Mix · Voice Library · Sketch Pad, one level. The alternative considered was an
-  outer Studio/Sketch pair with the old Mix|Voice rail nested inside it, and it
-  was rejected for the reason this repo already learned when the Voice tab was
+  Mix · Voice Library, one level. It was three until 09-05, when the Sketch Pad
+  was deleted; the flatness was argued for when a nested Studio/Sketch pair was
+  the alternative, and it survives the third tab leaving because the argument was
+  never about the count. It was the reason this repo already learned when the
+  Voice tab was
   briefly split in two on 08-16: **a rail that makes you leave a tab to finish a
   loop is a rail in the way.** Voice keeps its own sidebar because the sidebar
   navigates *within* one activity; the rail chooses *between* activities.

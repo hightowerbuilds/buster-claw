@@ -1,5 +1,39 @@
 # The Sketch Pad — a surface two of you can draw on
 
+> ## DELETED AND ARCHIVED 09-05-26
+>
+> **The Sketch Pad is gone** — the `/sketch` route, the Studio's third tab,
+> `BusterClaw.Sketch.*`, the six `sketch_*` commands, both JS hooks, the asset
+> route, the dock item and the tutorial. ~7,350 lines, 246 tests, 219 → 213
+> commands. Operator's call, and the reason is the honest one: it was built,
+> never walked, and the thing people actually wanted from it — *the model draws
+> something and I look at it* — was already met somewhere else.
+>
+> **`BusterClaw.SvgViewer` is that somewhere else and is untouched.** The chat's
+> SVG channel reads a fenced ```` ```svg ```` block out of a reply, sanitizes it
+> and renders it as a real SVG. It shared no code with the Pad; `D2` of this map
+> settled their relationship and that settlement is what made this deletion
+> cheap.
+>
+> **Two general mechanisms went with it**, because this map's `D6` was their only
+> caller: caller-aware dispatch (a command told *who* is asking, opt-in by arity)
+> and `surface_confirmation/4` (a command deciding for ITSELF that it needs the
+> operator, recorded into `Sentinel.Pending`). They were deleted rather than left
+> unreachable — Dialyzer does not analyse unreachable code and no test could have
+> reached them, so keeping them would have been a comment that compiles.
+> **`commands.ex` carries the note saying they come back together or not at all.**
+> `D6` below is the whole argument for why they existed; read it before rebuilding
+> either half alone.
+>
+> **The operator's drawings were not deleted.** `<workspace>/sketches/` is
+> `:deprecated` in the workspace registry, which sweeps it only once it is empty.
+> Nothing opens those files any more; they are still readable JSON.
+>
+> **Do not rebuild speculatively.** Everything below is the record of what was
+> built and why, kept for its reasoning — chiefly `D6`, and the finding that the
+> gate did not actually surface a refusal until it was wired into Sentinel.
+
+
 **Scoped 2026-08-16 · Status: Phases 0–4 COMPLETE 08-16. Phase 5 (live
 co-drawing) remains deliberately unscoped — `D10` says the turn boundary makes
 it optional, so scope it when there is a real complaint.**

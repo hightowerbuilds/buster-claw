@@ -31,7 +31,7 @@ defmodule BusterClawWeb.Studio.MixState do
   change goes through: load, apply, save, record the previous state for undo,
   and tell the component to re-read.
 
-  The Studio's own sub-tab (`Mix` | `Voice Library` | `Sketch Pad`) is assigned
+  The Studio's own sub-tab (`Mix` | `Voice Library`) is assigned
   here too, and for the same reason as everything above — plus a second one: the
   LiveView keeps only the mount assign, one `handle_event` clause and one
   condition, so the wiring a sub-tab needs lands in this module.

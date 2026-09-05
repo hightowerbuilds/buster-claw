@@ -85,14 +85,16 @@ defmodule BusterClawWeb.Router do
       live "/voice", VoiceLive, :index
       live "/notify-settings", NotifySettingsLive, :index
       live "/phone", PhoneLive, :index
-      live "/sketch", SketchLive, :index
       # NO DOCK TAB as of 09-02-26 — the Studio is being spun out into its own
-      # project, and the Sketch Pad (the one surface here worth keeping) took the
-      # tab. The route stays: it is the only way to reach Mix and the Voice
-      # Library, and roughly thirty tests still exercise them through it. Deleting
-      # the route is the spin-off's job, together with those tests. An unreachable
-      # route is untidy; a route deleted out from under its own test suite is an
-      # afternoon of guessing which failures were intentional.
+      # project, and the tab it used to own went to the Sketch Pad. **That Pad was
+      # deleted on 09-05 and the dock slot went with it**, so nothing in the app
+      # links here any more.
+      #
+      # The route still stays, for the reason it stayed before: it is the only way
+      # to reach Mix and the Voice Library, and roughly thirty tests exercise them
+      # through it. Deleting it is the spin-off's job, together with those tests.
+      # An unreachable route is untidy; a route deleted out from under its own
+      # test suite is an afternoon of guessing which failures were intentional.
       live "/studio", StudioLive, :index
       live "/workspace", WorkspaceLive, :index
       live "/manual", UserGuideLive, :index
@@ -186,17 +188,6 @@ defmodule BusterClawWeb.Router do
     pipe_through :media
 
     get "/:pocket/:file", PocketAssetController, :show
-  end
-
-  # One image out of one sketch's sidecar. Only `:media` — these are raw image
-  # bytes for an `<image>` inside the drawing, not an HTML page. Every read is
-  # fenced by `Sketch.Assets.resolve/2`, whose names are content hashes with a
-  # known extension and nothing else; the controller adds no path handling of its
-  # own. Loopback-only.
-  scope "/sketches", BusterClawWeb do
-    pipe_through :media
-
-    get "/:sketch/:file", SketchAssetController, :show
   end
 
   # The Agent Mode mirror: an MJPEG stream of a run's viewport, rendered by an

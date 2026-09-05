@@ -18,10 +18,11 @@ defmodule BusterClawWeb.Explained.Studio do
   **The Studio is the experimental corner of the app and says so out loud.**
   Every other Explained tab documents something the product depends on; this one
   documents a workshop. That is not a hedge — it is the honest description of a
-  surface where the cut-up engine is complete and command-only, the recorder has
-  never been run in a packaged build, and the Sketch Pad is a canvas with no way
-  to save. Saying "experimental" is what buys the room to change all three
-  without anyone feeling misled.
+  surface where the cut-up engine is complete and command-only and the recorder
+  has never been run in a packaged build. Saying "experimental" is what buys the
+  room to change both without anyone feeling misled — and it is what let the
+  Sketch Pad, the third tab this page used to describe, be deleted whole on 09-05
+  rather than maintained out of obligation.
 
   ## The spine, unchanged
 
@@ -64,8 +65,7 @@ defmodule BusterClawWeb.Explained.Studio do
           <span class="font-semibold text-base-content">Mix</span>
           cuts and arranges audio. <span class="font-semibold text-base-content">Voice Library</span>
           is the cut-up: your own words, indexed, spliced into sentences nobody
-          said. <span class="font-semibold text-base-content">Sketch Pad</span>
-          is a canvas, and is currently the smallest thing in the app on purpose.
+          said.
         </p>
         <p>
           Mix is the one that is genuinely finished, so it leads. Buster Claw makes
@@ -344,23 +344,6 @@ defmodule BusterClawWeb.Explained.Studio do
           the microphone has never been exercised in a packaged build. The recorder
           reports what your browser actually answered rather than promising either
           way, so if it cannot record it will say what stopped it.
-        </p>
-      </section>
-
-      <section class="flex flex-col gap-3">
-        <h3 class="font-display text-lg font-black tracking-tight">
-          Sketch Pad — deliberately unfinished
-        </h3>
-        <p class="text-sm leading-relaxed text-base-content/80">
-          A canvas, five colours, three brush sizes, an eraser and clear. There is <span class="font-semibold text-base-content">no save</span>, because there
-          is nowhere to save to yet — and a reload clears the page. The surface says
-          so itself rather than growing a button that does nothing.
-        </p>
-        <p class="text-sm leading-relaxed text-base-content/70">
-          It is here to be the smallest possible version of a thing, and to find out
-          whether anyone reaches for it. If they do, the next question is a <code>sketch_*</code>
-          command and a workspace path — which is a design
-          decision, not a toolbar.
         </p>
       </section>
 
