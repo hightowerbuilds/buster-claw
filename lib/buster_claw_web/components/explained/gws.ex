@@ -49,7 +49,7 @@ defmodule BusterClawWeb.Explained.Gws do
         needs="Google connected in Configuration. Nothing else — no trusted senders required to read your own mail."
         touches="Pulls mail and today's events into the local Library and Calendar. Reads Google; writes nothing back to it."
         confirm="None. The two syncs are safe-tier triggers and the searches are safe-tier reads; no path here sends mail or edits Google data."
-        result="The brief in chat, mail in the Library, events on the Calendar sub-tab. Not connected and the commands say so rather than returning an empty inbox that looks like a quiet day."
+        result="The brief in chat, mail in the Library, events on the Workspace page's Calendar tab. Not connected and the commands say so rather than returning an empty inbox that looks like a quiet day."
       >
         <.prompt text="Good morning — sync my mail and calendar, then brief me: what's on today, which emails actually need a reply from me, and anything that smells urgent." />
         <ol class="ic-unfold">
@@ -61,7 +61,7 @@ defmodule BusterClawWeb.Explained.Gws do
           </li>
           <li>
             Then <code>google_calendar_sync</code> — today's events sync one-way into
-            the app calendar (glance at the Calendar sub-tab any time).
+            the app calendar (glance at Workspace → Calendar any time).
           </li>
           <li>
             Then <code>gmail_search</code>

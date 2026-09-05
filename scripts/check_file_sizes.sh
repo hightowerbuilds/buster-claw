@@ -324,6 +324,19 @@ check lib/buster_claw_web/components/gws/calendar_sync.ex    101 HELD
 # came in at 738 and a cap left at 1060 would have quietly re-opened 300 lines
 # of room the extraction had just closed.
 check lib/buster_claw_web/live/status_live.ex                810 HELD
+
+# The Workspace page, capped on arrival — the rule this repo adopted on 08-16 —
+# because 09-05 is the day it stopped being one thing. It was a file tree with a
+# preview pane; it is now a three-tab rail (Directory · Notes · Calendar) hosting
+# two components it does not own.
+#
+# It grew by ~100 lines to gain a rail and two panels, which is the cheap half of
+# a move: `NotesComponent` and `CalendarComponent` were already embeddable and
+# already had other hosts, so nothing came ACROSS, only the chrome to hold them.
+# Growth from here means the opposite is happening — behaviour leaking out of a
+# component and into its host — and that is the thing to look at rather than the
+# number.
+check lib/buster_claw_web/live/workspace_live.ex             570 HELD
 check lib/buster_claw_web/live/status/chat.ex                685 HELD
 
 # Added 08-09 when the chat skins pushed this past 1,000 lines. It has never been

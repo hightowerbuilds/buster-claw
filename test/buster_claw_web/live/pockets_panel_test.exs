@@ -51,11 +51,16 @@ defmodule BusterClawWeb.PocketsPanelTest do
   end
 
   describe "the rail and the guard" do
-    test "Pockets sits directly after Notes and the guard opens it", %{conn: conn} do
+    test "Pockets sits directly after Vox2B and the guard opens it", %{conn: conn} do
       keys = Enum.map(BusterClawWeb.StatusLive.home_tabs(), &elem(&1, 0))
 
+      # It sat after Notes until 09-05, when Notes left Home for the Workspace
+      # page's rail. The assertion is kept anchored to a NEIGHBOUR rather than an
+      # index, because that is what it was always checking — that Pockets is not
+      # the tab nobody can find — and an absolute position would have to be
+      # rewritten every time the row changes.
       assert Enum.find_index(keys, &(&1 == "pockets")) ==
-               Enum.find_index(keys, &(&1 == "notes")) + 1
+               Enum.find_index(keys, &(&1 == "vox")) + 1
 
       # The 08-08 lesson, walked rather than restated: the rail offering a key
       # the guard has never heard of is how Phone arrived as a button the

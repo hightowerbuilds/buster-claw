@@ -140,7 +140,12 @@ defmodule BusterClawWeb.NotifySpokenMessagesTest do
       data
   end
 
-  defp eventually(fun, attempts \\ 100) do
+  # 250 x 20ms = 5s, raised from 100 (2s) on 09-05 for the same reason the voice
+  # engine suite was: these waits sit behind `Voice.Renderer`, one global queue
+  # shared with every other suite, so the budget has to cover queue time under
+  # full-suite load rather than the render itself. The `assert_receive`s in this
+  # file already allow 5s; this brings the polling waits in line with them.
+  defp eventually(fun, attempts \\ 250) do
     Enum.reduce_while(1..attempts, false, fn _, _ ->
       if fun.(),
         do: {:halt, true},

@@ -12,7 +12,6 @@ defmodule BusterClawWeb.StatusLive do
   alias BusterClaw.Agent.Chat
   alias BusterClaw.Appearance
   alias BusterClaw.Contacts
-  alias BusterClaw.LocalTime
   alias BusterClaw.Notifications
   alias BusterClaw.Notifications.Schedule
   alias BusterClaw.Runtime.Status
@@ -44,15 +43,17 @@ defmodule BusterClawWeb.StatusLive do
   # `select_home_tab` guard. They were two lists until 08-08, which is how Phone
   # arrived as a button the server then refused: the rail offered it, the guard
   # had never heard of it, and the click raised.
+  # Notes and Calendar LEFT on 09-05 for the Workspace page's own rail (operator).
+  # They sit beside the files they are about now rather than beside the chat, and
+  # `WorkspaceLive` took the host contract with them — including the Notes relay,
+  # which is why `Notes.subscribe/0` is no longer in this mount.
   @home_tabs [
     {"chat", "Chat"},
     # The KEY is the surface (`VoxComponent`, rendered at `home-vox`); the LABEL
     # is the model doing the talking. Every other row here is a downcased label,
     # so the divergence is stated rather than left to look like a typo.
     {"vox", "Vox2B"},
-    {"notes", "Notes"},
     {"pockets", "Pockets"},
-    {"calendar", "Calendar"},
     {"phone", "Phone"},
     {"explained", "Explained"},
     {"activity", "Activity"}
@@ -69,8 +70,6 @@ defmodule BusterClawWeb.StatusLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    today = LocalTime.today()
-
     if connected?(socket) do
       Phoenix.PubSub.subscribe(BusterClaw.PubSub, Appearance.home_topic())
       Phoenix.PubSub.subscribe(BusterClaw.PubSub, Appearance.topic(:widget))
@@ -83,9 +82,6 @@ defmodule BusterClawWeb.StatusLive do
       BusterClaw.Contacts.subscribe()
       # Keep the Activity tab's BC Minutes live as the agent appends entries.
       BusterClaw.Journal.subscribe()
-      # Same relay for the Notes vault: a `note_*` command run in the terminal
-      # must show up in an open rail without a tab switch.
-      BusterClaw.Notes.subscribe()
       # The Music tab renders transport it does not own — the player is the
       # sticky dock LiveView, so its state arrives over PubSub.
       BusterClaw.Music.Player.subscribe_state()
@@ -104,7 +100,6 @@ defmodule BusterClawWeb.StatusLive do
      |> assign(:widget_bg, Appearance.background(:widget))
      |> assign_chat_look()
      |> assign(status: Status.snapshot())
-     |> assign(:today, today)
      |> assign(:setup_status, Setup.status())
      # Gate the composer proactively: discovering the missing CLI by typing into
      # a silent void was the review's worst day-one failure.
@@ -592,18 +587,6 @@ defmodule BusterClawWeb.StatusLive do
     {:noreply, socket}
   end
 
-  # A note changed under us — an agent command, or another window. The component
-  # re-reads the vault and reconciles the open note; a draft in flight turns this
-  # into the conflict banner rather than a silent replacement.
-  def handle_info({:notes, _event}, socket) do
-    send_update(BusterClawWeb.NotesComponent,
-      id: "home-notes",
-      refresh: System.unique_integer()
-    )
-
-    {:noreply, socket}
-  end
-
   def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
@@ -730,17 +713,6 @@ defmodule BusterClawWeb.StatusLive do
               />
             </div>
 
-            <div
-              :if={@home_tab == "calendar"}
-              class="flex min-h-0 flex-1 flex-col overflow-y-auto"
-            >
-              <.live_component
-                module={BusterClawWeb.CalendarComponent}
-                id="home-calendar"
-                today={@today}
-              />
-            </div>
-
             <%!-- Phone left the dock on 08-08: a normal user has no provisioned
                   number, so a top-level destination overstated the app. Same
                   component the `/phone` route renders — see `PhoneComponent`. --%>
@@ -758,9 +730,6 @@ defmodule BusterClawWeb.StatusLive do
               <.live_component module={BusterClawWeb.VoxComponent} id="home-vox" />
             </div>
 
-            <div :if={@home_tab == "notes"} class="flex min-h-0 flex-1 flex-col">
-              <.live_component module={BusterClawWeb.NotesComponent} id="home-notes" />
-            </div>
             <div :if={@home_tab == "pockets"} class="flex min-h-0 flex-1 flex-col">
               <.live_component module={BusterClawWeb.PocketsPanel} id="home-pockets" />
             </div>

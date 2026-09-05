@@ -329,7 +329,16 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
       conn: conn,
       root: root
     } do
-      stub_writing_wav_slowly(root, 1)
+      # A plain stub, and the reason is worth writing down because the obvious
+      # instinct is wrong. This first used a stub that slept, on the assumption
+      # that an instant render would land before the page could show the pending
+      # row. It cannot: LiveView processes a socket's messages SERIALLY, so the
+      # renderer's broadcast is a message that waits until this `handle_event`
+      # has returned — and the reply to `render_submit` is generated from the
+      # state at the end of that event, with the job still pending. The sleeping
+      # stub bought no determinism (verified across four seeds) and cost a second
+      # of occupancy on a queue shared with every other voice suite.
+      stub_writing_wav(root)
       {:ok, view, _html} = live(conn, ~p"/voice")
 
       html =
@@ -348,17 +357,14 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
 
       # Then WAIT for it, and this is not politeness. `Voice.Renderer` is one
       # global queue that runs a single job at a time, so a test that walks away
-      # from an in-flight render leaves the next test queued behind a sleeping
-      # stub — and `on_exit` deletes this workspace out from under the job while
-      # it runs. Written the first way, this cost thirteen unrelated voice
-      # failures in the very next full run.
+      # from an in-flight render leaves the next suite queued behind it — and
+      # `on_exit` deletes this workspace out from under the job while it runs.
+      # Written without this, it cost thirteen unrelated voice failures in the
+      # very next full run.
       #
       # Draining also makes the assertion stronger: the pending row is supposed
       # to BECOME the player, and now that is asserted rather than assumed.
-      # 250 attempts x 20ms = 5s. `eventually/1`'s default budget is exactly 1s,
-      # which is exactly how long the stub sleeps — so the default could never
-      # have caught this render, only timed out beside it.
-      assert eventually(fn -> render(view) =~ "/voice-audio/" end, 250),
+      assert eventually(fn -> render(view) =~ "/voice-audio/" end),
              "the pending row never became a player — the render did not land"
 
       refute render(view) =~ ~s(data-label-running="Making")
@@ -489,22 +495,6 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
     end
   end
 
-  # The in-flight state is invisible against the instant stub — the render lands
-  # before the first `render/1`. This one sleeps first, so "being made" is a state
-  # the page is actually in when we look at it. Kept short: the assertion is that
-  # the row EXISTS, not how long it lasts.
-  defp stub_writing_wav_slowly(root, seconds) do
-    path = stub_writing_wav(root)
-
-    File.write!(
-      path,
-      File.read!(path) |> String.replace("#!/bin/sh\n", "#!/bin/sh\nsleep #{seconds}\n")
-    )
-
-    File.chmod!(path, 0o755)
-    path
-  end
-
   defp stub_writing_wav(root) do
     fixture = Path.join(root, "fixture.wav")
     File.write!(fixture, wav_bytes())
@@ -571,7 +561,13 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
     path
   end
 
-  defp eventually(fun, attempts \\ 50) do
+  # 250 x 20ms = 5s, raised from 50 (1s) on 09-05. Everything this file waits on
+  # goes through `Voice.Renderer`, which is ONE global queue shared with every
+  # other suite — so the wait is not "how long does this render take", it is
+  # "how long until the queue reaches it under full-suite load". A 1s budget was
+  # tight enough that the chime-set test failed once in a full run and passed on
+  # a re-run, which is the worst way for a budget to be wrong.
+  defp eventually(fun, attempts \\ 250) do
     Enum.reduce_while(1..attempts, false, fn _, _ ->
       if fun.() do
         {:halt, true}

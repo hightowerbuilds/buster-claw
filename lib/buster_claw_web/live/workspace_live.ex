@@ -1,24 +1,61 @@
 defmodule BusterClawWeb.WorkspaceLive do
   @moduledoc """
-  Workspace file manager. Hosts the reusable `FileTree` with a preview pane and
-  free directory navigation — an "Up" button, a clickable breadcrumb, and Home —
-  so you can browse anywhere (e.g. up to the Desktop). Any folder you navigate to
-  can be made the workspace via "Set as workspace", which applies immediately
-  (no restart) and is persisted for the next launch.
+  The Workspace page, behind three sub-tabs: **Directory**, **Notes**, **Calendar**.
+
+  **Directory** is what this page has always been — the reusable `FileTree` with a
+  preview pane and free directory navigation (an "Up" button, a clickable
+  breadcrumb, and Home), so you can browse anywhere (e.g. up to the Desktop). Any
+  folder you navigate to can be made the workspace via "Set as workspace", which
+  applies immediately (no restart) and is persisted for the next launch.
+
+  **Notes and Calendar moved here from the homepage on 09-05** (operator). Both
+  are the same `LiveComponent` the homepage hosted and the `/calendar` route still
+  hosts — nothing about either was rewritten, because both were built embeddable
+  from the start. What changed is which page provides the chrome, and that they
+  now sit beside the files they are about rather than beside the chat.
+
+  ## The host contract this page took on with them
+
+  `NotesComponent` has no process of its own, so **this LiveView subscribes and
+  relays**: a `note_*` command run in the terminal has to reach an open rail
+  without a tab switch. `CalendarComponent` needs no relay — it takes `today` and
+  owns everything else — but it does need `today` passed, which is why this mount
+  computes one.
   """
   use BusterClawWeb, :live_view
 
   alias BusterClaw.FileManager
   alias BusterClaw.Library.Artifact
+  alias BusterClaw.LocalTime
   alias BusterClaw.Setup
+
+  # The Workspace sub-tabs, in display order — ONE list, feeding both the rail
+  # and the `select_workspace_tab` guard. Two lists is how Home once shipped a
+  # button the server refused; see `StatusLive`.
+  @workspace_tabs [
+    {"directory", "Directory"},
+    {"notes", "Notes"},
+    {"calendar", "Calendar"}
+  ]
+  @workspace_tab_keys Enum.map(@workspace_tabs, &elem(&1, 0))
+
+  @doc "The Workspace sub-tabs, in display order. The rail and the guard share this."
+  def workspace_tabs, do: @workspace_tabs
 
   @impl true
   def mount(_params, _session, socket) do
     workspace = Artifact.workspace_root()
 
+    # The Notes rail must show an agent's `note_*` write without a tab switch.
+    # A `LiveComponent` cannot subscribe for itself, so the host does it and
+    # relays — the same contract `StatusLive` held until Notes moved here.
+    if connected?(socket), do: BusterClaw.Notes.subscribe()
+
     {:ok,
      socket
      |> assign(:page_title, "Workspace")
+     |> assign(:workspace_tab, "directory")
+     |> assign(:today, LocalTime.today())
      |> assign(:workspace_root, workspace)
      |> assign(:tree_root, workspace)
      |> assign(:tree_base, workspace)
@@ -66,6 +103,11 @@ defmodule BusterClawWeb.WorkspaceLive do
   end
 
   @impl true
+  def handle_event("select_workspace_tab", %{"tab" => tab}, socket)
+      when tab in @workspace_tab_keys do
+    {:noreply, assign(socket, :workspace_tab, tab)}
+  end
+
   def handle_event("toggle_sidebar", _params, socket) do
     {:noreply, update(socket, :sidebar_open, &(not &1))}
   end
@@ -135,6 +177,20 @@ defmodule BusterClawWeb.WorkspaceLive do
     {:noreply, assign(socket, :preview, preview_for(path, socket.assigns.tree_base))}
   end
 
+  # A note changed under us — an agent command, or another window. The component
+  # re-reads the vault and reconciles the open note; a draft in flight turns this
+  # into the conflict banner rather than a silent replacement. Relayed
+  # unconditionally: `send_update` to a component that is not currently rendered
+  # is a no-op, so this stays correct while the Directory tab is showing.
+  def handle_info({:notes, _event}, socket) do
+    send_update(BusterClawWeb.NotesComponent,
+      id: "workspace-notes",
+      refresh: System.unique_integer()
+    )
+
+    {:noreply, socket}
+  end
+
   # Navigate the tree to a directory (always allowed); ops stay scoped to it.
   defp navigate(socket, dir) do
     dir = Path.expand(dir)
@@ -178,123 +234,171 @@ defmodule BusterClawWeb.WorkspaceLive do
           </p>
         </div>
 
-        <div class="flex flex-wrap items-center gap-2">
+        <%!-- The Workspace sub-tabs. ONE list feeds both the rail and the
+              `select_workspace_tab` guard, which is the shape `StatusLive`
+              arrived at the hard way: Home once offered a button the server had
+              never heard of, and the click raised. --%>
+        <div
+          class="flex gap-0.5 border-2 border-base-content/20 p-0.5"
+          role="tablist"
+          aria-label="Workspace view"
+        >
           <button
+            :for={{key, label} <- workspace_tabs()}
             type="button"
-            phx-click="up"
-            disabled={@at_root?}
-            title="Up one level"
-            class="flex items-center gap-1 rounded-sm border-2 border-base-content/25 px-2 py-1 font-mono text-xs uppercase tracking-wide transition hover:border-primary hover:text-primary disabled:opacity-40"
+            role="tab"
+            aria-selected={@workspace_tab == key}
+            phx-click="select_workspace_tab"
+            phx-value-tab={key}
+            class={[
+              "px-3 py-1.5 font-display text-xs font-bold uppercase tracking-wide transition",
+              if(@workspace_tab == key,
+                do: "bg-primary text-primary-content",
+                else: "text-base-content/60 hover:text-base-content"
+              )
+            ]}
           >
-            <.icon name="hero-arrow-up" class="size-3" /> Up
+            {label}
           </button>
-          <button
-            type="button"
-            phx-click="go_home"
-            title="Home"
-            class="rounded-sm border-2 border-base-content/25 px-2 py-1 font-mono text-xs uppercase tracking-wide transition hover:border-primary hover:text-primary"
-          >
-            Home
-          </button>
+        </div>
 
-          <nav class="flex min-w-0 flex-wrap items-center gap-1 font-mono text-xs" aria-label="Path">
-            <span :for={{crumb, i} <- Enum.with_index(@crumbs)} class="flex items-center gap-1">
-              <span :if={i > 0} class="text-base-content/40">/</span>
+        <%!-- Directory: everything this page was before 09-05. --%>
+        <div :if={@workspace_tab == "directory"} class="flex min-h-0 flex-1 flex-col space-y-4">
+          <div class="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              phx-click="up"
+              disabled={@at_root?}
+              title="Up one level"
+              class="flex items-center gap-1 rounded-sm border-2 border-base-content/25 px-2 py-1 font-mono text-xs uppercase tracking-wide transition hover:border-primary hover:text-primary disabled:opacity-40"
+            >
+              <.icon name="hero-arrow-up" class="size-3" /> Up
+            </button>
+            <button
+              type="button"
+              phx-click="go_home"
+              title="Home"
+              class="rounded-sm border-2 border-base-content/25 px-2 py-1 font-mono text-xs uppercase tracking-wide transition hover:border-primary hover:text-primary"
+            >
+              Home
+            </button>
+
+            <nav class="flex min-w-0 flex-wrap items-center gap-1 font-mono text-xs" aria-label="Path">
+              <span :for={{crumb, i} <- Enum.with_index(@crumbs)} class="flex items-center gap-1">
+                <span :if={i > 0} class="text-base-content/40">/</span>
+                <button
+                  type="button"
+                  phx-click="nav"
+                  phx-value-path={crumb.path}
+                  class="rounded px-1 hover:bg-base-200 hover:text-primary"
+                >
+                  {crumb.label}
+                </button>
+              </span>
+            </nav>
+
+            <div class="ml-auto flex shrink-0 gap-2">
+              <button
+                :if={not @at_workspace?}
+                type="button"
+                phx-click="go_workspace"
+                class="rounded border-2 border-base-content/30 px-3 py-2 text-sm font-semibold transition hover:bg-base-200"
+              >
+                Go to workspace
+              </button>
+              <button
+                :if={not @at_workspace?}
+                type="button"
+                phx-click="set_workspace"
+                class="rounded bg-primary px-3 py-2 text-sm font-semibold text-primary-content transition hover:opacity-85"
+              >
+                Set as workspace
+              </button>
+            </div>
+          </div>
+
+          <p
+            :if={@note}
+            class="rounded-sm border-2 border-primary/40 bg-primary/10 px-3 py-2 text-sm"
+          >
+            {@note}
+          </p>
+
+          <div
+            id="workspace-dropzone"
+            phx-hook="WorkspaceDropzone"
+            phx-drop-target={@uploads.import.ref}
+            class="relative flex min-h-0 flex-1 gap-4"
+          >
+            <%!-- Drop overlay: the WorkspaceDropzone hook adds bc-dropzone-active to
+                  the container while OS files are dragged over; CSS reveals this.
+                  Files land in the folder currently in view. --%>
+            <div class="bc-drop-overlay pointer-events-none absolute inset-0 z-20 place-items-center rounded-lg border-2 border-dashed border-primary bg-base-100/85">
+              <div class="text-center">
+                <.icon name="hero-arrow-down-tray" class="mx-auto size-8 text-primary" />
+                <p class="mt-2 text-sm font-semibold">Drop to add to this folder</p>
+                <p class="font-mono text-xs text-base-content/60">{@tree_root}</p>
+              </div>
+            </div>
+            <.live_file_input upload={@uploads.import} class="sr-only" />
+            <p
+              :for={err <- upload_errors(@uploads.import)}
+              class="absolute left-3 top-3 z-20 rounded-sm border-2 border-warning/40 bg-warning/10 px-2 py-1 text-xs text-warning"
+            >
+              {upload_error_to_string(err)}
+            </p>
+
+            <div class="flex min-h-0 shrink-0">
+              <section class={[
+                "ic-panel min-h-0 w-[20rem] overflow-hidden p-3",
+                not @sidebar_open && "hidden"
+              ]}>
+                <.live_component
+                  module={BusterClawWeb.FileTree}
+                  id="workspace-tree"
+                  root={@tree_root}
+                  base={@tree_base}
+                  mode={:manage}
+                  version={@tree_version}
+                />
+              </section>
+
               <button
                 type="button"
-                phx-click="nav"
-                phx-value-path={crumb.path}
-                class="rounded px-1 hover:bg-base-200 hover:text-primary"
+                phx-click="toggle_sidebar"
+                title={if @sidebar_open, do: "Collapse file tree", else: "Expand file tree"}
+                aria-label={if @sidebar_open, do: "Collapse file tree", else: "Expand file tree"}
+                aria-expanded={@sidebar_open}
+                class="group flex w-2.5 shrink-0 items-center justify-center border-y-2 border-r-2 border-base-content/15 bg-primary/15 transition hover:bg-primary/30"
               >
-                {crumb.label}
+                <.icon
+                  name={if @sidebar_open, do: "hero-chevron-left", else: "hero-chevron-right"}
+                  class="size-3 text-primary"
+                />
               </button>
-            </span>
-          </nav>
+            </div>
 
-          <div class="ml-auto flex shrink-0 gap-2">
-            <button
-              :if={not @at_workspace?}
-              type="button"
-              phx-click="go_workspace"
-              class="rounded border-2 border-base-content/30 px-3 py-2 text-sm font-semibold transition hover:bg-base-200"
-            >
-              Go to workspace
-            </button>
-            <button
-              :if={not @at_workspace?}
-              type="button"
-              phx-click="set_workspace"
-              class="rounded bg-primary px-3 py-2 text-sm font-semibold text-primary-content transition hover:opacity-85"
-            >
-              Set as workspace
-            </button>
+            <section class="ic-panel flex min-h-0 flex-1 flex-col overflow-hidden">
+              <.preview preview={@preview} />
+            </section>
           </div>
         </div>
 
-        <p
-          :if={@note}
-          class="rounded-sm border-2 border-primary/40 bg-primary/10 px-3 py-2 text-sm"
-        >
-          {@note}
-        </p>
+        <%!-- The same components the homepage used to host, moved here whole
+              (`WORKSPACE_TABS_ROADMAP`). Both were already embeddable and both
+              already had two hosts; this is the third, and it is why neither
+              needed a line changed. Notes needs a relay because it has no
+              process of its own; Calendar takes `today` and owns the rest. --%>
+        <div :if={@workspace_tab == "notes"} class="flex min-h-0 flex-1 flex-col">
+          <.live_component module={BusterClawWeb.NotesComponent} id="workspace-notes" />
+        </div>
 
-        <div
-          id="workspace-dropzone"
-          phx-hook="WorkspaceDropzone"
-          phx-drop-target={@uploads.import.ref}
-          class="relative flex min-h-0 flex-1 gap-4"
-        >
-          <%!-- Drop overlay: the WorkspaceDropzone hook adds bc-dropzone-active to
-                the container while OS files are dragged over; CSS reveals this.
-                Files land in the folder currently in view. --%>
-          <div class="bc-drop-overlay pointer-events-none absolute inset-0 z-20 place-items-center rounded-lg border-2 border-dashed border-primary bg-base-100/85">
-            <div class="text-center">
-              <.icon name="hero-arrow-down-tray" class="mx-auto size-8 text-primary" />
-              <p class="mt-2 text-sm font-semibold">Drop to add to this folder</p>
-              <p class="font-mono text-xs text-base-content/60">{@tree_root}</p>
-            </div>
-          </div>
-          <.live_file_input upload={@uploads.import} class="sr-only" />
-          <p
-            :for={err <- upload_errors(@uploads.import)}
-            class="absolute left-3 top-3 z-20 rounded-sm border-2 border-warning/40 bg-warning/10 px-2 py-1 text-xs text-warning"
-          >
-            {upload_error_to_string(err)}
-          </p>
-
-          <div class="flex min-h-0 shrink-0">
-            <section class={[
-              "ic-panel min-h-0 w-[20rem] overflow-hidden p-3",
-              not @sidebar_open && "hidden"
-            ]}>
-              <.live_component
-                module={BusterClawWeb.FileTree}
-                id="workspace-tree"
-                root={@tree_root}
-                base={@tree_base}
-                mode={:manage}
-                version={@tree_version}
-              />
-            </section>
-
-            <button
-              type="button"
-              phx-click="toggle_sidebar"
-              title={if @sidebar_open, do: "Collapse file tree", else: "Expand file tree"}
-              aria-label={if @sidebar_open, do: "Collapse file tree", else: "Expand file tree"}
-              aria-expanded={@sidebar_open}
-              class="group flex w-2.5 shrink-0 items-center justify-center border-y-2 border-r-2 border-base-content/15 bg-primary/15 transition hover:bg-primary/30"
-            >
-              <.icon
-                name={if @sidebar_open, do: "hero-chevron-left", else: "hero-chevron-right"}
-                class="size-3 text-primary"
-              />
-            </button>
-          </div>
-
-          <section class="ic-panel flex min-h-0 flex-1 flex-col overflow-hidden">
-            <.preview preview={@preview} />
-          </section>
+        <div :if={@workspace_tab == "calendar"} class="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          <.live_component
+            module={BusterClawWeb.CalendarComponent}
+            id="workspace-calendar"
+            today={@today}
+          />
         </div>
       </section>
     </Layouts.app>

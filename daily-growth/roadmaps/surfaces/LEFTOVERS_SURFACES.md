@@ -535,6 +535,42 @@ here. Their detail travelled with them; nothing was lost.
 
 ---
 
+## The voice suites flake under full-suite load (found 09-05, NOT fixed)
+
+**Characterised and left, deliberately, because it is infrastructure rather than
+a defect in anything shipped.**
+
+Symptom: in a full `mix test`, all seventeen tests that wait on `Voice.Renderer`
+can fail together — `ClipsTest`, `RendererTest`, `voice_live_engine_test`,
+`notify_spoken_messages_test`, `commands/voice_message_test` — each with
+`assert_receive` timing out at 5s and **an empty mailbox**. No crash is logged.
+The next identical run is green. Seen twice in eight full runs on 09-05.
+
+What was ruled out:
+
+- **Not the render taking too long.** The stubs write a fixture WAV and exit.
+- **Not test-local budgets.** Two were raised (1s → 5s) and it still occurred.
+- **Not a leaked in-flight render.** One WAS found and fixed the same day (a
+  test that walked away from a job while `on_exit` deleted its workspace, worth
+  thirteen failures on its own) — this outlives that fix.
+- **Not contention between the voice suites themselves.** They pass 3/3 in
+  isolation, 136 tests, no failures.
+- **Not today's tab move.** It touches no voice code, and the flake reproduces
+  without it.
+
+What is actually suspected, and what would settle it: `Voice.Renderer` is a
+**singleton GenServer in the app supervision tree**, so it is shared by every
+test module and lives *outside* any test's Ecto sandbox ownership. It reaches
+`Voice.Config` (a Settings row) on the render path. Under full-suite load a
+connection checkout from a non-owning process is the kind of thing that blocks
+past 5s and then clears — and a `DBConnection.ConnectionError ... client exited`
+does appear in a failing run's log. **Confirm by instrumenting the queue rather
+than by raising another budget**: log entry/exit per job with timestamps and see
+whether the gap is the checkout.
+
+Worth fixing because it is the shape of failure that teaches people to re-run CI
+instead of reading it.
+
 ## Completed, kept as evidence
 
 The one item that left by being **done** rather than promoted. Kept because it

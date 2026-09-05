@@ -603,8 +603,16 @@ defmodule BusterClawWeb.NotesComponent do
   @impl true
   def render(assigns) do
     ~H"""
+    <%!-- `id={@id}`, not a literal. It said `id="home-notes"` from the day this
+          component was written until 09-05, which worked only because the
+          homepage was its one host. The Workspace page became a second one and
+          the id stopped describing anything: `send_update` addressed
+          `workspace-notes` while the DOM still said `home-notes`, so every
+          keyboard hook that reaches for its own root by id — the switcher, the
+          new-note chord — found nothing. Two hosts on one page (a split pane)
+          would also have collided. --%>
     <div
-      id="home-notes"
+      id={@id}
       phx-hook="NotesKeys"
       phx-target={@myself}
       data-switcher-open={to_string(@switcher_open)}

@@ -173,7 +173,7 @@ defmodule BusterClaw.Workspace do
       tier: :on_demand,
       owner: BusterClaw.Notes,
       seed: {BusterClaw.Notes, :ensure},
-      note: "The operator's Markdown vault — the Home Notes tab, read by note_*."
+      note: "The operator's Markdown vault — the Workspace Notes tab, read by note_*."
     },
     # A DECLARED PARENT WITH USER-NAMED CHILDREN — the same shape as `sounds/`,
     # whose `music/` and `studio/` are deliberately not declared here. This
