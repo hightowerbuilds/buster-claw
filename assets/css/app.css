@@ -608,6 +608,117 @@ body { background-color: var(--color-base-100); }
   box-shadow: 4px 4px 0 0 color-mix(in oklab, var(--color-base-content) 12%, transparent);
 }
 
+/* ── Vox2B (BusterClawWeb.VoxComponent) ──────────────────────────────────────
+   The voice surface is NINE panels, which is the problem this block solves.
+   Rendered in the house `.ic-panel` idiom they were nine bordered cards each
+   with a hard offset shadow and a `text-2xl font-black uppercase` heading —
+   correct Industrial Claw for a page you visit occasionally, a wall on a
+   homepage tab you work in. (Operator, 09-05: "a tidy minimalist style".)
+
+   The move is one surface with HAIRLINES instead of nine surfaces with borders.
+   Weight comes off the chrome and stays on the controls, which are the only
+   part anyone came here to touch. Nothing here changes the identity's palette
+   or its fonts — minimal is a density decision, not a different design.
+
+   Deliberately scoped under `.ic-vox` rather than restyling `.ic-panel`: this
+   surface is the exception, and the twenty other panels in the app are not. */
+
+.ic-vox {
+  --vox-rule: color-mix(in oklab, var(--color-base-content) 12%, transparent);
+  --vox-pad: 1rem;
+}
+
+/* One act: Train, Make, Assign. The label is the only uppercase left. */
+.ic-vox-act {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem var(--vox-pad) 0.5rem;
+  background: var(--color-base-100);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--color-base-content) 50%, transparent);
+}
+/* The homepage's panels are translucent glass over the shader, so a sticky
+   header painted base-100 would be an opaque bar sliding over it. Match the
+   translucency and blur what passes underneath instead. */
+.ic-home .ic-vox-act {
+  background: color-mix(in oklab, var(--color-base-100) 82%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+/* The rule runs from the label to the right edge — a divider that starts where
+   the words stop, so the eye gets the grouping without a second border. */
+.ic-vox-act::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--vox-rule);
+}
+
+/* One section inside an act. A hairline above, and nothing else — no border,
+   no radius, no shadow. The first in each act skips it: the act's own rule is
+   already there. */
+.ic-vox-section {
+  padding: 0.875rem var(--vox-pad) 1.125rem;
+  border-top: 1px solid var(--vox-rule);
+}
+.ic-vox-act + .ic-vox-section {
+  border-top: 0;
+  padding-top: 0.25rem;
+}
+
+/* Section heading: the name, then its one line. `text-2xl font-black uppercase`
+   was the whole reason nine sections read as nine pages. */
+.ic-vox-section > h3 {
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+.ic-vox-hint {
+  margin-top: 0.125rem;
+  margin-bottom: 0.75rem;
+  max-width: 62ch;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: color-mix(in oklab, var(--color-base-content) 58%, transparent);
+}
+/* A section whose body is its own explanation wants no gap under the hint. */
+.ic-vox-section > .ic-vox-hint:last-child {
+  margin-bottom: 0;
+}
+
+/* Status line under a control — the render notes, the engine sentence. Muted
+   and monospaced so a changing string does not shift the layout around it. */
+.ic-vox-note {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+}
+
+/* The chime table. Sixteen rows of label + input is the densest thing here, so
+   it gets a grid rather than sixteen flex-wraps that disagree about width. */
+.ic-vox-lines {
+  display: grid;
+  grid-template-columns: minmax(5.5rem, max-content) 1fr auto;
+  align-items: center;
+  gap: 0.375rem 0.75rem;
+}
+/* `:for` must wrap an element; this makes that wrapper disappear so its three
+   cells are the grid's own items. Not `<template>`, whose contents are inert —
+   invisible rows AND unsubmitted inputs, with every string assertion passing. */
+.ic-vox-line {
+  display: contents;
+}
+
 /* Home Calendar/Contacts corner widget (StatusLive `corner_widget` + the
    CornerWidget JS hook). Docked, it's a flex item that fills the header gap to
    the right of the banner; its card is absolute so the card's content scrolls

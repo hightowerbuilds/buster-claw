@@ -27,6 +27,17 @@ defmodule BusterClawWeb.VoiceLiveTest do
     assert response =~ "speech"
     assert response =~ "Voice on / off"
 
+    # The sixteen chime rows are REAL inputs, not `<template>` contents. Written
+    # after the 09-05 restyle put them in a CSS grid and reached for `<template>`
+    # as the `:for` wrapper: template contents are inert, so the rows rendered
+    # invisible and the inputs never submitted — and every string assertion in
+    # this file still passed, because the markup was in the HTML either way.
+    assert response =~ ~s(name="lines[timer]")
+
+    refute response =~ "<template",
+           "a <template> in this surface makes its contents inert — invisible " <>
+             "controls that never submit, with the markup still present in the HTML"
+
     # No STT remnants: the mic test, device picker, and Mic hook are gone.
     refute response =~ ~s(id="voice-test-mic")
     refute response =~ ~s(phx-hook="Mic")

@@ -508,185 +508,81 @@ defmodule BusterClawWeb.VoxComponent do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="space-y-6">
-      <div class="ic-panel overflow-hidden">
-        <header class="border-b-2 border-base-content/20 px-5 py-4">
-          <p class="ic-eyebrow">Voice</p>
-          <h2 class="font-display text-2xl font-black uppercase tracking-tight">
-            Spoken replies
-          </h2>
-          <p class="mt-1 text-sm text-base-content/65">
-            Buster Claw can read its replies aloud using your Mac's built-in speech
-            synthesizer — <strong>on-device</strong>, nothing is sent anywhere.
-          </p>
-        </header>
+    <div class="ic-vox ic-panel">
+      <%!-- Four acts, in the order the work happens: teach it a voice, make
+            something with it, put that somewhere, and — separately — the Mac's
+            own synthesizer that reads chat aloud. The act labels are sticky, so
+            scrolling nine sections never loses which half of the surface you are
+            in. See `.ic-vox` in app.css for why this is hairlines rather than
+            nine bordered cards. --%>
+      <p class="ic-vox-act">Train</p>
 
-        <ul class="flex flex-col gap-3 px-5 py-5 text-sm text-base-content/75">
-          <li class="flex gap-3">
-            <.icon name="hero-speaker-wave" class="size-5 shrink-0 text-primary" />
-            <span>
-              Toggle <strong>Voice on / off</strong> from the button in the chat header.
-              When it's on, each assistant reply is spoken as it arrives.
-            </span>
-          </li>
-          <li class="flex gap-3">
-            <.icon name="hero-bolt" class="size-5 shrink-0 text-primary" />
-            <span>
-              Sending a new message (or cutting a run) stops whatever is being spoken,
-              so a fresh turn never talks over the last one.
-            </span>
-          </li>
-          <li class="flex gap-3">
-            <.icon name="hero-computer-desktop" class="size-5 shrink-0 text-primary" />
-            <span>Available in the macOS desktop app only.</span>
-          </li>
-        </ul>
-      </div>
+      <section class="ic-vox-section">
+        <h3>A voice of its own</h3>
+        <p class="ic-vox-hint">
+          <strong>VoxCPM</strong>
+          can be given a voice of its own. It is far slower than real time, so it is used for
+          sounds made once and kept — chimes and the phone greeting, never chat.
+        </p>
 
-      <%!-- The picker's DOM id is namespaced by the component id: two hosts render
-            this surface, and `SplitLive` can put both on one page. A duplicate id
-            would leave `VoicePicker` bound to whichever half mounted first. --%>
-      <div class="ic-panel overflow-hidden" id={"#{@id}-picker"} phx-hook="VoicePicker">
-        <header class="border-b-2 border-base-content/20 px-5 py-4">
-          <p class="ic-eyebrow">Voice</p>
-          <h2 class="font-display text-2xl font-black uppercase tracking-tight">
-            Which voice
-          </h2>
-          <p class="mt-1 text-sm text-base-content/65">
-            Pick the voice Buster Claw speaks in. Choosing one plays it straight away.
-            More voices — including higher-quality ones — install from <strong>System Settings → Accessibility → Spoken Content → System Voice</strong>,
-            and show up here once they have downloaded.
-          </p>
-        </header>
-
-        <div data-voice-unavailable hidden class="px-5 py-5 text-sm text-base-content/65">
-          <p>
-            The speech synthesizer belongs to the desktop app, so there is nothing to
-            pick from in a browser. Open Buster Claw on macOS to choose a voice.
-          </p>
-        </div>
-
-        <div data-voice-controls hidden class="flex flex-col gap-5 px-5 py-5">
-          <label class="flex flex-col gap-2">
-            <span class="ic-eyebrow">Voice</span>
-            <select
-              data-voice-select
-              class="select select-bordered w-full max-w-md font-mono text-sm"
-            >
-            </select>
-          </label>
-
-          <label class="flex flex-col gap-2">
-            <span class="ic-eyebrow">
-              Speed <span data-voice-rate-label class="font-mono normal-case"></span>
-            </span>
-            <input
-              type="range"
-              data-voice-rate
-              min="100"
-              max="400"
-              step="5"
-              class="range range-primary w-full max-w-md"
-            />
-          </label>
-
-          <div class="flex flex-wrap gap-3">
-            <button type="button" data-voice-audition class="btn btn-ghost btn-sm">
-              <.icon name="hero-play" class="size-4" /> Hear it
-            </button>
-            <button type="button" data-voice-reset class="btn btn-ghost btn-sm">
-              Use system default
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div class="ic-panel overflow-hidden">
-        <header class="border-b-2 border-base-content/20 px-5 py-4">
-          <p class="ic-eyebrow">Engine</p>
-          <h2 class="font-display text-2xl font-black uppercase tracking-tight">
-            A voice of its own
-          </h2>
-          <p class="mt-1 text-sm text-base-content/65">
-            The voices above are your Mac's, and they read replies instantly. <strong>VoxCPM</strong>
-            is a speech model that can be given a voice of its own — it is far slower than
-            real time, so it is used for sounds that are made once and kept: notification
-            chimes and the phone greeting. It is never used to read chat.
-          </p>
-        </header>
-
-        <div class="flex flex-col gap-4 px-5 py-5 text-sm">
-          <div class="flex items-center gap-3">
+        <div class="flex flex-col gap-3 text-sm">
+          <div class="flex items-center gap-2">
             <%= if @engine.available? do %>
-              <.icon name="hero-check-circle" class="size-5 shrink-0 text-primary" />
-              <span>
-                Installed at <code class="font-mono text-xs">{@engine.path}</code>, running on <code class="font-mono text-xs">{@engine.device}</code>.
+              <.icon name="hero-check-circle" class="size-4 shrink-0 text-primary" />
+              <span class="ic-vox-note">
+                {@engine.path} · {@engine.device}
               </span>
             <% else %>
-              <.icon name="hero-x-circle" class="size-5 shrink-0 text-base-content/40" />
-              <span class="text-base-content/70">
-                {absent_sentence(@engine.reason)}
-              </span>
+              <.icon name="hero-x-circle" class="size-4 shrink-0 text-base-content/40" />
+              <span class="ic-vox-note">{absent_sentence(@engine.reason)}</span>
             <% end %>
           </div>
 
-          <%= unless @engine.available? do %>
-            <div class="flex flex-col gap-2">
-              <p class="text-base-content/65">
-                It is not bundled — the weights alone are larger than this whole app. Install it
-                yourself, then press Check again:
-              </p>
-              <pre class="overflow-x-auto rounded border-2 border-base-content/20 bg-base-200 p-3 text-xs"><code>{Engine.install_hint()}</code></pre>
-            </div>
-          <% end %>
+          <pre
+            :if={not @engine.available?}
+            class="overflow-x-auto rounded border border-base-content/15 bg-base-200 p-2.5 text-[0.6875rem]"
+          ><code>{Engine.install_hint()}</code></pre>
 
-          <div class="flex flex-wrap items-center gap-3">
+          <div class="flex flex-wrap items-center gap-2">
             <button
               type="button"
               phx-click="engine-recheck"
               phx-target={@myself}
-              class="btn btn-ghost btn-sm"
+              class="btn btn-ghost btn-xs"
             >
-              <.icon name="hero-arrow-path" class="size-4" /> Check again
+              Check again
             </button>
 
-            <%= if @engine.available? do %>
-              <button
-                type="button"
-                phx-click="engine-verify"
-                phx-target={@myself}
-                disabled={match?({:running, _}, @engine_check)}
-                class="btn btn-ghost btn-sm"
-              >
-                Run it
-              </button>
-            <% end %>
+            <button
+              :if={@engine.available?}
+              type="button"
+              phx-click="engine-verify"
+              phx-target={@myself}
+              disabled={match?({:running, _}, @engine_check)}
+              class="btn btn-ghost btn-xs"
+            >
+              Run it
+            </button>
 
-            <span class="text-xs text-base-content/60">{check_sentence(@engine_check)}</span>
+            <span class="ic-vox-note">{check_sentence(@engine_check)}</span>
           </div>
         </div>
-      </div>
+      </section>
 
-      <div class="ic-panel overflow-hidden">
-        <header class="border-b-2 border-base-content/20 px-5 py-4">
-          <p class="ic-eyebrow">Engine settings</p>
-          <h2 class="font-display text-2xl font-black uppercase tracking-tight">
-            How it speaks
-          </h2>
-          <p class="mt-1 text-sm text-base-content/65">
-            Leave anything blank to use the engine's own default. The one that matters is
-            the <strong>reference clip</strong>: point it at a few seconds of your own voice
-            and every line is spoken in it, instead of a voice the model invents.
-          </p>
-        </header>
+      <section class="ic-vox-section">
+        <h3>How it speaks</h3>
+        <p class="ic-vox-hint">
+          Blank means the engine's own default. The one that matters is the reference clip — point
+          it at your voice and every line is spoken in it.
+        </p>
 
         <form
           phx-submit="engine-config-save"
           phx-target={@myself}
-          class="flex flex-col gap-4 px-5 py-5 text-sm"
+          class="flex flex-col gap-3 text-sm"
         >
           <label class="flex flex-col gap-1">
-            <span class="ic-eyebrow">Reference clip — a WAV of your voice</span>
+            <span class="ic-eyebrow">Reference clip</span>
             <input
               type="text"
               name="config[reference_audio]"
@@ -694,10 +590,6 @@ defmodule BusterClawWeb.VoxComponent do
               placeholder="~/Desktop/me-ten-seconds.wav"
               class="input input-bordered input-sm w-full font-mono text-xs"
             />
-            <span class="text-xs text-base-content/55">
-              Ten seconds of clean speech on a laptop mic is enough. With this set, every
-              render clones it; without it, the engine designs a voice from the description below.
-            </span>
           </label>
 
           <label class="flex flex-col gap-1">
@@ -711,7 +603,7 @@ defmodule BusterClawWeb.VoxComponent do
             />
           </label>
 
-          <div class="grid gap-4 sm:grid-cols-3">
+          <div class="grid gap-3 sm:grid-cols-3">
             <label class="flex flex-col gap-1">
               <span class="ic-eyebrow">Device</span>
               <select
@@ -736,7 +628,7 @@ defmodule BusterClawWeb.VoxComponent do
                 name="config[inference_timesteps]"
                 value={@engine_config.inference_timesteps}
                 min="1"
-                placeholder="engine default"
+                placeholder="default"
                 class="input input-bordered input-sm font-mono text-xs"
               />
             </label>
@@ -749,16 +641,11 @@ defmodule BusterClawWeb.VoxComponent do
                 value={@engine_config.cfg_value}
                 min="0.1"
                 step="0.1"
-                placeholder="engine default"
+                placeholder="default"
                 class="input input-bordered input-sm font-mono text-xs"
               />
             </label>
           </div>
-
-          <p class="text-xs text-base-content/55">
-            Fewer steps is faster and rougher; more guidance follows the text more literally.
-            On this machine a line takes minutes, so these are real levers.
-          </p>
 
           <label class="flex flex-col gap-1">
             <span class="ic-eyebrow">Engine path — only if it is somewhere unusual</span>
@@ -771,46 +658,39 @@ defmodule BusterClawWeb.VoxComponent do
             />
           </label>
 
-          <div class="flex flex-wrap items-center gap-3 border-t-2 border-base-content/10 pt-4">
-            <button type="submit" class="btn btn-primary btn-sm">Save settings</button>
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="submit" class="btn btn-primary btn-xs">Save</button>
             <button
               type="button"
               phx-click="engine-config-reset"
               phx-target={@myself}
-              class="btn btn-ghost btn-sm"
+              class="btn btn-ghost btn-xs"
             >
               Engine defaults
             </button>
-            <span class="text-xs text-base-content/60">{@config_note}</span>
+            <span class="ic-vox-note">{@config_note}</span>
           </div>
 
-          <p class="text-xs text-base-content/70">
-            <strong>{elem(@chimes_made, 0)} of {elem(@chimes_made, 1)}</strong>
-            chimes are made with these settings.
-            <span :if={elem(@chimes_made, 0) < elem(@chimes_made, 1)}>
-              Changing the voice changes every line, so <em>Speak them</em> below will make the
-              other {elem(@chimes_made, 1) - elem(@chimes_made, 0)} — minutes each on this machine.
-            </span>
+          <p class="ic-vox-note">
+            {elem(@chimes_made, 0)} of {elem(@chimes_made, 1)} chimes are made with these settings.<span :if={
+              elem(@chimes_made, 0) < elem(@chimes_made, 1)
+            }>
+              Changing the voice remakes all of them.</span>
           </p>
         </form>
-      </div>
+      </section>
 
-      <div class="ic-panel overflow-hidden">
-        <header class="border-b-2 border-base-content/20 px-5 py-4">
-          <p class="ic-eyebrow">Your voice</p>
-          <h2 class="font-display text-2xl font-black uppercase tracking-tight">
-            Record it once
-          </h2>
-          <p class="mt-1 text-sm text-base-content/65">
-            Ten seconds of you talking normally — read the next line out loud, or just say
-            anything. There is no training step: the recording <strong>is</strong>
-            the learning. The moment it saves, every chime, clip and greeting is spoken in
-            your voice.
-          </p>
-        </header>
+      <section class="ic-vox-section">
+        <h3>Record it once</h3>
+        <p class="ic-vox-hint">
+          Ten seconds of you talking normally. There is no training step: the recording
+          <strong>is</strong>
+          the learning, and the moment it saves every chime, clip and greeting is spoken in your
+          voice.
+        </p>
 
-        <div class="flex flex-col gap-4 px-5 py-5 text-sm">
-          <p class="rounded border-2 border-base-content/10 bg-base-200 px-4 py-3 font-display text-base">
+        <div class="flex flex-col gap-3 text-sm">
+          <p class="border-l-2 border-base-content/20 pl-3 text-sm italic text-base-content/70">
             “The quick way to check a microphone is to read a sentence you didn't write,
             at the speed you'd say it to a friend across a kitchen.”
           </p>
@@ -832,14 +712,14 @@ defmodule BusterClawWeb.VoxComponent do
             phx-target={@myself}
             data-event-take="reference_take"
             data-event-report="reference_report"
-            class="flex flex-col gap-3"
+            class="flex flex-col gap-2"
           >
-            <div data-role="format" class="font-mono text-[0.65rem] text-base-content/60">
+            <div data-role="format" class="font-mono text-[0.625rem] text-base-content/55">
               opening the microphone…
             </div>
 
-            <div class="relative h-3 overflow-hidden rounded-sm border-2 border-base-content/20 bg-base-200">
-              <div data-role="target-zone" class="absolute inset-y-0 bg-success/20"></div>
+            <div class="relative h-2 overflow-hidden rounded-sm bg-base-300">
+              <div data-role="target-zone" class="absolute inset-y-0 bg-success/25"></div>
               <div
                 data-role="meter"
                 class="relative h-full w-0 bg-success transition-[width] duration-75"
@@ -847,37 +727,37 @@ defmodule BusterClawWeb.VoxComponent do
               </div>
             </div>
 
-            <div class="flex flex-wrap items-center gap-3 font-mono text-xs">
-              <span data-role="peak" class="text-base-content/60">peak —</span>
-              <span data-role="clip" class="text-error" hidden>clipped</span>
-              <button type="button" data-role="record" class="btn btn-primary btn-sm">
+            <div class="flex flex-wrap items-center gap-2 font-mono text-[0.6875rem]">
+              <button type="button" data-role="record" class="btn btn-primary btn-xs">
                 ● Record
               </button>
-              <span data-role="status" class="text-base-content/60"></span>
+              <span data-role="peak" class="text-base-content/55">peak —</span>
+              <span data-role="clip" class="text-error" hidden>clipped</span>
+              <span data-role="status" class="text-base-content/55"></span>
             </div>
           </div>
 
-          <p :if={match?({"denied", _}, @mic_state)} class="text-xs text-error">
+          <p :if={match?({"denied", _}, @mic_state)} class="ic-vox-note text-error">
             The microphone was refused. macOS asks once — System Settings → Privacy &amp;
             Security → Microphone, and allow Buster Claw.
           </p>
-          <p :if={match?({"unsupported", _}, @mic_state)} class="text-xs text-base-content/55">
+          <p :if={match?({"unsupported", _}, @mic_state)} class="ic-vox-note">
             No microphone here. Recording works in the desktop app, not in a browser tab.
           </p>
 
-          <span class="text-xs text-base-content/70">{@ref_note}</span>
+          <span class="ic-vox-note">{@ref_note}</span>
 
-          <ul
-            :if={@references != []}
-            class="flex flex-col gap-2 border-t-2 border-base-content/10 pt-4"
-          >
-            <li :for={ref <- @references} class="flex flex-wrap items-center gap-3">
-              <audio controls preload="none" src={~p"/voice-audio/#{ref.name}"} class="h-8 max-w-xs">
+          <ul :if={@references != []} class="flex flex-col gap-1.5">
+            <li :for={ref <- @references} class="flex flex-wrap items-center gap-2">
+              <audio
+                controls
+                preload="none"
+                src={~p"/voice-audio/#{ref.name}"}
+                class="h-7 max-w-[15rem]"
+              >
               </audio>
-              <span class="font-mono text-xs text-base-content/60">{ref.name}</span>
-              <span :if={ref.current?} class="text-xs text-primary">
-                <.icon name="hero-check" class="size-4" /> in use
-              </span>
+              <span class="font-mono text-[0.6875rem] text-base-content/55">{ref.name}</span>
+              <span :if={ref.current?} class="text-[0.6875rem] text-primary">in use</span>
               <button
                 :if={not ref.current?}
                 type="button"
@@ -901,22 +781,18 @@ defmodule BusterClawWeb.VoxComponent do
             </li>
           </ul>
         </div>
-      </div>
+      </section>
 
-      <div class="ic-panel overflow-hidden">
-        <header class="border-b-2 border-base-content/20 px-5 py-4">
-          <p class="ic-eyebrow">Say anything</p>
-          <h2 class="font-display text-2xl font-black uppercase tracking-tight">
-            Hear yourself
-          </h2>
-          <p class="mt-1 text-sm text-base-content/65">
-            Type a line, and it comes back in your voice. The fastest way to judge a
-            recording — one sentence is minutes, the whole chime set is most of an hour.
-          </p>
-        </header>
+      <p class="ic-vox-act">Make</p>
 
-        <div class="flex flex-col gap-4 px-5 py-5 text-sm">
-          <form phx-submit="clip_make" phx-target={@myself} class="flex flex-col gap-3">
+      <section class="ic-vox-section">
+        <h3>Hear yourself</h3>
+        <p class="ic-vox-hint">
+          Type a line and it comes back in your voice — the fastest way to judge a recording.
+        </p>
+
+        <div class="flex flex-col gap-3 text-sm">
+          <form phx-submit="clip_make" phx-target={@myself} class="flex flex-col gap-2">
             <textarea
               name="clip[text]"
               rows="2"
@@ -925,27 +801,27 @@ defmodule BusterClawWeb.VoxComponent do
               class="textarea textarea-bordered w-full text-sm"
             ><%= @clip_text %></textarea>
 
-            <div class="flex flex-wrap items-center gap-3">
-              <button type="submit" disabled={not @engine.available?} class="btn btn-primary btn-sm">
-                <.icon name="hero-speaker-wave" class="size-4" /> Make it
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="submit" disabled={not @engine.available?} class="btn btn-primary btn-xs">
+                Make it
               </button>
-              <span :if={not Config.cloning?()} class="text-xs text-base-content/55">
-                No recording yet — this will use a designed voice, not yours.
+              <span :if={not Config.cloning?()} class="ic-vox-note">
+                No recording yet — a designed voice, not yours.
               </span>
-              <span class="text-xs text-base-content/70">{@clip_note}</span>
+              <span class="ic-vox-note">{@clip_note}</span>
             </div>
           </form>
 
-          <ul :if={@clips != []} class="flex flex-col gap-2 border-t-2 border-base-content/10 pt-4">
-            <li :for={clip <- @clips} class="flex flex-wrap items-center gap-3">
+          <ul :if={@clips != []} class="flex flex-col gap-1.5">
+            <li :for={clip <- @clips} class="flex flex-wrap items-center gap-2">
               <audio
                 controls
                 preload="none"
                 src={~p"/voice-audio/#{clip.name}"}
-                class="h-8 max-w-xs"
+                class="h-7 max-w-[15rem]"
               >
               </audio>
-              <span class="min-w-0 flex-1 truncate">{clip.text}</span>
+              <span class="min-w-0 flex-1 truncate text-xs">{clip.text}</span>
               <button
                 type="button"
                 phx-click="clip_forget"
@@ -958,109 +834,101 @@ defmodule BusterClawWeb.VoxComponent do
             </li>
           </ul>
         </div>
-      </div>
+      </section>
 
-      <div class="ic-panel overflow-hidden">
-        <header class="border-b-2 border-base-content/20 px-5 py-4">
-          <p class="ic-eyebrow">Spoken notifications</p>
-          <h2 class="font-display text-2xl font-black uppercase tracking-tight">
-            What it says
-          </h2>
-          <p class="mt-1 text-sm text-base-content/65">
-            A chime tells you something happened. A spoken one tells you <strong>what</strong>,
-            from across the room. These are your machine's words — change any of them.
-            Each is made once and kept, so nothing is rendered while a timer is going off.
-          </p>
-        </header>
+      <p class="ic-vox-act">Assign</p>
 
-        <form
-          phx-submit="chime-lines-save"
-          phx-target={@myself}
-          class="flex flex-col gap-3 px-5 py-5"
-        >
-          <div :for={row <- @chimes} class="flex flex-wrap items-center gap-3">
-            <span class="w-28 shrink-0 text-xs uppercase tracking-wide text-base-content/60">
-              {row.label}
-            </span>
-            <input
-              type="text"
-              name={"lines[#{row.key}]"}
-              value={row.line}
-              maxlength="120"
-              class="input input-bordered input-sm min-w-0 flex-1 text-sm"
-            />
-            <span class="w-20 shrink-0 text-xs text-base-content/50">
-              <%= if row.installed? do %>
-                <.icon name="hero-check" class="size-4 text-primary" /> spoken
-              <% end %>
-            </span>
+      <section class="ic-vox-section">
+        <h3>What it says</h3>
+        <p class="ic-vox-hint">
+          One line per notification. Each is made once and kept, so nothing renders while a timer
+          is going off.
+        </p>
+
+        <form phx-submit="chime-lines-save" phx-target={@myself} class="flex flex-col gap-3">
+          <div class="ic-vox-lines">
+            <%!-- Three columns rather than sixteen flex rows that each decide
+                  their own width: at this density the labels not lining up is
+                  the first thing the eye catches.
+
+                  The per-row wrapper is `display: contents` so the three cells
+                  are the grid's items, not the wrapper. `:for` has to wrap SOME
+                  element, and the tempting one — `<template>` — is a trap: its
+                  contents are inert, so the rows would render invisible and the
+                  inputs would never submit, while every string assertion in the
+                  suite still passed because the markup is present in the HTML. --%>
+            <div :for={row <- @chimes} class="ic-vox-line">
+              <span class="font-mono text-[0.6875rem] uppercase tracking-wide text-base-content/55">
+                {row.label}
+              </span>
+              <input
+                type="text"
+                name={"lines[#{row.key}]"}
+                value={row.line}
+                maxlength="120"
+                class="input input-bordered input-xs min-w-0 text-sm"
+              />
+              <span class="w-4 text-primary">
+                <.icon :if={row.installed?} name="hero-check" class="size-3.5" />
+              </span>
+            </div>
           </div>
 
-          <div class="mt-2 flex flex-wrap items-center gap-3">
-            <button type="submit" class="btn btn-primary btn-sm">Save lines</button>
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="submit" class="btn btn-primary btn-xs">Save lines</button>
             <button
               type="button"
               phx-click="chime-lines-reset"
               phx-target={@myself}
-              class="btn btn-ghost btn-sm"
+              class="btn btn-ghost btn-xs"
             >
-              Reset to defaults
+              Reset
             </button>
             <button
               type="button"
               phx-click="chime-render-all"
               phx-target={@myself}
               disabled={not @engine.available?}
-              class="btn btn-ghost btn-sm"
+              class="btn btn-ghost btn-xs"
             >
-              <.icon name="hero-microphone" class="size-4" /> Speak them
+              Speak them
             </button>
-            <span class="text-xs text-base-content/60">{@chime_note}</span>
+            <span class="ic-vox-note">{@chime_note}</span>
           </div>
 
-          <p :if={not @engine.available?} class="text-xs text-base-content/55">
-            Editing works without an engine — speaking them needs one. Install it above,
-            then come back.
+          <p :if={not @engine.available?} class="ic-vox-note">
+            Editing works without an engine — speaking them needs one.
           </p>
         </form>
-      </div>
+      </section>
 
-      <div class="ic-panel overflow-hidden">
-        <header class="border-b-2 border-base-content/20 px-5 py-4">
-          <p class="ic-eyebrow">Phone</p>
-          <h2 class="font-display text-2xl font-black uppercase tracking-tight">
-            What callers hear
-          </h2>
-          <p class="mt-1 text-sm text-base-content/65">
-            Right now anyone phoning your number hears Amazon's synthesized voice. This
-            records the greeting in <strong>your</strong>
-            voice instead. It is one recording, instructions included —
-            a greeting in your voice followed by a robot reading the access-code prompt
-            is worse than all-robot, so the whole line is yours to write.
-          </p>
-        </header>
+      <section class="ic-vox-section">
+        <h3>What callers hear</h3>
+        <p class="ic-vox-hint">
+          The phone greeting, in your voice instead of Amazon's. It is one recording, instructions
+          included — the whole line is yours to write.
+        </p>
 
-        <div class="flex flex-col gap-4 px-5 py-5 text-sm">
-          <div class="flex items-center gap-3">
+        <div class="flex flex-col gap-3 text-sm">
+          <div class="flex items-center gap-2">
             <%= cond do %>
               <% @greeting_status.stale? -> %>
-                <.icon name="hero-exclamation-triangle" class="size-5 shrink-0 text-warning" />
-                <span>
-                  Published — but <strong>callers hear the old recording</strong>.
-                  You have edited the words since. Publish again to catch them up.
+                <.icon name="hero-exclamation-triangle" class="size-4 shrink-0 text-warning" />
+                <span class="ic-vox-note">
+                  Published — but callers hear the old recording. Publish again.
                 </span>
               <% @greeting_status.published? -> %>
-                <.icon name="hero-check-circle" class="size-5 shrink-0 text-primary" />
-                <span>Published. This is what callers hear.</span>
+                <.icon name="hero-check-circle" class="size-4 shrink-0 text-primary" />
+                <span class="ic-vox-note">Published. This is what callers hear.</span>
               <% true -> %>
-                <.icon name="hero-x-circle" class="size-5 shrink-0 text-base-content/40" />
-                <span class="text-base-content/70">
+                <.icon name="hero-x-circle" class="size-4 shrink-0 text-base-content/40" />
+                <span class="ic-vox-note">
                   Not published — callers hear the synthesized voice.
                 </span>
             <% end %>
           </div>
 
-          <form phx-submit="greeting-save" phx-target={@myself} class="flex flex-col gap-3">
+          <form phx-submit="greeting-save" phx-target={@myself} class="flex flex-col gap-2">
             <textarea
               name="greeting"
               rows="3"
@@ -1068,8 +936,8 @@ defmodule BusterClawWeb.VoxComponent do
               class="textarea textarea-bordered w-full text-sm"
             ><%= @greeting_text %></textarea>
 
-            <div class="flex flex-wrap items-center gap-3">
-              <button type="submit" class="btn btn-primary btn-sm">Save wording</button>
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="submit" class="btn btn-primary btn-xs">Save wording</button>
 
               <button
                 type="button"
@@ -1077,9 +945,9 @@ defmodule BusterClawWeb.VoxComponent do
                 phx-target={@myself}
                 disabled={not @engine.available?}
                 data-claw-confirm="This changes what every caller hears when they phone your number. Record and publish it?"
-                class="btn btn-ghost btn-sm"
+                class="btn btn-ghost btn-xs"
               >
-                <.icon name="hero-phone-arrow-up-right" class="size-4" /> Record and publish
+                Record and publish
               </button>
 
               <button
@@ -1088,20 +956,85 @@ defmodule BusterClawWeb.VoxComponent do
                 phx-click="greeting-unpublish"
                 phx-target={@myself}
                 data-claw-confirm="Callers will go back to the synthesized voice. Take it down?"
-                class="btn btn-ghost btn-sm"
+                class="btn btn-ghost btn-xs"
               >
                 Take it down
               </button>
 
-              <span class="text-xs text-base-content/60">{@greeting_note}</span>
+              <span class="ic-vox-note">{@greeting_note}</span>
             </div>
           </form>
 
-          <p :if={not @engine.available?} class="text-xs text-base-content/55">
+          <p :if={not @engine.available?} class="ic-vox-note">
             Recording needs the engine above. The wording can be saved without it.
           </p>
         </div>
-      </div>
+      </section>
+
+      <%!-- A different engine entirely, and last for that reason: everything
+            above is VoxCPM making a file, this is the Mac's own synthesizer
+            reading chat as it arrives. Keeping them on one surface was the
+            operator's call (`D1`); keeping them in one ACT would have been a
+            claim that they are the same feature. --%>
+      <p class="ic-vox-act">Reading aloud</p>
+
+      <section class="ic-vox-section">
+        <h3>Spoken replies</h3>
+        <p class="ic-vox-hint">
+          Your Mac's own speech synthesizer reads each reply as it arrives — <strong>on-device</strong>, nothing is sent anywhere. Toggle
+          <strong>Voice on / off</strong>
+          in the chat header; a new message stops whatever is being spoken. macOS desktop app only.
+        </p>
+      </section>
+
+      <%!-- The picker's DOM id is namespaced by the component id: two hosts render
+            this surface, and `SplitLive` can put both on one page. A duplicate id
+            would leave `VoicePicker` bound to whichever half mounted first. --%>
+      <section class="ic-vox-section" id={"#{@id}-picker"} phx-hook="VoicePicker">
+        <h3>Which voice</h3>
+        <p class="ic-vox-hint">
+          Choosing one plays it straight away. More install from <strong>System Settings → Accessibility → Spoken Content → System Voice</strong>.
+        </p>
+
+        <div data-voice-unavailable hidden class="ic-vox-note">
+          The speech synthesizer belongs to the desktop app, so there is nothing to pick from in a
+          browser.
+        </div>
+
+        <div data-voice-controls hidden class="flex flex-col gap-3 text-sm">
+          <label class="flex flex-col gap-1">
+            <span class="ic-eyebrow">Voice</span>
+            <select
+              data-voice-select
+              class="select select-bordered select-sm w-full max-w-sm font-mono text-xs"
+            >
+            </select>
+          </label>
+
+          <label class="flex flex-col gap-1">
+            <span class="ic-eyebrow">
+              Speed <span data-voice-rate-label class="font-mono normal-case"></span>
+            </span>
+            <input
+              type="range"
+              data-voice-rate
+              min="100"
+              max="400"
+              step="5"
+              class="range range-primary range-xs w-full max-w-sm"
+            />
+          </label>
+
+          <div class="flex flex-wrap gap-2">
+            <button type="button" data-voice-audition class="btn btn-ghost btn-xs">
+              Hear it
+            </button>
+            <button type="button" data-voice-reset class="btn btn-ghost btn-xs">
+              Use system default
+            </button>
+          </div>
+        </div>
+      </section>
     </div>
     """
   end

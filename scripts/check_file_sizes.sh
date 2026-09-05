@@ -666,7 +666,16 @@ check lib/buster_claw_web/components/notes/switcher.ex         134 HELD
 # get a Train / Make / Assign rail, which is an extraction, not a rewrite. Until
 # then a tenth panel has to be funded by taking one out — which is the outcome
 # this tier keeps producing elsewhere in this file.
-check lib/buster_claw_web/live/vox_component.ex              1139 FROZEN
+#
+# 1139 -> 1072 the same day, and banked here rather than left as headroom. The
+# operator asked for "a tidy minimalist style" and the restyle paid for itself:
+# nine `.ic-panel` cards with `text-2xl font-black uppercase` headings and a
+# paragraph each became one surface with hairlines, mono act labels and one-line
+# hints. Sixty-seven lines came out of the CHROME while every control stayed.
+# The acts (Train / Make / Assign / Reading aloud) are Phase 3's grouping arriving
+# as presentation; the rail itself is still unbuilt, which is why this stays
+# FROZEN rather than becoming HELD.
+check lib/buster_claw_web/live/vox_component.ex              1072 FROZEN
 
 # Phase 3. 20% markup, so ~987 lines of logic in a live_component. The source
 # catalog comes out to core, where the missing sound_* CLI will need it.
