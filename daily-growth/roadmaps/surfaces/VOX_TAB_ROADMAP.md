@@ -1,7 +1,8 @@
 # Vox — record it, make it say something, put it somewhere
 
-**Scoped 2026-09-05 · Status: Phases 0–1 SHIPPED 09-05, plus `D6`–`D9` and the
-first cut of Phase 3. Phase 2 next.**
+**Scoped 2026-09-05 · Status: Phases 0–2 SHIPPED 09-05, plus `D6`–`D9`. Phase 3
+is three-quarters done sideways — four panels extracted, the rail unbuilt.
+Phase 4 next.**
 
 > **Green at the close of Phase 1:** 4,343 Elixir tests / 0 failures, bun 352 / 0,
 > credo strict clean, size gate holds on the new file. **Unwalked** — no part of
@@ -165,14 +166,37 @@ silent staleness `R2` describes. Restored, and green again.
 **`F4` held with room to spare:** `status_live.ex` went 738 → 781 against its
 810 cap, so the relay landed without touching the number.
 
-### Phase 2 — spoken messages come home
+### Phase 2 — spoken messages come home ✅ 09-05
 
-Move the messages panel out of `notify_settings_live.ex` into the component.
-Settings → Notify keeps sound *routing* (that is Notify's job) and links to Vox
+Moved the messages panel out of `notify_settings_live.ex` into the component.
+Settings → Notify keeps sound *routing* (that is Notify's job) and points at Vox
 for the lines themselves.
 
-- [ ] `notify_spoken_messages_test.exs` retargeted, not deleted
-- [ ] Notify's own `{:voice_render, …}` subscription removed with its panel
+- [x] `notify_spoken_messages_test.exs` retargeted, not deleted — and renamed
+      `vox_spoken_messages_test.exs`, because a suite named for the page it no
+      longer tests is a name that will mislead somebody
+- [x] Notify's own `{:voice_render, …}` subscription removed with its panel,
+      along with `load_messages/1`, three handlers and two assigns
+- [x] Settings → Notify keeps a **pointer**, not a duplicate. Two places to write
+      the same line is how the two disagree; nothing to say at all is worse for
+      the person who used it there yesterday
+
+**Why it belonged here.** It was built on Notify because *a spoken message is a
+notification* — true of how it FIRES and wrong about where you make one.
+Everything upstream of the firing is voice work: it needs the engine, it needs
+the reference clip, and it is judged by listening.
+
+**`F8` — `SoundPreview` is a DELEGATED listener**, so it fires only for
+descendants of the element it is mounted on. On Notify that element wrapped the
+whole page and the Preview button worked by being inside it. Moved, the button
+would have gone quietly dead while looking perfectly fine — the panel mounts its
+own hook now, and the test asserts it. **A delegated listener is a dependency on
+an ancestor that no import names.**
+
+**No render chip on this panel, deliberately.** Readiness is read off disk on
+every re-list rather than tracked as a job, so this panel does not know when a
+render started and cannot honestly show a clock. `making…` is the whole of what
+it knows.
 
 ### Phase 3 — the three-act arrangement
 
@@ -180,8 +204,12 @@ Nine panels in a flat stack is the settings page it is trying to stop being.
 Rearrange behind an internal rail — **Train · Make · Assign** — the way
 `PhoneComponent` uses a two-tab rail rather than one long column.
 
-- [ ] The rail's keys and the guard are one list (the `F5` lesson, applied here)
-- [ ] Engine probe/verify sits in Train; it is the precondition for everything
+- [x] The panels are their own modules — `components/vox/{engine_settings,
+      chimes,greeting,messages}.ex`, plus `progress.ex`. **Every one of them was
+      extracted to pay for a feature arriving**, never as tidying: the FROZEN cap
+      turned "this needs room" into "then something else leaves", six times.
+- [ ] The rail itself — the keys and the guard as one list (the `F5` lesson)
+- [ ] Engine probe sits in Train; it is the precondition for everything
 
 ### Phase 4 — one phrase, anywhere (the new part)
 

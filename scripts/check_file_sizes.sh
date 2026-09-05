@@ -594,7 +594,24 @@ check lib/buster_claw_web/components/notes/switcher.ex         134 HELD
 # feature landed inside the space that made. A raised cap would have bought the
 # same feature and left the file bigger; the freeze bought it and left the file
 # smaller. Fourth time. It is also Phase 3's first real cut.
-check lib/buster_claw_web/live/vox_component.ex              1005 FROZEN
+#
+# 1005 -> 935 the same day, and the largest single arrival yet: Phase 2 moved the
+# spoken-messages feature IN from Settings -> Notify — a panel plus three
+# handlers and its state, ~90 lines. Two panels went out to pay for it, `How it
+# speaks` and `What callers hear`, both to `components/vox/`. Fifth and sixth
+# time this tier has answered "a feature needs room" with "then something else
+# leaves", and Phase 3's per-panel shape is now four files rather than a plan.
+check lib/buster_claw_web/live/vox_component.ex               931 FROZEN
+
+# Vox2B's panels, capped on arrival. Each is markup plus its own attrs and owns
+# no state — the state stayed in `vox_component.ex`, which is the whole reason
+# extracting them is cheap and the reason growth HERE is the thing to look at: a
+# panel gaining logic means behaviour leaked out of the component that owns it.
+check lib/buster_claw_web/components/vox/engine_settings.ex   156 HELD
+check lib/buster_claw_web/components/vox/messages.ex          140 HELD
+check lib/buster_claw_web/components/vox/greeting.ex          122 HELD
+check lib/buster_claw_web/components/vox/chimes.ex            115 HELD
+check lib/buster_claw_web/components/vox/progress.ex           90 HELD
 
 # Phase 3. 20% markup, so ~987 lines of logic in a live_component. The source
 # catalog comes out to core, where the missing sound_* CLI will need it.

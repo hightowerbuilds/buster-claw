@@ -49,8 +49,12 @@ defmodule BusterClawWeb.VoxComponent do
   alias BusterClaw.Voice.Config
   alias BusterClaw.Voice.Engine
   alias BusterClaw.Voice.Greeting
+  alias BusterClaw.Voice.Messages
   alias BusterClaw.Voice.Reference
   alias BusterClawWeb.Vox.Chimes, as: ChimePanel
+  alias BusterClawWeb.Vox.EngineSettings
+  alias BusterClawWeb.Vox.Greeting, as: GreetingPanel
+  alias BusterClawWeb.Vox.Messages, as: MessagePanel
   alias BusterClawWeb.Vox.Progress
 
   @doc """
@@ -108,8 +112,27 @@ defmodule BusterClawWeb.VoxComponent do
     |> assign(:clip_text, "")
     |> assign(:clip_jobs, %{})
     |> assign(:clip_note, nil)
+    # Spoken messages, moved here from Settings → Notify on 09-05. No job map
+    # like `clip_jobs`: readiness is read off DISK on each re-list, so a render
+    # broadcast is only a cue to look again — nothing here tracks which render
+    # was ours, and nothing needs to.
+    |> assign(:message_note, nil)
+    |> assign(:message_form, %{"name" => "", "text" => ""})
     |> load_reference()
     |> load_clips()
+    |> load_messages()
+  end
+
+  # Ready messages are installed into the sound library on the way past, so the
+  # preview button and a fired notification both find `message-<name>.wav`
+  # without a separate step the operator has to know about.
+  defp load_messages(socket) do
+    messages = Messages.list()
+
+    for %{ready?: true, installed?: false, name: name} <- messages,
+        do: Messages.ensure_installed(name)
+
+    assign(socket, :messages, Messages.list())
   end
 
   defp load_reference(socket), do: assign(socket, :references, Reference.list())
@@ -351,6 +374,67 @@ defmodule BusterClawWeb.VoxComponent do
     {:noreply, socket |> load_clips() |> assign(:clip_note, nil)}
   end
 
+  # --- notes to yourself ------------------------------------------------------
+
+  def handle_event("message_create", %{"message" => %{"name" => name, "text" => text}}, socket) do
+    blank = %{"name" => "", "text" => ""}
+
+    case Messages.create(name, text) do
+      {:ok, %{ready?: true}} ->
+        {:noreply,
+         socket
+         |> assign(:message_form, blank)
+         |> load_messages()
+         |> assign(:message_note, "Already made — it was in the cache.")}
+
+      {:ok, %{name: slug}} ->
+        {:noreply,
+         socket
+         |> assign(:message_form, blank)
+         |> load_messages()
+         |> assign(
+           :message_note,
+           "Making “#{slug}”. Minutes on this machine; it will appear ready on its own."
+         )}
+
+      {:error, :engine_unavailable} ->
+        {:noreply, assign(socket, :message_note, "No speech engine — install it above.")}
+
+      {:error, :invalid_name} ->
+        {:noreply, assign(socket, :message_note, "Name it with letters, digits or dashes.")}
+
+      {:error, :empty_text} ->
+        {:noreply, assign(socket, :message_note, "Type what it should say.")}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :message_note, "Could not: #{inspect(reason)}")}
+    end
+  end
+
+  def handle_event("message_fire", %{"name" => name} = params, socket) do
+    note =
+      case Messages.fire(name, Map.take(params, ["in_seconds"])) do
+        {:ok, %{kind: "reminder"}} ->
+          "Fired."
+
+        {:ok, %{kind: "timer", fire_at: at}} ->
+          "Set for #{Calendar.strftime(at, "%H:%M:%S")} UTC."
+
+        {:error, :not_ready} ->
+          "Not made yet — give it a minute."
+
+        {:error, reason} ->
+          "Could not: #{inspect(reason)}"
+      end
+
+    {:noreply, assign(socket, :message_note, note)}
+  end
+
+  def handle_event("message_delete", %{"name" => name}, socket) do
+    Messages.delete(name)
+    {:noreply, socket |> load_messages() |> assign(:message_note, "Deleted.")}
+  end
+
   def handle_event("greeting-save", %{"greeting" => text}, socket) do
     Greeting.put_text(text)
 
@@ -424,7 +508,10 @@ defmodule BusterClawWeb.VoxComponent do
         end
 
       true ->
-        chime_render(render_key, result, socket)
+        # Not ours by key — but a landed render may have made a spoken message
+        # ready, and that is only knowable by re-listing. Cheap, and the
+        # alternative is a message that stays "making…" until the next click.
+        socket |> load_messages() |> then(&chime_render(render_key, result, &1))
     end
   end
 
@@ -550,116 +637,12 @@ defmodule BusterClawWeb.VoxComponent do
         </div>
       </section>
 
-      <section class="ic-vox-section">
-        <h3>How it speaks</h3>
-        <p class="ic-vox-hint">
-          Blank means the engine's own default. The one that matters is the reference clip — point
-          it at your voice and every line is spoken in it.
-        </p>
-
-        <form
-          phx-submit="engine-config-save"
-          phx-target={@myself}
-          class="flex flex-col gap-3 text-sm"
-        >
-          <label class="flex flex-col gap-1">
-            <span class="ic-eyebrow">Reference clip</span>
-            <input
-              type="text"
-              name="config[reference_audio]"
-              value={@engine_config.reference_audio}
-              placeholder="~/Desktop/me-ten-seconds.wav"
-              class="input input-bordered input-sm w-full font-mono text-xs"
-            />
-          </label>
-
-          <label class="flex flex-col gap-1">
-            <span class="ic-eyebrow">Voice description — when not cloning</span>
-            <input
-              type="text"
-              name="config[control]"
-              value={@engine_config.control}
-              placeholder="warm, low, unhurried"
-              class="input input-bordered input-sm w-full text-sm"
-            />
-          </label>
-
-          <div class="grid gap-3 sm:grid-cols-3">
-            <label class="flex flex-col gap-1">
-              <span class="ic-eyebrow">Device</span>
-              <select
-                name="config[device]"
-                class="select select-bordered select-sm font-mono text-xs"
-              >
-                <option value="" selected={is_nil(@engine_config.device)}>
-                  auto ({Engine.device()})
-                </option>
-                <option value="cpu" selected={@engine_config.device == "cpu"}>cpu</option>
-                <option value="mps" selected={@engine_config.device == "mps"}>
-                  mps — Apple silicon
-                </option>
-                <option value="cuda" selected={@engine_config.device == "cuda"}>cuda</option>
-              </select>
-            </label>
-
-            <label class="flex flex-col gap-1">
-              <span class="ic-eyebrow">Steps</span>
-              <input
-                type="number"
-                name="config[inference_timesteps]"
-                value={@engine_config.inference_timesteps}
-                min="1"
-                placeholder="default"
-                class="input input-bordered input-sm font-mono text-xs"
-              />
-            </label>
-
-            <label class="flex flex-col gap-1">
-              <span class="ic-eyebrow">Guidance</span>
-              <input
-                type="number"
-                name="config[cfg_value]"
-                value={@engine_config.cfg_value}
-                min="0.1"
-                step="0.1"
-                placeholder="default"
-                class="input input-bordered input-sm font-mono text-xs"
-              />
-            </label>
-          </div>
-
-          <label class="flex flex-col gap-1">
-            <span class="ic-eyebrow">Engine path — only if it is somewhere unusual</span>
-            <input
-              type="text"
-              name="config[engine_path]"
-              value={@engine_config.engine_path}
-              placeholder={Engine.resolve() || "~/.buster-claw/voxcpm/bin/voxcpm"}
-              class="input input-bordered input-sm w-full font-mono text-xs"
-            />
-          </label>
-
-          <div class="flex flex-wrap items-center gap-2">
-            <button type="submit" class="btn btn-primary btn-xs">Save</button>
-            <button
-              type="button"
-              phx-click="engine-config-reset"
-              phx-target={@myself}
-              class="btn btn-ghost btn-xs"
-            >
-              Engine defaults
-            </button>
-            <span class="ic-vox-note">{@config_note}</span>
-          </div>
-
-          <p class="ic-vox-note">
-            {elem(@chimes_made, 0)} of {elem(@chimes_made, 1)} chimes are made with these settings.<span :if={
-              elem(@chimes_made, 0) < elem(@chimes_made, 1)
-            }>
-              Changing the voice remakes all of them.</span>
-          </p>
-        </form>
-      </section>
+      <EngineSettings.panel
+        config={@engine_config}
+        note={@config_note}
+        made={@chimes_made}
+        target={@myself}
+      />
 
       <section class="ic-vox-section">
         <h3>Record it once</h3>
@@ -843,80 +826,23 @@ defmodule BusterClawWeb.VoxComponent do
         target={@myself}
       />
 
-      <section class="ic-vox-section">
-        <h3>What callers hear</h3>
-        <p class="ic-vox-hint">
-          The phone greeting, in your voice instead of Amazon's. It is one recording, instructions
-          included — the whole line is yours to write.
-        </p>
+      <GreetingPanel.panel
+        text={@greeting_text}
+        status={@greeting_status}
+        engine={@engine}
+        note={@greeting_note}
+        since={@greeting_since}
+        id={@id}
+        target={@myself}
+      />
 
-        <div class="flex flex-col gap-3 text-sm">
-          <div class="flex items-center gap-2">
-            <%= cond do %>
-              <% @greeting_status.stale? -> %>
-                <.icon name="hero-exclamation-triangle" class="size-4 shrink-0 text-warning" />
-                <span class="ic-vox-note">
-                  Published — but callers hear the old recording. Publish again.
-                </span>
-              <% @greeting_status.published? -> %>
-                <.icon name="hero-check-circle" class="size-4 shrink-0 text-primary" />
-                <span class="ic-vox-note">Published. This is what callers hear.</span>
-              <% true -> %>
-                <.icon name="hero-x-circle" class="size-4 shrink-0 text-base-content/40" />
-                <span class="ic-vox-note">
-                  Not published — callers hear the synthesized voice.
-                </span>
-            <% end %>
-          </div>
-
-          <form phx-submit="greeting-save" phx-target={@myself} class="flex flex-col gap-2">
-            <textarea
-              name="greeting"
-              rows="3"
-              maxlength="600"
-              class="textarea textarea-bordered w-full text-sm"
-            ><%= @greeting_text %></textarea>
-
-            <div class="flex flex-wrap items-center gap-2">
-              <button type="submit" class="btn btn-primary btn-xs">Save wording</button>
-
-              <button
-                type="button"
-                phx-click="greeting-publish"
-                phx-target={@myself}
-                disabled={not @engine.available? or @greeting_since != nil}
-                data-claw-confirm="This changes what every caller hears when they phone your number. Record and publish it?"
-                class="btn btn-ghost btn-xs"
-              >
-                Record and publish
-              </button>
-
-              <button
-                :if={@greeting_status.published?}
-                type="button"
-                phx-click="greeting-unpublish"
-                phx-target={@myself}
-                data-claw-confirm="Callers will go back to the synthesized voice. Take it down?"
-                class="btn btn-ghost btn-xs"
-              >
-                Take it down
-              </button>
-
-              <Progress.chip
-                :if={@greeting_since}
-                id={"#{@id}-greeting"}
-                since={@greeting_since}
-                label="Recording"
-              />
-              <span :if={is_nil(@greeting_since)} class="ic-vox-note">{@greeting_note}</span>
-            </div>
-          </form>
-
-          <p :if={not @engine.available?} class="ic-vox-note">
-            Recording needs the engine above. The wording can be saved without it.
-          </p>
-        </div>
-      </section>
+      <MessagePanel.panel
+        messages={@messages}
+        form={@message_form}
+        note={@message_note}
+        id={@id}
+        target={@myself}
+      />
 
       <%!-- A different engine entirely, and last for that reason: everything
             above is VoxCPM making a file, this is the Mac's own synthesizer

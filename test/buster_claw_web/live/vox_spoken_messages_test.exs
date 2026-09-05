@@ -1,8 +1,15 @@
-defmodule BusterClawWeb.NotifySpokenMessagesTest do
+defmodule BusterClawWeb.VoxSpokenMessagesTest do
   @moduledoc """
-  The "Spoken messages" panel on Settings → Notify. Needs a stub engine and a
-  scratch workspace, both global, so `async: false` and kept apart from the
-  page's other tests.
+  The "Notes to yourself" panel — spoken messages, which live on **Vox2B** since
+  09-05 (`VOX_TAB_ROADMAP` Phase 2). They were built on Settings → Notify because
+  a spoken message *is* a notification, which is true of how it FIRES and wrong
+  about where you make one: everything upstream is voice work.
+
+  Driven through `/voice` rather than the homepage tab because both hosts render
+  the same component and this route is the cheaper mount — the assertions are
+  about the panel, not about which page is holding it.
+
+  Needs a stub engine and a scratch workspace, both global, so `async: false`.
   """
   use BusterClawWeb.ConnCase, async: false
 
@@ -33,17 +40,26 @@ defmodule BusterClawWeb.NotifySpokenMessagesTest do
 
   test "the panel is there, and says how the agent reaches it", %{conn: conn} do
     absent()
-    {:ok, _view, html} = live(conn, ~p"/notify-settings")
+    {:ok, _view, html} = live(conn, ~p"/voice")
 
-    assert html =~ "Spoken messages"
+    # The heading became "Notes to yourself" when the panel moved into Vox2B's
+    # idiom — sections there carry a name, not an eyebrow-plus-shout.
+    assert html =~ "Notes to yourself"
     assert html =~ ~s(name="message[name]")
     assert html =~ ~s(name="message[text]")
     assert html =~ "voice_message_create"
+
+    # Preview is played by the delegated `SoundPreview` hook, which only fires
+    # for descendants of the element it is mounted on. On Settings → Notify that
+    # was a page-wide wrapper the button happened to sit inside; here the panel
+    # mounts its own, and a delegated listener that stops containing its button
+    # is a control that silently dies and looks fine.
+    assert html =~ ~s(phx-hook="SoundPreview")
   end
 
   test "with no engine, making one says where to get an engine", %{conn: conn} do
     absent()
-    {:ok, view, _html} = live(conn, ~p"/notify-settings")
+    {:ok, view, _html} = live(conn, ~p"/voice")
 
     html =
       view
@@ -57,7 +73,7 @@ defmodule BusterClawWeb.NotifySpokenMessagesTest do
   test "make → it appears as making, lands as ready with a preview, fires as a notification",
        %{conn: conn, root: root} do
     stub(root)
-    {:ok, view, _html} = live(conn, ~p"/notify-settings")
+    {:ok, view, _html} = live(conn, ~p"/voice")
 
     html =
       view
@@ -100,7 +116,7 @@ defmodule BusterClawWeb.NotifySpokenMessagesTest do
     {:ok, %{path: path}} = Messages.create("gone", "Going.")
     assert_receive {:voice_render, _, {:ok, ^path}}, 5_000
 
-    {:ok, view, html} = live(conn, ~p"/notify-settings")
+    {:ok, view, html} = live(conn, ~p"/voice")
     assert html =~ "gone"
 
     html =
