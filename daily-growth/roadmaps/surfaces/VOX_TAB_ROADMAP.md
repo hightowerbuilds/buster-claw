@@ -1,6 +1,6 @@
 # Vox — record it, make it say something, put it somewhere
 
-**Scoped 2026-09-05 · Status: Phases 0–1 SHIPPED 09-05, plus `D6`. Phase 2 next.**
+**Scoped 2026-09-05 · Status: Phases 0–1 SHIPPED 09-05, plus `D6`–`D8`. Phase 2 next.**
 
 > **Green at the close of Phase 1:** 4,343 Elixir tests / 0 failures, bun 352 / 0,
 > credo strict clean, size gate holds on the new file. **Unwalked** — no part of
@@ -195,6 +195,41 @@ exists on disk.
 - [ ] Re-assigning does not orphan the previous file
 
 ---
+
+## What the first look changed (09-05, operator at the screen)
+
+**The engine is installed.** `~/.buster-claw/voxcpm/bin/voxcpm`, running on
+`cpu`. `VOICE_ROADMAP`'s standing caveat — *"nothing here has yet made a real
+sound"* — is now testable on this machine rather than blocked on hardware. It is
+still true until someone types a line under **Make** and hears it back.
+
+**`D7` — the engine "Run it" button is deleted, and `Engine.verify/0` with it.**
+The operator's verdict: *"I just click Run it and then it just says it answered.
+There's no actual experience happening on the user end."* Correct, and the
+alternatives are all worse:
+
+- *Run it automatically on load* was considered first and rejected on `Engine`'s
+  own moduledoc — even `--help` pays a full torch import, which is the stated
+  reason `probe/0` never spawns anything. Auto-verifying would put a torch import
+  on a homepage tab every five minutes (the probe TTL).
+- *Make it say hello* is a strictly worse duplicate of **Hear yourself**, which
+  already renders arbitrary text in the operator's own voice one act down.
+
+So the panel now states what is *installed* and nothing claims to know whether it
+*runs*. A broken install reports itself in the render note of the first thing you
+ask for, which is both later and more useful than a pre-flight shrug. `verify/0`
+had exactly one caller and three tests; all four went, and the reasoning is in
+`Engine`'s moduledoc so it is not re-added by someone tidying. It is in git if a
+support-shaped "engine doctor" ever wants it.
+
+**`D8` — the surface is one panel with hairlines, not nine cards.** Operator:
+*"a tidy minimalist style."* Sections group under four sticky act labels — Train,
+Make, Assign, and **Reading aloud** last, because the `say(1)` half is a
+different engine and putting it in one of the three acts would claim otherwise.
+The `ic-vox-*` utilities are scoped rather than a change to `.ic-panel`: this
+surface is the exception and the twenty other panels are not. Phase 3's grouping
+has therefore arrived as presentation; **the rail itself is still unbuilt**, and
+that is what keeps the file FROZEN.
 
 ## Risks
 

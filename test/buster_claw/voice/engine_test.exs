@@ -75,27 +75,6 @@ defmodule BusterClaw.Voice.EngineTest do
     end
   end
 
-  describe "verify/0 — the expensive one" do
-    test "reports the exit status of a binary that fails", %{tmp: tmp} do
-      path = stub_binary(tmp, "voxcpm-bad", 3)
-      Application.put_env(:buster_claw, :voxcpm_path, path)
-
-      assert Engine.verify() == {:error, {:exit, 3}}
-    end
-
-    test "a binary that answers --help verifies", %{tmp: tmp} do
-      path = stub_binary(tmp, "voxcpm-ok", 0)
-      Application.put_env(:buster_claw, :voxcpm_path, path)
-
-      assert Engine.verify() == :ok
-    end
-
-    test "nothing installed is distinguishable from something broken" do
-      Application.put_env(:buster_claw, :voxcpm_path, "/nonexistent/voxcpm")
-      assert Engine.verify() == {:error, :not_installed}
-    end
-  end
-
   describe "command construction" do
     # These flags were read out of voxcpm 2.0.3's own cli.py rather than from
     # docs. If a future version moves them, these are the tests that say so.

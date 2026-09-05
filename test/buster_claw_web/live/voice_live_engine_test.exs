@@ -36,8 +36,10 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
     assert html =~ "pip install voxcpm"
     # The honest framing: absence is the normal state, not a broken one.
     assert html =~ "your Mac&#39;s own voices" or html =~ "your Mac's own voices"
-    # Nothing to run when there is nothing installed.
-    refute html =~ "engine-verify"
+    # `Check again` is the only control here, and it is offered whether or not
+    # anything is installed — re-reading the disk is exactly what you do after
+    # following the install line above.
+    assert html =~ "engine-recheck"
   end
 
   test "an install that cannot be run gets a different sentence from a missing one", %{conn: conn} do
@@ -55,15 +57,22 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
     refute html =~ "Not installed."
   end
 
-  test "an installed engine reports its path and device, and offers to run it", %{conn: conn} do
+  test "an installed engine reports its path and device, and nothing to click", %{conn: conn} do
     path = stub()
 
     {:ok, _view, html} = live(conn, ~p"/voice")
 
     assert html =~ path
-    assert html =~ "engine-verify"
     # The install instructions are for people who need them.
     refute html =~ "pip install voxcpm"
+
+    # The "Run it" liveness button was deleted 09-05 (operator: you clicked it
+    # and read "It answered", which is not an experience). Asserted as an absence
+    # in the state where it used to appear, because the argument against it is
+    # not that it was broken — it worked — but that a check with no payoff is
+    # exactly the kind of control that gets added back by someone tidying up.
+    # The real proof of life is typing a line under Make and hearing it.
+    refute html =~ "engine-verify"
   end
 
   test "Check again re-reads the disk, which is the whole point of it", %{conn: conn} do
@@ -76,19 +85,8 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
 
     html = view |> element("button[phx-click=engine-recheck]") |> render_click()
 
-    assert html =~ "engine-verify"
     refute html =~ "Not installed"
-  end
-
-  test "Run it reports what the binary actually did", %{conn: conn} do
-    stub(3)
-    {:ok, view, _html} = live(conn, ~p"/voice")
-
-    view |> element("button[phx-click=engine-verify]") |> render_click()
-
-    # The task result arrives as a message; render/1 after it lands.
-    assert eventually(fn -> render(view) =~ "exited 3" end),
-           "expected the failing exit status to reach the page"
+    refute html =~ "pip install voxcpm"
   end
 
   describe "the spoken chime set" do

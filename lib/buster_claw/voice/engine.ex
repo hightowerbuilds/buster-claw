@@ -7,9 +7,18 @@ defmodule BusterClaw.Voice.Engine do
   inside a 28 MB app is not a trade this product makes.
 
   This module answers two questions and deliberately stops there: *is there an
-  engine* (`probe/0`, `verify/0`) and *what would we run* (`design_args/3`,
-  `clone_args/4`, `batch_args/3`). **It does not render.** The queue that owns
+  engine* (`probe/0`) and *what would we run* (`design_args/3`, `clone_args/4`,
+  `batch_args/3`). **It does not render.** The queue that owns
   one-render-at-a-time, the cache and the PubSub progress belong above this.
+
+  **There is no liveness check.** `verify/0` — which ran the binary and reported
+  whether it answered — was deleted 09-05 along with the "Run it" button that was
+  its only caller. The operator's verdict on that button: you clicked it and read
+  "It answered", which is not an experience. The information a person actually
+  wants is one act further down the Vox2B surface, where typing a line and hearing
+  it back is the real proof — and a broken install reports itself in the render
+  note of the first thing you ask for. It is in git if a support-shaped "engine
+  doctor" ever wants it.
 
   ## Facts read out of voxcpm 2.0.3 itself, 09-02-26 — do not re-derive
 
@@ -31,8 +40,10 @@ defmodule BusterClaw.Voice.Engine do
   * **Running the binary at all is expensive.** `cli.py` imports only argparse,
     but the console script is `voxcpm.cli:main`, so Python imports the `voxcpm`
     package first — `__init__` → `core` → numpy, huggingface_hub and the torch
-    model modules. Even `--help` pays a full torch import. That is why liveness
-    is `verify/0`, separate and explicit, and why `probe/0` never spawns anything.
+    model modules. Even `--help` pays a full torch import. **That is why `probe/0`
+    never spawns anything** — and why the deleted `verify/0` could never have been
+    folded into it or run automatically on page load, which is the shape the 09-05
+    removal considered first and rejected on exactly this paragraph.
 
   ## Why resolution is not `System.find_executable/1`
 
@@ -73,7 +84,6 @@ defmodule BusterClaw.Voice.Engine do
 
   # Generous on purpose: the process being timed imports torch before it prints
   # its own usage text.
-  @verify_timeout_ms :timer.seconds(45)
 
   @doc """
   Where VoxCPM is, or `nil`.
@@ -110,7 +120,8 @@ defmodule BusterClaw.Voice.Engine do
   Cheap availability, cached for #{div(@ttl_ms, 60_000)} minutes.
 
   Spawns nothing. Answers from the filesystem, so it is safe to call while
-  rendering. Use `verify/0` to find out whether the binary actually runs.
+  rendering. It reports what is *installed*, never whether it *runs* — nothing in
+  the app answers that question any more; see the moduledoc.
   """
   @spec probe() :: t()
   def probe do
@@ -137,39 +148,6 @@ defmodule BusterClaw.Voice.Engine do
   def refresh do
     :persistent_term.erase(@cache_key)
     probe()
-  end
-
-  @doc """
-  Actually run the binary and see whether it answers.
-
-  **Slow — seconds, not milliseconds.** It pays a torch import before printing
-  usage. Never call it on a render path; it is for an explicit check.
-  """
-  @spec verify() :: :ok | {:error, :not_installed | :timeout | {:exit, integer()}}
-  def verify do
-    case resolve() do
-      nil ->
-        {:error, :not_installed}
-
-      path ->
-        # `System.cmd/3` RAISES on a missing executable rather than returning a
-        # status, and resolve/0's check is a moment earlier than this spawn.
-        task =
-          Task.async(fn ->
-            try do
-              System.cmd(path, ["--help"], stderr_to_stdout: true)
-            rescue
-              _ -> :gone
-            end
-          end)
-
-        case Task.yield(task, @verify_timeout_ms) || Task.shutdown(task, :brutal_kill) do
-          {:ok, {_out, 0}} -> :ok
-          {:ok, {_out, code}} -> {:error, {:exit, code}}
-          {:ok, :gone} -> {:error, :not_installed}
-          nil -> {:error, :timeout}
-        end
-    end
   end
 
   @doc """

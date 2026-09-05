@@ -675,7 +675,13 @@ check lib/buster_claw_web/components/notes/switcher.ex         134 HELD
 # The acts (Train / Make / Assign / Reading aloud) are Phase 3's grouping arriving
 # as presentation; the rail itself is still unbuilt, which is why this stays
 # FROZEN rather than becoming HELD.
-check lib/buster_claw_web/live/vox_component.ex              1072 FROZEN
+#
+# 1072 -> 1026 later the same day: the engine "Run it" button, its handler, its
+# `engine_check` assign and the six-clause `check_sentence/1` came out together
+# when the operator reported the control produced no experience. A feature
+# leaving is the cheapest way a FROZEN file shrinks, and it is banked here for
+# the same reason a decomposition would be.
+check lib/buster_claw_web/live/vox_component.ex              1026 FROZEN
 
 # Phase 3. 20% markup, so ~987 lines of logic in a live_component. The source
 # catalog comes out to core, where the missing sound_* CLI will need it.

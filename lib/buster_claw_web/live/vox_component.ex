@@ -32,18 +32,14 @@ defmodule BusterClawWeb.VoxComponent do
 
   ## Why the task replies need forwarding too
 
-  `engine-verify` and `chime-render-all` are slow enough to block a LiveView —
-  seconds for the first (it imports torch before it prints anything), tens of
-  minutes for the second — so both run in a `Task`. A component shares its host's
-  process, which means `Task.async/1` here monitors from the **host**, and the
-  `{ref, result}` reply lands in the *host's* mailbox rather than anywhere this
-  module can see. Hence the second forwarded shape.
+  `chime-render-all` is tens of minutes of work, so it runs in a `Task`. A
+  component shares its host's process, which means `Task.async/1` here monitors
+  from the **host**, and the `{ref, result}` reply lands in the *host's* mailbox
+  rather than anywhere this module can see. Hence the second forwarded shape.
 
   A host may run tasks of its own, so this never assumes an unrecognised ref is
-  ours: `handle_notify/2` matches each ref against the two we started and
-  silently drops anything else. The alternative — treating "not the chime task"
-  as "must be the engine check", which is what `VoiceLive` did while it was the
-  only surface — is a bug the moment a second host exists.
+  ours: `handle_notify/2` checks the ref against the one we started and silently
+  drops anything else.
   """
   use BusterClawWeb, :live_component
 
@@ -82,7 +78,6 @@ defmodule BusterClawWeb.VoxComponent do
   defp load_initial(socket) do
     socket
     |> assign(:engine, Engine.probe())
-    |> assign(:engine_check, nil)
     # render key -> chime key, so a finished render knows which chime it is.
     # The renderer addresses work by content hash and has no idea these are
     # notification lines; this map is the only thing that does.
@@ -144,15 +139,7 @@ defmodule BusterClawWeb.VoxComponent do
 
   @impl true
   def handle_event("engine-recheck", _params, socket) do
-    {:noreply, socket |> assign(:engine, Engine.refresh()) |> assign(:engine_check, nil)}
-  end
-
-  # `verify/0` runs the binary, which imports torch before it prints its own
-  # usage — seconds, not milliseconds. Done in a task so the surface stays
-  # answerable; blocking here would freeze the whole host LiveView on a slow disk.
-  def handle_event("engine-verify", _params, socket) do
-    task = Task.async(fn -> Engine.verify() end)
-    {:noreply, assign(socket, :engine_check, {:running, task.ref})}
+    {:noreply, assign(socket, :engine, Engine.refresh())}
   end
 
   def handle_event("chime-lines-save", %{"lines" => lines}, socket) do
@@ -435,22 +422,16 @@ defmodule BusterClawWeb.VoxComponent do
   # An unrecognised ref belongs to the host, not to us. Dropping it is the whole
   # reason both refs are tracked explicitly.
   defp handle_notify({:task, ref, result}, socket) when is_reference(ref) do
-    cond do
-      ref == socket.assigns.chime_task ->
-        Process.demonitor(ref, [:flush])
-        socket = assign(socket, :chime_task, nil)
+    if ref == socket.assigns.chime_task do
+      Process.demonitor(ref, [:flush])
+      socket = assign(socket, :chime_task, nil)
 
-        case result do
-          {:ok, results} -> install_set(socket, results)
-          {:error, reason} -> assign(socket, :chime_note, "Failed: #{inspect(reason)}")
-        end
-
-      match?({:running, ^ref}, socket.assigns.engine_check) ->
-        Process.demonitor(ref, [:flush])
-        assign(socket, :engine_check, result)
-
-      true ->
-        socket
+      case result do
+        {:ok, results} -> install_set(socket, results)
+        {:error, reason} -> assign(socket, :chime_note, "Failed: #{inspect(reason)}")
+      end
+    else
+      socket
     end
   end
 
@@ -552,19 +533,6 @@ defmodule BusterClawWeb.VoxComponent do
             >
               Check again
             </button>
-
-            <button
-              :if={@engine.available?}
-              type="button"
-              phx-click="engine-verify"
-              phx-target={@myself}
-              disabled={match?({:running, _}, @engine_check)}
-              class="btn btn-ghost btn-xs"
-            >
-              Run it
-            </button>
-
-            <span class="ic-vox-note">{check_sentence(@engine_check)}</span>
           </div>
         </div>
       </section>
@@ -1055,18 +1023,4 @@ defmodule BusterClawWeb.VoxComponent do
   defp humanize(:cfg_value), do: "Guidance"
   defp humanize(:engine_path), do: "Engine path"
   defp humanize(field), do: field |> to_string() |> String.capitalize()
-
-  defp check_sentence(nil), do: ""
-
-  defp check_sentence({:running, _ref}),
-    do: "Running it — this takes a few seconds, it loads a model to say hello."
-
-  defp check_sentence(:ok), do: "It answered."
-  defp check_sentence({:error, :timeout}), do: "It did not answer in time."
-  defp check_sentence({:error, :not_installed}), do: "It is gone."
-
-  defp check_sentence({:error, {:exit, code}}),
-    do: "It exited #{code} — the install is present but not working."
-
-  defp check_sentence(_), do: ""
 end
