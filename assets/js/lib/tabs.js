@@ -18,7 +18,6 @@ const TAB_GROUPS = [
     paths: new Set([
       "/settings",
       "/appearance",
-      "/voice",
       "/notify-settings",
       "/integrations",
       "/security",

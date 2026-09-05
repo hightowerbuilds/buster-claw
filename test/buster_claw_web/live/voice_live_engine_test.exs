@@ -288,7 +288,7 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
       absent()
       {:ok, view, _html} = live(conn, ~p"/voice")
 
-      html = render_hook(view, "reference_take", %{"pcm" => tone(2_500), "sample_rate" => 44_100})
+      html = push_take(view, tone(2_500))
 
       assert html =~ "This is your voice now"
       assert Config.cloning?()
@@ -300,7 +300,7 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
       absent()
       {:ok, view, _html} = live(conn, ~p"/voice")
 
-      html = render_hook(view, "reference_take", %{"pcm" => tone(500), "sample_rate" => 44_100})
+      html = push_take(view, tone(500))
 
       assert html =~ "Too short"
       refute Config.cloning?()
@@ -311,7 +311,9 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
       {:ok, view, _html} = live(conn, ~p"/voice")
 
       html =
-        render_hook(view, "reference_report", %{
+        view
+        |> element("#voice-recorder")
+        |> render_hook("reference_report", %{
           "do" => "capability",
           "state" => "denied",
           "detail" => "NotAllowedError"
@@ -345,6 +347,37 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
 
       assert html =~ "No recording yet"
     end
+
+    # The host half of `VoxComponent`'s contract, and the reason it earns its own
+    # test rather than riding on the `/voice` one above. A `LiveComponent` has no
+    # process: a render that finishes while the HOMEPAGE is the open surface
+    # reaches the panel only if `StatusLive` relays the broadcast. Delete that
+    # clause and this goes red while every `/voice` test stays green — which is
+    # precisely the silent staleness it exists to catch.
+    test "a finished render reaches the Vox sub-tab, not just /voice", %{conn: conn, root: root} do
+      stub_writing_wav(root)
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      render_click(view, "select_home_tab", %{"tab" => "vox"})
+
+      view
+      |> form("form[phx-submit=clip_make]", %{"clip" => %{"text" => "Spoken on the homepage."}})
+      |> render_submit()
+
+      assert eventually(fn -> render(view) =~ "Spoken on the homepage." end),
+             "the Renderer broadcast never reached the component — is StatusLive still relaying?"
+    end
+  end
+
+  # Aimed at the recorder ELEMENT, not at the LiveView. The surface became
+  # `VoxComponent` on 09-05 when Vox got a homepage tab, and a component only
+  # receives what carries its `phx-target` — which is exactly what the real hook
+  # does now (`voice_recorder.js` pushes with `pushEventTo(this.el, …)`). A bare
+  # `render_hook(view, …)` would test a path the browser no longer takes.
+  defp push_take(view, pcm) do
+    view
+    |> element("#voice-recorder")
+    |> render_hook("reference_take", %{"pcm" => pcm, "sample_rate" => 44_100})
   end
 
   defp tone(ms, rate \\ 44_100) do

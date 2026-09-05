@@ -1,15 +1,21 @@
 defmodule BusterClawWeb.SettingsTabs do
   @moduledoc """
   The Settings section's shared header: the wordmark and the nav bar of links to
-  each settings sub-tab (Appearance, Voice, Notify, Integrations, Configuration,
+  each settings sub-tab (Appearance, Notify, Integrations, Configuration,
   Cmd List, Security), with the active one highlighted. (Get Started's 3-step
   onboarding moved to the home Explained tab's Intro, 08-02.)
+
+  **Voice left this rail on 09-05**, when the whole surface became the homepage's
+  Vox2B sub-tab (`VOX_TAB_ROADMAP`). The `/voice` route still exists for deep
+  links and split panes, exactly as `/calendar` and `/phone` do — but it is no
+  longer a *settings* page, so it is neither listed here nor grouped under the
+  Settings tab in the strip. Its tab-strip label moved to `Layouts`'s
+  `@tab_labels` for that reason.
   """
   use BusterClawWeb, :html
 
   @tabs [
     %{key: :appearance, label: "Appearance", path: "/appearance"},
-    %{key: :voice, label: "Voice", path: "/voice"},
     %{key: :notify, label: "Notify", path: "/notify-settings"},
     %{key: :integrations, label: "Integrations", path: "/integrations"},
     %{key: :configuration, label: "Configuration", path: "/settings"},

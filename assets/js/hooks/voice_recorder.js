@@ -250,7 +250,16 @@ export const VoiceRecorder = {
     // meter and encoder and a different listener. One hook with a configurable
     // destination beats a second copy of an AudioWorklet and a Float32 encoder
     // that would drift from this one the first time either was touched.
-    this.pushEvent(this.el.dataset.eventTake || "contribute_take", {
+    //
+    // And the DESTINATION is the element's to choose too (09-05-26), for the
+    // same reason: the reference recorder moved into a LiveComponent when Vox
+    // became a homepage tab, and a component only receives what is aimed at it.
+    // `pushEventTo(this.el, …)` reads the element's own `phx-target` and falls
+    // back to the LiveView when there is none (see `targetComponentID/3` in
+    // phoenix_live_view's view.js) — which is precisely how the Studio's
+    // recorder, which carries no `phx-target`, keeps reaching `StudioLive`
+    // without being touched.
+    this.pushEventTo(this.el, this.el.dataset.eventTake || "contribute_take", {
       pcm: this.encode(samples),
       sample_rate: this.rate,
     })
@@ -299,6 +308,10 @@ export const VoiceRecorder = {
   },
 
   report(state, detail) {
-    this.pushEvent(this.el.dataset.eventReport || "contribute", {do: "capability", state, detail})
+    this.pushEventTo(this.el, this.el.dataset.eventReport || "contribute", {
+      do: "capability",
+      state,
+      detail,
+    })
   },
 }

@@ -130,7 +130,7 @@ defmodule BusterClawWeb.NotifySettingsLive do
 
       {:error, :engine_unavailable} ->
         {:noreply,
-         assign(socket, :message_note, "No speech engine — install it in Settings → Voice.")}
+         assign(socket, :message_note, "No speech engine — install it in Home → Vox2B.")}
 
       {:error, :invalid_name} ->
         {:noreply, assign(socket, :message_note, "Name it with letters, digits or dashes.")}
@@ -415,7 +415,7 @@ defmodule BusterClawWeb.NotifySettingsLive do
                 Notes to yourself, in your voice
               </h2>
               <p class="mt-1 text-sm text-base-content/65">
-                Write a line; it is spoken in the voice recorded in Settings → Voice and kept as
+                Write a line; it is spoken in the voice recorded in Home → Vox2B and kept as
                 a sound. Fire it now, or set it for later — it arrives like any other
                 notification, with the words on screen. The agent can leave you one too:
                 <code class="text-xs">voice_message_create</code>

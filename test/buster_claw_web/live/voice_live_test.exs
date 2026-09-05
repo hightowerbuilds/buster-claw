@@ -10,13 +10,17 @@ defmodule BusterClawWeb.VoiceLiveTest do
   # The microphone/STT feature was demolished 06-28; there is no mic test, device
   # picker, or voice_error handler anymore. (Speech *input* is a separate
   # question — see the Voice roadmap — and is not this page.)
-  test "renders the Voice settings page describing spoken replies", %{conn: conn} do
+  test "renders the Vox surface describing spoken replies, with no settings rail", %{conn: conn} do
     conn = get(conn, ~p"/voice")
     response = html_response(conn, 200)
 
-    # Lives in the Settings sub-tab system, with Voice active.
-    assert response =~ ~s(id="settings-tabs")
-    assert response =~ ~s(id="settings-tab-voice")
+    # It LEFT the Settings sub-tab system on 09-05 — the surface is the homepage's
+    # Vox2B sub-tab now, and this route is a deep-link/split-pane door onto the
+    # same component. Asserted as an absence rather than deleted: a settings rail
+    # reappearing here would highlight nothing (Voice is not one of its tabs) and
+    # claim membership of a section this page no longer belongs to.
+    refute response =~ ~s(id="settings-tabs")
+    refute response =~ ~s(id="settings-tab-voice")
 
     # Text-to-speech explainer content.
     assert response =~ "Spoken replies"

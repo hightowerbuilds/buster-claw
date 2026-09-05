@@ -653,6 +653,21 @@ check lib/buster_claw_web/components/notes/switcher.ex         134 HELD
 
 # --- FROZEN: named by an unstarted phase; capped at today's size -------------
 
+# VOX_TAB_ROADMAP Phase 3, capped on arrival at exactly what it weighs.
+#
+# This file is not new code — it is `voice_live.ex`'s nine panels moved into a
+# LiveComponent so the homepage tab and `/voice` render one source instead of two
+# (`D2`). A move deserves a cap the day it lands, not the day it has grown: the
+# whole reason it is 1,139 lines is that a settings ROUTE was allowed to
+# accumulate nine panels with nothing counting, and putting it on the homepage
+# without a number would repeat that in a place the operator looks at daily.
+#
+# FROZEN rather than HELD because Phase 3 is written and unstarted: the panels
+# get a Train / Make / Assign rail, which is an extraction, not a rewrite. Until
+# then a tenth panel has to be funded by taking one out — which is the outcome
+# this tier keeps producing elsewhere in this file.
+check lib/buster_claw_web/live/vox_component.ex              1139 FROZEN
+
 # Phase 3. 20% markup, so ~987 lines of logic in a live_component. The source
 # catalog comes out to core, where the missing sound_* CLI will need it.
 # 1235 -> 1206 on 08-16, and DOWN is the direction this row has been waiting for.

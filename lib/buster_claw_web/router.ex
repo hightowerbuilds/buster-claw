@@ -155,7 +155,7 @@ defmodule BusterClawWeb.Router do
   end
 
   # The operator's voice played back to them — reference recordings and rendered
-  # clips for the players in Settings → Voice. Only `:media`; the name is an
+  # clips for the players on the Vox2B surface. Only `:media`; the name is an
   # allowlist over real directory listings, never joined from raw input.
   scope "/voice-audio", BusterClawWeb do
     pipe_through :media

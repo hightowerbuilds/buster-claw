@@ -1,7 +1,7 @@
 defmodule BusterClawWeb.VoiceAudioController do
   @moduledoc """
   Plays the operator's voice back to them: reference recordings and rendered
-  clips, for the `<audio>` players in Settings → Voice.
+  clips, for the `<audio>` players on the Vox2B surface.
 
   Only `:media` (nosniff) — a media-element request, not HTML, so no `accepts`,
   no session, no CSRF. Loopback-only like every other workspace media route.

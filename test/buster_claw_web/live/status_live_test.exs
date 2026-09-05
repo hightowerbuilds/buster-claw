@@ -1591,6 +1591,10 @@ defmodule BusterClawWeb.StatusLiveTest do
     test "Activity is the far-right Home tab" do
       expected = [
         {"chat", "Chat"},
+        # Vox arrived between Chat and Notes on 09-05 (`VOX_TAB_ROADMAP` `D3`),
+        # at the operator's word — it is the surface you work at, not a setting
+        # you visit, so it sits beside Chat rather than out at the Settings end.
+        {"vox", "Vox2B"},
         {"notes", "Notes"},
         {"pockets", "Pockets"},
         {"calendar", "Calendar"},

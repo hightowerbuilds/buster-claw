@@ -35,12 +35,21 @@ defmodule BusterClawWeb.StatusLive do
   # host half of `PhoneComponent`'s contract and relays broadcasts to it.
   @phone_component_id "home-phone"
 
+  # Same again for Vox, whose host contract is wider: a `Voice.Renderer`
+  # broadcast AND the replies from the two `Task`s the component starts. See
+  # `VoxComponent`'s moduledoc for why a component cannot receive either itself.
+  @vox_component_id "home-vox"
+
   # The Home sub-tabs, in display order — ONE list, feeding both the rail and the
   # `select_home_tab` guard. They were two lists until 08-08, which is how Phone
   # arrived as a button the server then refused: the rail offered it, the guard
   # had never heard of it, and the click raised.
   @home_tabs [
     {"chat", "Chat"},
+    # The KEY is the surface (`VoxComponent`, rendered at `home-vox`); the LABEL
+    # is the model doing the talking. Every other row here is a downcased label,
+    # so the divergence is stated rather than left to look like a typo.
+    {"vox", "Vox2B"},
     {"notes", "Notes"},
     {"pockets", "Pockets"},
     {"calendar", "Calendar"},
@@ -80,6 +89,11 @@ defmodule BusterClawWeb.StatusLive do
       # The Music tab renders transport it does not own — the player is the
       # sticky dock LiveView, so its state arrives over PubSub.
       BusterClaw.Music.Player.subscribe_state()
+      # And the Vox tab: a render started here can take tens of minutes, so its
+      # completion has to find whichever surface is still open. Subscribed by the
+      # host for the usual reason — a component shares this process, and would
+      # double every broadcast if it subscribed too.
+      BusterClaw.Voice.Renderer.subscribe()
       Process.send_after(self(), :sky_refresh, @sky_refresh_ms)
     end
 
@@ -544,6 +558,28 @@ defmodule BusterClawWeb.StatusLive do
     {:noreply, socket}
   end
 
+  # A speech render landed. Relayed whether or not the Vox tab is showing: the
+  # renders that matter here are the slow ones, and an operator who started a
+  # forty-minute chime set and went back to Chat should not lose the result.
+  # `send_update` to a component that is not currently rendered is a no-op, which
+  # is what makes relaying unconditionally safe (`PhoneComponent` has relied on
+  # this since 08-08).
+  def handle_info({:voice_render, _key, _result} = message, socket) do
+    BusterClawWeb.VoxComponent.notify(@vox_component_id, message)
+    {:noreply, socket}
+  end
+
+  # `Task.async/1` inside `VoxComponent` monitors from THIS process, so the reply
+  # lands in this mailbox with nothing to say who it belongs to. Forwarded as-is;
+  # the component matches the ref against the two it started and drops the rest,
+  # which is what keeps this relay honest if StatusLive ever runs a task of its
+  # own. The `:DOWN` that follows is swallowed by the catch-all below — the
+  # component flushes the monitor itself.
+  def handle_info({ref, result}, socket) when is_reference(ref) do
+    BusterClawWeb.VoxComponent.notify(@vox_component_id, {:task, ref, result})
+    {:noreply, socket}
+  end
+
   # An entry (agent or another session) landed in the day's Notes — ping the
   # Relay journal broadcasts to the read-only Activity component. `send_update`
   # is safe while another tab is mounted; the next Activity mount reads disk.
@@ -710,6 +746,16 @@ defmodule BusterClawWeb.StatusLive do
                   component the `/phone` route renders — see `PhoneComponent`. --%>
             <div :if={@home_tab == "phone"} class="flex min-h-0 flex-1 flex-col overflow-y-auto">
               <.live_component module={BusterClawWeb.PhoneComponent} id="home-phone" />
+            </div>
+
+            <%!-- The same component the `/voice` route renders — see `VoxComponent`.
+                  It scrolls: nine panels is taller than the pane, and unlike Notes
+                  it owns no scroll region of its own. --%>
+            <div :if={@home_tab == "vox"} class="flex min-h-0 flex-1 flex-col overflow-y-auto">
+              <%!-- Literal, not `@vox_component_id`: inside HEEx that would mean an
+                    assign, and the module attribute of the same name silently is
+                    not one. Same trap `PhoneLive` documents. --%>
+              <.live_component module={BusterClawWeb.VoxComponent} id="home-vox" />
             </div>
 
             <div :if={@home_tab == "notes"} class="flex min-h-0 flex-1 flex-col">

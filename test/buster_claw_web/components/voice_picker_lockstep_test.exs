@@ -26,7 +26,12 @@ defmodule BusterClawWeb.VoicePickerLockstepTest do
 
   @hook "assets/js/hooks/voice.js"
   @templates [
-    "lib/buster_claw_web/live/voice_live.ex",
+    # The picker moved out of `voice_live.ex` on 09-05 when Vox became a homepage
+    # sub-tab and the surface became a component rendered by two hosts. The path
+    # moves in the same commit as the markup, never after: this list is the only
+    # thing that knows where to look, so a stale entry turns the guard vacuous
+    # rather than red.
+    "lib/buster_claw_web/live/vox_component.ex",
     "lib/buster_claw_web/components/chat_panel.ex"
   ]
 
