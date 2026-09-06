@@ -95,4 +95,50 @@ defmodule BusterClaw.Voice.ReferenceTest do
 
     Base.encode64(floats)
   end
+
+  describe "duration_seconds/1 — the number every render quote is built on" do
+    @tag :tmp_dir
+    test "reads the length from the header, matching the file", %{tmp_dir: tmp} do
+      path = Path.join(tmp, "two-seconds.wav")
+      rate = 16_000
+      samples = for _ <- 1..(rate * 2), into: <<>>, do: <<0::little-signed-16>>
+      File.write!(path, wav(samples, rate))
+
+      assert_in_delta Reference.duration_seconds(path), 2.0, 0.01
+    end
+
+    test "anything unreadable is 0.0, which reads downstream as no reference" do
+      assert Reference.duration_seconds(nil) == 0.0
+      assert Reference.duration_seconds("/nope/missing.wav") == 0.0
+    end
+
+    @tag :tmp_dir
+    test "a file that is not a WAV is 0.0 rather than a crash", %{tmp_dir: tmp} do
+      path = Path.join(tmp, "not-audio.wav")
+      File.write!(path, "this is not a RIFF file at all")
+
+      assert Reference.duration_seconds(path) == 0.0
+    end
+
+    @tag :tmp_dir
+    test "a truncated file reports what is really there, not what the header claims",
+         %{tmp_dir: tmp} do
+      path = Path.join(tmp, "truncated.wav")
+      rate = 16_000
+      full = for _ <- 1..(rate * 4), into: <<>>, do: <<0::little-signed-16>>
+      <<head::binary-size(44), body::binary>> = wav(full, rate)
+      half = binary_part(body, 0, div(byte_size(body), 2))
+      File.write!(path, head <> half)
+
+      assert_in_delta Reference.duration_seconds(path), 2.0, 0.01
+    end
+  end
+
+  defp wav(pcm, rate) do
+    byte_rate = rate * 2
+
+    <<"RIFF", 36 + byte_size(pcm)::little-32, "WAVE", "fmt ", 16::little-32, 1::little-16,
+      1::little-16, rate::little-32, byte_rate::little-32, 2::little-16, 16::little-16, "data",
+      byte_size(pcm)::little-32, pcm::binary>>
+  end
 end

@@ -251,4 +251,31 @@ defmodule BusterClaw.Voice.RendererTest do
 
   defp put_or_delete(key, nil), do: Application.delete_env(:buster_claw, key)
   defp put_or_delete(key, value), do: Application.put_env(:buster_claw, key, value)
+
+  describe "describe_error/1 — what the operator reads when a render fails" do
+    test "a timeout says what it cost, what it was allowed, and what to change" do
+      text = Renderer.describe_error({:timeout, 570_000, 600_000})
+
+      assert text =~ "gave up after 10 min"
+      assert text =~ "limit 10 min"
+      assert text =~ "shorter reference"
+    end
+
+    test "the reasons a person can act on are sentences, not atoms" do
+      assert Renderer.describe_error(:engine_unavailable) =~ "not installed"
+      assert Renderer.describe_error(:empty_render) =~ "empty file"
+      assert Renderer.describe_error({:exit, 1, "  boom  "}) == "the engine exited 1: boom"
+    end
+
+    test "an unknown reason still renders rather than raising" do
+      assert Renderer.describe_error({:something, :new}) == "{:something, :new}"
+    end
+
+    # The regression this guards: until 09-06 the surface printed
+    # `inspect(reason)`, so nine and a half minutes of work reported itself as
+    # the single word `:timeout`.
+    test "a timeout never renders as a bare atom" do
+      refute Renderer.describe_error({:timeout, 1_000, 2_000}) == ":timeout"
+    end
+  end
 end

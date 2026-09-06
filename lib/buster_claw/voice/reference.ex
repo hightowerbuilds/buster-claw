@@ -149,6 +149,69 @@ defmodule BusterClaw.Voice.Reference do
       do: Path.join(dir(), name)
   end
 
+  @doc """
+  Seconds of audio in a WAV, read from its header alone.
+
+  Header-only on purpose. Cloning pays the reference on every render, so this is
+  asked on every job and on every keystroke that re-quotes the wait — decoding a
+  megabyte of samples to learn a number that is written in the first hundred
+  bytes would be a strange way to make renders faster. Returns `0.0` for
+  anything it cannot read, which reads downstream as "no reference", the same
+  as a design render.
+  """
+  @spec duration_seconds(String.t() | nil) :: float()
+  def duration_seconds(nil), do: 0.0
+
+  def duration_seconds(path) when is_binary(path) do
+    with {:ok, io} <- File.open(path, [:read, :binary]),
+         header when is_binary(header) <- IO.binread(io, 4_096),
+         :ok <- File.close(io),
+         {:ok, byte_rate, data_bytes} <- wav_shape(header, path) do
+      if byte_rate > 0, do: data_bytes / byte_rate, else: 0.0
+    else
+      _ -> 0.0
+    end
+  end
+
+  # Walks the RIFF chunk list for `fmt ` (which carries the byte rate) and
+  # `data` (whose declared size can lie in a file still being written, so the
+  # real file size wins when it is smaller).
+  defp wav_shape(<<"RIFF", _size::little-32, "WAVE", rest::binary>>, path) do
+    with {:ok, byte_rate, declared, offset} <- walk_chunks(rest, nil, nil, 12) do
+      actual =
+        case File.stat(path) do
+          {:ok, %File.Stat{size: size}} -> max(size - offset, 0)
+          _ -> declared
+        end
+
+      {:ok, byte_rate, min(declared, actual)}
+    end
+  end
+
+  defp wav_shape(_other, _path), do: :error
+
+  defp walk_chunks(<<"fmt ", size::little-32, body::binary>>, _rate, data, offset) do
+    <<_fmt::little-16, _ch::little-16, _sr::little-32, byte_rate::little-32, _r::binary>> = body
+    skip = size + rem(size, 2)
+    <<_::binary-size(skip), rest::binary>> = body
+    walk_chunks(rest, byte_rate, data, offset + 8 + skip)
+  end
+
+  defp walk_chunks(<<"data", size::little-32, _rest::binary>>, rate, _data, offset)
+       when is_integer(rate),
+       do: {:ok, rate, size, offset + 8}
+
+  defp walk_chunks(<<_id::binary-4, size::little-32, body::binary>>, rate, data, offset) do
+    skip = size + rem(size, 2)
+
+    case body do
+      <<_::binary-size(skip), rest::binary>> -> walk_chunks(rest, rate, data, offset + 8 + skip)
+      _ -> :error
+    end
+  end
+
+  defp walk_chunks(_other, _rate, _data, _offset), do: :error
+
   defp elem_ok({:ok, list}), do: list
   defp elem_ok(_), do: []
 

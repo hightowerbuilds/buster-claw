@@ -37,7 +37,9 @@ defmodule BusterClaw.Voice.Renderer do
   require Logger
 
   alias BusterClaw.Library.Artifact
+  alias BusterClaw.Voice.Calibration
   alias BusterClaw.Voice.Engine
+  alias BusterClaw.Voice.Reference
 
   @topic "voice:renders"
 
@@ -47,9 +49,13 @@ defmodule BusterClaw.Voice.Renderer do
   # the end of.
   @max_queue 32
 
-  # A cold model load plus a long line. Generous on purpose — a timeout here
-  # discards work that cost minutes.
-  @job_timeout_ms :timer.minutes(10)
+  # The deadline is no longer a constant. It was ten minutes flat until 09-06,
+  # and on the operator's Intel i9 that was *below* the real cost of an ordinary
+  # clone: a five-word line against a 13.3-second reference was killed at the
+  # ceiling with the work thrown away, every time, so the feature had never
+  # succeeded on that machine. A fixed number cannot be right for both that
+  # laptop and an M4, so `Calibration` measures this machine and `deadline_ms/2`
+  # sets the limit per job. See `do_render/3`.
 
   defstruct queue: :queue.new(), size: 0, running: nil, running_ref: nil
 
@@ -86,8 +92,16 @@ defmodule BusterClaw.Voice.Renderer do
 
         true ->
           # Resolve the binary HERE, in the caller's process, and send it with
-          # the job. See `do_render/3` for why this one line is load-bearing.
-          GenServer.call(__MODULE__, {:enqueue, key, args, Engine.resolve()})
+          # the job. See `do_render/4` for why this one line is load-bearing.
+          #
+          # The deadline is computed here for exactly the same reason and it is
+          # the same bug: `Calibration` reads a Settings row, and a database call
+          # from the spawned job runs in a process no test owns, where it does
+          # not fail fast but BLOCKS for the connection timeout — holding the one
+          # render queue there is. That is the 09-05 flake, and it was
+          # reintroduced on 09-06 by putting the deadline in the job before this
+          # line existed.
+          GenServer.call(__MODULE__, {:enqueue, key, args, Engine.resolve(), cost(args)})
       end
     end
   end
@@ -150,7 +164,7 @@ defmodule BusterClaw.Voice.Renderer do
   end
 
   @impl true
-  def handle_call({:enqueue, key, args, engine_path}, _from, state) do
+  def handle_call({:enqueue, key, args, engine_path, cost}, _from, state) do
     cond do
       state.running == key or queued?(state, key) ->
         # The same line asked for twice while it is being made is one render, and
@@ -163,7 +177,7 @@ defmodule BusterClaw.Voice.Renderer do
       true ->
         state = %{
           state
-          | queue: :queue.in({key, args, engine_path}, state.queue),
+          | queue: :queue.in({key, args, engine_path, cost}, state.queue),
             size: state.size + 1
         }
 
@@ -201,8 +215,8 @@ defmodule BusterClaw.Voice.Renderer do
 
   defp maybe_start(%__MODULE__{running: nil} = state) do
     case :queue.out(state.queue) do
-      {{:value, {key, args, engine_path}}, rest} ->
-        ref = run(key, args, engine_path)
+      {{:value, {key, args, engine_path, cost}}, rest} ->
+        ref = run(key, args, engine_path, cost)
         %{state | queue: rest, size: state.size - 1, running: key, running_ref: ref}
 
       {:empty, _} ->
@@ -228,12 +242,12 @@ defmodule BusterClaw.Voice.Renderer do
   # loudly — a spawned process just stopped), and a green re-run once the app
   # restarted. `handle_info/2` below now treats a `:DOWN` as a failed render, so
   # the worst a dead job can cost is that one line.
-  defp run(key, args, engine_path) do
+  defp run(key, args, engine_path, cost) do
     server = self()
 
     {_pid, ref} =
       spawn_monitor(fn ->
-        send(server, {:done, key, do_render(key, args, engine_path)})
+        send(server, {:done, key, do_render(key, args, engine_path, cost)})
       end)
 
     ref
@@ -259,21 +273,108 @@ defmodule BusterClaw.Voice.Renderer do
   # process — a LiveView handling an event, or the test itself. It also puts this
   # module back inside the rule `Engine`'s own moduledoc states: settings are read
   # at the call site, and the engine layer stays pure.
-  defp do_render(key, args, path) do
+  defp do_render(key, args, path, cost) do
     target = cached_path(key)
     temp = Path.join(System.tmp_dir!(), "voice-#{key}.wav")
     args = args ++ ["--output", temp]
 
+    started = System.monotonic_time(:millisecond)
+
     task = Task.async(fn -> System.cmd(path, args, stderr_to_stdout: true) end)
 
-    case Task.yield(task, @job_timeout_ms) || Task.shutdown(task, :brutal_kill) do
-      {:ok, {_out, 0}} -> promote(temp, target)
-      {:ok, {out, code}} -> fail(temp, {:exit, code, String.slice(out, -800, 800)})
-      nil -> fail(temp, :timeout)
+    case Task.yield(task, cost.deadline_ms) || Task.shutdown(task, :brutal_kill) do
+      {:ok, {_out, 0}} ->
+        record_cost(cost, elapsed_since(started) / 1000)
+        promote(temp, target)
+
+      {:ok, {out, code}} ->
+        fail(temp, {:exit, code, String.slice(out, -800, 800)})
+
+      # Carries what it cost and what it was allowed, because `:timeout` alone
+      # is what the operator saw on 09-06 after nine and a half minutes: a word
+      # that does not say whether the limit was mean or the machine was slow.
+      nil ->
+        fail(temp, {:timeout, elapsed_since(started), cost.deadline_ms})
     end
   rescue
     error -> {:error, Exception.message(error)}
   end
+
+  defp elapsed_since(started), do: System.monotonic_time(:millisecond) - started
+
+  # Everything the job needs to know about its own price, read in the caller's
+  # process where a database call is safe. The argv IS the ask, so these are
+  # read back off it rather than threaded through as a second copy that could
+  # disagree with it.
+  defp cost(args) do
+    text = value_after(args, "--text") || ""
+    reference_s = reference_seconds(args)
+    steps = steps_in(args)
+
+    %{
+      text: text,
+      reference_s: reference_s,
+      steps: steps,
+      deadline_ms: Calibration.deadline_ms(text, reference_s, steps)
+    }
+  end
+
+  # Off this process, because recording writes a Settings row and the one thing
+  # a render must never do is make the queue wait on a database. The spawning
+  # lives in `Calibration` rather than here on purpose: this module's own guard
+  # test forbids an unmonitored spawn in this file, and that guard is right — an
+  # unmonitored process is exactly what wedged the queue on 09-05. Dispatch is
+  # the recorder's business anyway.
+  #
+  # (That guard greps this file for the literal call, so it also catches a
+  # comment quoting one. Left as-is: a guard that cannot be tripped by prose is
+  # a guard with a parser in it, and this one is meant to be crude.)
+  defp record_cost(cost, elapsed_s),
+    do: Calibration.record_async(cost.text, cost.reference_s, cost.steps, elapsed_s)
+
+  # The argv IS the ask, so the cost inputs are read back off it rather than
+  # threaded through the queue as a second copy that could disagree with it.
+  defp steps_in(args) do
+    case value_after(args, "--inference-timesteps") do
+      nil ->
+        nil
+
+      raw ->
+        case Integer.parse(raw) do
+          {n, _} when n > 0 -> n
+          _ -> nil
+        end
+    end
+  end
+
+  defp reference_seconds(args) do
+    case value_after(args, "--reference-audio") do
+      nil -> 0.0
+      path -> Reference.duration_seconds(path)
+    end
+  end
+
+  defp value_after([flag, value | _rest], flag), do: value
+  defp value_after([_other | rest], flag), do: value_after(rest, flag)
+  defp value_after([], _flag), do: nil
+
+  @doc """
+  A sentence for a render failure, for a surface with a person in front of it.
+
+  `inspect/1` on the reason is what produced "failed: :timeout" on 09-06, which
+  told the operator nothing about the nine minutes he had just spent.
+  """
+  @spec describe_error(term()) :: String.t()
+  def describe_error({:timeout, elapsed_ms, limit_ms}) do
+    "gave up after #{round(elapsed_ms / 60_000)} min (limit #{round(limit_ms / 60_000)} min) — " <>
+      "a shorter reference clip or fewer inference steps would make it finish"
+  end
+
+  def describe_error(:engine_unavailable), do: "the speech engine is not installed"
+  def describe_error(:empty_render), do: "the engine produced an empty file"
+  def describe_error({:exit, code, out}), do: "the engine exited #{code}: #{String.trim(out)}"
+  def describe_error(reason) when is_binary(reason), do: reason
+  def describe_error(reason), do: inspect(reason)
 
   # Atomic: the cache is only ever populated by a rename of a file that has
   # already been checked. A killed process must never leave a truncated WAV
