@@ -315,6 +315,56 @@ test and no UI or verb reaching it:
 - **No orphaned tables.** The six tables left behind by the Trading and MCP
   deletions were all dropped by migration (`20260808070000`, `20260809160542`).
 
+### The shipped brand art is not in the repo — found 09-06, during Phase 1
+
+**This one is not a cleanup item. It is a packaging defect, and the review
+missed it.**
+
+`.gitignore:39` excludes `/priv/static/images/brand/` with the comment "Brand art
+(wordmarks / logo / backgrounds) — local-only, kept out of the repo" — a
+deliberate call made on 06-13 (`551b6fb`). But `Pockets.Brand` declares six
+shipped defaults that point straight into that directory:
+
+```
+lib/buster_claw/pockets/brand.ex:96   default: "/images/brand/home-icon.png"
+                              :103   .../workspace-icon.png
+                              :110   .../browser-icon.png
+                              :117   .../terminal-icon.png
+                              :124   .../settings-icon.png
+                              :131   .../buster-claw-heading.png
+```
+
+`git ls-files priv/static/images` returns **nothing**, and no script generates
+these files. So a fresh clone has no navigation icons and no wordmark. The
+packaged `.app` is built from a checkout, which means **the DMG that goes to R1
+testers ships with six missing images** unless the builder happens to have them
+sitting untracked, as this machine does.
+
+`brand_test.exs:201` — "every shipped default is a real file in priv/static" —
+is the test that already knows. It passes here only because the untracked files
+exist in this working copy; it fails in any worktree built from committed
+history, which is how Phase 1 stumbled over it. It carries no OS tag, so it has
+been failing on the ubuntu CI runner too, sitting inside the red that was
+attributed to macOS-only tooling. **A month of red CI hid a shipping bug**,
+which is the same lesson `ci_green_after_a_month` already recorded once.
+
+Three ways out, and the choice is the operator's because it is about asset
+rights, not code:
+
+1. **Track the art.** Delete the ignore line, commit the six PNGs. The test
+   becomes true everywhere and the DMG is whole. Rejected once on 06-13, so the
+   reason it was rejected needs restating before this is chosen.
+2. **Keep it local and make the code honest.** The defaults become optional: a
+   missing default renders a text wordmark or an empty slot, the test asserts
+   the graceful path rather than the file, and `build_desktop.sh` gains a
+   pre-flight that refuses to package without the art.
+3. **Fetch it at build time** from wherever the art actually lives, with the
+   build failing loudly when it cannot.
+
+Doing nothing is the only option that is not available, because today the repo
+says all three things at once: the art is excluded on purpose, required by a
+test, and assumed present by the UI.
+
 ### Generated artifacts in two states at once
 
 `desktop/tauri/.gitignore:4` ignores `/gen/schemas`. All four files under it are
