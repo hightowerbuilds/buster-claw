@@ -33,7 +33,7 @@ defmodule BusterClaw.Dispatcher do
 
   require Logger
 
-  alias BusterClaw.{Dispatch, Memory, ModelPolicy, Orchestration, Sentinel}
+  alias BusterClaw.{AgentToolPolicy, Dispatch, Memory, ModelPolicy, Orchestration, Sentinel}
   alias BusterClaw.Orchestration.Shift
 
   @default_interval_ms 15_000
@@ -319,6 +319,12 @@ defmodule BusterClaw.Dispatcher do
   # latter is essential in the packaged release, where Phoenix listens on a
   # private port, not the CLI's :4000 default. The run goes through a login shell
   # so it inherits the user's PATH/auth (matching the in-app terminal).
+  #
+  # `:denied_tools` is the unattended run's built-in denial list — shared by the
+  # batch pump AND (through `start_swarm_run/3`) the planner and every sub-run,
+  # so no unattended path can quietly run wider than another. Before 09-05 this
+  # list was tested and applied to nothing. It reaches argv only on claude;
+  # `AgentBackend.tool_denial_args/2` records why the other two get nothing.
   defp run_opts(state, provenance) do
     timeout =
       case state.run_timeout_ms do
@@ -331,7 +337,12 @@ defmodule BusterClaw.Dispatcher do
       {"BUSTER_CLAW_URL", endpoint_url()}
     ]
 
-    [env: env, shell: login_shell(), login: true] ++ timeout
+    [
+      env: env,
+      shell: login_shell(),
+      login: true,
+      denied_tools: AgentToolPolicy.denied_builtins(:dispatcher)
+    ] ++ timeout
   end
 
   defp token_for(:untrusted), do: BusterClaw.ApiToken.agent_value()

@@ -78,6 +78,63 @@ defmodule BusterClaw.AgentBackendTest do
 
       assert argv == ["-p", "p", "--permission-mode", "dontAsk", "--model", "claude-opus-5"]
     end
+
+    test "a denial list becomes one --disallowedTools flag, comma-joined" do
+      argv = AgentBackend.argv(:claude, "p", denied_tools: ~w(WebFetch Task Edit))
+
+      assert argv ==
+               [
+                 "-p",
+                 "p",
+                 "--permission-mode",
+                 "bypassPermissions",
+                 "--disallowedTools",
+                 "WebFetch,Task,Edit"
+               ]
+    end
+
+    test "no denial list, or an empty one, emits nothing" do
+      base = AgentBackend.argv(:claude, "p")
+      assert AgentBackend.argv(:claude, "p", denied_tools: []) == base
+      assert AgentBackend.argv(:claude, "p", denied_tools: nil) == base
+      refute "--disallowedTools" in base
+    end
+
+    # `--disallowedTools <tools...>` is VARIADIC (measured 09-06, claude
+    # 2.1.263): it eats following positional words. Emitted before the prompt it
+    # would swallow it, and the CLI then dies with "Input must be provided
+    # either through stdin or as a prompt argument" — an unattended run that
+    # fails on every tick for a reason no assertion here would otherwise catch.
+    # This pins the order, not just the presence.
+    test "the variadic denial flag never precedes the positional prompt" do
+      argv =
+        AgentBackend.argv(:claude, "the prompt", denied_tools: ~w(WebFetch Task), stream: true)
+
+      assert Enum.find_index(argv, &(&1 == "the prompt")) <
+               Enum.find_index(argv, &(&1 == "--disallowedTools"))
+
+      # And the list is ONE argv element, so nothing after it is eaten either.
+      assert Enum.at(argv, Enum.find_index(argv, &(&1 == "--disallowedTools")) + 1) ==
+               "WebFetch,Task"
+    end
+  end
+
+  describe "tool_denial_args/2" do
+    # The gap is stated in the function's doc; this pins it so a future
+    # translation is a deliberate change with a red test, not a drift.
+    test "only claude has a vocabulary — codex and opencode emit nothing" do
+      denied = ~w(WebFetch Task)
+
+      assert AgentBackend.tool_denial_args(:claude, denied_tools: denied) == [
+               "--disallowedTools",
+               "WebFetch,Task"
+             ]
+
+      assert AgentBackend.tool_denial_args(:codex, denied_tools: denied) == []
+      assert AgentBackend.tool_denial_args(:opencode, denied_tools: denied) == []
+      refute "--disallowedTools" in AgentBackend.argv(:codex, "p", denied_tools: denied)
+      refute "--disallowedTools" in AgentBackend.argv(:opencode, "p", denied_tools: denied)
+    end
   end
 
   describe "argv/3 — codex" do

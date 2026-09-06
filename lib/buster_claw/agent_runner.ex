@@ -86,6 +86,9 @@ defmodule BusterClaw.AgentRunner do
       `"bypassPermissions"`), translated to each other backend's equivalent by
       `AgentBackend.permission_args/2`. Use `"dontAsk"` with an explicit
       `--allowedTools` list for a deny-by-default tool surface.
+    * `:denied_tools` — built-ins the run is refused (`AgentToolPolicy`),
+      emitted as `--disallowedTools` on claude by `AgentBackend.tool_denial_args/2`
+      and — a recorded gap — as nothing on codex/opencode.
   """
   @spec run(String.t(), keyword()) :: {:ok, run_result()} | {:error, term()}
   def run(prompt, opts \\ []) when is_binary(prompt) do

@@ -54,6 +54,34 @@ defmodule BusterClaw.AgentToolPolicy do
   # WebSearch)` — see the moduledoc.
   @web_capable_builtins ~w(WebSearch)
 
+  # What the unattended queue worker cannot do without. The Dispatcher's whole
+  # mechanism is "run `./buster-claw dispatch …` from a login shell and read
+  # Dispatch.md" — deny `Bash` and the run is a no-op that still burns one of the
+  # shift's capped runs. So the shell and a plain file read are subtracted.
+  #
+  # ## Read this before believing the remainder confines anything
+  #
+  # **Once `Bash` is subtracted, every other entry left in the list has a shell
+  # equivalent, so the remainder is a statement of intent, not a boundary.**
+  # `Edit`/`Write` are `cat >`; `Glob`/`Grep` are `find`/`grep`; `Task` is
+  # `claude -p`; and `WebFetch` — denied everywhere for the loopback reason in
+  # the moduledoc — is `curl`, against an endpoint whose URL and API token this
+  # very run is handed in its environment on purpose, because reaching
+  # `/api/run` is the mechanism. Nothing here stops a determined or
+  # prompt-injected run from doing any of it.
+  #
+  # What it does buy is narrow and worth naming honestly: the model takes the
+  # route left open to it, so a run that would casually have fetched a URL out
+  # of an email body now has to deliberately shell out to do it. That is a
+  # change in the default path, and it is legible in the argv — nothing more.
+  #
+  # **The controls that actually bind the unattended path are elsewhere**: the
+  # provenance token tier (`Dispatcher.token_for/1` hands an untrusted queue the
+  # agent token, so gated actions are held), the Sentinel gates behind
+  # `/api/run`, and the per-shift run cap. If the denial list is ever read as
+  # the reason the unattended path is safe, it is being read wrong.
+  @dispatcher_needs ~w(Bash BashOutput KillShell Read)
+
   @doc """
   Every built-in tool a confined run is refused.
 
@@ -64,10 +92,14 @@ defmodule BusterClaw.AgentToolPolicy do
   @doc """
   The denial list for a named profile.
 
-  No profile subtracts anything today — `:chartbuild`, the only one that did,
-  left with Chart Build on 08-08. The arity stays so a future web-capable
-  profile has a place to be declared rather than a new mechanism to invent.
+  `:dispatcher` — the unattended queue worker — subtracts the shell and a file
+  read, which is most of the strict list's force. **Its remainder narrows the
+  route, not the reach**; the comment above `@dispatcher_needs` says exactly how
+  far it does and does not go, and should be read before this list is cited as a
+  control. Every other name, including a typo, gets the strict default, so an
+  unknown profile fails closed rather than open.
   """
+  def denied_builtins(:dispatcher), do: @denied_builtins -- @dispatcher_needs
   def denied_builtins(_profile), do: @denied_builtins
 
   @doc """

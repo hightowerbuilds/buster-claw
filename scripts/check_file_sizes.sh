@@ -1297,7 +1297,12 @@ check lib/buster_claw/agent/stream_event.ex                   680 HELD
 # ("measured 08-03, --help quoted") which is the module's whole value. If it
 # ever splits: per concern, NEVER per backend — the cross-backend comparisons
 # in the comments are the point.
-check lib/buster_claw/agent_backend.ex                        580 HELD
+# 580 -> 600 on 09-06: `tool_denial_args/2` is a new translation (the fourth
+# concern this table covers) plus its 09-06 measurement — that claude's deny
+# flag still binds under `bypassPermissions`, and that it is variadic. Both are
+# the dated-evidence kind this cap comment calls the module's whole value, so
+# the room is earned by content, not absorbed by a feature landing whole.
+check lib/buster_claw/agent_backend.ex                        600 HELD
 check lib/buster_claw/agent/open_code_server.ex               570 HELD
 # dispatcher.ex — the unattended pump. Bulk is six flat record_outcome clauses;
 # the subtle part (swarm worst-case budget reserved up front, reconciled on

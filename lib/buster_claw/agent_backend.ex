@@ -292,6 +292,8 @@ defmodule BusterClaw.AgentBackend do
       `permission_args/2`.
     * `:stream` — `true` adds the backend's structured-output flag.
     * `:agent` — opencode only; names a `.opencode/agent/<name>.md`.
+    * `:denied_tools` — built-in tool names the run is refused, translated by
+      `tool_denial_args/2`. Only claude has a vocabulary for it.
 
   Order matters for codex: `exec`'s prompt is positional, so flags are emitted
   before it.
@@ -309,7 +311,7 @@ defmodule BusterClaw.AgentBackend do
 
     prompt_args ++
       ["--permission-mode", permission_mode(opts)] ++
-      model_args(:claude, opts) ++ stream_args(:claude, opts)
+      model_args(:claude, opts) ++ tool_denial_args(:claude, opts) ++ stream_args(:claude, opts)
   end
 
   def argv(:codex, prompt, opts) do
@@ -441,6 +443,48 @@ defmodule BusterClaw.AgentBackend do
   def inline_attachments?(:claude, opts), do: Keyword.get(opts, :duplex, false)
 
   def inline_attachments?(_backend, _opts), do: false
+
+  @doc """
+  Argv refusing `opts[:denied_tools]` on `backend`, or `[]`.
+
+  claude: `--disallowedTools a,b,c` — the flag that actually refuses a built-in
+  (an allowlist alone is approval, not confinement; see `AgentToolPolicy`).
+
+  **Measured 09-06** (`claude` 2.1.263), because "the deny flag still binds when
+  permissions are bypassed" is the assumption the whole wiring rests on and the
+  Dispatcher runs under `bypassPermissions`:
+  `claude -p "<prompt>" --permission-mode bypassPermissions --disallowedTools Bash,Task`
+  answered that Bash was **absent from its toolset entirely** — not permitted
+  and refused at call time, but never offered. So the mode does not defeat the
+  flag, and the Dispatcher's mode needs no change.
+
+  Two argv facts that measurement also pinned, both load-bearing:
+  `--disallowedTools <tools...>` is **variadic** — it swallows following
+  positional words — so it must never precede the positional prompt (here it
+  cannot: `-p <prompt>` is emitted first), and the list is passed comma-joined
+  as ONE argv element, which survives `AgentRunner`'s `exec @ARGV` spawn without
+  quoting.
+
+  **codex and opencode emit `[]`, and that is a recorded gap, not a translation.**
+  codex confines by sandbox (`-s`) and has no per-tool deny (`--disallowedTools`
+  is `error: unexpected argument`, measured 08-03); opencode confines by agent
+  file and its only run-level knob is `--auto`. Neither has a vocabulary for
+  "this tool, not that one", and inventing one — say, mapping the list to
+  `-s read-only` — would silently change what the run may do, which is the
+  class of surprise this module exists to prevent. An unattended run on those
+  harnesses therefore carries NO built-in denial today.
+  """
+  @spec tool_denial_args(atom(), keyword()) :: [String.t()]
+  def tool_denial_args(backend, opts \\ [])
+
+  def tool_denial_args(:claude, opts) do
+    case Keyword.get(opts, :denied_tools) do
+      [_ | _] = tools -> ["--disallowedTools", Enum.join(tools, ",")]
+      _ -> []
+    end
+  end
+
+  def tool_denial_args(_backend, _opts), do: []
 
   @doc """
   Translate claude's permission-mode string into `backend`'s equivalent.

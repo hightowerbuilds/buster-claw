@@ -3,7 +3,7 @@ defmodule BusterClaw.DispatcherTest do
   # sandbox and reads/writes the kill-switch file in a per-test tmp workspace.
   use BusterClaw.DataCase, async: false
 
-  alias BusterClaw.{Dispatch, Dispatcher, Orchestration}
+  alias BusterClaw.{AgentBackend, AgentToolPolicy, Dispatch, Dispatcher, Orchestration}
 
   setup do
     tmp = Path.join(System.tmp_dir!(), "bc_disp_#{System.unique_integer([:positive])}")
@@ -360,6 +360,10 @@ defmodule BusterClaw.DispatcherTest do
       assert_receive {:coordinated, _goal, opts}, 1_000
       run_opts = Keyword.get(opts, :run_opts)
       assert env_token(run_opts) == BusterClaw.ApiToken.agent_value()
+      # The planner and every sub-run inherit the same denial list as the batch
+      # pump — the swarm is not a wider door.
+      assert Keyword.get(run_opts, :denied_tools) == AgentToolPolicy.denied_builtins(:dispatcher)
+      assert Keyword.get(opts, :planner_run_opts) == run_opts
     end
 
     test "quorum-not-met blocks the item and counts a failure" do
@@ -411,6 +415,37 @@ defmodule BusterClaw.DispatcherTest do
 
       assert_receive {:ran, _pid}, 1_000
       refute_receive {:coordinated, _goal, _opts}, 200
+    end
+  end
+
+  describe "tool denial" do
+    # The 09-05 review's sharpest dead-code finding: `AgentToolPolicy` was
+    # tested and applied to no run. This is the run it applies to. The argv is
+    # built the way `AgentRunner` builds it, from the very opts the pump handed
+    # over, so the assertion is on what the CLI would actually receive.
+    test "an unattended run carries the dispatcher denial list into claude's argv" do
+      {:ok, shift} = Orchestration.start_shift(unattended: true)
+      enqueue!(%{trusted: true})
+      server = start_dispatcher!(capturing_runner(self()))
+
+      Dispatcher.tick_now(server)
+
+      assert_receive {:opts, opts}, 1_000
+      denied = AgentToolPolicy.denied_builtins(:dispatcher)
+      assert Keyword.get(opts, :denied_tools) == denied
+
+      argv = AgentBackend.argv(:claude, "work the queue", opts)
+      assert [_ | _] = denied
+      assert Enum.join(denied, ",") in argv
+
+      assert Enum.at(argv, Enum.find_index(argv, &(&1 == "--disallowedTools")) + 1) ==
+               Enum.join(denied, ",")
+
+      # The worker keeps its shell — it IS the surface — and loses the web.
+      refute "Bash" in denied
+      assert "WebFetch" in denied
+
+      wait_until(fn -> reload_shift(shift.id).done_count == 1 end)
     end
   end
 

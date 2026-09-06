@@ -22,8 +22,25 @@ defmodule BusterClaw.AgentToolPolicyTest do
     end
   end
 
-  # The `:chartbuild` profile — the only one that ever subtracted from the deny
-  # list — left with Chart Build on 08-08. `web_capable_builtins/0` survives as
-  # the declaration a future web-capable profile would subtract, and is asserted
-  # in "the strict default" above.
+  # `web_capable_builtins/0` survives as the declaration a future web-capable
+  # profile would subtract (the last one, `:chartbuild`, left 08-08), and is
+  # asserted in "the strict default" above.
+
+  describe "the :dispatcher profile" do
+    test "subtracts exactly the shell and a file read, nothing else" do
+      strict = AgentToolPolicy.denied_builtins()
+      dispatcher = AgentToolPolicy.denied_builtins(:dispatcher)
+
+      assert strict -- dispatcher == ~w(Bash BashOutput KillShell Read)
+      assert dispatcher -- strict == [], "a profile may only subtract, never add"
+    end
+
+    test "still denies writes, sub-agents, and the whole web" do
+      dispatcher = AgentToolPolicy.denied_builtins(:dispatcher)
+
+      for tool <- ~w(Edit Write NotebookEdit Task WebFetch WebSearch) do
+        assert tool in dispatcher, "#{tool} must stay denied to the unattended worker"
+      end
+    end
+  end
 end
