@@ -56,4 +56,32 @@ defmodule BusterClawWeb.VoiceLiveTest do
   defp open_tab(view, tab) do
     view |> element("button[phx-value-tab='#{tab}']") |> render_click()
   end
+
+  describe "what a render will cost, before it is asked for" do
+    test "typing a line quotes the wait beside the button", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/voice")
+
+      html =
+        view
+        |> element(~s(form[phx-change="clip_draft"]))
+        |> render_change(%{"clip" => %{"text" => "Take me to the river!"}})
+
+      # The number itself depends on the machine's calibration, so the assertion
+      # is on the promise being made rather than on minutes: something is quoted,
+      # and it is framed as an estimate for THIS machine.
+      assert html =~ "on this machine"
+      assert html =~ "≈"
+    end
+
+    test "an empty box quotes nothing — there is no line to price", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/voice")
+
+      html =
+        view
+        |> element(~s(form[phx-change="clip_draft"]))
+        |> render_change(%{"clip" => %{"text" => "   "}})
+
+      refute html =~ "on this machine"
+    end
+  end
 end

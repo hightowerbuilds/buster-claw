@@ -16,6 +16,7 @@ defmodule BusterClawWeb.Vox.Create do
 
   alias BusterClaw.Voice.Config
   alias BusterClawWeb.Vox.Progress
+  alias BusterClawWeb.Vox.Quality
 
   attr :engine, :map, required: true
   attr :mic_state, :any, default: nil
@@ -25,6 +26,13 @@ defmodule BusterClawWeb.Vox.Create do
   attr :clip_note, :string, default: nil
   attr :id, :string, required: true
   attr :target, :any, required: true
+
+  # Both rendered by `Vox.Quality`, which owns the "will this work, and how
+  # long" question. Shown before the button rather than after it: on 09-06 the
+  # operator waited nine and a half minutes for a render that was never going to
+  # finish, and the only number on screen was a stopwatch counting up.
+  attr :quality, :any, default: nil
+  attr :quote, :string, default: nil
 
   def panel(assigns) do
     ~H"""
@@ -94,6 +102,8 @@ defmodule BusterClawWeb.Vox.Create do
         </p>
 
         <span class="ic-vox-note">{@ref_note}</span>
+
+        <Quality.grade quality={@quality} />
       </div>
     </section>
 
@@ -104,11 +114,22 @@ defmodule BusterClawWeb.Vox.Create do
       </p>
 
       <div class="flex flex-col gap-3 text-sm">
-        <form phx-submit="clip_make" phx-target={@target} class="flex flex-col gap-2">
+        <%!-- `phx-change` exists for the quote and nothing else: the cost of a
+                render scales with the length of the line, so a price shown
+                before you type is a price for the wrong thing. Debounced, and
+                LiveView does not clobber a focused input, so the textarea keeps
+                what you are writing. --%>
+        <form
+          phx-submit="clip_make"
+          phx-change="clip_draft"
+          phx-target={@target}
+          class="flex flex-col gap-2"
+        >
           <textarea
             name="clip[text]"
             rows="2"
             maxlength="400"
+            phx-debounce="400"
             placeholder="Something you'd actually say."
             class="textarea textarea-bordered w-full text-sm"
           ><%= @clip_text %></textarea>
@@ -117,6 +138,7 @@ defmodule BusterClawWeb.Vox.Create do
             <button type="submit" disabled={not @engine.available?} class="btn btn-primary btn-xs">
               Make it
             </button>
+            <Quality.quote_note quote={@quote} />
             <span :if={not Config.cloning?()} class="ic-vox-note">
               No recording yet — a designed voice, not yours.
             </span>

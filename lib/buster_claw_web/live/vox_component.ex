@@ -51,6 +51,7 @@ defmodule BusterClawWeb.VoxComponent do
   alias BusterClaw.Voice.Greeting
   alias BusterClaw.Voice.Messages
   alias BusterClaw.Voice.Reference
+  alias BusterClaw.Voice.Renderer
   alias BusterClawWeb.Vox.Chimes, as: ChimePanel
   alias BusterClawWeb.Vox.Create
   alias BusterClawWeb.Vox.EngineProbe
@@ -58,6 +59,7 @@ defmodule BusterClawWeb.VoxComponent do
   alias BusterClawWeb.Vox.Files
   alias BusterClawWeb.Vox.Greeting, as: GreetingPanel
   alias BusterClawWeb.Vox.Messages, as: MessagePanel
+  alias BusterClawWeb.Vox.Quality
   alias BusterClawWeb.Vox.Reading
 
   # The sidebar's tabs, in order — ONE list, feeding both the rail and the
@@ -135,6 +137,7 @@ defmodule BusterClawWeb.VoxComponent do
     |> assign(:mic_state, nil)
     |> assign(:ref_note, nil)
     |> assign(:clip_text, "")
+    |> assign(:clip_quote, nil)
     |> assign(:clip_jobs, %{})
     |> assign(:clip_note, nil)
     # Spoken messages, moved here from Settings → Notify on 09-05. No job map
@@ -160,7 +163,19 @@ defmodule BusterClawWeb.VoxComponent do
     assign(socket, :messages, Messages.list())
   end
 
-  defp load_reference(socket), do: assign(socket, :references, Reference.list())
+  # The recordings, plus the length and grade of the one in use — see
+  # `Vox.Quality`, which owns both and the quote they feed.
+  defp load_reference(socket) do
+    socket
+    |> assign(:references, Reference.list())
+    |> Quality.assign_reference(Config.get().reference_audio)
+    |> assign_quote()
+  end
+
+  defp assign_quote(socket), do: Quality.assign_quote(socket)
+
+  defp failed(what, reason), do: "#{what} — #{Renderer.describe_error(reason)}"
+
   defp load_clips(socket), do: assign(socket, :clips, Clips.list())
 
   # The stored knobs plus the one number they change: how many chimes are already
@@ -171,6 +186,7 @@ defmodule BusterClawWeb.VoxComponent do
     socket
     |> assign(:engine_config, Config.get())
     |> assign(:chimes_made, Chimes.made_count())
+    |> assign_quote()
   end
 
   defp load_greeting(socket) do
@@ -360,6 +376,15 @@ defmodule BusterClawWeb.VoxComponent do
 
   # --- say anything ----------------------------------------------------------
 
+  # Only the quote. The text is already in the box; this exists so the price
+  # beside the button is the price of THAT line.
+  @impl true
+  def handle_event("clip_draft", %{"clip" => %{"text" => text}}, socket) do
+    {:noreply, socket |> assign(:clip_text, text) |> assign_quote()}
+  end
+
+  def handle_event("clip_draft", _params, socket), do: {:noreply, socket}
+
   def handle_event("clip_make", %{"clip" => %{"text" => text}}, socket) do
     case Clips.make(text) do
       {:ok, _path} ->
@@ -533,7 +558,7 @@ defmodule BusterClawWeb.VoxComponent do
             socket |> publish_greeting(path) |> load_greeting()
 
           {:error, reason} ->
-            assign(socket, :greeting_note, "Recording failed: #{inspect(reason)}")
+            assign(socket, :greeting_note, failed("Recording failed", reason))
         end
 
       Map.has_key?(socket.assigns.clip_jobs, render_key) ->
@@ -546,7 +571,7 @@ defmodule BusterClawWeb.VoxComponent do
             socket |> load_clips() |> assign(:clip_note, "Made: “#{text}”")
 
           {:error, reason} ->
-            assign(socket, :clip_note, "“#{text}” failed: #{inspect(reason)}")
+            assign(socket, :clip_note, failed("“#{text}” failed", reason))
         end
 
       true ->
@@ -593,7 +618,7 @@ defmodule BusterClawWeb.VoxComponent do
               "Installed #{Sound.route_label(chime_key)}."
 
             {:error, reason} ->
-              "#{Sound.route_label(chime_key)} failed: #{inspect(reason)}"
+              failed("#{Sound.route_label(chime_key)} failed", reason)
           end
 
         socket |> assign(:chime_jobs, jobs) |> assign(:chime_note, note) |> load_chimes()
@@ -671,6 +696,8 @@ defmodule BusterClawWeb.VoxComponent do
             clip_text={@clip_text}
             clip_jobs={@clip_jobs}
             clip_note={@clip_note}
+            quality={@reference_quality}
+            quote={@clip_quote}
             id={@id}
             target={@myself}
           />

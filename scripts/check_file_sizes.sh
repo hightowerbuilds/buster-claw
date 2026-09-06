@@ -630,20 +630,37 @@ check lib/buster_claw_web/components/notes/switcher.ex         134 HELD
 # `components/vox/`; what is here is state, handlers and a five-way dispatch.
 # Nine files where there was one, and this one is now the smallest it has ever
 # been while the surface does the most it ever has.
-check lib/buster_claw_web/live/vox_component.ex               741 FROZEN
+# 741 -> 775 on 09-06, and the reason is written here rather than left as a
+# number that moved. The Vox surface gained a cost quote and a recording grade
+# after a five-word render ran nine and a half minutes and then failed, having
+# never once succeeded on the operator's machine. The RULE this tier carries is
+# "extract before you raise", and that is what happened: 148 lines left for
+# `components/vox/quality.ex`, which owns the grade, the quote, and the two
+# socket assigns behind them. What stayed is the +27 that cannot leave a host —
+# one event handler, two aliases, and the assign calls at their three sites.
+# An extraction that does not fully offset its feature is still an extraction;
+# a raise with no module to show for it is the thing to refuse.
+check lib/buster_claw_web/live/vox_component.ex               775 FROZEN
 
 # Vox2B's panels, capped on arrival. Each is markup plus its own attrs and owns
 # no state — the state stayed in `vox_component.ex`, which is the whole reason
 # extracting them is cheap and the reason growth HERE is the thing to look at: a
 # panel gaining logic means behaviour leaked out of the component that owns it.
 check lib/buster_claw_web/components/vox/chimes.ex             115 HELD
-check lib/buster_claw_web/components/vox/create.ex             160 HELD
+# 160 -> 175 on 09-06: the panel gained a `phx-change` for the live quote and
+# two component calls. No logic came with them — the grade and the quote are
+# computed in `vox/quality.ex` and arrive as assigns, which is exactly the
+# property this block says to watch for.
+check lib/buster_claw_web/components/vox/create.ex             175 HELD
 check lib/buster_claw_web/components/vox/engine_probe.ex       75 HELD
 check lib/buster_claw_web/components/vox/engine_settings.ex    156 HELD
 check lib/buster_claw_web/components/vox/files.ex              137 HELD
 check lib/buster_claw_web/components/vox/greeting.ex           122 HELD
 check lib/buster_claw_web/components/vox/messages.ex           140 HELD
 check lib/buster_claw_web/components/vox/progress.ex           88 HELD
+# Capped on arrival (09-06). The answer to "will this work, and how long" —
+# both halves, so neither can drift from the other.
+check lib/buster_claw_web/components/vox/quality.ex            162 HELD
 check lib/buster_claw_web/components/vox/reading.ex            79 HELD
 
 # Phase 3. 20% markup, so ~987 lines of logic in a live_component. The source
