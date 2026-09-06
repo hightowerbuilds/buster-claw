@@ -628,50 +628,11 @@ body { background-color: var(--color-base-100); }
   --vox-pad: 1rem;
 }
 
-/* One act: Train, Make, Assign. The label is the only uppercase left. */
-.ic-vox-act {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.625rem var(--vox-pad) 0.5rem;
-  background: var(--color-base-100);
-  font-family: var(--font-mono);
-  font-size: 0.625rem;
-  font-weight: 600;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: color-mix(in oklab, var(--color-base-content) 50%, transparent);
-}
-/* The homepage's panels are translucent glass over the shader, so a sticky
-   header painted base-100 would be an opaque bar sliding over it. Match the
-   translucency and blur what passes underneath instead. */
-.ic-home .ic-vox-act {
-  background: color-mix(in oklab, var(--color-base-100) 82%, transparent);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-}
-/* The rule runs from the label to the right edge — a divider that starts where
-   the words stop, so the eye gets the grouping without a second border. */
-.ic-vox-act::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: var(--vox-rule);
-}
-
-/* One section inside an act. A hairline above, and nothing else — no border,
-   no radius, no shadow. The first in each act skips it: the act's own rule is
-   already there. */
+/* One section of the Vox surface. A hairline above, and nothing else — no
+   border, no radius, no shadow. */
 .ic-vox-section {
   padding: 0.875rem var(--vox-pad) 1.125rem;
   border-top: 1px solid var(--vox-rule);
-}
-.ic-vox-act + .ic-vox-section {
-  border-top: 0;
-  padding-top: 0.25rem;
 }
 
 /* Section heading: the name, then its one line. `text-2xl font-black uppercase`

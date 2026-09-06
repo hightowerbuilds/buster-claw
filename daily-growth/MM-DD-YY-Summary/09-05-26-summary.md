@@ -28,7 +28,7 @@ confident wrong answers I gave about the flake.
 | `2612105` | A dead render job wedged the queue permanently |
 
 **Gate at close:** 4,095 Elixir tests / 0 failures (verified ×4), bun 340 / 0,
-credo strict clean, docs drift OK, 2 accepted cycles. **219 → 213 commands.**
+credo strict clean, docs drift OK, 2 accepted cycles. **219 → 214 commands.**
 
 **CI is red and it is not ours.** Nine failures, byte-identical to the set before
 today's pushes — `SoundStudio`/`VoiceLibrary` header probes needing `afconvert`,
