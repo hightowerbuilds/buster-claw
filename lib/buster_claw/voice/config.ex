@@ -119,6 +119,18 @@ defmodule BusterClaw.Voice.Config do
       cfg_value: config.cfg_value
     ]
     |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+    # Always. `--no-denoiser` disables LOADING the speech-enhancement model,
+    # and enhancement only ever runs when `--denoise` is passed — which nothing
+    # in this app has ever done (grep it: no call site emits that flag). So
+    # until 09-06 every render loaded a second model, used it for nothing, and
+    # paid for it in time and memory on a machine where a five-word line
+    # already cost minutes.
+    #
+    # Not a setting, because there is no configuration in which we want it: a
+    # knob for "load a model we never call" is a knob for making renders slower.
+    # If reference enhancement is ever wanted, it arrives as `--denoise` and
+    # this line comes off in the same commit.
+    |> Keyword.put(:no_denoiser, true)
   end
 
   @doc "An explicit engine location, if the operator set one."

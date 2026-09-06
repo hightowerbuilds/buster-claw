@@ -24,10 +24,15 @@ defmodule BusterClaw.Voice.ConfigTest do
   end
 
   describe "storing" do
-    test "empty is the engine's defaults, and changes nothing about a render" do
+    test "empty is the engine's defaults, and changes nothing the operator chose" do
       assert Config.get().device == nil
-      assert Config.render_opts() == []
       refute Config.cloning?()
+
+      # `--no-denoiser` is not a stored setting and never was: it suppresses
+      # loading a speech-enhancement model that nothing in this app calls, so it
+      # rides on every render regardless of what is stored. Everything the
+      # OPERATOR chose is still absent here.
+      assert Config.render_opts() == [no_denoiser: true]
     end
 
     test "blank clears, values stick, unknown keys are ignored" do
@@ -49,7 +54,7 @@ defmodule BusterClaw.Voice.ConfigTest do
 
     test "a corrupted settings blob reads as defaults rather than crashing" do
       BusterClaw.Settings.put("voice_engine_config", "{not json")
-      assert Config.render_opts() == []
+      assert Config.render_opts() == [no_denoiser: true]
     end
   end
 
@@ -130,9 +135,11 @@ defmodule BusterClaw.Voice.ConfigTest do
     end
 
     test "changing the voice makes every made chime a miss", %{root: root} do
-      # Made under the defaults…
+      # Made under the CURRENT settings — `render_opts/0`, not a bare call.
+      # A render is addressed by its whole argv, so a fixture written at the
+      # argv of no-options-at-all is a file the app would never look for.
       for key <- Chimes.keys() do
-        {:ok, path} = BusterClaw.Voice.Renderer.path_for(Chimes.line(key))
+        {:ok, path} = BusterClaw.Voice.Renderer.path_for(Chimes.line(key), Config.render_opts())
         File.mkdir_p!(Path.dirname(path))
         File.write!(path, :binary.copy(<<0>>, 100))
       end
@@ -191,5 +198,31 @@ defmodule BusterClaw.Voice.ConfigTest do
     index = Enum.find_index(args, &(&1 == flag))
     assert index, "expected #{flag} in #{inspect(args)}"
     assert Enum.at(args, index + 1) == value
+  end
+
+  describe "render_opts/0 — the flags every render carries" do
+    test "always disables loading the denoiser, which nothing ever uses" do
+      assert Keyword.get(Config.render_opts(), :no_denoiser) == true
+    end
+
+    test "the denoiser flag survives a config that sets nothing else" do
+      # `render_opts/0` drops nils, and the first version of this put the flag
+      # inside the list being filtered. A default config is the case that would
+      # have lost it.
+      Config.put(%{"reference_audio" => nil, "device" => nil})
+
+      assert Keyword.get(Config.render_opts(), :no_denoiser) == true
+    end
+
+    test "no call site anywhere asks for enhancement" do
+      # The flag above is only correct while this holds. `--denoise` is what
+      # would actually run the model, and if it is ever emitted, the
+      # unconditional `no_denoiser` must come off in the same commit.
+      sources = Path.wildcard("lib/**/*.ex")
+      emitters = Enum.filter(sources, &(File.read!(&1) =~ ~s("--denoise")))
+
+      assert emitters == [],
+             "something now emits --denoise; render_opts/0 must stop forcing --no-denoiser"
+    end
   end
 end
