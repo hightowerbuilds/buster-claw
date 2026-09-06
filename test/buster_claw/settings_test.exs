@@ -41,7 +41,10 @@ defmodule BusterClaw.SettingsTest do
     assert {:ok, _} = Settings.mark_onboarding_complete()
     assert Settings.onboarding_completed?()
 
-    assert Settings.reset_onboarding() == :ok
-    refute Settings.onboarding_completed?()
+    # There is no un-completing it. `RequireOnboarding` redirects only while the
+    # flag is UNSET, so clearing it would re-arm the gate on every other view —
+    # and the "Re-run setup wizard" button does not need that: /setup stays
+    # reachable once complete, which is why `reset_onboarding/0` went on 09-06.
+    assert Settings.delete("onboarding_completed_at") == :ok
   end
 end

@@ -66,9 +66,6 @@ defmodule BusterClaw.Settings do
     put(@onboarding_key, DateTime.utc_now() |> DateTime.to_iso8601())
   end
 
-  @doc "Clear the onboarding flag so the wizard runs again."
-  def reset_onboarding, do: delete(@onboarding_key)
-
   defp stringify(nil), do: nil
   defp stringify(value) when is_binary(value), do: value
   defp stringify(value), do: to_string(value)

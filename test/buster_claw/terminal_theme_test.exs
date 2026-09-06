@@ -9,6 +9,12 @@ defmodule BusterClaw.TerminalThemeTest do
 
   @js Path.expand("../../assets/js/lib/theme.js", __DIR__)
 
+  # The shipped themes carrying a fixed palette — everything but `industrial`,
+  # which is token-derived and has `nil`. Built here from the public catalog
+  # rather than read from a `TerminalTheme.fixed_presets/0`, which existed only
+  # for these four call sites and went on 09-06.
+  defp fixed_presets, do: Enum.filter(TerminalTheme.presets(), & &1.palette)
+
   describe "the catalog" do
     test "the default is a theme that exists, and leads the picker" do
       assert TerminalTheme.default() in TerminalTheme.keys()
@@ -225,7 +231,7 @@ defmodule BusterClaw.TerminalThemeTest do
       # the same form a generated palette is. This test caught exactly that when the
       # editor still copied presets: `selectionForeground` was in the field list and
       # in neither preset, so no copy could ever be saved.
-      for preset <- TerminalTheme.fixed_presets() do
+      for preset <- fixed_presets() do
         assert Enum.sort(Map.keys(preset.palette)) ==
                  Enum.sort(Enum.map(TerminalTheme.fields(), &elem(&1, 0))),
                "#{preset.key}'s palette does not match the editor's field list"
@@ -239,7 +245,7 @@ defmodule BusterClaw.TerminalThemeTest do
     # it wholesale, and an agent writing a colour would have deleted a theme the
     # operator built with a slider and named.
     defp monokai do
-      TerminalTheme.fixed_presets()
+      fixed_presets()
       |> Enum.find(&(&1.key == "monokai"))
       |> Map.fetch!(:palette)
     end
@@ -414,7 +420,7 @@ defmodule BusterClaw.TerminalThemeTest do
     test "every shipped preset that has a palette passes" do
       # The test that would have caught the first draft of the rule — a per-colour
       # ANSI floor would have refused both of these.
-      presets = TerminalTheme.fixed_presets()
+      presets = fixed_presets()
 
       # Not vacuously green: this repo has shipped a guard over an empty
       # collection before.
@@ -483,7 +489,7 @@ defmodule BusterClaw.TerminalThemeTest do
       assert wcag_ratio(monokai()["black"], monokai()["background"]) == 1.0
 
       nord =
-        TerminalTheme.fixed_presets() |> Enum.find(&(&1.key == "nord")) |> Map.fetch!(:palette)
+        fixed_presets() |> Enum.find(&(&1.key == "nord")) |> Map.fetch!(:palette)
 
       assert wcag_ratio(nord["black"], nord["background"]) == 1.24
       assert wcag_ratio(nord["brightBlack"], nord["background"]) == 1.69

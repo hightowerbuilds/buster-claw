@@ -21,9 +21,12 @@ defmodule BusterClaw.TerminalCommandsCatalogTest do
   end
 
   # The persisted catalog document read back from the workspace file, or nil.
-  # `TerminalCommands.put_catalog/1` was the write half and went on 09-05. These
-  # tests still need to PLANT a document — that is the whole point of a read
-  # path — so they write the file the way an older version of the app did.
+  # `TerminalCommands.put_catalog/1` was the write half. This comment claimed it
+  # "went on 09-05" — it had not; it, `reset_catalog/0` and `reset_role/1` all
+  # survived the Cmd List removal that documented them as gone, and went on 09-06
+  # once nothing was found to call them. These tests still need to PLANT a
+  # document — that is the whole point of a read path — so they write the file
+  # the way an older version of the app did.
   defp write_catalog(doc) do
     File.mkdir_p!(TerminalCommands.dir())
     File.write!(TerminalCommands.catalog_path(), Jason.encode!(doc))

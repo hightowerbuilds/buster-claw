@@ -238,26 +238,6 @@ defmodule BusterClaw.TerminalCommands do
       :error
   end
 
-  @doc """
-  Validate and persist the full catalog document (string-keyed map) to the
-  workspace file, then broadcast the merged catalog. Returns `:ok` or
-  `{:error, changeset}`.
-  """
-  def put_catalog(doc) when is_map(doc) do
-    with {:ok, normalized} <- Catalog.validate(doc),
-         :ok <- write_catalog(normalized) do
-      broadcast_update()
-      :ok
-    end
-  end
-
-  @doc "Restore the catalog file to the shipped defaults (every role reset)."
-  def reset_catalog do
-    write_catalog(default_catalog_doc())
-    broadcast_update()
-    :ok
-  end
-
   defp roster_path, do: Path.join(dir(), @roster)
 
   defp write_catalog(doc) do
@@ -338,19 +318,6 @@ defmodule BusterClaw.TerminalCommands do
     %{"version" => Catalog.version(), "roles" => roles}
   end
 
-  @doc "Remove one role's customizations, restoring its shipped commands."
-  def reset_role(role_key) when is_binary(role_key) do
-    if protected?(role_key) do
-      {:error, :protected}
-    else
-      roles =
-        current_doc_roles()
-        |> Enum.reject(&(&1["key"] == role_key))
-
-      put_catalog(%{"version" => Catalog.version(), "roles" => roles})
-    end
-  end
-
   # ---- Editing: REMOVED 09-05 ------------------------------------------------
   #
   # The Settings → Cmd List page and the `terminal_command_set` verb were the
@@ -368,13 +335,6 @@ defmodule BusterClaw.TerminalCommands do
   # user-document layer below collapses to `Builtins` and this module halves.
 
   # ---- Private: persistence helpers ------------------------------------------
-
-  defp current_doc_roles do
-    case Catalog.migrate(user_doc()) do
-      %{"roles" => roles} when is_list(roles) -> Enum.filter(roles, &valid_doc_role?/1)
-      _other -> []
-    end
-  end
 
   defp user_doc do
     case File.read(catalog_path()) do
@@ -417,10 +377,6 @@ defmodule BusterClaw.TerminalCommands do
     from this file. Delete `catalog.json` to restore the shipped defaults on the
     next launch. Prompt entries are also generated from your `skills/` folder.
     """
-  end
-
-  defp broadcast_update do
-    Phoenix.PubSub.broadcast(BusterClaw.PubSub, @topic, {:terminal_commands_updated, load()})
   end
 
   defp put_present(map, _key, nil), do: map

@@ -126,22 +126,6 @@ defmodule BusterClaw.Voice.Chimes do
   defp with_config(opts), do: Keyword.merge(Config.render_opts(), opts)
 
   @doc """
-  Ask for the whole set, one `Renderer` job per line.
-
-  Correct but wasteful: each job is its own process and pays the model load
-  again. **Measured on the Intel dev machine 09-02-26: 2 min 29 s of warm-up
-  before any audio.** Sixteen of those is forty minutes spent loading the same
-  weights. Prefer `render_set/1`, which is the same work in one invocation.
-
-  This stays because it is the path that reports progress per line — the queue
-  broadcasts each result as it lands, so a surface can fill in rather than wait.
-  """
-  @spec render_all(keyword()) :: [{String.t(), term()}]
-  def render_all(opts \\ []) do
-    Enum.map(keys(), fn key -> {key, render(key, opts)} end)
-  end
-
-  @doc """
   Render the whole set in **one** engine invocation — one model load for sixteen
   lines instead of sixteen.
 

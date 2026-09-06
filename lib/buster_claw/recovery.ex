@@ -4,14 +4,14 @@ defmodule BusterClaw.Recovery do
   from which every at-rest encryption key is derived (see `BusterClaw.Vault`).
 
   The Tauri shell owns this key: it stores it in the macOS Keychain and injects
-  it at boot. The app only ever *reads* it, to show the user a value they can
-  back up, and describes where to drop a saved key to restore on another machine.
-  On first launch the shell adopts a `RESTORE_SECRET_KEY` file from the data dir
-  if present (see `desktop/tauri/src/main.rs`).
+  it at boot. **The app never reads the key itself** — Clinch Phase 2 moved the
+  reveal into a Rust command the hook calls (`clinch_reveal_recovery_key`), so
+  the value reaches a DOM node without passing through a socket assign, and
+  `SettingsRecoveryKeyTest` asserts it stays that way. What is left here is the
+  paths half: where to drop a saved key to restore on another machine. On first
+  launch the shell adopts a `RESTORE_SECRET_KEY` file from the data dir if
+  present (see `desktop/tauri/src/main.rs`).
   """
-
-  @doc "The current master key — the value a user should back up. `nil` if unset."
-  def recovery_key, do: BusterClaw.RuntimeConfig.secret_key_base()
 
   @doc """
   Per-machine app data directory the Tauri shell uses for app-internal state.

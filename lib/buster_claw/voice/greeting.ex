@@ -83,10 +83,6 @@ defmodule BusterClaw.Voice.Greeting do
   @spec render(keyword()) :: {:ok, String.t()} | {:queued, String.t()} | {:error, term()}
   def render(opts \\ []), do: Renderer.render(text(), with_config(opts))
 
-  @doc "Where the current greeting's audio will be, whether or not it exists yet."
-  @spec rendered_path(keyword()) :: {:ok, String.t()} | {:error, term()}
-  def rendered_path(opts \\ []), do: Renderer.path_for(text(), with_config(opts))
-
   # The operator's engine settings under whatever the caller asked for. Same
   # shape as `Chimes` and for the same reason: applied here so `Engine` stays
   # pure.

@@ -412,9 +412,6 @@ defmodule BusterClaw.TerminalTheme do
     :ok
   end
 
-  @doc "The shipped themes that carry a fixed palette — everything but `industrial`."
-  def fixed_presets, do: Enum.filter(@themes, &(&1.palette != nil))
-
   # --- the agent slot ------------------------------------------------------
 
   @doc """

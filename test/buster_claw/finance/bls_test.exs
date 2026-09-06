@@ -208,12 +208,6 @@ defmodule BusterClaw.Finance.BLSTest do
       assert [%{value: 1.0}] = result.observations
     end
 
-    test "the documented quota reflects whether a key is configured" do
-      assert BLS.daily_quota() == 25
-      Application.put_env(:buster_claw, :bls_api_key, "key")
-      assert BLS.daily_quota() == 500
-    end
-
     test "a configured key goes in the POST body, never the query string" do
       Application.put_env(:buster_claw, :bls_api_key, "secret-key")
 

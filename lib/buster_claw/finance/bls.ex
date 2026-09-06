@@ -35,10 +35,10 @@ defmodule BusterClaw.Finance.BLS do
   - **Keyless (v1):** 25 queries/day, 25 series/query, 10 years/request.
   - **Registered (v2):** 500 queries/day, 50 series/query, 20 years/request.
 
-  25 requests a day is a real ceiling for an interactive surface, so
-  `daily_quota/0` is stated here rather than discovered when a chart silently
-  stops working. Register a key at https://data.bls.gov/registrationEngine/ and
-  set `:buster_claw, :bls_api_key`.
+  25 requests a day is a real ceiling for an interactive surface. The numbers
+  above are stated here rather than discovered when a chart silently stops
+  working; nothing enforces them in code. Register a key at
+  https://data.bls.gov/registrationEngine/ and set `:buster_claw, :bls_api_key`.
   """
 
   @base "https://api.bls.gov/publicAPI"
@@ -97,9 +97,6 @@ defmodule BusterClaw.Finance.BLS do
       frequency: "monthly"
     }
   }
-
-  @doc "Documented queries/day for the current configuration. Informational."
-  def daily_quota, do: if(match?({:ok, _key}, api_key()), do: 500, else: 25)
 
   @doc """
   Observations for one BLS series, oldest first.

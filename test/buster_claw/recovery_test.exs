@@ -3,12 +3,6 @@ defmodule BusterClaw.RecoveryTest do
 
   alias BusterClaw.Recovery
 
-  test "recovery_key/0 returns the configured Phoenix secret_key_base" do
-    expected = Application.get_env(:buster_claw, BusterClawWeb.Endpoint)[:secret_key_base]
-    assert is_binary(expected)
-    assert Recovery.recovery_key() == expected
-  end
-
   test "restore_file_path/0 sits under the data dir and is named RESTORE_SECRET_KEY" do
     assert Recovery.restore_file_path() == Path.join(Recovery.data_dir(), "RESTORE_SECRET_KEY")
     assert Path.basename(Recovery.restore_file_path()) == "RESTORE_SECRET_KEY"
