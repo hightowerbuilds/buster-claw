@@ -423,7 +423,7 @@ defmodule BusterClawWeb.PhoneComponent do
             phx-target={@myself}
             phx-value-tab={t.key}
             class={[
-              "-mb-0.5 border-b-2 px-3 py-1.5 font-display text-xs font-bold uppercase tracking-wide transition",
+              "-mb-0.5 flex items-center gap-1.5 border-b-2 px-3 py-1.5 font-display text-xs font-bold uppercase tracking-wide transition",
               if(@tab == t.key,
                 do: "border-primary text-primary",
                 else: "border-transparent text-base-content/55 hover:text-base-content"
@@ -431,6 +431,21 @@ defmodule BusterClawWeb.PhoneComponent do
             ]}
           >
             {t.label}
+            <%!-- The blinking light as a number. The Messages panel header
+                  already carries an `ic-dot` for the same fact, but only once
+                  you are on Messages — the point of putting it on the rail is
+                  that it is legible from Contacts. Absent at zero rather than
+                  showing "0": a count you have to read to learn there is
+                  nothing to read is not a light. --%>
+            <span
+              :if={t.badge == :unheard and @stats.unheard > 0}
+              id={"#{@id}-unheard-badge"}
+              data-unheard={@stats.unheard}
+              title={"#{@stats.unheard} unheard voicemail(s)"}
+              class="rounded-sm bg-accent/20 px-1.5 py-0.5 font-mono text-[10px] font-bold text-accent"
+            >
+              {@stats.unheard}
+            </span>
           </button>
         </div>
 

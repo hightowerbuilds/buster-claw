@@ -26,6 +26,18 @@ defmodule BusterClawWeb.PhoneLiveTest do
     view
   end
 
+  # Listening to a voicemail is what clears it — selecting the event is the only
+  # thing that marks it heard, so the rail count is driven the way an operator
+  # would drive it rather than by writing `heard_at` behind the surface's back.
+  defp hear!(view, event) do
+    view
+    |> element("button[phx-click=select_event][phx-value-id='#{event.id}']")
+    |> render_click()
+
+    view |> element("#phone-close-detail") |> render_click()
+    view
+  end
+
   # Every id and every `phx-click` that BusterPhone deleted when it became
   # intake-only (`PHONE_INTAKE_ROADMAP`, 08-18). Named once, asserted absent from
   # both sub-tabs below, so a control that originates something cannot grow back
@@ -102,6 +114,48 @@ defmodule BusterClawWeb.PhoneLiveTest do
 
     assert has_element?(view, "#phone-keypad-stage")
     refute has_element?(view, "#phone-message-detail")
+  end
+
+  # The count on the RAIL, which is the half that was missing. `Telephony.stats/0`
+  # already folded in `unheard_count/0` and the Messages panel header already drew
+  # an `ic-dot` from it — but only while you were looking at Messages, which is
+  # the one place you do not need telling. These assert the number, that it is
+  # legible from the other sub-tab, that it counts down, and that it disappears
+  # rather than reading "0".
+  describe "the unheard count on the rail" do
+    test "shows the number, and shows it from the Contacts tab too", %{conn: conn} do
+      record!(%{transcript: "One."})
+      record!(%{from_number: "+15035550199", transcript: "Two."})
+      assert Telephony.unheard_count() == 2
+
+      {:ok, view, _html} = live(conn, "/phone")
+
+      assert has_element?(view, "#phone-unheard-badge[data-unheard='2']")
+
+      # The reason it is on the rail at all: still readable with Messages closed.
+      contacts = render(select_tab(view, "contacts"))
+      assert contacts =~ ~s(data-unheard="2")
+      refute has_element?(view, "[data-phone-tab='messages']")
+    end
+
+    test "counts down as voicemails are heard, then vanishes rather than reading 0",
+         %{conn: conn} do
+      first = record!(%{transcript: "One."})
+      second = record!(%{from_number: "+15035550199", transcript: "Two."})
+
+      {:ok, view, _html} = live(conn, "/phone")
+      assert has_element?(view, "#phone-unheard-badge[data-unheard='2']")
+
+      hear!(view, first)
+      assert has_element?(view, "#phone-unheard-badge[data-unheard='1']")
+
+      hear!(view, second)
+
+      # Absent, not zero. A badge that has to be read to learn there is nothing
+      # to read is not a blinking light.
+      refute has_element?(view, "#phone-unheard-badge")
+      assert Telephony.unheard_count() == 0
+    end
   end
 
   test "groups texts into threads and opens one", %{conn: conn} do

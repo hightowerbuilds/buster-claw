@@ -239,7 +239,11 @@ check lib/buster_claw_web/components/phone/log.ex            256 HELD
 # gained `priced_kind?/1` — which is here rather than in `Playback` so the panel
 # that shows a Cost line and the query that fills it in cannot disagree.
 check lib/buster_claw_web/components/phone/shared.ex         200 HELD
-check lib/buster_claw_web/components/phone/registry.ex        62 HELD
+# phone/registry.ex — 62 -> 78 on 09-06: the rail gained a `badge` key (the
+# unheard count) plus the paragraph saying why it lives in the registry rather
+# than as a tab-key literal in the template. This file is almost entirely the
+# reasons its literals are here; that is what it is for.
+check lib/buster_claw_web/components/phone/registry.ex        78 HELD
 
 # The Google Workspace console: a rail, and one module per pane.
 check lib/buster_claw_web/components/gws_panels.ex           135 HELD

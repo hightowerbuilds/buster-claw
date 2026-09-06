@@ -32,6 +32,15 @@ defmodule BusterClawWeb.Phone.Registry do
   There is no `@built` list here, unlike Studio's. Both surfaces exist — they
   are the panels the tab already rendered — so a placeholder arm would be an
   unreachable branch shipped for a hypothetical third tab.
+
+  ## What `badge` is for
+
+  `badge` names which count a rail button carries (`nil` for none), and it lives
+  here rather than as a `t.key == "messages"` test in the template for the same
+  reason the keys do: a bare tab key in the rail is a fourth literal that can
+  drift from these three. Only `:unheard` exists — the blinking light, already
+  drawn as a dot inside the Messages panel, which is the one place you do not
+  need telling.
   """
 
   # The sub-tabs, in rail order. `blurb` is the rail button's `title`.
@@ -39,11 +48,13 @@ defmodule BusterClawWeb.Phone.Registry do
     %{
       key: "messages",
       label: "Messages",
+      badge: :unheard,
       blurb: "Everything that came in — voicemail, texts, calls — and whatever is playing."
     },
     %{
       key: "contacts",
       label: "Contacts",
+      badge: nil,
       blurb: "Who the machine knows, their shaderface, and whether they reach the agent."
     }
   ]
