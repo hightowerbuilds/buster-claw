@@ -36,7 +36,6 @@ defmodule BusterClaw.Dispatch.Item do
              :claimed_at,
              :started_at,
              :finished_at,
-             :heartbeat_at,
              :outcome,
              :notes,
              :metadata,
@@ -65,7 +64,6 @@ defmodule BusterClaw.Dispatch.Item do
     field :claimed_at, :utc_datetime
     field :started_at, :utc_datetime
     field :finished_at, :utc_datetime
-    field :heartbeat_at, :utc_datetime
     field :outcome, :string
     field :notes, :string
     field :metadata, :map, default: %{}
@@ -102,7 +100,6 @@ defmodule BusterClaw.Dispatch.Item do
       :claimed_at,
       :started_at,
       :finished_at,
-      :heartbeat_at,
       :outcome,
       :notes,
       :metadata

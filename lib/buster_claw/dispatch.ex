@@ -37,7 +37,6 @@ defmodule BusterClaw.Dispatch do
     claimed_at
     started_at
     finished_at
-    heartbeat_at
     outcome
     notes
     metadata
@@ -107,7 +106,6 @@ defmodule BusterClaw.Dispatch do
           claimed_by: nil,
           claimed_at: nil,
           started_at: nil,
-          heartbeat_at: nil,
           updated_at: timestamp()
         ]
       )
@@ -250,12 +248,10 @@ defmodule BusterClaw.Dispatch do
     |> update_item(
       attrs
       |> normalize_attrs()
-      |> Map.merge(%{status: "running", started_at: now, heartbeat_at: now})
+      |> Map.merge(%{status: "running", started_at: now})
     )
     |> tap_event(:dispatch_item_running)
   end
-
-  def heartbeat(%Item{} = item), do: update_item(item, %{heartbeat_at: timestamp()})
 
   @doc """
   Set a queued item's execution strategy (`"single"` | `"swarm"`). Only a still-

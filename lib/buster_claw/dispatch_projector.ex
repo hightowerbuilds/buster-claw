@@ -29,16 +29,16 @@ defmodule BusterClaw.DispatchProjector do
   alias BusterClaw.Library.Artifact
   alias BusterClaw.LocalTime
 
-  # Events that get a dated `.jsonl` line. `:dispatch_item_updated` (heartbeats,
-  # incidental field changes) is not logged, so a single mark_running/finish —
+  # Events that get a dated `.jsonl` line. A bare `:dispatch_item_updated`
+  # (an incidental field change) is not logged, so a single mark_running/finish —
   # which also fires `:dispatch_item_updated` — does not double-log.
   @logged_events ~w(dispatch_item_queued dispatch_item_claimed dispatch_item_running dispatch_item_finished)a
 
   # Events that can change the OPEN set (queued/claimed/running) and so require a
   # fridge re-render. These are exactly the status-transition events broadcast by
-  # `Dispatch`; bare `:dispatch_item_updated` (heartbeats, incidental field
-  # changes) leaves the open set unchanged and would only rewrite byte-identical
-  # output, so it skips the fridge entirely.
+  # `Dispatch`; a bare `:dispatch_item_updated` (an incidental field change)
+  # leaves the open set unchanged and would only rewrite byte-identical output,
+  # so it skips the fridge entirely.
   @fridge_events ~w(dispatch_item_queued dispatch_item_claimed dispatch_item_running dispatch_item_finished)a
 
   def start_link(opts \\ []) do
@@ -83,10 +83,10 @@ defmodule BusterClaw.DispatchProjector do
 
   defp render(event, item) do
     # Only re-render the fridge when the open set can have changed. The boot
-    # render (event == nil) always refreshes it; bare `:dispatch_item_updated`
-    # heartbeats leave the open set untouched and would only rewrite
-    # byte-identical output, so they skip the (otherwise per-event) full
-    # `list_open()` + overwrite of the fridge.
+    # render (event == nil) always refreshes it; a bare `:dispatch_item_updated`
+    # leaves the open set untouched and would only rewrite byte-identical
+    # output, so it skips the (otherwise per-event) full `list_open()` +
+    # overwrite of the fridge.
     if is_nil(event) or event in @fridge_events, do: write_fridge()
     # The initial boot render (event == nil) only refreshes the fridge; dated
     # diary files appear lazily once the first real event arrives.

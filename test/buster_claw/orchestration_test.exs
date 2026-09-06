@@ -66,7 +66,7 @@ defmodule BusterClaw.OrchestrationTest do
       assert assignment.agent_name == "Mail Triage"
       assert assignment.shell == "Email terminal"
       assert assignment.status == "active"
-      assert assignment.heartbeat_at
+      assert assignment.started_at
 
       assert [^assignment] = Orchestration.active_shift_assignments()
 

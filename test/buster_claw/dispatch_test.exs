@@ -112,7 +112,6 @@ defmodule BusterClaw.DispatchTest do
     assert running.shift_id == shift.id
     assert running.shift_assignment_id == assignment.id
     assert running.started_at
-    assert running.heartbeat_at
 
     assert {:ok, done} =
              Dispatch.finish(running, "done", %{

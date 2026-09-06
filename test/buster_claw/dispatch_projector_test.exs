@@ -118,8 +118,8 @@ defmodule BusterClaw.DispatchProjectorTest do
     assert a =~ "    ```"
   end
 
-  test "a bare heartbeat does not rewrite the fridge", %{tmp: tmp} do
-    item = enqueue!(%{subject: "Heartbeat me", dedupe_key: "hb-1"})
+  test "a bare item update does not rewrite the fridge", %{tmp: tmp} do
+    item = enqueue!(%{subject: "Update me", dedupe_key: "hb-1"})
 
     fridge_file = Path.join(tmp, "Dispatch.md")
     before_mtime = File.stat!(fridge_file, time: :posix).mtime
@@ -129,9 +129,11 @@ defmodule BusterClaw.DispatchProjectorTest do
     # proves the fridge write was skipped (not merely byte-identical).
     Process.sleep(1100)
 
-    # heartbeat/1 fires a bare :dispatch_item_updated — the open set is unchanged,
-    # so the fridge must not be re-rendered.
-    {:ok, _} = Dispatch.heartbeat(item)
+    # An incidental field change fires a bare :dispatch_item_updated. The
+    # projector routes on the EVENT, not on what changed, and that event is not
+    # in @fridge_events — the open set is unchanged, so the fridge must not be
+    # re-rendered even though `notes` did change.
+    {:ok, _} = Dispatch.update_item(item, %{notes: "an incidental change"})
     sync()
 
     assert File.stat!(fridge_file, time: :posix).mtime == before_mtime
@@ -179,9 +181,9 @@ defmodule BusterClaw.DispatchProjectorTest do
     {:ok, running} = Dispatch.mark_running(claimed)
     sync()
 
-    # A heartbeat is not a logged event: it must add neither a .jsonl line nor an
-    # .md row, so the re-render still has to match.
-    {:ok, _} = Dispatch.heartbeat(running)
+    # A bare update is not a logged event: it must add neither a .jsonl line nor
+    # an .md row, so the re-render still has to match.
+    {:ok, _} = Dispatch.update_item(running, %{notes: "an incidental change"})
     sync()
 
     {:ok, _} = Dispatch.finish(running, "done")

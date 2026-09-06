@@ -135,7 +135,6 @@ defmodule BusterClaw.Orchestration do
       shell: present(opt(opts, :shell)) || (role && role.shell),
       status: "active",
       started_at: now(),
-      heartbeat_at: now(),
       purpose: present(opt(opts, :purpose)) || (role && role.purpose),
       dedupe_key: present(opt(opts, :dedupe_key)),
       notes: present(opt(opts, :notes))

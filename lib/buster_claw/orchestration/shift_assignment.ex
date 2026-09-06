@@ -17,7 +17,6 @@ defmodule BusterClaw.Orchestration.ShiftAssignment do
     field :status, :string, default: "active"
     field :started_at, :utc_datetime
     field :ended_at, :utc_datetime
-    field :heartbeat_at, :utc_datetime
     field :purpose, :string
     field :dedupe_key, :string
     field :notes, :string
@@ -35,7 +34,6 @@ defmodule BusterClaw.Orchestration.ShiftAssignment do
       :status,
       :started_at,
       :ended_at,
-      :heartbeat_at,
       :purpose,
       :dedupe_key,
       :notes
