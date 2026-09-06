@@ -256,6 +256,20 @@ defmodule BusterClaw.Music.Player do
   # Music library tab offers live here — previous/stop/volume are dock-local
   # controls, so `music_player_live.ex` calls the pure transitions directly and
   # never needs a remote-control wrapper for them.
+  #
+  # **Nothing in `lib/` publishes on this bus today, and the 09-05 review
+  # proposed deleting these five because "the LiveView already bypasses them".
+  # It does not bypass them — it does something else.** `Player.toggle/1` is a
+  # pure struct transition the dock runs for its OWN button; `request_toggle/0`
+  # broadcasts so a DIFFERENT surface can drive the dock. Opposite directions,
+  # not alternatives.
+  #
+  # They stay because deleting the senders would not remove dead code, it would
+  # strand live code: `subscribe_commands/0`, `apply_command/2` and
+  # `MusicPlayerLive`'s `handle_info({:music_command, …})` are wired and run in
+  # every session, and after a delete there would be no supported way to reach
+  # them. The real question is whether the whole bus should go, and that is a
+  # product call about the Music library tab, not a dead-code sweep.
   def request_play(name) when is_binary(name), do: command({:play, name})
   def request_enqueue(name) when is_binary(name), do: command({:enqueue, name})
   def request_toggle, do: command(:toggle)

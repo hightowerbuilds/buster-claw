@@ -86,6 +86,16 @@ defmodule BusterClaw.Telephony do
   has priced, so an unfinal row keeps getting retried. `{:ok, event}` |
   `{:error, :no_sids | reason}`.
   """
+  # Kept 09-06 with no caller, deliberately. `refresh_unpriced_costs/1` — the
+  # wired batch — cannot be expressed in terms of this function: it fans
+  # `fetch_cost/2` out concurrently and applies serially, because SQLite is
+  # single-writer. So this is the only public form of the single-row path, and
+  # its tests are the only coverage of `fetch_cost/2`'s and `apply_cost/2`'s
+  # branches — `:no_sids`, the provisional row that keeps getting retried, and
+  # the old row that is given up on. The batch swallows per-row errors and so
+  # cannot assert any of them. Deleting six lines of surface to lose six
+  # assertions on a live path is a bad trade; if it should go, the batch has to
+  # be restructured to compose it first, which is a change to shipped behaviour.
   def refresh_cost(%Event{} = event, opts \\ []) do
     case fetch_cost(event, opts) do
       {:ok, cost} -> apply_cost(event, cost)
