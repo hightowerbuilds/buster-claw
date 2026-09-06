@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-clinch-put"
+description = "Enables the clinch_put command without any pre-configured scope."
+commands.allow = ["clinch_put"]
+
+[[permission]]
+identifier = "deny-clinch-put"
+description = "Denies the clinch_put command without any pre-configured scope."
+commands.deny = ["clinch_put"]

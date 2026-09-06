@@ -177,6 +177,12 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the app_icon_set command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-app-icon-set",
+          "markdownDescription": "Enables the app_icon_set command without any pre-configured scope."
+        },
+        {
           "description": "Enables the browser_app_navigate command without any pre-configured scope.",
           "type": "string",
           "const": "allow-browser-app-navigate",
@@ -369,6 +375,12 @@
           "markdownDescription": "Enables the clinch_reveal_recovery_key command without any pre-configured scope."
         },
         {
+          "description": "Enables the list_voices command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-list-voices",
+          "markdownDescription": "Enables the list_voices command without any pre-configured scope."
+        },
+        {
           "description": "Enables the speak command without any pre-configured scope.",
           "type": "string",
           "const": "allow-speak",
@@ -415,6 +427,12 @@
           "type": "string",
           "const": "allow-terminal-resize",
           "markdownDescription": "Enables the terminal_resize command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the app_icon_set command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-app-icon-set",
+          "markdownDescription": "Denies the app_icon_set command without any pre-configured scope."
         },
         {
           "description": "Denies the browser_app_navigate command without any pre-configured scope.",
@@ -607,6 +625,12 @@
           "type": "string",
           "const": "deny-clinch-reveal-recovery-key",
           "markdownDescription": "Denies the clinch_reveal_recovery_key command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the list_voices command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-list-voices",
+          "markdownDescription": "Denies the list_voices command without any pre-configured scope."
         },
         {
           "description": "Denies the speak command without any pre-configured scope.",

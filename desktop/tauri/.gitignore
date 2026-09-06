@@ -1,4 +1,3 @@
 /target
 /resources/release/*
 !/resources/release/.gitkeep
-/gen/schemas

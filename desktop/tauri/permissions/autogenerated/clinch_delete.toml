@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-clinch-delete"
+description = "Enables the clinch_delete command without any pre-configured scope."
+commands.allow = ["clinch_delete"]
+
+[[permission]]
+identifier = "deny-clinch-delete"
+description = "Denies the clinch_delete command without any pre-configured scope."
+commands.deny = ["clinch_delete"]
