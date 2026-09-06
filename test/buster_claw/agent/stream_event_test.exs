@@ -79,77 +79,6 @@ defmodule BusterClaw.Agent.StreamEventTest do
     end
   end
 
-  describe "activity_state/2" do
-    test "system → booting, result → done, user → waiting" do
-      assert StreamEvent.activity_state(StreamEvent.normalize(%{"type" => "system"}), :reading) ==
-               :booting
-
-      assert StreamEvent.activity_state(StreamEvent.normalize(%{"type" => "result"}), :writing) ==
-               :done
-
-      assert StreamEvent.activity_state(StreamEvent.normalize(%{"type" => "user"}), :reading) ==
-               :waiting
-    end
-
-    test "read-ish tools → reading" do
-      for name <- ~w(Read Grep Glob LS NotebookRead WebFetch) do
-        assert StreamEvent.activity_state(StreamEvent.normalize(tool(name)), :waiting) == :reading
-      end
-    end
-
-    test "write-ish tools → writing" do
-      for name <- ~w(Write Edit NotebookEdit) do
-        assert StreamEvent.activity_state(StreamEvent.normalize(tool(name)), :waiting) == :writing
-      end
-    end
-
-    test "Bash touching mail → email" do
-      cmd = tool("Bash", %{"command" => "./buster-claw mailman poll --once"})
-      assert StreamEvent.activity_state(StreamEvent.normalize(cmd), :waiting) == :email
-    end
-
-    test "Bash sending / marking done → writing even though it mentions gmail" do
-      send_cmd = tool("Bash", %{"command" => "./buster-claw run gmail_send --json '{}'"})
-      done_cmd = tool("Bash", %{"command" => "./buster-claw dispatch done 4 --note ok"})
-      assert StreamEvent.activity_state(StreamEvent.normalize(send_cmd), :waiting) == :writing
-      assert StreamEvent.activity_state(StreamEvent.normalize(done_cmd), :waiting) == :writing
-    end
-
-    test "assistant text keeps booting on boot, else waiting" do
-      ev = StreamEvent.normalize(text("hi"))
-      assert StreamEvent.activity_state(ev, :booting) == :booting
-      assert StreamEvent.activity_state(ev, :reading) == :waiting
-    end
-
-    test "unknown events keep the previous state" do
-      ev = StreamEvent.normalize(%{"type" => "rate_limit_event"})
-      assert StreamEvent.activity_state(ev, :email) == :email
-    end
-  end
-
-  describe "activity_label/1" do
-    test "summarizes the current tool" do
-      assert StreamEvent.activity_label(
-               StreamEvent.normalize(tool("Read", %{"file_path" => "x"}))
-             ) ==
-               "Read"
-
-      assert StreamEvent.activity_label(
-               StreamEvent.normalize(tool("Bash", %{"command" => "ls -la"}))
-             ) =~ "ls -la"
-    end
-
-    test "assistant text → thinking, result → its text, unknown → nil" do
-      assert StreamEvent.activity_label(StreamEvent.normalize(text("planning"))) == "thinking"
-
-      assert StreamEvent.activity_label(
-               StreamEvent.normalize(%{"type" => "result", "result" => "ok"})
-             ) == "ok"
-
-      assert StreamEvent.activity_label(StreamEvent.normalize(%{"type" => "x"})) == nil
-    end
-  end
-
   # Every line below is a VERBATIM event captured from the real CLI on 08-03
   # (codex-cli 0.146.0, opencode 1.18.3) — see AGENT_BACKEND_ROADMAP.md. The
   # point of pasting real output rather than hand-writing plausible JSON is that
@@ -180,7 +109,6 @@ defmodule BusterClaw.Agent.StreamEventTest do
       assert event.kind == :tool_use
       assert event.tool == "command_execution"
       assert event.tool_input == %{"command" => "ls -la"}
-      assert StreamEvent.activity_label(event) == "$ ls -la"
     end
 
     test "a completed command_execution is a tool_result, not a second tool_use" do
@@ -255,18 +183,17 @@ defmodule BusterClaw.Agent.StreamEventTest do
       assert event.cost_usd == 0.0021
     end
 
-    test "lower-cased tool names still classify for the activity display" do
+    # opencode names the same jobs in lower case, which is a real difference from
+    # claude's `Read`/`Write` and the reason the parser cannot assume casing.
+    test "lower-cased tool names still parse as tool_use, carrying the name as sent" do
       read =
         ~s({"type":"tool_use","sessionID":"s","part":{"type":"tool","tool":"read","state":{"status":"running","input":{}}}})
 
       write =
         ~s({"type":"tool_use","sessionID":"s","part":{"type":"tool","tool":"write","state":{"status":"running","input":{}}}})
 
-      {:ok, r} = StreamEvent.parse(:opencode, read)
-      {:ok, w} = StreamEvent.parse(:opencode, write)
-
-      assert StreamEvent.activity_state(r, :waiting) == :reading
-      assert StreamEvent.activity_state(w, :waiting) == :writing
+      assert {:ok, %{kind: :tool_use, tool: "read"}} = StreamEvent.parse(:opencode, read)
+      assert {:ok, %{kind: :tool_use, tool: "write"}} = StreamEvent.parse(:opencode, write)
     end
   end
 
@@ -361,44 +288,6 @@ defmodule BusterClaw.Agent.StreamEventTest do
                StreamEvent.parse(:claude, ~s({"type":"result","result":"OK"}))
 
       assert {:ok, %{usage: nil}} = StreamEvent.parse(:codex, ~s({"type":"turn.completed"}))
-    end
-  end
-
-  describe "run_usage/2 — for the blocking surfaces" do
-    test "finds the result event in a whole captured stream" do
-      output =
-        Enum.join(
-          [
-            ~s({"type":"system","session_id":"s"}),
-            ~s({"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}),
-            ~s({"type":"result","result":"OK","total_cost_usd":0.5,"usage":{"input_tokens":9,"output_tokens":3}})
-          ],
-          "\n"
-        )
-
-      assert %{input_tokens: 9, output_tokens: 3, cost_usd: 0.5} =
-               StreamEvent.run_usage(:claude, output)
-    end
-
-    # opencode emits one step_finish per STEP; only the last ends the run, so the
-    # last result event is the one that carries the run's totals.
-    test "takes the LAST result, which is the one that ends an opencode run" do
-      output =
-        Enum.join(
-          [
-            ~s({"type":"step_finish","part":{"reason":"tool-calls","tokens":{"input":1,"output":1},"cost":0.001}}),
-            ~s({"type":"step_finish","part":{"reason":"stop","tokens":{"input":80,"output":9},"cost":0.02}})
-          ],
-          "\n"
-        )
-
-      assert %{input_tokens: 80, cost_usd: 0.02} = StreamEvent.run_usage(:opencode, output)
-    end
-
-    test "is nil for output that never finished, and for junk" do
-      assert StreamEvent.run_usage(:claude, ~s({"type":"system","session_id":"s"})) == nil
-      assert StreamEvent.run_usage(:claude, "not json at all") == nil
-      assert StreamEvent.run_usage(:claude, nil) == nil
     end
   end
 end

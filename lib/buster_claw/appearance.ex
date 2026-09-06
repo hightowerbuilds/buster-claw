@@ -460,14 +460,6 @@ defmodule BusterClaw.Appearance do
   @doc "The resolved homepage background (legacy alias of `background(:home)`)."
   def home_background_state, do: background(:home)
 
-  @doc "Served URL of the image behind the terminal, or `nil` when it isn't an image."
-  def terminal_background_url, do: background(:terminal).image_url
-
-  @doc """
-  The resolved mode string for `surface`: `off`, a shader name, or `image:<n>`.
-  """
-  def background_mode(surface), do: option_key(background(surface))
-
   @doc """
   The stored mode string for a resolved background — the inverse of
   `set_background/2`.

@@ -107,7 +107,7 @@ defmodule BusterClawWeb.VoxSpokenMessagesTest do
     assert html =~ "Fired."
 
     notification =
-      Enum.find(Notifications.list_notifications(), &(&1.label == "Stand up and stretch."))
+      Enum.find(Notifications.upcoming(), &(&1.label == "Stand up and stretch."))
 
     assert notification, "firing must create a real notification row"
     assert notification.metadata["sound"] == "message-stand-up.wav"

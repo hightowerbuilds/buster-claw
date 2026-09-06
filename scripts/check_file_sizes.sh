@@ -1296,7 +1296,11 @@ check lib/buster_claw/agent/attachments.ex                    960 HELD
 # stream_event.ex — five observed wire schemas as pure clauses, every mapping
 # citing a probe. No shared fallback between codex's two schemas is a
 # deliberate correct call, not an oversight.
-check lib/buster_claw/agent/stream_event.ex                   680 HELD
+# 680 -> 568 on 09-06: the starfield activity mapping (`activity_state/2`,
+# `activity_label/1`) and `run_usage/2` went with their 95 lines — no consumer
+# ever existed here, and the view that would have consumed them was spun off on
+# 09-03. What is left is exactly the wire schemas, which is what the cap is for.
+check lib/buster_claw/agent/stream_event.ex                   568 HELD
 # agent_backend.ex — the measured-facts table; nearly half is dated evidence
 # ("measured 08-03, --help quoted") which is the module's whole value. If it
 # ever splits: per concern, NEVER per backend — the cross-backend comparisons

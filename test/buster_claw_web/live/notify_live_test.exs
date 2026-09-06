@@ -38,7 +38,7 @@ defmodule BusterClawWeb.NotifyLiveTest do
     render_click(view, "notify_ack", %{"id" => to_string(past.id)})
     refute render(view) =~ "time&#39;s up"
     # Acknowledge leaves the row as a "fired" record.
-    assert Notifications.get_notification(past.id).status == "fired"
+    assert Notifications.get_notification!(past.id).status == "fired"
   end
 
   test "a fire pushes the play-sound event to the client", %{conn: conn} do
@@ -120,7 +120,7 @@ defmodule BusterClawWeb.NotifyLiveTest do
     render_click(view, "notify_ack_snooze", %{"id" => to_string(past.id)})
     refute render(view) =~ "time&#39;s up"
 
-    updated = Notifications.get_notification(past.id)
+    updated = Notifications.get_notification!(past.id)
     assert updated.status == "snoozed"
     assert DateTime.compare(updated.fire_at, DateTime.utc_now()) == :gt
   end

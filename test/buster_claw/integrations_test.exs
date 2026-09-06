@@ -169,33 +169,6 @@ defmodule BusterClaw.IntegrationsTest do
     assert integration.last_error == "Integration is disabled"
   end
 
-  test "latest_documents returns integration tagged Library documents first" do
-    integration_doc = raw_document!("GitHub Snapshot", ["integration", "github", "monitoring"])
-    _other_doc = raw_document!("Regular Document", ["research"])
-
-    assert [document] = Integrations.latest_documents()
-    assert document.id == integration_doc.id
-  end
-
-  test "latest_documents tolerates documents with malformed/empty tags" do
-    integration_doc = raw_document!("Tagged Snapshot", ["integration"])
-
-    # A document whose tags map has no "items" key must not crash the filter.
-    {:ok, _malformed} =
-      %BusterClaw.Library.Document{}
-      |> BusterClaw.Library.Document.changeset(%{
-        filename: "malformed.md",
-        artifact_path: "raw/2026-05-18/malformed.md",
-        status: "fetched",
-        date: ~D[2026-05-18],
-        tags: %{"unexpected" => true}
-      })
-      |> BusterClaw.Repo.insert()
-
-    assert [document] = Integrations.latest_documents()
-    assert document.id == integration_doc.id
-  end
-
   defp raw_document!(name, tags) do
     filename =
       name

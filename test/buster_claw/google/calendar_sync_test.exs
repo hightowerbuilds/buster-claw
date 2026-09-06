@@ -304,7 +304,7 @@ defmodule BusterClaw.Google.CalendarSyncTest do
     assert info.full_sync_required == true
 
     assert Google.get_account!(account.id).calendar_sync_tokens == %{}
-    assert AppCalendar.get_event_by_event_id(existing_event.event_id)
+    assert AppCalendar.events_by_event_ids([existing_event.event_id])[existing_event.event_id]
   end
 
   defp connected_account! do

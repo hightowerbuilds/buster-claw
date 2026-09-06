@@ -925,7 +925,7 @@ defmodule BusterClawWeb.StatusLiveTest do
       render_click(view, "notify_dismiss", %{"id" => to_string(notification.id)})
 
       refute render(view) =~ "Standup"
-      assert Notifications.get_notification(notification.id).status == "dismissed"
+      assert Notifications.get_notification!(notification.id).status == "dismissed"
     end
 
     test "a fired notification leaves the widget list (modal is NotifyLive's job)",
@@ -948,7 +948,7 @@ defmodule BusterClawWeb.StatusLiveTest do
       # the view, which drops the now-fired item from "upcoming". The modal is
       # rendered by the separate NotifyLive process, not here.
       Notifications.fire_due()
-      assert Notifications.get_notification(past.id).status == "fired"
+      assert Notifications.get_notification!(past.id).status == "fired"
 
       _ = :sys.get_state(view.pid)
       html = render(view)

@@ -9,6 +9,12 @@ defmodule BusterClaw.Commands.AppearanceTest do
   alias BusterClaw.Commands
   alias BusterClaw.Commands.Catalog
 
+  # `option_key/1` over a resolved background — the question these assertions
+  # keep asking. It was `Appearance.background_mode/1`, a public one-liner over
+  # two public functions whose only callers were these two files; it went on
+  # 09-06 and the composition lives here instead.
+  defp background_mode(surface), do: Appearance.option_key(Appearance.background(surface))
+
   # Everything `BusterClaw.Commands.Appearance` calls inside the BusterClaw
   # namespace, exactly. `Settings` is absent, and this list is the enforcement:
   # B1's whole constraint is that a command goes THROUGH `set_background/2`
@@ -195,9 +201,9 @@ defmodule BusterClaw.Commands.AppearanceTest do
     # be a second way to say the same thing.
     assert_receive {:terminal_background, %{kind: :shader, shader: "waves"}}
 
-    assert Appearance.background_mode(:terminal) == "waves"
+    assert background_mode(:terminal) == "waves"
     # The other surface is untouched — one call, one surface.
-    assert Appearance.background_mode(:home) == "smoke"
+    assert background_mode(:home) == "smoke"
   end
 
   test "background_set turns the homepage off — the same verb, the other surface" do
@@ -209,7 +215,7 @@ defmodule BusterClaw.Commands.AppearanceTest do
     assert result.mode == "off"
 
     assert_receive {:home_background, %{kind: :none}}
-    assert Appearance.background_mode(:home) == "off"
+    assert background_mode(:home) == "off"
   end
 
   test "background_set takes an image, and an image with a shader over it" do
@@ -231,7 +237,7 @@ defmodule BusterClaw.Commands.AppearanceTest do
     assert both.shader == "veil"
     assert both.slot == 1
     assert both.mode == "image:1+veil"
-    assert Appearance.background_mode(:terminal) == "image:1+veil"
+    assert background_mode(:terminal) == "image:1+veil"
   end
 
   # --- background_set, every refusal Appearance can return ----------------
@@ -247,7 +253,7 @@ defmodule BusterClaw.Commands.AppearanceTest do
     assert message =~ "pool is empty"
     refute message =~ ":empty_slot"
 
-    assert Appearance.background_mode(:terminal) == "off"
+    assert background_mode(:terminal) == "off"
     refute_receive {:terminal_background, _background}
   end
 
@@ -273,7 +279,7 @@ defmodule BusterClaw.Commands.AppearanceTest do
     assert message =~ "image:1"
     refute message =~ ":not_image_reactive"
 
-    assert Appearance.background_mode(:terminal) == "off"
+    assert background_mode(:terminal) == "off"
     refute_receive {:terminal_background, _background}
   end
 
@@ -289,7 +295,7 @@ defmodule BusterClaw.Commands.AppearanceTest do
     end
 
     refute message =~ ":invalid_mode"
-    assert Appearance.background_mode(:terminal) == "off"
+    assert background_mode(:terminal) == "off"
   end
 
   test "a contact shaderface is not a background, and the refusal says so", %{root: root} do
@@ -299,7 +305,7 @@ defmodule BusterClaw.Commands.AppearanceTest do
              Commands.call("background_set", %{"surface" => "terminal", "mode" => "face-ada"})
 
     assert message =~ "shaderface"
-    assert Appearance.background_mode(:terminal) == "off"
+    assert background_mode(:terminal) == "off"
   end
 
   # The D1 property, as an attack rather than an assertion.
@@ -331,7 +337,7 @@ defmodule BusterClaw.Commands.AppearanceTest do
     assert message =~ "smoke"
 
     # The surface did not move.
-    assert Appearance.background_mode(:home) == "smoke"
+    assert background_mode(:home) == "smoke"
   end
 
   test "an authored shader cannot ride in as an image overlay either", %{root: root} do
@@ -349,7 +355,7 @@ defmodule BusterClaw.Commands.AppearanceTest do
              })
 
     assert message =~ "workspace"
-    assert Appearance.background_mode(:terminal) == "off"
+    assert background_mode(:terminal) == "off"
   end
 
   test "built-in designs and the operator's own images stay selectable" do
@@ -377,7 +383,7 @@ defmodule BusterClaw.Commands.AppearanceTest do
     assert result.shader == "nebula"
 
     assert_receive {:home_background, %{kind: :shader, shader: "nebula"}}
-    assert Appearance.background_mode(:home) == "nebula"
+    assert background_mode(:home) == "nebula"
   end
 
   test "an approved shader applies as an image overlay too", %{root: root} do
@@ -420,7 +426,7 @@ defmodule BusterClaw.Commands.AppearanceTest do
              Commands.call("background_set", %{"surface" => "terminal", "mode" => "nebula"})
 
     assert message =~ "Settings → Appearance"
-    assert Appearance.background_mode(:terminal) == "off"
+    assert background_mode(:terminal) == "off"
 
     # And a re-approval of the NEW bytes lets it through again, so the gate
     # re-arms rather than latching shut.
@@ -442,9 +448,9 @@ defmodule BusterClaw.Commands.AppearanceTest do
              Commands.call("background_set", %{"surface" => "terminal", "mode" => "stranger"})
 
     assert message =~ "stranger"
-    assert Appearance.background_mode(:terminal) == "off"
+    assert background_mode(:terminal) == "off"
     # The approved one is still up: refusing the stranger changed nothing else.
-    assert Appearance.background_mode(:home) == "blessed"
+    assert background_mode(:home) == "blessed"
   end
 
   # VI.2. Without this a model finds the boundary only by being refused, which
@@ -487,8 +493,8 @@ defmodule BusterClaw.Commands.AppearanceTest do
     assert message =~ "terminal"
 
     # Nothing was written anywhere while working out that the surface was wrong.
-    assert Appearance.background_mode(:home) == "smoke"
-    assert Appearance.background_mode(:terminal) == "off"
+    assert background_mode(:home) == "smoke"
+    assert background_mode(:terminal) == "off"
     refute_receive {:home_background, _background}
     refute_receive {:terminal_background, _background}
   end
@@ -541,7 +547,7 @@ defmodule BusterClaw.Commands.AppearanceTest do
                  caller: :mcp
                )
 
-      assert Appearance.background_mode(:terminal) == "off"
+      assert background_mode(:terminal) == "off"
       refute_receive {:terminal_background, _background}
     end
 

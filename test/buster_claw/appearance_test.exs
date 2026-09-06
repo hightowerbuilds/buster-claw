@@ -7,6 +7,12 @@ defmodule BusterClaw.AppearanceTest do
   alias BusterClaw.Settings
   alias BusterClaw.Shaders
 
+  # `option_key/1` over a resolved background — the question these assertions
+  # keep asking. It was `Appearance.background_mode/1`, a public one-liner over
+  # two public functions whose only callers were these two files; it went on
+  # 09-06 and the composition lives here instead.
+  defp background_mode(surface), do: Appearance.option_key(Appearance.background(surface))
+
   setup do
     root = Path.join(System.tmp_dir!(), "bc_appearance_#{System.unique_integer([:positive])}")
     File.mkdir_p!(root)
@@ -103,10 +109,10 @@ defmodule BusterClaw.AppearanceTest do
     end
 
     test "adding an image does not change what either surface shows" do
-      before = Map.new(Appearance.surfaces(), &{&1, Appearance.background_mode(&1)})
+      before = Map.new(Appearance.surfaces(), &{&1, background_mode(&1)})
       {:ok, _slot} = Appearance.put_image(fake_image(), "a.png")
 
-      assert Map.new(Appearance.surfaces(), &{&1, Appearance.background_mode(&1)}) == before
+      assert Map.new(Appearance.surfaces(), &{&1, background_mode(&1)}) == before
     end
 
     test "rejects an unsupported type and refuses to overflow" do
@@ -253,7 +259,7 @@ defmodule BusterClaw.AppearanceTest do
     test "nothing configured at all: smoke for home, off for the terminal" do
       assert Appearance.background(:home).mode == "smoke"
       assert Appearance.background(:terminal).kind == :none
-      assert Appearance.terminal_background_url() == nil
+      assert Appearance.background(:terminal).image_url == nil
     end
   end
 
@@ -385,7 +391,7 @@ defmodule BusterClaw.AppearanceTest do
       assert Appearance.image_path(1) |> File.read!() == "slot-1-bytes"
       assert Appearance.image_path(2) |> File.read!() == "slot-2-bytes"
       assert Appearance.background(:terminal).slot == 2
-      assert Appearance.background_mode(:terminal) == "image:2"
+      assert background_mode(:terminal) == "image:2"
     end
 
     test "an unset terminal mode with an active slot still means image", %{root: root} do
@@ -464,7 +470,7 @@ defmodule BusterClaw.AppearanceTest do
       assert %{kind: :image, image_url: url, custom: false, colors: [_, _, _]} =
                Appearance.terminal_background()
 
-      assert url == Appearance.terminal_background_url()
+      assert url == Appearance.background(:terminal).image_url
 
       assert %{mode: "waves", custom_shader: false, source_url: nil, image_url: nil} =
                Appearance.home_background_state()
@@ -535,7 +541,7 @@ defmodule BusterClaw.AppearanceTest do
       # veiled". Found by walking the app 08-14. Tile matching is
       # `catalog_key/1` — asserted below.
       assert Appearance.option_key(Appearance.background(:terminal)) == key
-      assert Appearance.background_mode(:terminal) == key
+      assert background_mode(:terminal) == key
     end
 
     test "catalog_key strips the overlay, so the IMAGE tile still reads as in use",

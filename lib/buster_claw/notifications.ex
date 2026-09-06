@@ -34,15 +34,7 @@ defmodule BusterClaw.Notifications do
   # CRUD (canonical shape; the command surface wraps it)
   # ---------------------------------------------------------------------------
 
-  def list_notifications do
-    Notification
-    |> order_by([n], asc: n.fire_at, asc: n.id)
-    |> Repo.all()
-  end
-
   def get_notification!(id), do: Repo.get!(Notification, id)
-
-  def get_notification(id), do: Repo.get(Notification, id)
 
   def create_notification(attrs) do
     %Notification{}

@@ -37,6 +37,6 @@ defmodule BusterClaw.Notifications.SchedulerTest do
     Scheduler.tick_now(pid)
 
     refute_receive {:notification_fired, _}, 200
-    assert Notifications.get_notification(future.id).status == "pending"
+    assert Notifications.get_notification!(future.id).status == "pending"
   end
 end

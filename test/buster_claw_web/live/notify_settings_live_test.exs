@@ -62,7 +62,7 @@ defmodule BusterClawWeb.NotifySettingsLiveTest do
 
     render_click(view, "test", %{"key" => "voicemail"})
 
-    assert [notification] = Notifications.list_notifications()
+    assert [notification] = Notifications.upcoming()
     assert notification.kind == "reminder"
     assert notification.source == "voicemail"
     assert notification.label == "Notify test — Voicemail"

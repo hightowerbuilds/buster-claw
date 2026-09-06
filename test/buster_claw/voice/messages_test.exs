@@ -182,7 +182,7 @@ defmodule BusterClaw.Voice.MessagesTest do
         "metadata" => %{"sound" => "message-hand.wav"}
       })
 
-    assert notification.id in Enum.map(Notifications.list_notifications(), & &1.id)
+    assert Notifications.get_notification!(notification.id)
   end
 
   defp stub(root) do

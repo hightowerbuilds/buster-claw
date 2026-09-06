@@ -8,7 +8,6 @@ defmodule BusterClaw.Calendar do
 
   def list_events, do: Repo.all(Event)
   def get_event!(id), do: Repo.get!(Event, id)
-  def get_event_by_event_id(event_id), do: Repo.get_by(Event, event_id: event_id)
 
   @doc """
   Fetch the events whose `event_id` is in `event_ids` as a map keyed by

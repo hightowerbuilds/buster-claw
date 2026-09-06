@@ -98,12 +98,6 @@ defmodule BusterClaw.Integrations do
     |> Repo.all()
   end
 
-  def latest_documents(limit \\ 10) do
-    Library.list_documents()
-    |> Enum.filter(&integration_document?/1)
-    |> Enum.take(limit)
-  end
-
   defp create_run(attrs) do
     %IntegrationRun{}
     |> IntegrationRun.changeset(attrs)

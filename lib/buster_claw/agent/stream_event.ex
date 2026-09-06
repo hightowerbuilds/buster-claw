@@ -30,17 +30,6 @@ defmodule BusterClaw.Agent.StreamEvent do
     * `:unknown`        — anything else (kept so callers can ignore it cleanly)
   """
 
-  @reading ~w(Read Grep Glob LS NotebookRead WebFetch WebSearch)
-  @writing ~w(Write Edit NotebookEdit)
-
-  # The shell tool under each harness's own name. codex calls a shell command
-  # `command_execution`; opencode calls it `bash`.
-  @shell ~w(Bash bash command_execution)
-
-  # Downcased, for harnesses that name the same jobs in lower case.
-  @reading_any ~w(read grep glob ls list notebookread webfetch websearch fetch search)
-  @writing_any ~w(write edit patch notebookedit apply_patch)
-
   @type kind ::
           :system
           | :assistant_text
@@ -524,99 +513,4 @@ defmodule BusterClaw.Agent.StreamEvent do
   end
 
   defp opencode_usage(_part), do: nil
-
-  @doc """
-  The usage reported by a completed run's captured output, or `nil`.
-
-  For the blocking `AgentRunner.run/2` surfaces, which hold the whole stream as
-  one string rather than seeing events as they arrive. Scans for the LAST
-  `:result` event, because opencode emits one `step_finish` per step and only the
-  final one ends the run.
-  """
-  @spec run_usage(atom(), String.t()) :: usage() | nil
-  def run_usage(backend, output) when is_binary(output) do
-    output
-    |> String.split("\n")
-    |> Enum.reduce(nil, fn line, acc ->
-      case parse(backend, line) do
-        {:ok, %__MODULE__{kind: :result, usage: %{} = usage}} -> usage
-        _ -> acc
-      end
-    end)
-  end
-
-  def run_usage(_backend, _output), do: nil
-
-  # --- TUI-facing interpretation (the starfield states) ---
-
-  @doc """
-  Map a normalized event to a starfield activity state, given the previous one.
-  Events that don't imply an activity return `prev` unchanged.
-
-  States: `:booting | :waiting | :reading | :writing | :email | :done`.
-  """
-  @spec activity_state(t(), atom()) :: atom()
-  def activity_state(%__MODULE__{kind: :system}, _prev), do: :booting
-  def activity_state(%__MODULE__{kind: :result}, _prev), do: :done
-  def activity_state(%__MODULE__{kind: :user}, _prev), do: :waiting
-
-  def activity_state(%__MODULE__{kind: :tool_use, tool: tool, tool_input: input}, _prev),
-    do: tool_state(tool, input)
-
-  # A plain text turn is the model talking / planning.
-  def activity_state(%__MODULE__{kind: :assistant_text}, :booting), do: :booting
-  def activity_state(%__MODULE__{kind: :assistant_text}, _prev), do: :waiting
-
-  def activity_state(%__MODULE__{}, prev), do: prev
-
-  defp tool_state(name, _input) when name in @reading, do: :reading
-  defp tool_state(name, _input) when name in @writing, do: :writing
-  defp tool_state(name, input) when name in @shell, do: bash_state(command_of(input))
-
-  # codex and opencode name the same jobs differently (`read` vs `Read`), so the
-  # activity classification is done on a downcased name rather than duplicating
-  # every list. An unrecognised tool stays `:reading` — the existing default.
-  defp tool_state(name, _input) when is_binary(name) do
-    downcased = String.downcase(name)
-
-    cond do
-      downcased in @reading_any -> :reading
-      downcased in @writing_any -> :writing
-      true -> :reading
-    end
-  end
-
-  defp tool_state(_name, _input), do: :reading
-
-  defp command_of(input) when is_map(input), do: to_string(input["command"] || "")
-  defp command_of(_input), do: ""
-
-  # Order matters: an outbound/irreversible command is "transmitting" even though
-  # it mentions gmail; the mail-touching reads are "incoming".
-  defp bash_state(cmd) do
-    cond do
-      cmd =~ ~r/gmail_send|gmail_draft|dispatch\s+(reply|done|block)|document_save|\btee\b|>>/i ->
-        :writing
-
-      cmd =~ ~r/gmail|mailman|\binbox\b|dispatch\s+(list|claim|show)/i ->
-        :email
-
-      true ->
-        :reading
-    end
-  end
-
-  @doc "A short human label for the activity behind an event (for a status line)."
-  @spec activity_label(t()) :: String.t() | nil
-  def activity_label(%__MODULE__{kind: :tool_use, tool: tool, tool_input: %{"command" => cmd}})
-      when tool in @shell and is_binary(cmd),
-      do: "$ " <> String.slice(cmd, 0, 38)
-
-  def activity_label(%__MODULE__{kind: :tool_use, tool: name}), do: name
-  def activity_label(%__MODULE__{kind: :assistant_text}), do: "thinking"
-
-  def activity_label(%__MODULE__{kind: :result, text: r}) when is_binary(r),
-    do: String.slice(r, 0, 40)
-
-  def activity_label(%__MODULE__{}), do: nil
 end
