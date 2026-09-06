@@ -84,4 +84,22 @@ defmodule BusterClawWeb.VoiceLiveTest do
       refute html =~ "on this machine"
     end
   end
+
+  describe "the step count, which is the largest lever on render time" do
+    test "is a named dial that states its own cost, not a bare number box",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/voice")
+
+      html = view |> element(~s(button[phx-value-tab="engine"])) |> render_click()
+
+      # The regression this pins: it WAS `<input type="number" placeholder="default">`,
+      # which is how it sat at the engine's 10 while a five-word line took nine
+      # and a half minutes.
+      assert html =~ ~s(name="config[inference_timesteps]")
+      refute html =~ ~s(name="config[inference_timesteps]"\n              type="number")
+      assert html =~ "4 — fastest"
+      assert html =~ "10 — engine default"
+      assert html =~ "the warm-up is a floor no setting reaches"
+    end
+  end
 end

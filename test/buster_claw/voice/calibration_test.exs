@@ -25,11 +25,16 @@ defmodule BusterClaw.Voice.CalibrationTest do
       assert design < clone
     end
 
-    test "steps scale it linearly" do
+    test "steps scale the generating half, and not the floor under it" do
       ten = Calibration.estimate_seconds("Take me to the river!", 6.0, 10)
       four = Calibration.estimate_seconds("Take me to the river!", 6.0, 4)
 
-      assert_in_delta four, ten * 0.4, 1.0
+      # Fewer steps is cheaper, but NOT proportionally: the warm-up runs its ten
+      # iterations whatever is asked for. Measured 585 s -> 380 s, which is 65%
+      # and not the 40% a whole-expression scale would predict. That wrong
+      # version shipped in the first draft of this module.
+      assert four < ten
+      assert four > ten * 0.5
     end
   end
 
@@ -38,8 +43,19 @@ defmodule BusterClaw.Voice.CalibrationTest do
     # 6-second reference finished in 585 s; the 13.3-second one was killed at
     # 628 s still running. A seed that does not reproduce its own measurements
     # is a seed nobody should trust.
-    test "predicts the run that finished" do
-      assert_in_delta Calibration.estimate_seconds("Take me to the river!", 6.0, 10), 585, 30
+    # 585 s was measured while a denoiser the app never calls was still being
+    # loaded; the seed describes renders as they run NOW, without it, so the
+    # 4-step run — the first measured under the current flags — is the one the
+    # seed must reproduce.
+    test "predicts the 4-step run measured under the current flags" do
+      assert_in_delta Calibration.estimate_seconds("Take me to the river!", 6.0, 4), 380, 25
+    end
+
+    test "the fixed floor is most of a short render, and no setting removes it" do
+      floor = Calibration.estimate_seconds("", 6.0, 1)
+
+      assert floor > 250
+      assert Calibration.estimate_seconds("Take me to the river!", 6.0, 1) > floor
     end
 
     test "predicts the run that did not finish as longer than where it was killed" do
@@ -105,10 +121,23 @@ defmodule BusterClaw.Voice.CalibrationTest do
     end
   end
 
+  # A machine where this is fast. Everything on the operator's i9 is minutes —
+  # the fixed floor alone is 267 s — so a test about short waits has to say
+  # which machine it is on, and the only honest way to say that is to teach the
+  # calibration a fast one.
+  defp calibrate_fast do
+    for _ <- 1..25, do: Calibration.record("Take me to the river!", 6.0, 10, 4.0)
+  end
+
   describe "the phrase shown to a person" do
-    test "is coarse on purpose — an estimate that reads as precise reads as a promise" do
-      assert Calibration.phrase("Hi.", 0.0, 1) =~ ~r/under a minute|minute or two/
+    test "says minutes when it means minutes" do
       assert Calibration.phrase("Take me to the river!", 6.0, 10) =~ ~r/about \d+ minutes/
+    end
+
+    test "says under a minute when the machine is quick enough to mean it" do
+      calibrate_fast()
+
+      assert Calibration.phrase("Hi.", 0.0, 1) =~ ~r/under a minute|minute or two/
     end
 
     test "says so when the answer is not minutes at all" do
@@ -117,11 +146,17 @@ defmodule BusterClaw.Voice.CalibrationTest do
   end
 
   describe "slow?" do
-    test "a quick job needs no warning" do
+    test "a quick job on a quick machine needs no warning" do
+      calibrate_fast()
+
       refute Calibration.slow?("Hi", 0.0, 1)
     end
 
-    test "a clone on this machine does" do
+    test "every render on the machine this was measured on is slow, floor included" do
+      # Not a quirk of a long line: the fixed cost alone is over four minutes
+      # here, so there is no line short enough to escape the warning. That is
+      # the finding, not a threshold that needs loosening.
+      assert Calibration.slow?("Hi", 0.0, 1)
       assert Calibration.slow?("Take me to the river!", 6.0, 10)
     end
   end

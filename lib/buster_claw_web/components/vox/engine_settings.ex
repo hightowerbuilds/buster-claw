@@ -25,6 +25,11 @@ defmodule BusterClawWeb.Vox.EngineSettings do
   attr :made, :any, required: true
   attr :target, :any, required: true
 
+  # What the current step count costs, measured on this machine. The number box
+  # said nothing about consequence, which is how it stayed at a setting that
+  # made the feature unusable here.
+  attr :steps_note, :string, default: nil
+
   def panel(assigns) do
     ~H"""
     <section class="ic-vox-section">
@@ -79,16 +84,41 @@ defmodule BusterClawWeb.Vox.EngineSettings do
             </select>
           </label>
 
+          <%!-- Steps was a bare number box with the placeholder "default", and
+                that is why it sat at the engine's 10 while a five-word line took
+                nine and a half minutes. It is the single biggest lever on render
+                time: measured 09-06, going from 10 steps to 4 took generation
+                from 24.5 s to 9.6 s per step, dead linear. It does NOT scale the
+                warm-up, which runs its ten iterations either way — so the wait
+                went 585 s -> 380 s, not to 40% of it. The named options are the engine's own
+                recommended range (4-30); a value set outside them is kept and
+                shown rather than silently snapped to one. --%>
           <label class="flex flex-col gap-1">
-            <span class="ic-eyebrow">Steps</span>
-            <input
-              type="number"
+            <span class="ic-eyebrow">Steps — speed against polish</span>
+            <select
               name="config[inference_timesteps]"
-              value={@config.inference_timesteps}
-              min="1"
-              placeholder="default"
-              class="input input-bordered input-sm font-mono text-xs"
-            />
+              class="select select-bordered select-sm font-mono text-xs"
+            >
+              <option value="" selected={is_nil(@config.inference_timesteps)}>
+                engine default (10)
+              </option>
+              <option
+                :for={{value, label} <- step_presets()}
+                value={value}
+                selected={@config.inference_timesteps == value}
+              >
+                {label}
+              </option>
+              <option
+                :if={
+                  @config.inference_timesteps && @config.inference_timesteps not in preset_values()
+                }
+                value={@config.inference_timesteps}
+                selected
+              >
+                {@config.inference_timesteps} — custom
+              </option>
+            </select>
           </label>
 
           <label class="flex flex-col gap-1">
@@ -104,6 +134,10 @@ defmodule BusterClawWeb.Vox.EngineSettings do
             />
           </label>
         </div>
+
+        <p :if={@steps_note} class="ic-vox-note">
+          {@steps_note}
+        </p>
 
         <label class="flex flex-col gap-1">
           <span class="ic-eyebrow">Engine path — only if it is somewhere unusual</span>
@@ -139,4 +173,13 @@ defmodule BusterClawWeb.Vox.EngineSettings do
     </section>
     """
   end
+
+  # 4 and 20 are the ends of the engine's own recommended range; 6 is the one
+  # worth having between them, because the cost is linear in this number and 6
+  # is where a short line stops being an errand you leave the room for.
+  defp step_presets do
+    [{4, "4 — fastest"}, {6, "6 — quick"}, {10, "10 — engine default"}, {20, "20 — most polish"}]
+  end
+
+  defp preset_values, do: Enum.map(step_presets(), &elem(&1, 0))
 end

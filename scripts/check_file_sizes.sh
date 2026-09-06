@@ -653,14 +653,20 @@ check lib/buster_claw_web/components/vox/chimes.ex             115 HELD
 # property this block says to watch for.
 check lib/buster_claw_web/components/vox/create.ex             175 HELD
 check lib/buster_claw_web/components/vox/engine_probe.ex       75 HELD
-check lib/buster_claw_web/components/vox/engine_settings.ex    156 HELD
+# 156 -> 190 on 09-06. Steps stopped being a bare number box whose placeholder
+# read "default" and became a named dial that states its own cost — it is the
+# largest lever on render time (the engine runs this many passes per chunk and
+# warms up for the same count), and nothing on the page said so while a
+# five-word line took nine and a half minutes. Markup only: the sentence under
+# it is computed in `vox/quality.ex` and arrives as an assign.
+check lib/buster_claw_web/components/vox/engine_settings.ex    190 HELD
 check lib/buster_claw_web/components/vox/files.ex              137 HELD
 check lib/buster_claw_web/components/vox/greeting.ex           122 HELD
 check lib/buster_claw_web/components/vox/messages.ex           140 HELD
 check lib/buster_claw_web/components/vox/progress.ex           88 HELD
 # Capped on arrival (09-06). The answer to "will this work, and how long" —
 # both halves, so neither can drift from the other.
-check lib/buster_claw_web/components/vox/quality.ex            162 HELD
+check lib/buster_claw_web/components/vox/quality.ex            190 HELD
 check lib/buster_claw_web/components/vox/reading.ex            79 HELD
 
 # Phase 3. 20% markup, so ~987 lines of logic in a live_component. The source

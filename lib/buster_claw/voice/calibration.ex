@@ -17,16 +17,17 @@ defmodule BusterClaw.Voice.Calibration do
 
   ## Where a render's time actually goes
 
-  Measured on the operator's i9 on 09-06 by watching the engine's own progress
-  bars, rendering `"Take me to the river!"` against a 6-second reference:
+  Measured on the operator's i9 on 09-06, rendering `"Take me to the river!"`
+  against a 6-second reference, twice, watching the engine's own progress bars:
 
-  | Phase | Cost |
-  |---|---|
-  | model load (2B weights + AudioVAE) | ~1 min |
-  | **warm-up, 10 steps at ~27 s** | **~4.5 min** |
-  | generation, 46 steps at ~21 s | ~16 min |
+  | Phase | 10 steps, denoiser on | 4 steps, denoiser off |
+  |---|---|---|
+  | model load | ~60 s | ~60 s |
+  | warm-up | **10** iters at 26.7 s | **10** iters at 20.7 s |
+  | generation | 24.5 s per step | 9.6 s per step |
+  | **total** | **585 s** | **380 s** |
 
-  Two things in that table are worth more than the numbers.
+  Three things in that table are worth more than the numbers.
 
   **The fixed half is paid per invocation.** The app shells out to the `voxcpm`
   CLI once per line, so the model load and the whole warm-up are re-paid for
@@ -39,7 +40,15 @@ defmodule BusterClaw.Voice.Calibration do
   The first version of this module had no term for text length at all and would
   have quoted a paragraph the same as a word.
 
-      total ≈ fixed + characters × (base + slope × reference_seconds)
+  **`--inference-timesteps` scales generation and NOT the warm-up.** This one
+  was assumed wrong and then measured: the first version of this file claimed
+  the step count halved "both halves of the bill". It does not. Asking for 4
+  steps instead of 10 took generation from 24.5 s to 9.6 s per step — dead
+  linear — while the warm-up ran its **ten** iterations either way. So the fixed
+  cost is a floor no setting reaches, and the honest promise is smaller than the
+  one first written here.
+
+      total ≈ fixed + characters × (base + slope × reference_seconds) × steps/10
 
   The reference sits inside the per-character term rather than beside it because
   cloning attends over the reference on every step: a longer clip makes each
@@ -70,20 +79,27 @@ defmodule BusterClaw.Voice.Calibration do
 
   @key "voice_calibration"
 
-  # Seeded from the two 09-06 runs, both of `"Take me to the river!"` (21
-  # characters) on the operator's i9:
+  # Seeded from the 09-06 runs, all of `"Take me to the river!"` (21 characters)
+  # on the operator's i9:
   #
-  #   6.0 s reference  -> 585 s, exit 0, 1.44 s of audio  (real-time factor 406)
-  #  13.3 s reference  -> killed at 628 s, never finished
+  #   13.3 s ref, 10 steps, denoiser on   -> killed at 628 s, never finished
+  #    6.0 s ref, 10 steps, denoiser on   -> 585 s, exit 0
+  #    6.0 s ref,  4 steps, denoiser off  -> 380 s, exit 0
   #
-  # `fixed_s` is the measured 60 s load plus the 266 s warm-up. The remaining
-  # 259 s over 21 characters gives 12.3 s per character at a 6-second reference,
-  # which fixes `base + 6 × slope`. Splitting that across the two is the weaker
-  # inference: the failed 13.3 s run only proves per-character cost there exceeds
-  # 14.4 s, and these constants put it at 17.6, predicting ~695 s — consistent
-  # with a run still going at 628 s. `record/4` corrects all of this from real
-  # renders; it only has to start somewhere honest.
-  @seed %{fixed_s: 326.0, base_s: 8.0, slope_s: 0.72, samples: 0}
+  # `fixed_s` is the 60 s load plus a 207 s warm-up — the warm-up as it runs
+  # NOW, with the denoiser off, which is the only way this app renders since
+  # 09-06. (It was 266 s while a speech-enhancement model nothing calls was
+  # being loaded.) The warm-up does not scale with the step count; see the
+  # moduledoc.
+  #
+  # 12.3 s per character at a 6-second reference and 10 steps comes from run
+  # two's 259 s of generation over 21 characters, and run three confirms the
+  # scaling: predicted 370 s against 380 s measured, 2.4% low. Splitting that
+  # per-character figure between `base` and `slope` is still the weakest part —
+  # the failed 13.3 s run only proves its per-character cost exceeds 14.4 s, and
+  # these constants put it at 17.6. `record/4` corrects all of it from real
+  # renders; a seed only has to start somewhere honest.
+  @seed %{fixed_s: 267.0, base_s: 8.0, slope_s: 0.72, samples: 0}
 
   # How fast the constants chase reality. One odd render — a thermally throttled
   # laptop, a machine that was also compiling — should move the quote, not
@@ -122,9 +138,10 @@ defmodule BusterClaw.Voice.Calibration do
   is the cheap path, and the reason a chime set rendered before the operator
   recorded his voice cost a fraction of one recorded afterwards.
 
-  Step count scales the whole thing linearly: the engine runs
-  `--inference-timesteps` per chunk *and* warms up for that many, so halving it
-  roughly halves both halves of the bill.
+  Step count scales the GENERATION only. The warm-up runs its ten iterations
+  whatever is asked for, so halving the steps does not halve the wait — it
+  halves the part of the wait that is not a floor. Measured: 585 s -> 380 s for
+  10 steps -> 4, on a job whose fixed cost is 267 s of that.
   """
   @spec estimate_seconds(String.t() | non_neg_integer(), number(), pos_integer() | nil) :: float()
   def estimate_seconds(text, reference_seconds \\ 0.0, steps \\ nil)
@@ -137,7 +154,10 @@ defmodule BusterClaw.Voice.Calibration do
     ref = reference_seconds || 0.0
     scale = (steps || @default_steps) / @default_steps
 
-    (c.fixed_s + chars * (c.base_s + c.slope_s * ref)) * scale
+    # `scale` multiplies the generation term ONLY. It used to multiply the whole
+    # expression, which quoted a 4-step render at 40% of a 10-step one when the
+    # measured answer is 65% — the fixed half is a floor no setting reaches.
+    c.fixed_s + chars * (c.base_s + c.slope_s * ref) * scale
   end
 
   @doc """

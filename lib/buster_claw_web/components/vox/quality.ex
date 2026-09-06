@@ -144,5 +144,29 @@ defmodule BusterClawWeb.Vox.Quality do
     )
   end
 
+  @doc """
+  Put a sentence about what the current step count costs on the socket.
+
+  A representative line rather than an invented one — "Your timer is up." is a
+  real chime, so it is the cost the operator will actually pay next. The Steps
+  control was a bare number box with the placeholder "default", which is how it
+  stayed at a setting that made the feature unusable on a CPU.
+  """
+  def assign_steps_note(socket) do
+    config = socket.assigns[:engine_config]
+    line = "Your timer is up."
+
+    note =
+      "A short line like “#{line}” costs " <>
+        Calibration.phrase(
+          line,
+          socket.assigns[:reference_seconds] || 0.0,
+          config && config.inference_timesteps
+        ) <>
+        " here. Fewer steps cut the generating half; the warm-up is a floor no setting reaches."
+
+    assign(socket, :steps_note, note)
+  end
+
   defp fmt(number), do: :erlang.float_to_binary(number * 1.0, decimals: 1)
 end

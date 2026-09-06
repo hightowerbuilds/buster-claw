@@ -187,7 +187,10 @@ defmodule BusterClawWeb.VoxComponent do
     |> assign(:engine_config, Config.get())
     |> assign(:chimes_made, Chimes.made_count())
     |> assign_quote()
+    |> assign_steps_note()
   end
+
+  defp assign_steps_note(socket), do: Quality.assign_steps_note(socket)
 
   defp load_greeting(socket) do
     socket
@@ -742,6 +745,7 @@ defmodule BusterClawWeb.VoxComponent do
         <div :if={@vox_tab == "engine"}>
           <EngineProbe.panel engine={@engine} target={@myself} />
           <EngineSettings.panel
+            steps_note={@steps_note}
             config={@engine_config}
             note={@config_note}
             made={@chimes_made}
