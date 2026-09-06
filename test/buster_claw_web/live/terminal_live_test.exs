@@ -92,7 +92,7 @@ defmodule BusterClawWeb.TerminalLiveTest do
 
     assert has_element?(
              view,
-             "[id^='terminal-root'][data-terminal-embedded='false'][data-terminal-bg-active='true'][data-terminal-bg-source='host'][data-terminal-bg-image='#{BusterClaw.Appearance.terminal_background_url()}']"
+             "[id^='terminal-root'][data-terminal-embedded='false'][data-terminal-bg-active='true'][data-terminal-bg-source='host'][data-terminal-bg-image='#{BusterClaw.Appearance.background(:terminal).image_url}']"
            )
   end
 

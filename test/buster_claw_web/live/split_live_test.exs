@@ -79,7 +79,7 @@ defmodule BusterClawWeb.SplitLiveTest do
     # the JS anchoring it to the viewport (background-attachment: fixed).
     assert has_element?(
              view,
-             "[id^='terminal-root'][data-terminal-embedded='true'][data-terminal-bg-source='host'][data-terminal-bg-image='#{BusterClaw.Appearance.terminal_background_url()}']"
+             "[id^='terminal-root'][data-terminal-embedded='true'][data-terminal-bg-source='host'][data-terminal-bg-image='#{BusterClaw.Appearance.background(:terminal).image_url}']"
            )
   end
 
@@ -93,7 +93,7 @@ defmodule BusterClawWeb.SplitLiveTest do
     # through (which the opaque neighbor would block).
     assert has_element?(
              view,
-             "[id^='terminal-root'][data-terminal-embedded='true'][data-terminal-bg-source='host'][data-terminal-bg-image='#{BusterClaw.Appearance.terminal_background_url()}']"
+             "[id^='terminal-root'][data-terminal-embedded='true'][data-terminal-bg-source='host'][data-terminal-bg-image='#{BusterClaw.Appearance.background(:terminal).image_url}']"
            )
 
     assert has_element?(
