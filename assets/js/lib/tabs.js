@@ -129,6 +129,56 @@ export function openTerminalSplit(currentPath, side, labels = {}) {
   window.location.href = splitPath
 }
 
+// ---- Closing a tab -----------------------------------------------------------
+// One rule for every close button — the DOM strip's and the browser chrome's.
+// (09-13-26: the chrome's row had no close buttons, and on /browse that row is
+// the only tab strip you can reach, so a Browser tab could not be closed from
+// the Browser tab.) Remove `path`; if it was on screen, the tab that slid into
+// its slot takes over, else the one before it, else nothing — which means Home.
+// `/duty` follows the shift, not the operator, so it never closes.
+export function closeTabIn(tabs, path) {
+  const list = Array.isArray(tabs) ? tabs : []
+  const idx = path === "/duty" ? -1 : list.findIndex((t) => t && t.path === path)
+  if (idx === -1) return {tabs: list, closed: false, next: null}
+  const remaining = list.slice(0, idx).concat(list.slice(idx + 1))
+  return {tabs: remaining, closed: true, next: remaining[idx] || remaining[idx - 1] || null}
+}
+
+// ---- The browser chrome's row of app tabs ----------------------------------
+// The chrome is a separate webview and cannot read the main window's URL, so
+// each browser surface records which app tab it is showing (`EmbeddedBrowser`
+// writes it on mount) and the chrome reads it back to know which chip is "here".
+const BROWSER_APP_TAB_KEY = "bc:browser-app-tab:"
+
+export function rememberBrowserAppTab(sid, path) {
+  try { localStorage.setItem(BROWSER_APP_TAB_KEY + sid, path) } catch (_e) { /* storage unavailable */ }
+}
+
+export function browserAppTab(sid) {
+  try { return localStorage.getItem(BROWSER_APP_TAB_KEY + sid) } catch (_e) { return null }
+}
+
+// Chips for the chrome's row: Home first (the guaranteed way back), then every
+// saved tab except a persisted "/" (which would be a second Home). `current` is
+// the recorded app tab when there is one; with none — a surface opened before
+// the recording existed — every browser tab counts as here, as it always did.
+// `closable` mirrors the DOM strip minus two cases: Home is the way back, and a
+// split you are inside is not closed from one pane's chrome, where a busy
+// terminal in the other pane could not be asked about first.
+export function chromeChips(savedTabs, currentPath) {
+  const saved = (Array.isArray(savedTabs) ? savedTabs : []).filter(
+    (t) => t && typeof t.path === "string" && t.path.startsWith("/") && t.path.split("?")[0] !== "/"
+  )
+  return [{path: "/", label: "Home"}].concat(saved).map((t) => {
+    const base = t.path.split("?")[0]
+    const current = currentPath
+      ? t.path === currentPath
+      : base === "/browse" || (base === "/split" && t.path.includes("%2Fbrowse"))
+    const closable = base !== "/" && t.path !== "/duty" && !(current && base === "/split")
+    return {...t, current, closable}
+  })
+}
+
 // ---- Live terminal registry ------------------------------------------------
 // Mounted TerminalView hooks register here so the TabStrip can ask, before a
 // tab close, whether a terminal is running a foreground process (a build, a

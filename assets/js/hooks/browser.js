@@ -137,6 +137,7 @@ export const ScreenshotBridge = {
 }
 
 import {resolve as resolveUrl} from "../lib/browser_url.js"
+import {rememberBrowserAppTab} from "../lib/tabs.js"
 
 // Positions the embedded browser's two native child webviews (chrome toolbar +
 // content) over the /browse surface. The toolbar lives in the native chrome
@@ -161,6 +162,11 @@ export const EmbeddedBrowser = {
       }
       return
     }
+
+    // Tell this surface's chrome which app tab it is showing. The chrome is a
+    // separate webview that cannot read this window's URL, and it needs to know
+    // which chip is "here" to close the right tab (lib/chrome_app_tabs.js).
+    rememberBrowserAppTab(this.sid, window.location.pathname + window.location.search)
 
     const initial = (this.el.dataset.initialUrl || "").trim()
     this.chromeUrl =

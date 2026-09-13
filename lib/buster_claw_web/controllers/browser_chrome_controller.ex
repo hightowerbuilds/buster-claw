@@ -109,21 +109,28 @@ defmodule BusterClawWeb.BrowserChromeController do
       #row { display: flex; align-items: stretch; height: 34px; min-width: 0;
              background: rgba(12,12,12,.8); border-bottom: 1px solid #1f1f1f; }
       /* App-tab chips: the native browser webviews cover the app's DOM tab
-         strip, so the chrome carries its own switcher (Home + open app tabs). */
+         strip, so the chrome carries its own row (Home + open app tabs), and
+         with it the close buttons the covered strip would have had (09-13). */
       #apptabs { display: flex; align-items: flex-end; gap: 4px; flex: 1 1 auto;
                  min-width: 0; padding: 4px 8px 0 8px; overflow-x: auto;
                  overflow-y: hidden; }
       #apptabs::-webkit-scrollbar { height: 0; }
-      .atab { display: flex; align-items: center; flex: 0 0 auto; max-width: 192px;
-              height: 29px; padding: 0 12px; cursor: pointer;
+      .atab { display: flex; align-items: center; gap: 4px; flex: 0 0 auto;
+              max-width: 192px; height: 29px; padding: 0 6px 0 12px;
               background: #0c0c0c; color: rgba(250,250,250,.6);
               border: 1px solid transparent; border-bottom: none;
               border-radius: 8px 8px 0 0;
-              font: 400 14px/1 -apple-system, system-ui, sans-serif;
-              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+              font: 400 14px/1 -apple-system, system-ui, sans-serif; }
       .atab:hover { background: rgba(18,18,18,.7); color: #fafafa; }
       .atab.current { background: #121212; color: #fafafa; font-weight: 500;
-                      border-color: #1f1f1f; cursor: default; }
+                      border-color: #1f1f1f; }
+      .atab-label { all: unset; min-width: 0; cursor: pointer; white-space: nowrap;
+                    overflow: hidden; text-overflow: ellipsis; }
+      .atab.current .atab-label { cursor: default; }
+      .atab-x { all: unset; display: grid; place-items: center; flex: 0 0 auto;
+                width: 16px; height: 16px; border-radius: 4px; cursor: pointer;
+                color: rgba(250,250,250,.4); font-size: 14px; line-height: 1; }
+      .atab-x:hover { background: #1f1f1f; color: #fafafa; }
       /* browser tab strip — vertical, in the sidebar */
       #tabs { display: flex; flex-direction: column; align-items: stretch; gap: 4px;
               flex: 1 1 auto; min-height: 0; padding: 8px 6px;

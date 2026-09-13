@@ -1229,11 +1229,11 @@ check lib/buster_claw/appearance/migration.ex                 170 HELD
 # is the JS half of the Rust surface lifecycle — the app's most fragile
 # cross-language seam, and the only part of the JS layer with no test at all.
 # Frozen means the next feature either fits or takes the extraction.
-# Raised 864 -> 890 on 09-13 (THREE_DOORS Phase 3): the Ask button — one click
-# handler that hands the active tab to the app by URL, and one hidden toggle
-# for private tabs. Still FROZEN: the extraction owed above is unchanged, and
-# the next feature here takes it.
-check assets/js/chrome.js                                     890 FROZEN
+# Raised 864 -> 890 on 09-13 (THREE_DOORS Phase 3) for the Ask button, with the
+# note that the next feature here takes the extraction. It did, the same day:
+# the app-tab row, and the close buttons it was missing, moved to
+# lib/chrome_app_tabs.js, and the cap ratchets down to what that left. FROZEN.
+check assets/js/chrome.js                                     859 FROZEN
 check assets/js/hooks/tab_strip.js                            664 FROZEN
 # note_editor.js is the opposite case and is capped as a regrowth alarm only:
 # all parsing and commands are already extracted and tested, and ~120 lines are

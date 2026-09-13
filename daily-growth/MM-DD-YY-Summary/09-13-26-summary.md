@@ -146,3 +146,22 @@ new JS tests; skipping the dev-window refusal fails one. `mix precommit` exit 0
 **Still owed:** recording has never been exercised in a packaged build (V.4a).
 The dev window now refuses rather than crashing, so the first real desktop
 recording will be that walk.
+
+## And the Browser tab can close itself
+
+The operator's next find: on the Browser tab there was no × to close it. The
+native browser webview paints over the app's tab strip, so the browser draws its
+own row of app tabs — and that row could only switch tabs. The tab you were on
+was a dead "You are here" chip.
+
+| | |
+|---|---|
+| (this commit) | Every chip in the browser's app-tab row gets the × the covered strip would have had, sharing one close rule (`closeTabIn`) with the real strip so the two cannot disagree about which tab takes the screen. Closing the tab you are on navigates the main window to the next tab, whose page hides the browser surface on arrival — the browser's webview may navigate the main window but not close surfaces, so no Rust or permission change was needed. The Browse page now records which app tab each surface shows, so the row knows which chip is "here" instead of marking every browser tab current |
+
+**Guard broken first:** taking the × off the current chip fails the test named
+for the defect. JS 362/0. `chrome.js`, FROZEN at a cap raised for this morning's
+Ask button, came down 28 lines instead of growing: the row moved to
+`lib/chrome_app_tabs.js`, and the cap ratchets down with it.
+
+**Not walked:** the click itself needs the desktop window; nothing in the suite
+drives a native webview.

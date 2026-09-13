@@ -1,4 +1,4 @@
-import {canonicalGroupKey, loadTabs, saveTabs, labelForPath, openNewTerminalTab, anyTerminalBusy, tabDestination} from "../lib/tabs.js"
+import {canonicalGroupKey, closeTabIn, loadTabs, saveTabs, labelForPath, openNewTerminalTab, anyTerminalBusy, tabDestination} from "../lib/tabs.js"
 import {escapeHtml} from "../lib/html.js"
 import {TabRename} from "./tab_rename.js"
 import {dutyTabs} from "./duty_tab.js"
@@ -519,10 +519,10 @@ export const TabStrip = {
     this.menuPath = null
   },
   async closeTab(path) {
-    if (path === "/duty") return
-    const tabs = this.load()
-    const idx = tabs.findIndex((t) => t.path === path)
-    if (idx === -1) return
+    // Which tab goes and which takes the screen is shared with the browser
+    // chrome's close buttons (`closeTabIn`), so the two strips cannot disagree.
+    const {tabs, closed, next} = closeTabIn(this.load(), path)
+    if (!closed) return
     // Only the active tab has a mounted terminal, so a busy terminal can only
     // belong to the current tab; closing a background tab never kills live work.
     if (path === this.currentKey() && !(await this.confirmCloseBusyTerminal())) return
@@ -537,10 +537,8 @@ export const TabStrip = {
       const params = new URLSearchParams(path.split("?")[1] || "")
       teardown = this.tearDownSplitBrowsers(params.get("left"), params.get("right"))
     }
-    tabs.splice(idx, 1)
     this.save(tabs)
     if (path === this.currentKey()) {
-      const next = tabs[idx] || tabs[idx - 1]
       teardown.finally(() => (window.location.href = next ? this.navTarget(next) : "/"))
     } else {
       this.render()

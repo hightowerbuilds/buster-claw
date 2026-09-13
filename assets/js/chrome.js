@@ -12,6 +12,7 @@ import {resolve as resolveUrl, display as displayUrl, deriveLabel, faviconFor} f
 // Home/End caret handling for the URL bar and find input — WKWebView would
 // otherwise insert a tofu glyph instead of moving the caret.
 import {installCaretKeys} from "./lib/caret_keys.js"
+import {renderAppTabChips} from "./lib/chrome_app_tabs.js"
 
 installCaretKeys()
 
@@ -242,42 +243,13 @@ function activeTab() { return tabs.find((t) => t.id === activeId) }
 
 // --- app-tab switcher (chrome-carried; see Phase 0.5 #2 in the roadmap) ---
 // The native browser webviews render above the app's DOM, covering its tab
-// strip — so the chrome carries its own: a Home chip plus every open app tab,
-// read from the same localStorage the TabStrip hook persists ("bc:tabs"; the
-// chrome shares the app's origin and WKWebView data store). Clicking a chip
-// navigates the MAIN webview via Rust (browser_app_navigate); the surfaces
-// hide-and-persist through the existing reconcile path.
+// strip — so the chrome carries its own row of app tabs, read from the same
+// localStorage the TabStrip hook persists ("bc:tabs"; the chrome shares the
+// app's origin and WKWebView data store), with the close buttons the covered
+// strip would have had. The row lives in lib/chrome_app_tabs.js.
 const appTabsEl = document.getElementById("apptabs")
 
-function loadAppTabs() {
-  try { return JSON.parse(localStorage.getItem("bc:tabs")) || [] } catch (e) { return [] }
-}
-
-function renderAppTabs() {
-  if (!appTabsEl) return
-  appTabsEl.textContent = ""
-  // Home is always the first chip (the guaranteed way back into the app), so a
-  // persisted "/" tab from bc:tabs would render as a SECOND Home — drop it.
-  const saved = loadAppTabs().filter(
-    (t) => !(t && typeof t.path === "string" && t.path.split("?")[0] === "/")
-  )
-  const chips = [{path: "/", label: "Home"}].concat(saved)
-  chips.forEach((t) => {
-    if (!t || typeof t.path !== "string" || !t.path.startsWith("/")) return
-    // The browser's own app tab is where we already are — show it as current.
-    const base = t.path.split("?")[0]
-    const isCurrent = base === "/browse" || (base === "/split" && t.path.includes("%2Fbrowse"))
-    const el = document.createElement("button")
-    el.type = "button"
-    el.className = "atab" + (isCurrent ? " current" : "")
-    el.title = isCurrent ? "You are here" : "Switch to " + (t.label || t.path)
-    el.textContent = t.label || t.path
-    if (!isCurrent) {
-      el.onclick = () => inv("browser_app_navigate", {path: t.path})
-    }
-    appTabsEl.appendChild(el)
-  })
-}
+function renderAppTabs() { renderAppTabChips(appTabsEl, SID, inv) }
 
 // The tab list changes while we're hidden (tabs opened/closed elsewhere);
 // re-read whenever this chrome regains focus or is re-shown, plus a slow tick.
