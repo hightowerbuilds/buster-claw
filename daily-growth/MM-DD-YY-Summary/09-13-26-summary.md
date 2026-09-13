@@ -178,3 +178,10 @@ was barely better — its only sign was a chip in the far column.
 | | |
 |---|---|
 | (this commit) | The add now says "Added to trusted senders" or "Already a trusted sender — it's in the Trusted senders list", and closes the form. `TrustedSenders.listed?/1` reads the file the way the gate does, headings included, so the message cannot disagree with who actually gets in. Removing or untrusting someone clears the note so it cannot linger. The button's accessible name said "Add contact" for a control that adds a sender, not a contact; it now matches its tooltip |
+
+**Superseded within the hour.** The operator then asked for one place to add a
+contact: the Phone tab. The widget's "+ Add" and its form are gone, and with
+them the feedback above and `TrustedSenders.listed?/1` — code with no caller
+left is deleted rather than kept. The widget still lists trusted senders and can
+remove one. Its empty state, two Explained tutorials, and the duty checklist's
+"Add a trusted sender" link now all point at the Phone tab.

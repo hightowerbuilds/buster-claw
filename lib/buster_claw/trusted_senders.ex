@@ -89,21 +89,6 @@ defmodule BusterClaw.TrustedSenders do
   end
 
   @doc """
-  Whether `raw` — an address, a `*@domain` wildcard, or a bare domain — is already
-  an allow-entry. False for anything `add_entry/1` would refuse.
-
-  Read the way the gate reads the file: every address token counts, a heading or
-  a sentence as much as a bullet. So "already listed" here means the gate already
-  lets that sender in, which is what someone adding it again needs to be told.
-  """
-  def listed?(raw) do
-    case normalize_entry(raw) do
-      {:ok, entry} -> entry_present?(read_policy_contents(), entry)
-      :error -> false
-    end
-  end
-
-  @doc """
   Add an allow-entry. Accepts a full address (`alice@example.com`), a wildcard
   (`*@example.com`), or a bare domain (`example.com`, treated as the wildcard).
   Idempotent. Returns `{:ok, normalized_value}` or `{:error, :invalid_entry}`.

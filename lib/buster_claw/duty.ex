@@ -49,7 +49,7 @@ defmodule BusterClaw.Duty do
         {agent_cli?, %{key: :agent, label: "Install an agent CLI", href: "/settings"}},
         {email_ready?(), %{key: :email, label: "Connect Google", href: "/settings?tab=google"}},
         {TrustedSenders.list_entries() != [],
-         %{key: :senders, label: "Add a trusted sender", href: "/"}}
+         %{key: :senders, label: "Add a trusted sender", href: "/phone"}}
       ]
       |> Enum.reject(fn {ok?, _} -> ok? end)
       |> Enum.map(fn {_, blocker} -> blocker end)

@@ -4,9 +4,12 @@ defmodule BusterClawWeb.Widget.CommsPanel do
   contacts with per-person actions, recent phone activity, and the trusted-sender
   list.
 
-  Markup only. Every event (`add_contact`, `remove_contact`, `email_contact`) is
-  handled by `StatusLive`, and the rows are pre-shaped there, so this stays
-  presentational.
+  Markup only. Every event (`remove_contact`, `email_contact`) is handled by
+  `StatusLive`, and the rows are pre-shaped there, so this stays presentational.
+
+  It adds no one. Until 09-13 the Contacts header carried a "+ Add" that trusted
+  an email address; the operator wanted one place to add a contact, and that is
+  the Phone tab's Contacts, where a person is created and marked trusted.
 
   Split out of `HomeWidget` on 08-15 (`WIDGET_BACKGROUND_ROADMAP` Phase 0). That
   file was 699 lines and FROZEN — capped with no headroom — and three tabs
@@ -16,7 +19,6 @@ defmodule BusterClawWeb.Widget.CommsPanel do
 
   attr :contacts, :list, required: true
   attr :activity, :list, required: true
-  attr :show_add, :boolean, required: true
   attr :trusted, :list, required: true
   attr :entries, :list, required: true
 
@@ -38,45 +40,7 @@ defmodule BusterClawWeb.Widget.CommsPanel do
       <div class="flex min-h-0 flex-col border-r-2 border-base-content/20">
         <div class="flex shrink-0 items-center justify-between gap-2 border-b border-base-content/15 px-3 pb-2 pt-3">
           <p class="ic-eyebrow">Contacts</p>
-          <button
-            type="button"
-            phx-click="toggle_add_contact"
-            aria-expanded={to_string(@show_add)}
-            title="Add a trusted sender"
-            aria-label="Add a trusted sender"
-            class={[
-              "inline-flex shrink-0 items-center gap-1 rounded-xs border px-1.5 py-0.5 font-mono text-[0.625rem] font-bold uppercase tracking-wide transition",
-              if(@show_add,
-                do: "border-primary text-primary",
-                else: "border-base-content/25 text-base-content/55 hover:text-base-content"
-              )
-            ]}
-          >
-            <.icon name="hero-plus" class="size-3" /> Add
-          </button>
         </div>
-
-        <form
-          :if={@show_add}
-          phx-submit="add_contact"
-          class="flex shrink-0 items-center gap-1.5 border-b border-base-content/15 px-3 py-2"
-        >
-          <input
-            type="text"
-            name="entry"
-            value=""
-            autocomplete="off"
-            spellcheck="false"
-            placeholder="alice@example.com · *@acme.com"
-            class="input input-xs min-w-0 flex-1 font-mono text-[0.6875rem]"
-          />
-          <button
-            type="submit"
-            class="shrink-0 rounded-xs bg-primary px-2 py-1 font-display text-[0.625rem] font-bold uppercase tracking-wide text-primary-content transition hover:opacity-85"
-          >
-            Add
-          </button>
-        </form>
 
         <ul :if={@contacts != []} class="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
           <li :for={c <- @contacts} class="flex items-center gap-2">
@@ -158,7 +122,7 @@ defmodule BusterClawWeb.Widget.CommsPanel do
       </div>
 
       <%!-- Right: trusted-sender allowlist (the chips render via TrustedContactsPanel;
-            add lives with the Contacts header's "+ Add"). --%>
+            people are added, and trusted, on the Phone tab's Contacts). --%>
       <div id="home-contacts-panel" class="flex min-h-0 flex-col">
         <p class="ic-eyebrow shrink-0 border-b border-base-content/15 px-3 pb-2 pt-3">
           Trusted senders

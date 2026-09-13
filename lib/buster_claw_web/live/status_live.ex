@@ -116,7 +116,6 @@ defmodule BusterClawWeb.StatusLive do
      |> assign(:widget_tab, "place")
      # The "add a trusted sender" input is collapsed behind the Contacts header's
      # + button; hidden until toggled so the tab stays uncluttered.
-     |> assign(:show_add_contact, false)
      |> assign(:weather, nil)
      |> assign(:weather_form, false)
      |> assign(:notify_form, notify_form())
@@ -229,20 +228,14 @@ defmodule BusterClawWeb.StatusLive do
 
   defp page_ask(_params), do: :error
 
-  @impl true
-  def handle_event("toggle_add_contact", _params, socket) do
-    {:noreply, assign(socket, :show_add_contact, !socket.assigns.show_add_contact)}
-  end
-
-  def handle_event("add_contact", %{"entry" => entry}, socket),
-    do: {:noreply, BusterClawWeb.Status.Comms.add_trusted_sender(socket, entry)}
-
   # Removing an *orphan* entry — an address or wildcard with no contact behind it.
   # There is nothing else to clean up, so the policy line is simply dropped.
+  # (Nothing here ADDS one: since 09-13 contacts are added, and trusted, on the
+  # Phone tab only.)
+  @impl true
   def handle_event("remove_contact", %{"entry" => entry}, socket) do
     TrustedSenders.remove_entry(entry)
-    # Drop the add's "Added to trusted senders" note, which would now be wrong.
-    {:noreply, socket |> clear_flash(:info) |> load_trust()}
+    {:noreply, load_trust(socket)}
   end
 
   # Untrusting a *contact* is not the same act as deleting them. This revokes the
@@ -254,7 +247,7 @@ defmodule BusterClawWeb.StatusLive do
 
     case Contacts.set_trusted(contact, false) do
       {:ok, _} ->
-        {:noreply, socket |> clear_flash(:info) |> load_trust()}
+        {:noreply, load_trust(socket)}
 
       {:error, reason} ->
         {:noreply,
@@ -694,7 +687,6 @@ defmodule BusterClawWeb.StatusLive do
               tab={@widget_tab}
               contacts={@comms_contacts}
               activity={@phone_activity}
-              show_add={@show_add_contact}
               trusted={@trusted_people}
               entries={@trusted_entries}
               weather={@weather}

@@ -11,8 +11,9 @@ defmodule BusterClawWeb.TrustedContactsPanel do
   Only a trusted sender's mail is queued for the on-shift agent to act on (and
   reply to); everything else is still archived to the Library but never queued.
 
-  Presentation only — `add_contact` / `remove_contact` / `untrust_contact` are
-  handled by the parent LiveView (`StatusLive`).
+  Presentation only — `remove_contact` / `untrust_contact` are handled by the
+  parent LiveView (`StatusLive`). Nobody is added here: since 09-13 the Phone
+  tab's Contacts is the one place a contact is created and marked trusted.
 
   ## Three chip kinds, and why the third exists
 
@@ -89,7 +90,7 @@ defmodule BusterClawWeb.TrustedContactsPanel do
       :if={@empty?}
       class="font-mono text-[0.6875rem] text-base-content/55"
     >
-      No trusted senders yet — use “+ Add” by Contacts.
+      No trusted senders yet — add a contact on the Phone tab and mark them trusted.
     </p>
     """
   end

@@ -142,9 +142,9 @@ defmodule BusterClawWeb.Explained.Gws do
         result="A reply in your phone's inbox and the item marked done, with the run's receipts on the Security feed. Off-duty, or an untrusted sender, and the mail is archived without ever becoming work."
       >
         <p class="text-sm leading-relaxed text-base-content/80">
-          One-time setup: add your own phone's email address to
-          <span class="font-semibold text-base-content">Trusted Senders</span>
-          (Contacts, in the corner widget), then in the terminal: <code>./buster-claw on-duty</code>.
+          One-time setup: add your own phone's email address as a contact on the Phone tab and
+          mark it <span class="font-semibold text-base-content">trusted</span>, then go on duty
+          from the dock (or run <code>./buster-claw on-duty</code> in the terminal).
         </p>
         <%!-- No "Try in Chat" here: this prompt is an *email*, and the whole
               point of the cycle is that the trigger is mail from a trusted

@@ -145,22 +145,14 @@ defmodule BusterClawWeb.StatusLiveTest do
     assert has_element?(view, ~s(button[aria-label^="Call Dana"][disabled]))
   end
 
-  test "adds and removes a trusted contact from the home panel", %{conn: conn} do
-    # Use an address that does NOT appear in the input placeholder text.
+  # 09-13-26: the widget's Contacts tab no longer adds anyone. The operator wanted
+  # one place to add a contact — the Phone tab, where a person is created and
+  # marked trusted. Removing a trust entry from the widget still works.
+  test "removes a trusted sender from the home panel", %{conn: conn, root: root} do
     contact = "dana@example.org"
+    File.write!(Path.join(root, "memory/trusted-email-senders.md"), "# Trusted\n\n- #{contact}\n")
 
     {:ok, view, html} = live(conn, ~p"/")
-    assert html =~ "No trusted senders"
-    refute html =~ contact
-
-    # The add input is collapsed behind the Contacts "+ Add" button.
-    render_click(view, "toggle_add_contact", %{})
-
-    html =
-      view
-      |> form(~s(form[phx-submit="add_contact"]), %{"entry" => contact})
-      |> render_submit()
-
     assert html =~ contact
     refute html =~ "No trusted senders"
 
@@ -173,58 +165,14 @@ defmodule BusterClawWeb.StatusLiveTest do
     refute html =~ contact
   end
 
-  test "rejects an invalid trusted-contact entry with a flash", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/")
+  test "the home widget has no add control, and says where contacts are added", %{conn: conn} do
+    {:ok, view, html} = live(conn, ~p"/")
 
-    # The add input is collapsed behind the Contacts "+ Add" button.
-    render_click(view, "toggle_add_contact", %{})
-
-    html =
-      view
-      |> form(~s(form[phx-submit="add_contact"]), %{"entry" => "not-an-email"})
-      |> render_submit()
-
-    assert html =~ "Enter a full email address or a *@domain wildcard."
-    assert html =~ "No trusted senders"
-    # Left open, so the entry can be corrected rather than retyped.
-    assert has_element?(view, ~s(form[phx-submit="add_contact"]))
-  end
-
-  # 09-13-26: the operator clicked Add six times on an address that was already
-  # trusted — through a `### address` heading in their policy file — and nothing
-  # on screen changed. Both outcomes now say what happened, and close the form.
-  test "adding a sender says it worked and closes the form", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/")
-    render_click(view, "toggle_add_contact", %{})
-
-    html =
-      view
-      |> form(~s(form[phx-submit="add_contact"]), %{"entry" => "dana@example.org"})
-      |> render_submit()
-
-    assert html =~ "Added to trusted senders"
-    refute has_element?(view, ~s(form[phx-submit="add_contact"]))
-  end
-
-  test "adding a sender who is already trusted says so and writes nothing", %{
-    conn: conn,
-    root: root
-  } do
-    path = Path.join(root, "memory/trusted-email-senders.md")
-    File.write!(path, "# Trusted email senders\n\n### boss@example.org\n- Status: operator\n")
-    before = File.read!(path)
-
-    {:ok, view, _html} = live(conn, ~p"/")
-    render_click(view, "toggle_add_contact", %{})
-
-    html =
-      view
-      |> form(~s(form[phx-submit="add_contact"]), %{"entry" => "Boss@Example.org"})
-      |> render_submit()
-
-    assert html =~ "Already a trusted sender"
-    refute has_element?(view, ~s(form[phx-submit="add_contact"]))
-    assert File.read!(path) == before
+    # The panel is on the page, so the two refutes below cannot pass vacuously.
+    assert has_element?(view, "#home-comms-panel")
+    refute has_element?(view, ~s(#home-comms-panel [phx-click="toggle_add_contact"]))
+    refute has_element?(view, ~s(#home-comms-panel form))
+    assert html =~ "add a contact on the Phone tab"
   end
 
   describe "agent chat panel" do
@@ -741,14 +689,6 @@ defmodule BusterClawWeb.StatusLiveTest do
 
       {:ok, _view, html} = live(conn, ~p"/")
       assert html =~ "on my way"
-    end
-
-    test "the add-contact input is hidden until the Add button is toggled", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/")
-
-      refute has_element?(view, ~s(form[phx-submit="add_contact"]))
-      render_click(view, "toggle_add_contact", %{})
-      assert has_element?(view, ~s(form[phx-submit="add_contact"]))
     end
   end
 

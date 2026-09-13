@@ -423,10 +423,7 @@ check lib/buster_claw_web/components/chat_panel.ex          1040 HELD
 # the buttons out of the row instead of ellipsing — invisible with two surfaces,
 # reachable with three. The EXTRACTION OWED above is unchanged and now overdue.
 check lib/buster_claw_web/live/appearance_live.ex            1075 HELD
-# Raised 125 -> 140 on 09-13: adding a trusted sender now says whether it was
-# added or already trusted, and closes the form. The logic lives here, beside
-# load_trust, rather than in status_live.ex, whose clause became one line.
-check lib/buster_claw_web/live/status/comms.ex               140 HELD
+check lib/buster_claw_web/live/status/comms.ex               125 HELD
 # Raised 08-09, 114 -> 150, for the Studio's Mix|Voice sub-tab (STUDIO_ROADMAP
 # VI.0b). This module moved instead of `status_live.ex` — which is at its cap and
 # is the point of these two numbers sitting next to each other: it took the mount
@@ -855,7 +852,9 @@ check lib/buster_claw_web/components/home_widget.ex           148 HELD
 # The three panels, capped at their as-written size — this was a move, not a
 # rewrite, so there is no post-split target to leave headroom against.
 check lib/buster_claw_web/components/widget/place_panel.ex    205 HELD
-check lib/buster_claw_web/components/widget/comms_panel.ex    175 HELD
+# Lowered 175 -> 151 on 09-13: the Contacts header's "+ Add" button and its form
+# were removed — contacts are added on the Phone tab only.
+check lib/buster_claw_web/components/widget/comms_panel.ex    151 HELD
 check lib/buster_claw_web/components/widget/notify_panel.ex   275 HELD
 
 # These were the two largest surviving mixed files, frozen so the next roadmap

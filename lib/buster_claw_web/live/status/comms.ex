@@ -13,11 +13,9 @@ defmodule BusterClawWeb.Status.Comms do
   move the same gate.
   """
   import Phoenix.Component
-  import Phoenix.LiveView, only: [put_flash: 3]
 
   alias BusterClaw.Contacts
   alias BusterClaw.Telephony
-  alias BusterClaw.TrustedSenders
 
   # The gate, split into the part with a person behind it and the part without.
   # Both halves are rendered — see `TrustedContactsPanel` for why omitting the
@@ -33,30 +31,6 @@ defmodule BusterClawWeb.Status.Comms do
     socket
     |> assign(:trusted_people, people)
     |> assign(:trusted_entries, Contacts.orphan_entries().emails)
-  end
-
-  # Adding a trusted sender says what happened and closes the form. Until 09-13
-  # it said nothing either way: `add_entry/1` is idempotent, so an address already
-  # in the file changed nothing, and the form stayed open with the address still
-  # typed — the operator clicked Add six times on one they already trusted.
-  def add_trusted_sender(socket, entry) do
-    already? = TrustedSenders.listed?(entry)
-
-    case TrustedSenders.add_entry(entry) do
-      {:ok, _value} ->
-        message =
-          if already?,
-            do: "Already a trusted sender — it's in the Trusted senders list.",
-            else: "Added to trusted senders. Their mail will reach the agent on duty."
-
-        socket
-        |> assign(:show_add_contact, false)
-        |> put_flash(:info, message)
-        |> load_trust()
-
-      {:error, :invalid_entry} ->
-        put_flash(socket, :error, "Enter a full email address or a *@domain wildcard.")
-    end
   end
 
   # The corner-widget "Contacts" tab is a comms hub: recent phone activity plus

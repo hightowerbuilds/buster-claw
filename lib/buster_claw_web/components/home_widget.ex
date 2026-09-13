@@ -49,7 +49,6 @@ defmodule BusterClawWeb.HomeWidget do
   attr :tab, :string, required: true
   attr :contacts, :list, required: true
   attr :activity, :list, required: true
-  attr :show_add, :boolean, required: true
   attr :trusted, :list, required: true
   attr :entries, :list, required: true
   attr :weather, :any, required: true
@@ -117,7 +116,6 @@ defmodule BusterClawWeb.HomeWidget do
             <CommsPanel.comms_panel
               contacts={@contacts}
               activity={@activity}
-              show_add={@show_add}
               trusted={@trusted}
               entries={@entries}
             />

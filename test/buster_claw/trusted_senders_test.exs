@@ -98,23 +98,6 @@ defmodule BusterClaw.TrustedSendersTest do
       assert TrustedSenders.list_entries() == []
     end
 
-    # 09-13-26: the operator's policy file named their address in a `### heading`,
-    # which the gate honours — so adding it again was a silent no-op, and the
-    # panel had no way to say "already trusted". `listed?/1` reads the file the
-    # way the gate does, so the two cannot disagree.
-    test "listed? agrees with the gate, headings included", %{root: root} do
-      write_policy(root, "# Trusted\n\n### boss@example.com\n- Status: operator\n")
-
-      assert TrustedSenders.trusted?("boss@example.com")
-      assert TrustedSenders.listed?("Boss@Example.com")
-      refute TrustedSenders.listed?("someone@example.com")
-      refute TrustedSenders.listed?("not-an-email")
-
-      {:ok, _} = TrustedSenders.add_entry("*@acme.com")
-      assert TrustedSenders.listed?("acme.com")
-      assert TrustedSenders.listed?("*@acme.com")
-    end
-
     test "add_entry invalidates the cached policy so a later match sees the new entry", %{
       root: _root
     } do
