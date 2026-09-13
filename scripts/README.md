@@ -38,7 +38,7 @@ money) — run it before touching the thing it names.
 
 | Script | What it does | Who runs it |
 |---|---|---|
-| `dev.sh` | Starts Phoenix (or reuses a running one whose env still matches `.env`), waits for :4000, then opens the Tauri window. Ctrl-C tears down what it started. | human, daily |
+| `dev.sh` | Starts Phoenix on :4000 (pins `PORT`), waits for it to answer, then opens the Tauri window. Closing the window, Ctrl-C, closing the terminal, or killing the script stops the Phoenix it started — a watchdog covers SIGKILL. A leftover, unhealthy, or `.env`-stale Phoenix from this repo on :4000 is replaced; a healthy one something is still running is reused; any other process on the port is named and never stopped. | human, daily |
 | `gen_sounds.exs` | Regenerates the bundled default chime set into `priv/static/sounds/` (`mix run scripts/gen_sounds.exs`). The output is COMMITTED — this is the recipe, the repo holds the dish, because libm's `sin` differs across machines in the last ulp. Deterministic on one machine. | human, only when `BusterClaw.Notifications.SoundGen` changes. Referenced from `.gitignore` and `sound.ex`/`sound_gen.ex` comments, nothing runs it |
 
 ## Manual smokes and probes (opt-in, never in CI)
@@ -46,6 +46,7 @@ money) — run it before touching the thing it names.
 | Script | What it does | Who runs it |
 |---|---|---|
 | `smoke_command_surface.sh` | End-to-end smoke of the HTTP command surface against a running server on :4000 (dev server or bundled release). Token from env → Keychain → legacy file. | manual smoke — run before touching `BusterClaw.Commands` dispatch, the API token path, or the router |
+| `smoke_dev_launcher.sh` | Runs `dev.sh` against fake `mix`, `cargo` and Phoenix in temp folders and checks it never leaves a server behind: closing the window, Ctrl-C, closing the terminal, and SIGKILL all stop the Phoenix it started; an unhealthy or orphaned server of this repo on :4000 is replaced, a healthy one reused, a foreign one never stopped. Needs :4000 free; `DEVSH_SRC` points it at an older copy to prove it fails there. | manual smoke — run after touching `dev.sh` |
 | `smoke_desktop.sh` | Packaged-app smoke: with the real `.app` running (real Keychain, real data dir), drives the HTTP API from outside and forces one agent round-trip through the native bridge. A command that is ACL-dead in the packaged build fails here and nowhere else. | manual smoke — run before a release and before touching `build.rs`, `capabilities/*.json`, or the screenshot bridge |
 | `probe_claude_duplex.exs` | CHAT_LIVE_STEERING Phase 0, probes 1–2: can a long-lived `claude -p --input-format stream-json` accept a second user message into the running turn? Plain `elixir`, no app boot. Also the prototype for `AgentRunner.open_port/4`'s duplex opener. | manual smoke — run before touching `ChatTransport.Claude`/`ClaudeDuplex`, `AgentRunner.open_port`, or the `</dev/null` redirect |
 | `probe_codex_appserver.exs` | CHAT_LIVE_STEERING Phase 0, probes 3–4: does `codex app-server` steer mid-turn, reject a stale turn id, and confine like `codex exec -s read-only`? Protocol shapes read from codex's own generated JSON schema. Plain `elixir`. | manual smoke — run before touching `ChatTransport.Codex` or `CodexAppServer`, or after a `codex` upgrade |

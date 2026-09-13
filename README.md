@@ -44,7 +44,7 @@ Requirements (exact versions pinned in [`.tool-versions`](.tool-versions); `asdf
 - Rust/Cargo
 - `cargo-tauri` (`cargo install tauri-cli`)
 
-The single-command launcher boots Phoenix, waits for `/_health`, then opens the desktop window (and tears down on Ctrl-C):
+The single-command launcher boots Phoenix, waits for `/_health`, then opens the desktop window. Closing the window or pressing Ctrl-C stops the Phoenix it started:
 
 ```bash
 ./scripts/dev.sh

@@ -98,3 +98,28 @@ which two existing tests knew and the map did not.
 
 **Three gates still need the running app or a person:** the real-CLI chat
 smoke, the Tauri walk of the Ask button, and the on-duty email round trip.
+
+## Later still: the dev launcher stops leaving servers behind
+
+Opening the app to walk those gates found why launches kept failing.
+`scripts/dev.sh` ended in `exec cargo tauri dev`, and `exec` discards the EXIT
+trap, so every launch that started Phoenix left it running when the window
+closed. One had been up since 09-06, pulling phone events into the dev database
+all week, and this morning's `config/config.exs` change made it answer every
+request with a 500. The fresh launch then died on `:eaddrinuse`, because a
+terminal inside Tractor Beam exports `PORT=4400`, its own server's port.
+
+| | |
+|---|---|
+| (this commit) | `dev.sh` runs cargo as a child so the trap fires; a watchdog stops Phoenix if the script is SIGKILLed; `PORT` is pinned to 4000; a leftover, unhealthy or `.env`-stale Phoenix from this repo on :4000 is replaced, and any other process there is named and never stopped. The old stale-server path ran `pkill -f phx.server`, which would have killed Tractor Beam's server too |
+
+**Verified, with the guard broken first.** `scripts/smoke_dev_launcher.sh` runs
+the launcher against fake `mix`, `cargo` and Phoenix in temp folders: 9
+scenarios, 23 checks, all pass. Against the pre-fix script it fails 12 —
+closing the window, Ctrl-C, closing the terminal and SIGKILL each leave Phoenix
+running, and it reuses orphaned and foreign servers.
+
+The smoke's own first two drafts were wrong, and both would have shipped a
+false green: a launcher held its output pipe open so three scenarios "passed"
+without running, and the Ctrl-C and hangup scenarios signalled before the window
+existed, so the pre-fix script passed them too.
