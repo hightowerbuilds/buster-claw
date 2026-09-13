@@ -69,7 +69,7 @@ defmodule BusterClawWeb.StatusLive do
   def home_tabs, do: @home_tabs
 
   @impl true
-  def mount(_params, _session, socket) do
+  def mount(params, _session, socket) do
     if connected?(socket) do
       Phoenix.PubSub.subscribe(BusterClaw.PubSub, Appearance.home_topic())
       Phoenix.PubSub.subscribe(BusterClaw.PubSub, Appearance.topic(:widget))
@@ -143,7 +143,8 @@ defmodule BusterClawWeb.StatusLive do
        auto_upload: true,
        progress: &handle_attach_progress/3
      )
-     |> then(fn s -> if connected?(s), do: mount_weather(s), else: s end)}
+     |> then(fn s -> if connected?(s), do: mount_weather(s), else: s end)
+     |> stage_page_ask(params)}
   end
 
   # An upload only becomes an attachment once its bytes have arrived. LiveView
@@ -175,6 +176,58 @@ defmodule BusterClawWeb.StatusLive do
   # Timer/alarm/reminder wall-clock arithmetic lives in
   # `BusterClaw.Notifications.Schedule` — pure, and extracted 08-03 so the
   # next-occurrence and DST cases can be asserted without driving a mount.
+
+  # "Ask about this page" (THREE_DOORS Phase 3). The browser chrome's Ask button
+  # hands the active tab over by URL — `browser_app_navigate("/?ask=page&url=…")`
+  # is the one bridge the chrome webview has into the app — and this stages a
+  # sentence in the composer. Prefill only, never a send: the same contract as
+  # Explained's "Try in Chat". The URL is parsed rather than trusted: only
+  # http(s) with a host makes it into the sentence, and the title is capped.
+  #
+  # Read in `mount/3`, not `handle_params/3`: Home is also a CHILD view inside a
+  # Split pane, and a child may not define handle_params at all — the first cut
+  # did, and two SplitLive tests caught it. A child mounts with
+  # `:not_mounted_at_router` for params, which the guard below ignores.
+  defp stage_page_ask(socket, %{"ask" => "page"} = params) do
+    case page_ask(params) do
+      {:ok, text} ->
+        socket
+        |> switch_home_tab("chat")
+        |> push_event("bc:chat_prefill", %{text: text})
+
+      :error ->
+        socket
+    end
+  end
+
+  defp stage_page_ask(socket, _params), do: socket
+
+  @ask_title_max 200
+
+  defp page_ask(%{"url" => url} = params) when is_binary(url) do
+    case URI.new(url) do
+      {:ok, %URI{scheme: scheme, host: host}}
+      when scheme in ["http", "https"] and host not in [nil, ""] ->
+        title = params |> Map.get("title", "") |> String.trim() |> String.slice(0, @ask_title_max)
+
+        opened =
+          if title == "",
+            do: "I have #{url} open in the browser.",
+            else: "I have “#{title}” open in the browser (#{url})."
+
+        text =
+          opened <>
+            " Read it with the browser commands and tell me what it says, " <>
+            "then wait for what I want done with it."
+
+        if byte_size(text) <= 2000, do: {:ok, text}, else: :error
+
+      _ ->
+        :error
+    end
+  end
+
+  defp page_ask(_params), do: :error
 
   @impl true
   def handle_event("toggle_add_contact", _params, socket) do

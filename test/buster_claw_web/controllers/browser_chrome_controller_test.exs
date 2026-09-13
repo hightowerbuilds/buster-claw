@@ -10,6 +10,10 @@ defmodule BusterClawWeb.BrowserChromeControllerTest do
     assert body =~ ~s(id="back")
     assert body =~ ~s(id="reload")
     assert body =~ ~s(id="home")
+    # "Ask about this page" (THREE_DOORS Phase 3): the door onto the live-tab
+    # read lives on the surface it is about, not on the Home tab.
+    assert body =~ ~s(id="ask")
+    assert body =~ "Ask the assistant about this page"
     # App-tab switcher + tab strip + bookmark bar containers (rendered client-side).
     assert body =~ ~s(id="apptabs")
     assert body =~ ~s(id="tabs")

@@ -142,6 +142,7 @@ function updateProgress() {
 let dragId = null // tab id being drag-reordered
 
 function renderTabs() {
+  renderAsk()
   tabsEl.textContent = ""
   tabs.forEach((t) => {
     const tab = document.createElement("div")
@@ -806,6 +807,28 @@ document.getElementById("back").addEventListener("click", function () { inv("bro
 document.getElementById("fwd").addEventListener("click", function () { inv("browser_forward", {tabId: activeId}) })
 document.getElementById("reload").addEventListener("click", function () { inv("browser_reload", {tabId: activeId}) })
 document.getElementById("bookmark").addEventListener("click", bookmark)
+
+// --- "Ask about this page" (THREE_DOORS Phase 3) ---
+// The one bridge this webview has into the app is browser_app_navigate, which
+// loads a path in the main webview — so the active tab is handed over BY URL,
+// and StatusLive stages a sentence in the composer. Staged, never sent: the
+// operator still presses Enter (the same contract as Explained's Try in Chat).
+// Hidden on a private/sandbox tab: reading a session that forgets everything
+// is not what "this page" means to the person who opened it.
+// The tab model's `label` IS the page title once a page has loaded (set from
+// the navigation callback); before that it is "New tab", which no page has.
+function renderAsk() {
+  const t = activeTab()
+  askBtn.hidden = !t || !t.url || !!t.ephemeral
+}
+const askBtn = document.getElementById("ask")
+askBtn.addEventListener("click", function () {
+  const t = activeTab()
+  if (!t || !t.url || t.ephemeral) return
+  const title = (t.label || "").slice(0, 200)
+  const path = "/?ask=page&url=" + encodeURIComponent(t.url || "") + "&title=" + encodeURIComponent(title)
+  inv("browser_app_navigate", {path: path})
+})
 
 // --- content blocking (WKContentRuleList shield) ---
 // The block engine lives in Rust/WebKit; the chrome owns the on/off preference

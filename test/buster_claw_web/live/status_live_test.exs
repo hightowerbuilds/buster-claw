@@ -619,6 +619,59 @@ defmodule BusterClawWeb.StatusLiveTest do
     end
   end
 
+  # THREE_DOORS Phase 3: the browser chrome's Ask button lands here by URL.
+  describe "ask about this page" do
+    test "?ask=page stages a sentence naming the page, on the Chat sub-tab, and sends nothing",
+         %{conn: conn} do
+      query =
+        URI.encode_query(%{
+          "ask" => "page",
+          "url" => "https://example.com/a?b=1",
+          "title" => "Example Domain"
+        })
+
+      {:ok, view, _html} = live(conn, "/?" <> query)
+
+      assert_push_event(view, "bc:chat_prefill", %{text: text})
+      assert text =~ "“Example Domain”"
+      assert text =~ "https://example.com/a?b=1"
+      assert text =~ "Read it with the browser commands"
+      assert text =~ "then wait for what I want done with it"
+      assert has_element?(view, "#home-composer")
+      # Prefill is a client-side write into the textarea; nothing was submitted.
+      refute render(view) =~ "Example Domain"
+    end
+
+    test "with no title the sentence still reads", %{conn: conn} do
+      {:ok, view, _html} =
+        live(conn, "/?" <> URI.encode_query(%{"ask" => "page", "url" => "https://example.com/"}))
+
+      assert_push_event(view, "bc:chat_prefill", %{text: text})
+      assert text =~ "I have https://example.com/ open in the browser."
+    end
+
+    test "a non-http URL or a bare word stages nothing", %{conn: conn} do
+      for url <- ["javascript:alert(1)", "example.com", "file:///etc/passwd", ""] do
+        {:ok, view, _html} =
+          live(conn, "/?" <> URI.encode_query(%{"ask" => "page", "url" => url}))
+
+        refute_push_event(view, "bc:chat_prefill", %{})
+      end
+    end
+
+    test "an overlong title is cut, not refused", %{conn: conn} do
+      title = String.duplicate("x", 500)
+
+      query =
+        URI.encode_query(%{"ask" => "page", "url" => "https://example.com/", "title" => title})
+
+      {:ok, view, _html} = live(conn, "/?" <> query)
+      assert_push_event(view, "bc:chat_prefill", %{text: text})
+      assert text =~ String.duplicate("x", 200)
+      refute text =~ String.duplicate("x", 201)
+    end
+  end
+
   describe "contacts comms hub" do
     test "the Email action prefills the chat and switches to the Chat sub-tab", %{conn: conn} do
       {:ok, contact} = Contacts.create_contact(%{name: "Dana Ops", email: "dana@example.com"})

@@ -284,6 +284,7 @@ defmodule BusterClawWeb.BrowserChromeController do
           </form>
           <button class="nav shield" id="shield" type="button" aria-label="Content blocking">&#128737;</button>
           <button class="bm" id="bookmark" type="button" title="Bookmark this page">+ Bookmark</button>
+          <button class="bm" id="ask" type="button" title="Ask the assistant about this page">Ask</button>
         </div>
         <div id="row2">
           <div id="downloads"></div>
