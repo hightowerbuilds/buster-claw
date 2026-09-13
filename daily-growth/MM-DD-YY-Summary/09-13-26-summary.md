@@ -165,3 +165,16 @@ Ask button, came down 28 lines instead of growing: the row moved to
 
 **Not walked:** the click itself needs the desktop window; nothing in the suite
 drives a native webview.
+
+## And adding a trusted sender says what happened
+
+Adding a trusted sender from the Contacts tab looked dead. The server log showed
+all six of the operator's clicks arriving: the address was already trusted,
+through a `### hightowerbuilds.dev@gmail.com` heading in their policy file,
+which the gate honours. `add_entry/1` is idempotent, so every click was a silent
+no-op, and the form stayed open with the address still typed in it. A real add
+was barely better — its only sign was a chip in the far column.
+
+| | |
+|---|---|
+| (this commit) | The add now says "Added to trusted senders" or "Already a trusted sender — it's in the Trusted senders list", and closes the form. `TrustedSenders.listed?/1` reads the file the way the gate does, headings included, so the message cannot disagree with who actually gets in. Removing or untrusting someone clears the note so it cannot linger. The button's accessible name said "Add contact" for a control that adds a sender, not a contact; it now matches its tooltip |

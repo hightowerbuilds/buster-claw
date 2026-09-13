@@ -423,7 +423,10 @@ check lib/buster_claw_web/components/chat_panel.ex          1040 HELD
 # the buttons out of the row instead of ellipsing — invisible with two surfaces,
 # reachable with three. The EXTRACTION OWED above is unchanged and now overdue.
 check lib/buster_claw_web/live/appearance_live.ex            1075 HELD
-check lib/buster_claw_web/live/status/comms.ex               125 HELD
+# Raised 125 -> 140 on 09-13: adding a trusted sender now says whether it was
+# added or already trusted, and closes the form. The logic lives here, beside
+# load_trust, rather than in status_live.ex, whose clause became one line.
+check lib/buster_claw_web/live/status/comms.ex               140 HELD
 # Raised 08-09, 114 -> 150, for the Studio's Mix|Voice sub-tab (STUDIO_ROADMAP
 # VI.0b). This module moved instead of `status_live.ex` — which is at its cap and
 # is the point of these two numbers sitting next to each other: it took the mount

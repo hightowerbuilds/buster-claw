@@ -43,7 +43,7 @@ defmodule BusterClawWeb.Widget.CommsPanel do
             phx-click="toggle_add_contact"
             aria-expanded={to_string(@show_add)}
             title="Add a trusted sender"
-            aria-label="Add contact"
+            aria-label="Add a trusted sender"
             class={[
               "inline-flex shrink-0 items-center gap-1 rounded-xs border px-1.5 py-0.5 font-mono text-[0.625rem] font-bold uppercase tracking-wide transition",
               if(@show_add,

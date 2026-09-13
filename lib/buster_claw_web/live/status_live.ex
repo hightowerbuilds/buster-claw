@@ -234,22 +234,15 @@ defmodule BusterClawWeb.StatusLive do
     {:noreply, assign(socket, :show_add_contact, !socket.assigns.show_add_contact)}
   end
 
-  def handle_event("add_contact", %{"entry" => entry}, socket) do
-    case TrustedSenders.add_entry(entry) do
-      {:ok, _value} ->
-        {:noreply, load_trust(socket)}
-
-      {:error, :invalid_entry} ->
-        {:noreply,
-         put_flash(socket, :error, "Enter a full email address or a *@domain wildcard.")}
-    end
-  end
+  def handle_event("add_contact", %{"entry" => entry}, socket),
+    do: {:noreply, BusterClawWeb.Status.Comms.add_trusted_sender(socket, entry)}
 
   # Removing an *orphan* entry — an address or wildcard with no contact behind it.
   # There is nothing else to clean up, so the policy line is simply dropped.
   def handle_event("remove_contact", %{"entry" => entry}, socket) do
     TrustedSenders.remove_entry(entry)
-    {:noreply, load_trust(socket)}
+    # Drop the add's "Added to trusted senders" note, which would now be wrong.
+    {:noreply, socket |> clear_flash(:info) |> load_trust()}
   end
 
   # Untrusting a *contact* is not the same act as deleting them. This revokes the
@@ -261,7 +254,7 @@ defmodule BusterClawWeb.StatusLive do
 
     case Contacts.set_trusted(contact, false) do
       {:ok, _} ->
-        {:noreply, load_trust(socket)}
+        {:noreply, socket |> clear_flash(:info) |> load_trust()}
 
       {:error, reason} ->
         {:noreply,

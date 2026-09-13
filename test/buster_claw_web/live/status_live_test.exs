@@ -186,6 +186,45 @@ defmodule BusterClawWeb.StatusLiveTest do
 
     assert html =~ "Enter a full email address or a *@domain wildcard."
     assert html =~ "No trusted senders"
+    # Left open, so the entry can be corrected rather than retyped.
+    assert has_element?(view, ~s(form[phx-submit="add_contact"]))
+  end
+
+  # 09-13-26: the operator clicked Add six times on an address that was already
+  # trusted — through a `### address` heading in their policy file — and nothing
+  # on screen changed. Both outcomes now say what happened, and close the form.
+  test "adding a sender says it worked and closes the form", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/")
+    render_click(view, "toggle_add_contact", %{})
+
+    html =
+      view
+      |> form(~s(form[phx-submit="add_contact"]), %{"entry" => "dana@example.org"})
+      |> render_submit()
+
+    assert html =~ "Added to trusted senders"
+    refute has_element?(view, ~s(form[phx-submit="add_contact"]))
+  end
+
+  test "adding a sender who is already trusted says so and writes nothing", %{
+    conn: conn,
+    root: root
+  } do
+    path = Path.join(root, "memory/trusted-email-senders.md")
+    File.write!(path, "# Trusted email senders\n\n### boss@example.org\n- Status: operator\n")
+    before = File.read!(path)
+
+    {:ok, view, _html} = live(conn, ~p"/")
+    render_click(view, "toggle_add_contact", %{})
+
+    html =
+      view
+      |> form(~s(form[phx-submit="add_contact"]), %{"entry" => "Boss@Example.org"})
+      |> render_submit()
+
+    assert html =~ "Already a trusted sender"
+    refute has_element?(view, ~s(form[phx-submit="add_contact"]))
+    assert File.read!(path) == before
   end
 
   describe "agent chat panel" do
