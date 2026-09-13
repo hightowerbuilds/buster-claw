@@ -38,7 +38,12 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
 
   describe "the tab" do
     test "opens — the select_home_tab guard is a whitelist, so this is not a formality",
-         %{conn: conn} do
+         %{conn: conn, root: root} do
+      # An empty group is dropped, so a track has to exist for "Music" to be a
+      # Material submenu. Until 09-13 this line passed with NO track, because the
+      # word came from the dock's music player — deleted with THREE_DOORS
+      # Phase 2 — not from the Studio. Filename-only: Music.tracks/0 reads names.
+      File.write!(Path.join([root, "sounds", "music", "Miles Davis - So What.mp3"]), "")
       {_view, html} = open_studio(conn)
 
       # The catalog is behind the menu bar since 08-16, not listed down a
@@ -1105,7 +1110,9 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
     # **Music itself stayed**, which is the half worth asserting — chopping a
     # song into a mix is exactly the creative work this tab is for. So the
     # tracks remain material and only the management surface went.
-    test "is gone, and music is still material", %{conn: conn} do
+    test "is gone, and music is still material", %{conn: conn, root: root} do
+      # See "the tab" above: the group only renders with a track in it.
+      File.write!(Path.join([root, "sounds", "music", "Miles Davis - So What.mp3"]), "")
       {_view, html} = open_studio(conn)
 
       refute html =~ "Add music"

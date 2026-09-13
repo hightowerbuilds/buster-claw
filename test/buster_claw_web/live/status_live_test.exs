@@ -50,7 +50,9 @@ defmodule BusterClawWeb.StatusLiveTest do
     # Get Started moved to a Settings sub-tab — the home page no longer carries it.
     refute response =~ ~s(id="home-get-started")
     refute response =~ "Install Claude Code"
-    refute response =~ "Go on duty"
+    # "Go on duty" is the DOCK's control since 09-13 (THREE_DOORS Phase 2), on
+    # every page; the old home-panel version is what must stay gone.
+    refute response =~ ~s(id="home-on-duty")
     refute response =~ "./buster-claw shift run"
     # The unattended-shift panel was removed; the chat + prompt pathway replaces it.
     refute response =~ ~s(id="home-shift")

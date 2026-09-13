@@ -43,7 +43,7 @@ defmodule BusterClaw.TerminalCommands.Builtins do
           key: "on-duty",
           label: "Go On Duty",
           description:
-            "Open an unattended shift AND watch Gmail: the agent works the queue and replies in-thread to trusted-sender requests under the per-shift run cap + kill-switch + no-sleep. Ctrl-C stands down.",
+            "Open an unattended shift AND watch Gmail: the agent works the queue and replies in-thread to trusted-sender requests under the per-shift run cap + kill-switch + no-sleep. Ctrl-C only stops the polling; stand down with `./buster-claw off-duty` or the dock's Stand down button.",
           command: "./buster-claw on-duty",
           default?: true
         },

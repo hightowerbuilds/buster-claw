@@ -39,6 +39,7 @@ defmodule BusterClaw.Application do
         dispatcher_child(),
         analyzer_child(),
         telephony_drain_child(),
+        mailman_child(),
         notifications_scheduler_child(),
         # Per-conversation chat: a Registry for {:via} lookup by conv_id and a
         # DynamicSupervisor that starts one Chat process per open conversation,
@@ -195,6 +196,16 @@ defmodule BusterClaw.Application do
   defp telephony_drain_child do
     if Application.get_env(:buster_claw, :telephony_drain_enabled, true) do
       BusterClaw.Telephony.Drain
+    end
+  end
+
+  # The in-app Gmail poller (THREE_DOORS Phase 2). Same posture as the drain:
+  # runs by default and decides per tick whether an unattended shift is active,
+  # so a shift started from the dock receives mail without a terminal loop.
+  # Off in tests, which drive `tick/1` directly.
+  defp mailman_child do
+    if Application.get_env(:buster_claw, :mailman_enabled, true) do
+      BusterClaw.Mailman
     end
   end
 

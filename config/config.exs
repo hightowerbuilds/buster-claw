@@ -41,6 +41,9 @@ config :buster_claw,
   # "runs" metric). Chat spawns headless Claude, so the run belongs on the trail.
   agent_chat_audit: true,
   orchestrator_tick_ms: 30_000,
+  # The in-app Gmail poll cadence while an unattended shift is active; matches
+  # the CLI's `on-duty` default.
+  mailman_tick_ms: 60_000,
   # Crash-loop brake for the unattended shift: this many consecutive raising
   # ticks stops the shift outright.
   orchestrator_max_consecutive_failures: 5,

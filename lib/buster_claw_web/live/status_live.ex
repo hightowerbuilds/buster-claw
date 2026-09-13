@@ -82,9 +82,6 @@ defmodule BusterClawWeb.StatusLive do
       BusterClaw.Contacts.subscribe()
       # Keep the Activity tab's BC Minutes live as the agent appends entries.
       BusterClaw.Journal.subscribe()
-      # The Music tab renders transport it does not own — the player is the
-      # sticky dock LiveView, so its state arrives over PubSub.
-      BusterClaw.Music.Player.subscribe_state()
       # And the Vox tab: a render started here can take tens of minutes, so its
       # completion has to find whichever surface is still open. Subscribed by the
       # host for the usual reason — a component shares this process, and would

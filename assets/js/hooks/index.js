@@ -29,7 +29,6 @@ import {FileTreeDnd} from "./file_tree_dnd.js"
 import {WorkspaceDropzone} from "./workspace_dropzone.js"
 import {ChatDropzone} from "./chat_dropzone.js"
 import {NotifySound, SoundPreview} from "./notify_sound.js"
-import {MusicPlayer} from "./music_player.js"
 import {Composer} from "./composer.js"
 import {NoteEditor} from "./note_editor.js"
 import StudioMenuBar from "./studio_menu_bar.js"
@@ -38,7 +37,6 @@ import {NoteContextMenu, NoteTitle} from "./note_context.js"
 import {ClinchManager, ClinchAppKeys, RecoveryKey} from "./clinch.js"
 
 export const Hooks = {
-  MusicPlayer,
   VoiceRecorder,
   VoiceAudition,
   CornerWidget,

@@ -59,7 +59,7 @@ defmodule BusterClawWeb.RequireOnboarding do
     BusterClawWeb.DockLive,
     BusterClawWeb.DockNavLive,
     BusterClawWeb.DutyTabLive,
-    BusterClawWeb.MusicPlayerLive
+    BusterClawWeb.DutyDockLive
   ]
 
   @allowed_views @allowed_destinations ++ @sticky_children

@@ -271,9 +271,11 @@ defmodule BusterClawWeb.SetupLive do
               </li>
               <li>
                 <span class="font-semibold">It shows you what it did</span>
-                — every change lands on an audit feed you can read, and you can stop it at any
-                time with the <span class="font-semibold">Stand down</span>
-                button in the bar at the bottom of the screen.
+                — every change lands on an audit feed you can read.
+                <span class="font-semibold">Go on duty</span>
+                and <span class="font-semibold">Stand down</span>
+                are both one button in the dock at
+                the bottom of the screen.
               </li>
             </ul>
             <%!-- "Everything runs on your machine" was the old line here and it was

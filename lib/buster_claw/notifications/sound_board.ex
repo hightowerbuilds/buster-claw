@@ -7,8 +7,7 @@ defmodule BusterClaw.Notifications.SoundBoard do
   existing PubSub families and asks this module two questions per message:
   *does this event ring* (`event_key/1`) and *is it allowed to right now*
   (`allow/3`). Both are pure functions, because an event-to-sound policy you
-  can only test by mounting a LiveView is a policy nobody tests — the same
-  split `Music.Player` uses, for the same reason.
+  can only test by mounting a LiveView is a policy nobody tests.
 
   ## The mapping is the policy
 

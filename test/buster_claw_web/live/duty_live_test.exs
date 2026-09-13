@@ -15,7 +15,6 @@ defmodule BusterClawWeb.DutyLiveTest do
     {:ok, view, _} = live(conn, ~p"/")
     bridge = find_live_child(view, "bc-duty-tab")
     assert has_element?(bridge, "#duty-tab-state[data-active=false]")
-    refute has_element?(view, "#bc-duty-dock")
 
     {:ok, _} = Commands.call("shift_start", %{"unattended" => true})
     assert has_element?(bridge, "#duty-tab-state[data-active=true]")
@@ -38,24 +37,32 @@ defmodule BusterClawWeb.DutyLiveTest do
     refute has_element?(duty, "#bc-duty-stand-down[data-claw-confirm]")
   end
 
-  test "the duty page is hidden when off duty", %{conn: conn} do
-    assert {:error, {:live_redirect, %{to: "/"}}} = live(conn, ~p"/duty")
+  test "the duty page renders idle when off duty, with what a shift needs", %{conn: conn} do
+    {:ok, duty, _} = live(conn, ~p"/duty")
+    assert has_element?(duty, "#duty-idle", "Buster Claw is not watching")
+    refute has_element?(duty, "#duty-page")
+    assert has_element?(duty, "#duty-phone")
+    assert has_element?(duty, "#duty-email")
+    # Nothing is connected here, so the button gives way to the blockers.
+    assert has_element?(duty, "#duty-blockers", "Before going on duty")
+    refute has_element?(duty, "#bc-duty-go-on-duty")
   end
 
-  test "standing down latches the brake and returns home", %{conn: conn} do
+  test "standing down latches the brake and the page goes idle", %{conn: conn} do
     {:ok, _} = Orchestration.start_shift(unattended: true)
     {:ok, duty, _} = live(conn, ~p"/duty")
     duty |> element("#bc-duty-stand-down") |> render_click()
-    assert_redirect(duty, ~p"/")
     refute Orchestration.shift_active?()
     assert Orchestration.kill_switch_engaged?()
+    assert has_element?(duty, "#duty-idle")
+    refute has_element?(duty, "#duty-page")
   end
 
-  test "external stop closes an open duty page", %{conn: conn} do
+  test "external stop drops an open duty page to idle", %{conn: conn} do
     {:ok, _} = Orchestration.start_shift()
     {:ok, duty, _} = live(conn, ~p"/duty")
     {:ok, _} = Orchestration.stop_shift()
-    assert_redirect(duty, ~p"/")
+    assert has_element?(duty, "#duty-idle")
   end
 
   test "queue progress and audit events arrive live without moving existing records", %{

@@ -74,6 +74,8 @@ config :buster_claw, :analyzer_enabled, false
 # The BusterPhone relay drain is off in tests; the Drain suite starts its own
 # instance with Req.Test stubs and drives it via drain/1 directly.
 config :buster_claw, :telephony_drain_enabled, false
+# The mailman suite drives `tick/1` directly; a live ticker would race it.
+config :buster_claw, :mailman_enabled, false
 # The Notify scheduler is off in tests; the Scheduler suite starts its own
 # instance and drives it via tick_now/1, and the context suite calls fire_due/1.
 config :buster_claw, :notifications_scheduler_enabled, false

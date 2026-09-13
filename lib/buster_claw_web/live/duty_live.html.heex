@@ -1,4 +1,64 @@
 <Layouts.app flash={@flash} socket={@socket}>
+  <section :if={!@shift} id="duty-idle" class="space-y-4 font-mono text-xs leading-relaxed">
+    <header class="flex flex-wrap items-start justify-between gap-4 border-b border-base-content/10 pb-4">
+      <div>
+        <p class="flex items-center gap-2 text-[11px] font-medium text-base-content/60">
+          <span class="size-1.5 rounded-full bg-base-content/30" aria-hidden="true"></span>
+          Off duty
+        </p>
+        <h1 class="mt-1 text-sm font-medium tracking-normal">
+          Buster Claw is not watching
+        </h1>
+        <p class="mt-1 text-[11px] text-base-content/50">
+          On duty, it watches Gmail and works requests from trusted senders on its own until you
+          stand down.
+        </p>
+      </div>
+      <div class="max-w-xs sm:text-right">
+        <button
+          :if={@readiness.ready?}
+          id="bc-duty-go-on-duty"
+          type="button"
+          phx-click="go_on_duty"
+          class="rounded border border-primary/60 px-3 py-1.5 text-[11px] font-medium text-primary transition hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          Go on duty
+        </button>
+        <p :if={!@readiness.ready?} id="duty-blockers" class="text-[11px] text-base-content/60">
+          Before going on duty:
+          <span :for={b <- @readiness.blockers} class="block">
+            <.link navigate={b.href} class="underline underline-offset-4 hover:text-primary">
+              {b.label}
+            </.link>
+          </span>
+        </p>
+      </div>
+    </header>
+
+    <div class="grid gap-3 sm:grid-cols-2">
+      <.channel
+        id="duty-phone"
+        icon="hero-phone"
+        label="Phone"
+        ready={@phone_ready}
+        detail="Incoming calls, voicemail, and texts. Trusted requests become queue work."
+        href={~p"/phone"}
+      />
+      <.channel
+        id="duty-email"
+        icon="hero-envelope"
+        label="Email"
+        ready={@email_ready}
+        detail={
+          if @email_ready,
+            do: "#{@email_label} · #{@trusted_count} trusted sender(s)",
+            else: "Connect Google to receive trusted email requests."
+        }
+        href={~p"/settings?tab=google"}
+      />
+    </div>
+  </section>
+
   <section :if={@shift} id="duty-page" class="space-y-4 font-mono text-xs leading-relaxed">
     <header class="flex flex-wrap items-start justify-between gap-4 border-b border-base-content/10 pb-4">
       <div>

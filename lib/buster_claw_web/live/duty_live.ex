@@ -3,10 +3,16 @@ defmodule BusterClawWeb.DutyLive do
   The on-duty workspace: connection readiness, live activity, and the stop control.
   Existing activity records remain in their original surfaces. Standing down
   latches the brake before stopping the shift; an in-flight run still finishes.
+
+  Renders when idle too (THREE_DOORS Phase 2). Until 09-13 this page bounced
+  home the moment no shift was active, so it could only be seen once a shift had
+  already been started from a terminal. Idle, it shows the same readiness cards
+  and the Go on duty control, so what a shift needs is visible before one runs.
   """
   use BusterClawWeb, :live_view
 
-  alias BusterClaw.{Dispatch, DutyActivity, Google, Journal, Orchestration, Sentinel, Telephony}
+  alias BusterClaw.{Dispatch, Duty, DutyActivity, Google, Journal, Orchestration, Sentinel}
+  alias BusterClaw.Telephony
   alias BusterClaw.Telephony.Relay
 
   @impl true
@@ -33,42 +39,67 @@ defmodule BusterClawWeb.DutyLive do
 
   @impl true
   def handle_event("stand_down", _params, socket) do
-    case Orchestration.stand_down("stood down from the duty tab") do
+    case Duty.stand_down(:duty_page) do
       {:ok, _result} ->
-        Sentinel.observe(:security_block, "Shift stopped by the operator (duty tab)", %{})
-
         {:noreply,
          socket
          |> put_flash(:info, "Stood down. No new work will start; a run in progress finishes.")
-         |> push_navigate(to: ~p"/")}
+         |> refresh()}
 
       {:error, _reason} ->
         {:noreply, put_flash(socket, :error, "Could not stand down. Run ./buster-claw off-duty.")}
     end
   end
 
+  def handle_event("go_on_duty", _params, socket) do
+    case Duty.go_on_duty(:duty_page, agent_cli_opts()) do
+      {:ok, _shift} ->
+        {:noreply, refresh(socket)}
+
+      {:error, {:not_ready, [blocker | _]}} ->
+        {:noreply, socket |> put_flash(:error, "#{blocker.label} first.") |> refresh()}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Could not start a shift.")}
+    end
+  end
+
   defp refresh(socket) do
+    accounts = Google.list_account_summaries()
+
+    socket =
+      socket
+      |> assign(:phone_ready, Relay.configured?())
+      |> assign(:email_ready, Enum.any?(accounts, &Duty.account_ready?/1))
+      |> assign(
+        :email_label,
+        accounts |> Enum.filter(&Duty.account_ready?/1) |> Enum.map_join(", ", & &1.email)
+      )
+
     case Orchestration.active_shift() do
       nil ->
-        socket |> assign(:shift, nil) |> push_navigate(to: ~p"/")
+        socket
+        |> assign(:shift, nil)
+        |> assign(:readiness, Duty.readiness(agent_cli_opts()))
+        |> assign(:trusted_count, length(BusterClaw.TrustedSenders.list_entries()))
+        |> stream(:activity, [], reset: true)
 
       shift ->
-        accounts = Google.list_account_summaries()
-
         socket
         |> assign(:shift, shift)
-        |> assign(:phone_ready, Relay.configured?())
-        |> assign(:email_ready, Enum.any?(accounts, &email_ready?/1))
-        |> assign(
-          :email_label,
-          accounts |> Enum.filter(&email_ready?/1) |> Enum.map_join(", ", & &1.email)
-        )
+        |> assign(:readiness, %{ready?: true, blockers: []})
+        |> assign(:trusted_count, length(BusterClaw.TrustedSenders.list_entries()))
         |> stream(:activity, DutyActivity.list(shift), reset: true)
     end
   end
 
-  defp email_ready?(account) do
-    account.enabled and account.has_refresh_token and not account.reconnect_needed
+  # Same seam `DutyDockLive` honours: the suite pins `:agent_cli` in app env
+  # because the machine running it may or may not have `claude` on PATH.
+  defp agent_cli_opts do
+    case Application.get_env(:buster_claw, :agent_cli) do
+      {_backend, _path} -> [agent_cli?: true]
+      _ -> []
+    end
   end
 
   attr :id, :string, required: true
