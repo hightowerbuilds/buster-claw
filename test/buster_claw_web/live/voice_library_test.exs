@@ -77,11 +77,33 @@ defmodule BusterClawWeb.VoiceLibraryTest do
 
   describe "the capability gate" do
     # The server does not claim to know whether capture works — V.4a has never
-    # run. It renders what the browser reported.
-    test "starts by saying it is still checking", %{conn: conn} do
+    # run in a packaged build. It renders what the browser reported, and until the
+    # operator turns the microphone on there is nothing to report. (09-13-26: the
+    # hook used to open it on mount, which is what crashed the dev desktop app.)
+    test "starts off, and says how to begin", %{conn: conn} do
       view = conn |> open_library() |> section("record")
 
-      assert render(view) =~ "Checking whether this app can open a microphone"
+      assert render(view) =~ "Turn on the microphone to check your level"
+      refute render(view) =~ "Checking whether this app can open a microphone"
+      assert has_element?(view, "#studio-recorder-status[data-armed='false']")
+    end
+
+    # Not a release under the test suite, so the hook's dev-window refusal applies.
+    test "the recorder tells the hook it is talking to a dev server", %{conn: conn} do
+      view = conn |> open_library() |> section("record")
+
+      assert has_element?(view, "#studio-recorder[data-dev-server='true']")
+    end
+
+    test "the dev desktop window's refusal says why, and where recording works", %{conn: conn} do
+      view = recording(conn)
+      render_hook(view, "contribute", %{"do" => "capability", "state" => "unbundled"})
+
+      html = render(view)
+      assert html =~ "dev desktop window"
+      assert html =~ "packaged app"
+      assert html =~ "127.0.0.1:4000"
+      assert has_element?(view, "#studio-recorder-status[data-armed='false']")
     end
 
     test "a denial names what stopped it, and stays un-armed", %{conn: conn} do
@@ -106,11 +128,11 @@ defmodule BusterClawWeb.VoiceLibraryTest do
       assert render(view) =~ "no microphone API at all"
     end
 
-    test "a forged capability value degrades to unproven rather than arming", %{conn: conn} do
+    test "a forged capability value degrades to off rather than arming", %{conn: conn} do
       view = recording(conn)
       render_hook(view, "contribute", %{"do" => "capability", "state" => "ready-ish"})
 
-      assert render(view) =~ "Checking whether this app can open a microphone"
+      assert render(view) =~ "Turn on the microphone to check your level"
       assert has_element?(view, "#studio-recorder-status[data-armed='false']")
     end
   end

@@ -23,9 +23,17 @@
 //
 // THE CAPABILITY ANSWER IS PUSHED BACK, NOT ASSUMED. V.4a — does getUserMedia
 // work in a packaged build? — has never been run. So this probes and reports
-// what it actually found, and the server renders that sentence. In Chrome and
-// in `cargo tauri dev` it may work today; in a signed build it will say what
-// stopped it. Neither is hard-coded.
+// what it actually found, and the server renders that sentence. Neither answer
+// is hard-coded.
+//
+// THE MICROPHONE OPENS ON A CLICK, NEVER ON MOUNT (09-13-26). It used to open in
+// mounted(), so the meter was already moving when the recorder appeared. That
+// made RENDERING the recorder a microphone request — and `cargo tauri dev` runs a
+// bare binary, not a .app, so macOS finds no usage description for it and TCC
+// answers the request by killing the whole app. The reference recorder had just
+// moved onto the Vox tab, so every click on that tab crashed the app. Now the
+// first click turns the microphone on (the meter still runs before you arm,
+// which is V.6's point), the next click records, the one after stops.
 import {analyse, band, createHold, meterFraction, toDb, TARGET_LOW_DB, TARGET_HIGH_DB} from "../lib/meter.js"
 
 // A processor that forwards raw frames to the main thread. Registered from a
@@ -69,9 +77,31 @@ export function isArmed(dataset) {
   return dataset?.armed !== "false"
 }
 
+// THE ONE HOST THAT MUST NOT ASK. The dev desktop binary cannot survive a
+// microphone request (see the header), and it is the only desktop window a dev
+// server is ever shown in — a packaged app runs its own release, never a dev
+// server. So "inside Tauri, talking to a dev server" is where the recorder
+// refuses instead of asking. A browser at 127.0.0.1:4000 has its own grant and
+// records normally. The server says which kind it is with `data-dev-server`.
+export function micBlockedHere(win, dataset) {
+  return Boolean(win?.__TAURI__) && dataset?.devServer === "true"
+}
+
+// One button, three jobs, decided by two facts.
+export function clickAction({open, recording}) {
+  if (!open) return "open"
+  return recording ? "stop" : "start"
+}
+
+export function buttonLabel({open, recording}) {
+  if (!open) return "Turn on microphone"
+  return recording ? "■ Stop" : "● Record"
+}
+
 export const VoiceRecorder = {
   mounted() {
     this.recording = false
+    this.opening = false
     this.chunks = []
     this.hold = createHold()
     this.els = {
@@ -97,7 +127,9 @@ export const VoiceRecorder = {
     this.onClick = this.onClick.bind(this)
     this.els.record?.addEventListener("click", this.onClick)
 
-    this.open()
+    // Not `this.open()` — see the header. Mounting paints the button and asks
+    // nothing of the operating system.
+    this.paint()
   },
 
   destroyed() {
@@ -116,29 +148,50 @@ export const VoiceRecorder = {
 
   // THE METER RUNS BEFORE YOU ARM. V.6 calls this the single behaviour that
   // prevents most bad recordings: the operator sets their level while watching
-  // the needle, without committing to a take. So the stream opens on mount and
-  // the record button only decides whether frames are KEPT.
+  // the needle, without committing to a take. So turning the microphone on
+  // starts the meter, and the record button only decides whether frames are KEPT.
   async open() {
-    if (!navigator.mediaDevices?.getUserMedia) {
+    if (this.opening || this.stream) return
+
+    // Before anything that touches the microphone API: in the dev desktop
+    // window, touching it is what kills the app.
+    if (micBlockedHere(globalThis, this.el.dataset)) {
+      return this.report("unbundled")
+    }
+
+    const media = globalThis.navigator?.mediaDevices
+    if (!media?.getUserMedia) {
       return this.report("unsupported")
     }
+
+    this.opening = true
+    this.say("Opening the microphone…")
 
     try {
       const device = this.el.dataset.device
       const audio = device ? {...CONSTRAINTS, deviceId: {exact: device}} : CONSTRAINTS
-      this.stream = await navigator.mediaDevices.getUserMedia({audio})
+      this.stream = await media.getUserMedia({audio})
     } catch (error) {
       // A device pinned by id can vanish between enumeration and open. Retrying
       // with the default is better than reporting the whole feature denied,
       // because the two cases need different actions from the operator.
       try {
-        this.stream = await navigator.mediaDevices.getUserMedia({audio: CONSTRAINTS})
+        this.stream = await media.getUserMedia({audio: CONSTRAINTS})
       } catch (fallbackError) {
+        this.opening = false
+        this.say("")
         return this.report("denied", fallbackError?.name || String(fallbackError))
       }
     }
 
-    await this.listen()
+    try {
+      await this.listen()
+    } finally {
+      this.opening = false
+    }
+
+    this.say("")
+    this.paint()
     this.report("ready")
   },
 
@@ -224,8 +277,14 @@ export const VoiceRecorder = {
   // --- transport ------------------------------------------------------------
 
   onClick() {
-    if (this.recording) this.stop()
-    else this.start()
+    switch (clickAction({open: Boolean(this.stream), recording: this.recording})) {
+      case "open":
+        return this.open()
+      case "stop":
+        return this.stop()
+      default:
+        return this.start()
+    }
   },
 
   start() {
@@ -294,13 +353,15 @@ export const VoiceRecorder = {
   // --- painting -------------------------------------------------------------
 
   paint() {
-    // The Studio arms the button once a word is typed; a recorder with nothing to
-    // type is armed by leaving the attribute off. Same rule start() uses.
-    const armed = isArmed(this.el.dataset)
     if (!this.els.record) return
+    const open = Boolean(this.stream)
 
-    this.els.record.disabled = !armed && !this.recording
-    this.els.record.textContent = this.recording ? "■ Stop" : "● Record"
+    // Turning the microphone on is always allowed: it keeps nothing, and it is
+    // how the operator checks their level. Recording waits for the arm — a typed
+    // word in the Studio, nothing at all in Vox (the attribute is absent there,
+    // so it is always armed; the same rule start() uses).
+    this.els.record.disabled = open && !isArmed(this.el.dataset) && !this.recording
+    this.els.record.textContent = buttonLabel({open, recording: this.recording})
   },
 
   say(message) {

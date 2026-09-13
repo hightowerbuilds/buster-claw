@@ -60,4 +60,15 @@ defmodule BusterClaw.RuntimeConfig do
 
   @doc "Loopback base URL for this app's own HTTP surface."
   def local_url, do: "http://127.0.0.1:#{local_port()}"
+
+  @doc """
+  True inside a packaged release, where the boot script sets `RELEASE_NAME`;
+  false under `mix phx.server` and in tests. `BusterClaw.Application` reads the
+  same variable to decide migrations and to refuse compiled-in dev tokens.
+
+  The recorder uses it to tell the two desktop hosts apart: a dev server is only
+  ever shown in the unbundled `cargo tauri dev` binary, which macOS kills for
+  asking for the microphone (see `voice_recorder.js`).
+  """
+  def release?, do: System.get_env("RELEASE_NAME") != nil
 end

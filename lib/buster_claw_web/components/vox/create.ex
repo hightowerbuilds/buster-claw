@@ -14,6 +14,7 @@ defmodule BusterClawWeb.Vox.Create do
   """
   use BusterClawWeb, :html
 
+  alias BusterClaw.RuntimeConfig
   alias BusterClaw.Voice.Config
   alias BusterClawWeb.Vox.Progress
   alias BusterClawWeb.Vox.Quality
@@ -68,10 +69,11 @@ defmodule BusterClawWeb.Vox.Create do
           phx-target={@target}
           data-event-take="reference_take"
           data-event-report="reference_report"
+          data-dev-server={to_string(not RuntimeConfig.release?())}
           class="flex flex-col gap-2"
         >
           <div data-role="format" class="font-mono text-[0.625rem] text-base-content/55">
-            opening the microphone…
+            Microphone off.
           </div>
 
           <div class="relative h-2 overflow-hidden rounded-sm bg-base-300">
@@ -85,7 +87,7 @@ defmodule BusterClawWeb.Vox.Create do
 
           <div class="flex flex-wrap items-center gap-2 font-mono text-[0.6875rem]">
             <button type="button" data-role="record" class="btn btn-primary btn-xs">
-              ● Record
+              Turn on microphone
             </button>
             <span data-role="peak" class="text-base-content/55">peak —</span>
             <span data-role="clip" class="text-error" hidden>clipped</span>
@@ -98,7 +100,11 @@ defmodule BusterClawWeb.Vox.Create do
           Security → Microphone, and allow Buster Claw.
         </p>
         <p :if={match?({"unsupported", _}, @mic_state)} class="ic-vox-note">
-          No microphone here. Recording works in the desktop app, not in a browser tab.
+          No microphone API in this window, so recording can't start here.
+        </p>
+        <p :if={match?({"unbundled", _}, @mic_state)} class="ic-vox-note">
+          The dev desktop window can't use the microphone — macOS stops an unpackaged app
+          that asks. Record in the packaged app, or in a browser at 127.0.0.1:4000.
         </p>
 
         <span class="ic-vox-note">{@ref_note}</span>

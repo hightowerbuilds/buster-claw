@@ -285,6 +285,11 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
       assert html =~ ~s(phx-hook="VoiceRecorder")
       assert html =~ ~s(data-event-take="reference_take")
       assert html =~ ~s(data-event-report="reference_report")
+      # The microphone is off until a click (09-13-26), and the hook is told this
+      # is a dev server, so the dev desktop window refuses instead of crashing.
+      assert html =~ ~s(data-dev-server="true")
+      assert html =~ "Microphone off."
+      assert html =~ "Turn on microphone"
       # Every handle the hook reaches for is present.
       for role <- ~w(record meter peak clip format target-zone status) do
         assert html =~ ~s(data-role="#{role}"), "no #{role} element for the recorder"
@@ -338,6 +343,23 @@ defmodule BusterClawWeb.VoiceLiveEngineTest do
         })
 
       assert html =~ "Privacy"
+    end
+
+    # 09-13-26: clicking the Vox tab crashed the dev desktop app, because the
+    # recorder opened the microphone on mount. It opens on a click now, and in
+    # the dev window the hook refuses instead — this is the sentence it gets.
+    test "the dev desktop window's refusal says why, and where recording works", %{conn: conn} do
+      absent()
+      {:ok, view, _html} = live(conn, ~p"/voice")
+      _ = open_tab(view, "create")
+
+      html =
+        view
+        |> element("#voice-recorder")
+        |> render_hook("reference_report", %{"do" => "capability", "state" => "unbundled"})
+
+      assert html =~ "packaged app"
+      assert html =~ "127.0.0.1:4000"
     end
 
     # The operator, 09-05: "we need a little animation that shows that the model

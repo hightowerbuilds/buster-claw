@@ -159,10 +159,11 @@ defmodule BusterClawWeb.Studio.Recorder do
         phx-update="ignore"
         data-device={@recorder.device}
         data-armed={to_string(@recordable?)}
+        data-dev-server={to_string(not BusterClaw.RuntimeConfig.release?())}
         class="shrink-0 space-y-1"
       >
         <div data-role="format" class="font-mono text-[0.65rem] text-base-content/60">
-          No input opened yet.
+          Microphone off.
         </div>
 
         <%!-- The TARGET ZONE, which V.6 asks for by name: "-60 to 0, with a
@@ -197,10 +198,9 @@ defmodule BusterClawWeb.Studio.Recorder do
         <button
           type="button"
           data-role="record"
-          disabled
           class="mt-1 w-full rounded border-2 border-base-content/20 px-3 py-2 font-display text-sm font-black uppercase tracking-wide text-base-content/35 transition disabled:cursor-not-allowed"
         >
-          ● Record
+          Turn on microphone
         </button>
       </div>
 
@@ -234,8 +234,8 @@ defmodule BusterClawWeb.Studio.Recorder do
   end
 
   # The one sentence the operator reads when they cannot record. It names what
-  # actually stopped them rather than "unavailable", because the three causes
-  # need three different actions and two of them are not the operator's fault.
+  # actually stopped them rather than "unavailable", because each cause needs a
+  # different action and most of them are not the operator's fault.
   defp capability_line(%{capture: :ready, word: word}) do
     case String.split(String.trim(word), ~r/\s+/u, trim: true) do
       [] ->
@@ -252,8 +252,16 @@ defmodule BusterClawWeb.Studio.Recorder do
     end
   end
 
-  defp capability_line(%{capture: :unproven}),
-    do: "Checking whether this app can open a microphone…"
+  defp capability_line(%{capture: :off}),
+    do:
+      "Turn on the microphone to check your level, then type a word and record " <>
+        "yourself saying it."
+
+  defp capability_line(%{capture: :unbundled}),
+    do:
+      "The microphone stays off in the dev desktop window: macOS stops an unpackaged app " <>
+        "that asks for it, so this build does not ask. Record in the packaged app, or open " <>
+        "127.0.0.1:4000 in a browser."
 
   defp capability_line(%{capture: :unsupported}),
     do:

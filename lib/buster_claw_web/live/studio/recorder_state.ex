@@ -21,24 +21,24 @@ defmodule BusterClawWeb.Studio.RecorderState do
 
   ## The capability gate is the client's answer, not a guess here
 
-  **Nothing in this app has ever opened a microphone**, and whether it can is an
-  unresolved question — V.4a, the `getUserMedia` spike, has never been run
-  against a packaged build. So the server does not claim to know. It starts at
-  `:unproven` and the browser reports what it actually found:
+  **Nothing in this app has opened a microphone in a packaged build** — V.4a, the
+  `getUserMedia` spike, has never been run there. So the server does not claim to
+  know. It starts at `:off`, and when the operator turns the microphone on the
+  browser reports what it actually found:
 
   | State | Means |
   |---|---|
-  | `:unproven` | the hook has not answered yet |
+  | `:off` | not turned on yet — the hook never opens it on its own |
   | `:ready` | a real input stream opened |
   | `:denied` | the host refused — with the reason it gave |
   | `:unsupported` | no `mediaDevices` at all |
+  | `:unbundled` | the dev desktop window, where asking would crash the app |
 
   This is why the recorder can be built and shipped before the entitlement is:
-  in Chrome at `localhost:4000` and in `cargo tauri dev` it may genuinely work
-  today, and in a packaged build it will honestly say what stopped it instead of
-  offering a button that does nothing. The alternative — hard-coding "capture is
-  unavailable" — would have made the feature untestable by the one person who
-  can run the spike.
+  in Chrome at `localhost:4000` it genuinely works today, and in a packaged build
+  it will honestly say what stopped it instead of offering a button that does
+  nothing. The alternative — hard-coding "capture is unavailable" — would have
+  made the feature untestable by the one person who can run the spike.
   """
   import Phoenix.Component
 
@@ -55,7 +55,7 @@ defmodule BusterClawWeb.Studio.RecorderState do
       devices: [],
       device: nil,
       word: "",
-      capture: :unproven,
+      capture: :off,
       capture_detail: nil,
       notice: nil
     })
@@ -199,10 +199,11 @@ defmodule BusterClawWeb.Studio.RecorderState do
   defp put(socket, key, value),
     do: assign(socket, :recorder, Map.put(socket.assigns.recorder, key, value))
 
-  defp capability(state) when state in ["ready", "denied", "unsupported"],
-    do: String.to_existing_atom(state)
-
-  defp capability(_state), do: :unproven
+  defp capability("ready"), do: :ready
+  defp capability("denied"), do: :denied
+  defp capability("unsupported"), do: :unsupported
+  defp capability("unbundled"), do: :unbundled
+  defp capability(_state), do: :off
 
   defp detail(detail) when is_binary(detail), do: String.slice(detail, 0, 200)
   defp detail(_detail), do: nil

@@ -123,3 +123,26 @@ The smoke's own first two drafts were wrong, and both would have shipped a
 false green: a launcher held its output pipe open so three scenarios "passed"
 without running, and the Ctrl-C and hangup scenarios signalled before the window
 existed, so the pre-fix script passed them too.
+
+## And the Vox tab stopped crashing the app
+
+With the app finally open, the operator found one fault: every click on Home →
+Vox2B crashed the whole desktop app. macOS left three crash reports, each a
+SIGABRT from TCC — *"must contain an NSMicrophoneUsageDescription key"*. The
+recorder opened the microphone in `mounted()` so the level meter would already
+be moving, and on 09-05 the reference recorder had moved onto the Vox tab's
+default page. Rendering the recorder was a microphone request, and the unbundled
+`cargo tauri dev` binary carries no usage description, so macOS killed it. The
+repo's `Info.plist` has the key; only a packaged `.app` carries it.
+
+| | |
+|---|---|
+| (this commit) | The microphone opens on a click — Turn on microphone, then Record, then Stop — so the meter still runs before you commit to a take. In the desktop window talking to a dev server, the hook refuses and says where recording does work (a browser at 127.0.0.1:4000, or the packaged app) without touching the microphone API. The Vox and Studio recorders share the hook, so both changed |
+
+**Guards broken first:** putting `open()` back in `mounted()` fails two of the
+new JS tests; skipping the dev-window refusal fails one. `mix precommit` exit 0
+— 4,109 tests, 0 failures, bun 351/0.
+
+**Still owed:** recording has never been exercised in a packaged build (V.4a).
+The dev window now refuses rather than crashing, so the first real desktop
+recording will be that walk.
