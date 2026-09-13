@@ -1,6 +1,10 @@
 # Three doors — the first three fixes from the 09-13 UX review
 
-**Scoped 09-13-26 · Status: ACTIVE, operator decisions in Part VIII answered same day.**
+**Scoped 09-13-26 · Status: BUILT 09-13, all three phases on main (`f666f06`,
+`dfbb55f`, and the Phase 3 commit after them). Two of the three gates in Part IV
+have NOT run: the Phase 1 real-CLI smoke and the Phase 3 dev-app walk need the
+running app, and the Phase 2 walk needs a person with Google connected. See
+Part IX.**
 
 > ### The one-sentence version
 >
@@ -415,6 +419,37 @@ could refuse someone whose Google token is fine but whose account row says
 check failed, so a false refusal is diagnosable in one glance.
 
 ---
+
+## Part IX — What building it corrected (09-13)
+
+Five things the map got wrong or did not know, each caught by a test or a gate
+rather than by a person:
+
+1. **The first brief named four commands that did not exist** (`gcal_list`,
+   `document_list`, `document_read`, `notify_list`). D3 said "never list
+   commands" and the draft listed them anyway. The brief now names families by
+   prefix, and `introduction_test.exs` resolves every prefix against the
+   catalog and refuses any bare verb the catalog lacks.
+2. **D3 said the brief substitutes the workspace root. It must not.** A path
+   inside the bytes makes the digest differ per machine, so `Seed` could never
+   recognise a shipped version and every install would read as edited. The
+   brief says "this folder"; a test refutes the placeholder and the home path.
+3. **Phase 3's first cut used `handle_params/3`.** Home is also a child view
+   inside a Split pane, and a child may not define it. Two SplitLive tests
+   caught it; the param read lives in `mount/3`, which a child enters with
+   `:not_mounted_at_router`.
+4. **Two Studio tests were green for the wrong reason.** They asserted the
+   word "Music" on `/studio`, which came from the deleted dock player, not the
+   Studio's Material menu. They now seed a track first. A guard passing on a
+   neighbour's output is the pattern the 08-09 dead-code pass wrote down.
+5. **`chrome.js` is a FROZEN file and grew by 23 lines.** The cap was raised
+   with the reason in the script; the extraction it owes is unchanged.
+
+**Gates still owed** (Part IV): the Phase 1 smoke (a new conversation, "what
+can you do here?", the agent reaches for `./buster-claw`), the Phase 3 walk in
+`cargo tauri dev` (Ask → Home → sentence staged, not sent → pill fires), and the
+Phase 2 operator walk (Go on duty → email yourself → count 1 → 0 → reply →
+Stand down → `STOP` exists).
 
 ## Part VIII — Operator decisions (answered 09-13)
 
