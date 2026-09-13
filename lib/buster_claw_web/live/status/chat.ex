@@ -36,6 +36,7 @@ defmodule BusterClawWeb.Status.Chat do
   alias BusterClaw.Agent.Transcript, as: AgentTranscript
   alias BusterClaw.ChatSkin
   alias BusterClaw.ChatTextSize
+  alias BusterClaw.Introduction
   alias BusterClaw.SvgViewer
   alias BusterClaw.Voice.Clips
   alias BusterClaw.Voice.Speech
@@ -129,6 +130,22 @@ defmodule BusterClawWeb.Status.Chat do
   def delivery_param(%{"delivery" => "next"}), do: :next
   def delivery_param(_params), do: :auto
 
+  @doc """
+  The system-prompt addendum every home conversation starts with.
+
+  Three parts. The **pointer** (THREE_DOORS Phase 1) says which app this is and
+  where the on-disk brief lives — until 09-13 the addendum was the two guides
+  alone, so the assistant in the front door had never been told Buster Claw
+  existed; the full surface stays on disk because the shipped transports re-send
+  this text on every turn. The two **guides** teach a CHANNEL rather than a
+  command: drawing is a fenced block this app extracts, and a phrase is a render
+  that outlives the turn that asked for it. A model that knows neither has both
+  capabilities and uses neither.
+  """
+  def system_prompt do
+    Enum.join([Introduction.pointer(), SvgViewer.guide(), Clips.guide()], "\n\n")
+  end
+
   def dispatch_chat(socket, text, delivery) do
     # The user echo and all agent events arrive via the active conversation's
     # PubSub broadcast, so on success we don't append here. send_message/2 starts
@@ -136,15 +153,10 @@ defmodule BusterClawWeb.Status.Chat do
     # appended inline as a persistent message.
     conv_id = socket.assigns.active_chat
 
-    # Start the conversation taught what it can make (idempotent — the guides are
-    # fixed at first start; a no-op once the process exists). This was two guides
-    # until Scene3D was deleted on 08-16, one until Vox2B got a verb on 09-05.
-    #
-    # Both teach a CHANNEL rather than a command: drawing is a fenced block this
-    # app extracts, and a phrase is a render that outlives the turn that asked
-    # for it. A model that knows neither has both capabilities and uses neither.
+    # Start the conversation taught where it is and what it can make (idempotent
+    # — the addendum is fixed at first start; a no-op once the process exists).
     Chat.ensure_started(conv_id,
-      append_system_prompt: SvgViewer.guide() <> "\n\n" <> Clips.guide(),
+      append_system_prompt: system_prompt(),
       agent: BusterClaw.ModelPolicy.backend_for(:chat)
     )
 

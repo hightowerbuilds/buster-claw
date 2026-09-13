@@ -16,6 +16,7 @@ defmodule BusterClaw.Introduction do
 
   alias BusterClaw.Commands
   alias BusterClaw.Library.Artifact
+  alias BusterClaw.Seed
 
   @filename "INTRODUCTION.md"
   @rel Path.join(".buster-claw", @filename)
@@ -64,8 +65,84 @@ defmodule BusterClaw.Introduction do
 
   @markdowns Map.new(@sections, &{&1, File.read!(Path.join(@dir, &1))})
 
+  # ── The brief: CLAUDE.md and AGENTS.md at the workspace root ─────────────
+  #
+  # THREE_DOORS Phase 1. The chat's cwd is the workspace root, and every
+  # supported harness reads a memory file from cwd on its own — Claude Code
+  # `CLAUDE.md`, Codex and OpenCode `AGENTS.md` — at zero per-turn cost. The full
+  # introduction is ~17k tokens and the shipped chat transports re-send the
+  # system-prompt addendum on EVERY turn, so it cannot go there; this ~350-word
+  # brief can go on disk, and it points at the full document for the rest.
+  #
+  # It is NOT part of `@sections`: `markdown/0` is the full guide and the brief
+  # is the thing that points at it.
+  #
+  # Deliberately no `{{WORKSPACE_ROOT}}` inside: the bytes must be identical on
+  # every machine, or `BusterClaw.Seed`'s digest list could never recognise a
+  # shipped version and every install would look "edited" forever.
+  @brief_file "00-brief.md"
+  @external_resource Path.join(@dir, @brief_file)
+  @brief File.read!(Path.join(@dir, @brief_file))
+  @brief_names ~w(CLAUDE.md AGENTS.md)
+
+  # Every version of the brief ever shipped, as sha256 digests, oldest first,
+  # current last — the same contract as `BusterClaw.Jobs`. **When you edit
+  # `introduction/00-brief.md`, APPEND its new digest here**; never replace or
+  # reorder. `BusterClaw.SeedTest` fails with the digest to add if you forget.
+  @brief_versions [
+    "da2e2de14553cbca833643041b27cddcc97cbc3d626625e17877a2ffe0234d9f"
+  ]
+
   @doc "Absolute path of the installed introduction in the current workspace."
   def path, do: Artifact.workspace_path(@rel)
+
+  @doc "The seeded brief — identical bytes for `CLAUDE.md` and `AGENTS.md`."
+  def brief, do: @brief
+
+  @doc """
+  The one paragraph the home chat appends to its system prompt so a harness that
+  skipped the on-disk brief still knows where it is. Under a hundred tokens, on
+  purpose: it is re-sent every turn on the shipped transports.
+  """
+  def pointer do
+    "You are running inside Buster Claw, a Mac app that gives you a command " <>
+      "surface for the operator's mail, calendar, notes, documents, browser and " <>
+      "more through the `./buster-claw` CLI in the current folder. Read " <>
+      "`CLAUDE.md` in that folder first; `.buster-claw/INTRODUCTION.md` is the " <>
+      "full guide."
+  end
+
+  @doc """
+  Seed manifest for `BusterClaw.SeedTest`: one entry per seeded brief filename,
+  each with the current content and the full version list.
+  """
+  def seed_manifest do
+    for name <- @brief_names do
+      %{name: name, content: @brief, versions: @brief_versions}
+    end
+  end
+
+  @doc """
+  Write `CLAUDE.md` and `AGENTS.md` at the workspace root through
+  `BusterClaw.Seed`, so an unedited copy upgrades when the brief improves and an
+  edited one is the operator's. Best-effort; returns `{:ok, outcomes}` keyed by
+  filename, or `:error`.
+  """
+  def ensure_briefs do
+    File.mkdir_p!(Artifact.workspace_root())
+
+    outcomes =
+      Map.new(@brief_names, fn name ->
+        {:ok, outcome} = Seed.write(Artifact.workspace_path(name), @brief, @brief_versions)
+        {name, outcome}
+      end)
+
+    {:ok, outcomes}
+  rescue
+    error ->
+      Logger.warning("Brief seeding failed: #{Exception.message(error)}")
+      :error
+  end
 
   @doc """
   Write the freshly generated introduction to the workspace root, skipping the

@@ -12,7 +12,7 @@ defmodule BusterClaw.SeedTest do
   """
   use ExUnit.Case, async: true
 
-  alias BusterClaw.{Jobs, Seed, Skills}
+  alias BusterClaw.{Introduction, Jobs, Seed, Skills}
 
   setup do
     root = Path.join(System.tmp_dir!(), "bc_seed_#{System.unique_integer([:positive])}")
@@ -167,6 +167,38 @@ defmodule BusterClaw.SeedTest do
                "sound-cutup.md",
                "terminal-paint.md"
              ]
+    end
+  end
+
+  describe "the Introduction brief manifest" do
+    # Same review-forcing snapshot as the Jobs manifest, for the CLAUDE.md /
+    # AGENTS.md brief. Editing `introduction/00-brief.md` without appending its
+    # digest to `@brief_versions` fails here with the digest to add.
+    test "every current default's digest is the LAST entry in its version list" do
+      for %{name: name, content: content, versions: versions} <- Introduction.seed_manifest() do
+        digest = Seed.digest(content)
+
+        assert List.last(versions) == digest, """
+        The current brief (#{name}) is not the last entry in its version list.
+
+        If you edited introduction/00-brief.md, APPEND this digest to
+        @brief_versions in lib/buster_claw/introduction.ex — do not replace or
+        reorder the existing entries:
+
+            "#{digest}"
+        """
+      end
+    end
+
+    test "no version is listed twice" do
+      for %{name: name, versions: versions} <- Introduction.seed_manifest() do
+        assert versions == Enum.uniq(versions), "#{name} lists a digest more than once"
+      end
+    end
+
+    test "the manifest covers both names the harnesses read" do
+      names = Introduction.seed_manifest() |> Enum.map(& &1.name) |> Enum.sort()
+      assert names == ["AGENTS.md", "CLAUDE.md"]
     end
   end
 

@@ -819,7 +819,10 @@ check lib/buster_claw/agent/chat.ex                          1510 FROZEN
 # argued: this file grew with the command surface, so it was given room rather
 # than frozen. That is now moot — the part that grew is a markdown file, and
 # this module is just the composer.
-check lib/buster_claw/introduction.ex                         161 HELD
+# Raised 161 -> 240 on 09-13 (THREE_DOORS Phase 1): the CLAUDE.md/AGENTS.md
+# brief — seed manifest, versioned writer, and the one-paragraph pointer — lives
+# here because this is the module that owns what the model is told. ~70 lines.
+check lib/buster_claw/introduction.ex                         240 HELD
 
 # Phase 7's other half: three seed templates (162 lines of heredoc) became
 # `skill-seeds/*.md`, so the two skill seeds are now the same kind of file they
@@ -1042,7 +1045,10 @@ check lib/buster_claw_web/components/brand_art.ex              59 HELD
 check lib/buster_claw_web/live/dock_nav_live.ex                45 HELD
 # Duty is now a routed page; its markup lives in duty_live.html.heex and the
 # sticky tab-state bridge is DutyTabLive. Ratchet the controller after that split.
-check lib/buster_claw_web/live/duty_live.ex                   112 HELD
+# Raised 112 -> 140 on 09-13 (THREE_DOORS Phase 2): the page renders idle now
+# (readiness + Go on duty) instead of bouncing home; the checks themselves moved
+# OUT to BusterClaw.Duty, so the growth is the second state, not logic.
+check lib/buster_claw_web/live/duty_live.ex                   140 HELD
 # Raised 08-09, 71 -> 97, for terminal paint's Phase 0. This hook is now the one
 # place that carries "wear this theme now" out to the browser, because the
 # selected terminal theme lives in localStorage and a command has no socket. That
@@ -1279,7 +1285,9 @@ check lib/buster_claw/terminal_theme.ex                       880 HELD
 # to be an emergent property of scattered calls; splitting the registry from
 # the enforcement recreates the disease it cured. ~275 lines are the @entries
 # registry with load-bearing history comments.
-check lib/buster_claw/workspace.ex                            660 HELD
+# Raised 660 -> 680 on 09-13 (THREE_DOORS Phase 1): two registry entries,
+# CLAUDE.md and AGENTS.md, with the comment saying why they are one brief.
+check lib/buster_claw/workspace.ex                            680 HELD
 # agent_mode.ex — the reference shape, health-checked twice. All four moduledoc
 # safety properties map to enforcement code rather than hope.
 check lib/buster_claw/browser_control/agent_mode.ex           650 HELD

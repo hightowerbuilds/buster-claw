@@ -451,4 +451,96 @@ defmodule BusterClaw.IntroductionTest do
     File.write!(Path.join(root, ".buster-claw/INTRODUCTION.md"), "CUSTOM GUIDE")
     assert Introduction.read() == "CUSTOM GUIDE"
   end
+
+  # ── The brief (THREE_DOORS Phase 1) ──────────────────────────────────────
+  #
+  # The home chat's agent had never been told what Buster Claw was: its whole
+  # addendum was the drawing and voice-clip guides. The brief is what fixes
+  # that, so these guards protect the specific claims that make it work.
+
+  describe "the brief" do
+    test "names the app, the CLI, and where the full guide lives" do
+      brief = Introduction.brief()
+
+      assert brief =~ "Buster Claw"
+      assert brief =~ "./buster-claw commands"
+      assert brief =~ ".buster-claw/INTRODUCTION.md"
+      assert brief =~ "journal_append"
+    end
+
+    test "carries no per-machine text, so its bytes are the same on every install" do
+      # BusterClaw.Seed recognises a shipped version by digest. A workspace path
+      # inside the brief would make every install look edited, forever.
+      refute Introduction.brief() =~ "{{WORKSPACE_ROOT}}"
+      refute Introduction.brief() =~ "{{COMMAND_SURFACE}}"
+      refute Introduction.brief() =~ System.user_home!()
+    end
+
+    test "names families by prefix, and every prefix matches something in the catalog" do
+      # The brief lists `note_*`-style prefixes on purpose — a verb list would
+      # drift the week a command was renamed. A prefix that matches nothing is
+      # the same drift wearing a wildcard, so each one must resolve.
+      names = Commands.list_commands() |> Enum.map(& &1.name)
+
+      prefixes =
+        Regex.scan(~r/`([a-z]+)_\*`/, Introduction.brief())
+        |> Enum.map(fn [_, prefix] -> prefix end)
+        |> Enum.uniq()
+
+      assert prefixes != []
+
+      for prefix <- prefixes do
+        assert Enum.any?(names, &String.starts_with?(&1, prefix <> "_")),
+               "the brief names `#{prefix}_*` and no catalog command starts with it"
+      end
+    end
+
+    test "names no bare command the catalog does not carry" do
+      # Anything written as `word_word` in backticks that is not a prefix must be
+      # a real command, or the model is being taught a verb that will fail.
+      names = Commands.list_commands() |> Enum.map(& &1.name) |> MapSet.new()
+
+      bare =
+        Regex.scan(~r/`([a-z]+_[a-z_]+)`/, Introduction.brief())
+        |> Enum.map(fn [_, name] -> name end)
+        |> Enum.reject(&String.ends_with?(&1, "_*"))
+
+      for name <- bare do
+        assert MapSet.member?(names, name),
+               "the brief names `#{name}`, which is not in the catalog"
+      end
+    end
+
+    test "the pointer is short, because it rides every turn" do
+      pointer = Introduction.pointer()
+      assert length(String.split(pointer)) < 100
+      assert pointer =~ "Buster Claw"
+      assert pointer =~ "./buster-claw"
+      assert pointer =~ "CLAUDE.md"
+    end
+
+    test "ensure_briefs writes CLAUDE.md and AGENTS.md with identical bytes", %{root: root} do
+      assert {:ok, %{"CLAUDE.md" => :created, "AGENTS.md" => :created}} =
+               Introduction.ensure_briefs()
+
+      claude = File.read!(Path.join(root, "CLAUDE.md"))
+      agents = File.read!(Path.join(root, "AGENTS.md"))
+      assert claude == agents
+      assert claude == Introduction.brief()
+
+      # Idempotent: the second pass sees the current default and writes nothing.
+      assert {:ok, %{"CLAUDE.md" => :current, "AGENTS.md" => :current}} =
+               Introduction.ensure_briefs()
+    end
+
+    test "an edited brief is the operator's and is left alone", %{root: root} do
+      {:ok, _} = Introduction.ensure_briefs()
+      File.write!(Path.join(root, "CLAUDE.md"), "# My own rules\n")
+
+      assert {:ok, %{"CLAUDE.md" => :kept, "AGENTS.md" => :current}} =
+               Introduction.ensure_briefs()
+
+      assert File.read!(Path.join(root, "CLAUDE.md")) == "# My own rules\n"
+    end
+  end
 end

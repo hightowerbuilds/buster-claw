@@ -60,6 +60,30 @@ defmodule BusterClaw.Workspace do
       seed: {__MODULE__, :write_readme},
       note: "What this folder is and what you can put in it. Written for you."
     },
+    # CLAUDE.md and AGENTS.md carry the SAME bytes: Claude Code reads the first
+    # from cwd, Codex and OpenCode the second, and the chat's cwd is this folder.
+    # One brief, two names, so the harness the operator picked reads it without
+    # the app modelling which reads which. Seeded through BusterClaw.Seed, so an
+    # edited copy is theirs and an untouched one upgrades.
+    %{
+      name: "CLAUDE.md",
+      kind: :file,
+      tier: :core,
+      owner: BusterClaw.Introduction,
+      seed: {BusterClaw.Introduction, :ensure_briefs},
+      note:
+        "A short brief the agent reads on every chat: what this app is and how to " <>
+          "act through the CLI. Yours to edit."
+    },
+    %{
+      name: "AGENTS.md",
+      kind: :file,
+      tier: :core,
+      owner: BusterClaw.Introduction,
+      # Written by the same seed as CLAUDE.md; declared so the registry is complete.
+      seed: nil,
+      note: "The same brief as CLAUDE.md, under the name Codex and OpenCode read."
+    },
     %{
       name: ".buster-claw",
       kind: :dir,
