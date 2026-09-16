@@ -1,5 +1,7 @@
 # Buster Claw critical codebase review — 2026-08-22
 
+**Completed since this review — recorded 2026-09-15.** The Dispatcher now passes `AgentToolPolicy` to unattended runs (`f62b225`, 09-06); this is not OS confinement and does not close Critical #1. Chat briefing, dock duty controls, and browser Ask shipped 09-13 (`f666f06`, `dfbb55f`, `3028473`). The security findings remain open unless explicitly closed; the review below is the original snapshot.
+
 **Status:** Open review
 
 **Snapshot:** `e0b7e3b` plus the working-tree changes present during review

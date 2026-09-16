@@ -1,5 +1,7 @@
 # Trust claims and support — making the pitch true before strangers arrive
 
+**Completed-work update — 2026-09-15.** `G-35` media `nosniff` shipped 08-10 (`e9888ce`). `G-30` now lives in `DutyDockLive`, with Go on duty and Stand down (`dfbb55f`, 09-13). The README explicitly says refusals are visible but not approvable; the durable approval workflow remains unbuilt. Unattended tool-policy wiring (`f62b225`) does not establish OS confinement or close the loopback HTML finding.
+
 **Carved out of the launch roadmap 2026-08-09 · Status: ACTIVE, mostly R2.**
 
 > ### The one-sentence version
@@ -102,7 +104,8 @@ one reputational risk that compounds.
       in `LOCAL_TRUST.md` or close them. *Documented decisions, but decisions to defend.*
 - [ ] **G-34.** **Promoted from leftovers, HIGH #1:** walk a live signed-in checkout and confirm the
       payment gate fires. The failure mode is an agent proceeding through a real payment page.
-- [ ] **G-35.** **Promoted from leftovers, HIGH #2:** send `nosniff` on the four pipeline-less media routes.
+- [x] **G-35.** **DONE 08-10 (`e9888ce`):** `nosniff` on raw-media routes.
+      Workspace HTML isolation remains a separate open issue.
 
 
 ---

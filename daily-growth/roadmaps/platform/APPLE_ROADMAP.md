@@ -1,5 +1,7 @@
 # Apple — the complete acceptance path
 
+**Completed-work update — 2026-09-15.** `G-1`–`G-3` signing/notarization work is complete as recorded below. The macOS 15.0 floor correction (`e0b7e3b`) and automated DMG notarization/stapling (`44e8bd6`) landed 08-22. First-run `/setup` boot was fixed (`431d3cb`), and the release smoke now exercises rendered page text (`caa0ffe`). These implementation fixes do not close fresh-machine or real Apple Silicon acceptance.
+
 **Carved out of the launch roadmap 2026-08-09 · Status: ACTIVE. G-1 through G-3 DONE
 08-10 — a notarized, stapled x86_64 DMG exists. G-4 needs an Apple Silicon Mac.**
 

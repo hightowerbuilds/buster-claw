@@ -1,5 +1,7 @@
 # The QA backlog — real, and blocking nothing
 
+**Completed-work update — 2026-09-15.** Skills joined the versioned seed upgrade path on 09-02 (`dbbc54d`); Jobs was already converted. First-run setup's 500 was fixed (`431d3cb`), and the release smoke checks actual rendered page content (`caa0ffe`). Generated ACL drift is checked in CI (`ffc788c`), and the dev launcher has a process-lifecycle regression smoke (`d07772b`). The dev-window microphone mount crash was addressed by explicit activation and dev-window refusal (`978e3e7`); packaged recording acceptance remains open.
+
 **Carved out of the launch roadmap 2026-08-09 · Status: OPEN, unprioritised by design.**
 
 > **Everything here blocks nothing.** That is the entry criterion. If an item
@@ -221,7 +223,7 @@ reaches new installs only:
 
 | Seeder | Files | 08-18 |
 |---|---|---|
-| `Skills.ensure/0` | `save-note`, `shader-designer`, roster | open |
+| `Skills.ensure/0` | reference skills and roster | **DONE 09-02 (`dbbc54d`) — versioned seed upgrades** |
 | `Jobs.ensure/0` | `mail-triage`, `voicemail-triage`, `sms-triage`, roster | **DONE** — `BusterClaw.Seed`, 23 historical digests recovered from git |
 | `Jobs.seed_trusted_senders/0` | **`memory/policy.md`**, `trusted-email-senders.md`, `trusted-phone-numbers.md` | **deliberately not converted** — see below |
 | `Jobs.seed_agent_settings/0` | agent settings | **deliberately not converted** — see below |

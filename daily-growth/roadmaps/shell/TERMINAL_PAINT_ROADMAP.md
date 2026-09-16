@@ -1,6 +1,9 @@
 # Terminal paint — the agent changes its own colours, live
 
-**Scoped 08-09-26 · Status: SCOPED, nothing built.**
+**Scoped 08-09-26 · Status: Phases 0–4 SHIPPED 08-09 (`193adc5`),
+acknowledged 2026-09-15.** Live apply, the agent slot, legibility checks, all
+four verbs, and `skill-seeds/terminal-paint.md` are implemented. Phase 5 is
+intentionally empty; this does not mark the human terminal-theme walk passed.
 
 > ### The one-sentence version
 >

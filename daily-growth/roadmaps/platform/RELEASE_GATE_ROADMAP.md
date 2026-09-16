@@ -1,5 +1,7 @@
 # The release gate — the human walkthrough and the repeatable checklist
 
+**Completed-work update — 2026-09-15.** `G-2b`/`G-3` credentials and first signed artifact were completed 08-10; automated DMG notarization/stapling followed 08-22 (`44e8bd6`). `G-35` is implemented (`e9888ce`). `G-30` now has a dock Go on duty/Stand down control (`dfbb55f`). The setup boot fix (`431d3cb`), rendered-page smoke (`caa0ffe`), and generated-ACL drift guard (`ffc788c`) are in place. Human walkthrough and per-artifact checklist items remain unchecked.
+
 **Carved out of the launch roadmap 2026-08-09 · Status: ACTIVE.**
 
 > ### The one-sentence version

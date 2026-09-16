@@ -1,5 +1,7 @@
 # The fresh-machine walk — installing Buster Claw somewhere it has never been
 
+**Completed implementation — recorded 2026-09-15.** First-run setup's 500 was fixed (`431d3cb`, 08-23), and the packaged release smoke now requires rendered page text (`caa0ffe`). These fixes do not count as completing this fresh-machine walk.
+
 **A side-map of [`QA_BACKLOG`](QA_BACKLOG.md) · Scoped 08-18-26 · Status: NOT
 RUN.**
 

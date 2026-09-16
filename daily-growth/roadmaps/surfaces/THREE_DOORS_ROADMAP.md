@@ -1,7 +1,7 @@
 # Three doors — the first three fixes from the 09-13 UX review
 
 **Scoped 09-13-26 · Status: BUILT 09-13, all three phases on main (`f666f06`,
-`dfbb55f`, and the Phase 3 commit after them). Two of the three gates in Part IV
+`dfbb55f`, `3028473`). All three acceptance gates in Part IV
 have NOT run: the Phase 1 real-CLI smoke and the Phase 3 dev-app walk need the
 running app, and the Phase 2 walk needs a person with Google connected. See
 Part IX.**

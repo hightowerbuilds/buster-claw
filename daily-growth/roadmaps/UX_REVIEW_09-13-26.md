@@ -1,5 +1,7 @@
 # UX Review — 09-13-26
 
+**Completed after this review — recorded 2026-09-15.** The first three fixes shipped the same day: brief the chat (`f666f06`), Go on duty/Stand down in the dock with an in-app Mailman (`dfbb55f`), and browser Ask (`3028473`). The dock music player was removed with the duty control. Browser app tabs can now close (`0591ec7`), and contact creation lives only in Phone (`4b2ef81`). The Three doors acceptance walks remain open; the findings below describe the pre-fix snapshot.
+
 **What it is like to use Buster Claw, and how awesome it is and isn't.**
 
 This is not a code-quality review. The 09-05 review covered that. This one asks

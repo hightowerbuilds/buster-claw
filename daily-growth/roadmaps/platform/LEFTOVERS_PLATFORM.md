@@ -1,5 +1,7 @@
 # Leftovers — platform and code health
 
+**Completed-work update — 2026-09-15.** `scripts/check_file_sizes.sh` now covers core, JS, and Rust (`baa691e`). Browser pages receive secure headers/CSP through `:browser_page`; raw media routes receive `nosniff` (`e9888ce`). Generated Tauri ACL artifacts are tracked and checked for build drift (`ffc788c`). The 09-06 dead-code pass removed `DataState`, redundant heartbeat fields, and seventeen unused functions. These close those specific gaps, not the remaining hotspot or DOM-harness work.
+
 **Split out of `LEFTOVERS.md` 2026-08-09.** The tail work under the app rather
 than in it: the guards, the hotspots, the test harness that does not exist, and
 one credential to confirm.

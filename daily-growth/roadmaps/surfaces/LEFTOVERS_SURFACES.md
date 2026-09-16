@@ -1,5 +1,7 @@
 # Leftovers — surfaces
 
+**Completed-work update — 2026-09-15.** The `nosniff` item below is closed (`e9888ce`, 08-10); executable workspace HTML isolation is a separate open issue. Workspace now hosts Notes and Calendar (`e1bf48a`). Browser Ask (`3028473`), browser app-tab close controls (`0591ec7`), and Phone as the single contact-entry surface (`4b2ef81`) shipped 09-13. The Trading-specific browser tests below were superseded by Trading's deletion (`293f47f`), not passed.
+
 **Split out of `LEFTOVERS.md` 2026-08-09.** The tail work attached to a screen
 the operator can point at: Home's sub-tabs and the full-screen surfaces.
 

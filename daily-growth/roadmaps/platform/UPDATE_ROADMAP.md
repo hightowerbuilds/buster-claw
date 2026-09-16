@@ -1,5 +1,7 @@
 # The Update — how a running install becomes the next one
 
+**Completed-work update — 2026-09-15.** `G-42` version/architecture display and the `G-18` feed-building implementation shipped in `da2eaee`. `G-44` now covers Jobs (`af27853`), Skills (`dbbc54d`), and the new agent briefs (`f666f06`). TerminalCommands conversion remains open; security-state files remain excluded. No completion is recorded for `G-19a`, `G-19b`, `G-20`, `G-43`, or the live feed/key-backup checks.
+
 **Scoped 2026-08-16 · Status: ACTIVE — `G-42` and `G-18` SHIPPED 08-16.
 `G-19` is next, and as of 08-22 it BLOCKS EVERY TAGGED RELEASE.**
 
@@ -216,11 +218,11 @@ button beside an unknown current version is not a feature, it is a dare. This is
 also the smallest possible unit of user-visible progress, and it ships before any
 updater exists.
 
-- [ ] **`G-42`.** Settings → About shows the running version, read from
+- [x] **`G-42` — DONE 08-16 (`da2eaee`).** Settings → About shows the running version, read from
       `Application.spec(:buster_claw, :vsn)` — the same `VERSION` file that
       `sync_version.sh` already propagates into `tauri.conf.json` and `Cargo.toml`.
       One source of truth, already built; this only surfaces it.
-- [ ] The architecture is shown beside it. Two single-arch builds exist and a
+- [x] The architecture is shown beside it (`da2eaee`). Two single-arch builds exist and a
       support conversation that cannot establish which one is running starts twice.
 
 *Cost: an hour. Depends on nothing.*
@@ -464,9 +466,9 @@ design; it is smaller than the problem it solves.
 
 **What remains of `G-44`:**
 
-- [ ] `Skills.ensure/0` (`skills.ex:305`) and `TerminalCommands.ensure/0`
-      (`terminal_commands.ex:273`) still use create-only `maybe_write/2`. Same
-      mechanism, same shape — they need version lists recovered the same way.
+- [x] Skills uses versioned `Seed.write/3` upgrades (`dbbc54d`, 09-02).
+- [x] Agent briefs use the same versioned writer (`f666f06`, 09-13).
+- [ ] `TerminalCommands.ensure/0` still needs conversion from create-only writes.
 - [ ] **`memory/policy.md`, the trusted-sender lists, and the agent settings are
       deliberately NOT converted, and should not be by list-append.** `G-44`
       treats every seed as one problem; they are not. Those three are **security

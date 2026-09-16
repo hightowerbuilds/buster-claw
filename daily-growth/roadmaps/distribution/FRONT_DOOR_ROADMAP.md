@@ -1,5 +1,7 @@
 # The front door — one sentence, four surfaces
 
+**Completed-work update — 2026-09-15.** Chat now receives an app pointer and seeded `CLAUDE.md`/`AGENTS.md` briefs (`f666f06`); this is the briefing implementation, not a completed `VI-g` real-agent health check. `VI-k` is complete: onboarding describes the dock Stand down button, and that dock control is implemented (`dfbb55f`). Browser Ask also shipped (`3028473`).
+
 **Carved out of the launch roadmap 2026-08-09 · Status: ACTIVE — `VI-a` DONE 08-16.**
 
 > ### The one-sentence version

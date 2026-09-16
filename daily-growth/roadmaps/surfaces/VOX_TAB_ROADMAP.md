@@ -1,5 +1,7 @@
 # Vox — record it, make it say something, put it somewhere
 
+**Completed-work update — 2026-09-15.** Phases 0–3 and clip installation into Notify are implemented. Real renders and measured performance fixes are recorded in the 09-06 summary; recording grades and cost estimates are now in the surface. Opening Vox no longer requests the microphone on mount (`978e3e7`, 09-13). Phase 4's in-Vox routing and packaged recording walkthrough remain open.
+
 **Scoped 2026-09-05 · Status: Phases 0–3 SHIPPED 09-05, plus `D6`–`D10`.
 Phase 4 next — and half of it arrived early, see `D10`.**
 

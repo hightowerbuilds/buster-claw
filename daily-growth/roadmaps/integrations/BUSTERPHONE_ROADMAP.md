@@ -1,5 +1,7 @@
 # BusterPhone — the Message Machine
 
+**Completed-work update — 2026-09-15.** Inbound service was verified in the app 08-14. Outbound SMS and calling were deleted 08-18 (`e08d1cd`); the current product is intake-only, governed by `PHONE_INTAKE_ROADMAP.md`. Greeting support shipped 09-02 (`4da0ddd`), the Phone rail gained its unheard count 09-06 (`c5dcd91`), and Phone became the single contact-entry surface 09-13 (`4b2ef81`). These do not mark number vending or external account actions complete.
+
 **Give Buster Claw a real phone number.** It answers calls like a classic
 answering machine (greeting → beep → recorded message in the Library) and
 sends/receives SMS through the same command surface everything else uses.

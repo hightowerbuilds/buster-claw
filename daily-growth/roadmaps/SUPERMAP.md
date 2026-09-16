@@ -1,5 +1,18 @@
 # The Supermap
 
+**Completed-work update — 2026-09-15 (through `4b2ef81`).**
+
+- Terminal paint Phases 0–4 shipped 08-09 (`193adc5`): live apply, agent palette, legibility checks, four commands, and the reference skill.
+- `G-35` media `nosniff` shipped 08-10 (`e9888ce`). The size inventory expanded to core, JS, and Rust on 08-16 (`baa691e`).
+- Updater version display and feed-building code shipped 08-16 (`da2eaee`); automated DMG notarization/stapling shipped 08-22 (`44e8bd6`). These do not close the updater or fresh-machine acceptance gates.
+- Seed upgrades cover Jobs (08-18), Skills (09-02, `dbbc54d`), and the new agent briefs (09-13, `f666f06`).
+- Voice engine/rendering, chimes, greeting support, reference recording, and spoken messages shipped 09-02–03. Vox Phases 0–3, chat voice verbs/guidance, and Workspace tabs shipped 09-05. Real render measurements and performance fixes followed 09-06; packaged recording remains unverified.
+- Build-hygiene and dead-code work from the 09-05 review landed 09-05–06; its remaining phases stay open.
+- [Three doors](surfaces/THREE_DOORS_ROADMAP.md) shipped 09-13: chat briefing (`f666f06`), dock duty and Mailman (`dfbb55f`), browser Ask (`3028473`). Their three acceptance walks remain open.
+- Also completed 09-13: dev launcher cleanup (`d07772b`), Vox mount-crash fix (`978e3e7`), browser app-tab close controls (`0591ec7`), and one contact-entry surface in Phone (`4b2ef81`).
+
+The dated details below retain their original context; this update acknowledges completed implementation, not unrecorded external deployments or walkthroughs.
+
 **Every part of Buster Claw, once, with the live map that governs it.**
 
 Scoped 2026-08-09. Read this first to answer one question: **where is the build?**

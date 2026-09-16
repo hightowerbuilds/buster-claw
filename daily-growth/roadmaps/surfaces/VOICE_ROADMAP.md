@@ -1,5 +1,7 @@
 # The Voice — what Buster Claw sounds like
 
+**Completed since the original status — recorded 2026-09-15.** VoxCPM was installed, and the 09-06 summary records completed real renders (585 s and 380 s), superseding the early “no real sound”/hardware-blocked notes below. Recording grades, calibrated estimates/deadlines, a steps control, and denoiser-load removal shipped (`01fdbcd`, `3862eb4`, `2f53d6b`, `86c0728`, `9d96b96`). The recorder now opens the microphone only on a click and refuses the unbundled dev window (`978e3e7`). Packaged recording and the deployed greeting walkthrough remain unclosed.
+
 **Scoped 09-02-26 · Status: BUILT.**
 
 > **Where this stands at the end of 09-02-26.** Every part of this map is shipped

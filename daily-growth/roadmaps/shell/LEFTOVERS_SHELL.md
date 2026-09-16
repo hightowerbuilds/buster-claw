@@ -1,5 +1,7 @@
 # Leftovers — the shell
 
+**Completed-work update — 2026-09-15.** JS and Rust joined the size gate on 08-16 (`baa691e`). On 09-13, browser app-tab rendering moved from `chrome.js` into `lib/chrome_app_tabs.js`, with shared close behavior and a reduced cap (`0591ec7`). The dev launcher now cleans up its Phoenix process and has a regression smoke (`d07772b`). The other extraction and native-boundary items below remain open.
+
 **Created 08-13**, when the whole-codebase review
 ([`CODE_REVIEW_08-13-26`](../../archive/CODE_REVIEW_08-13-26.html) §§8–9) produced the
 first item list for the JS and Rust layers — the two layers the size gate does

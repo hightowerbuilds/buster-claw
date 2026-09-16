@@ -1,5 +1,7 @@
 # Ask for a phrase in chat, hear it in your own voice
 
+**Completed-work update — 2026-09-15.** Phases 0–1 shipped in `4b18e5f`: voice clip commands and the chat guide. Real engine renders are recorded on 09-06, but this does not prove the chat-to-finished-clip walkthrough. Phase 2's delivery choice remains open.
+
 **Scoped 2026-09-05 · Status: Phases 0–1 SHIPPED 09-05. Phase 2 open.**
 
 > **Unwalked, and `R2` is why that matters here more than usual.** The verbs are

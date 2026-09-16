@@ -1,7 +1,15 @@
 # Buster Claw code quality review — 2026-09-05
 
-**Status:** Open review. Nothing in it has been acted on; the roadmap at the end
-is the proposal.
+**Completed since this review — recorded 2026-09-15.**
+
+- Phase 1 build hygiene: tracked generated ACL + CI drift guard (`ffc788c`), script documentation (`5ecfee8`), command-count correction and unused CSS deletion (`414dd8b`).
+- Phase 0/2: unattended `AgentToolPolicy` wiring (`f62b225`), `DataState` deletion (`a232dd0`), duplicate heartbeat removal (`89d65e4`), Phone-tab unheard count (`c5dcd91`), and seventeen unused functions removed (`28559c6`, `a2733a8`). Three deliberate retentions are documented (`16e4d6e`).
+- Part of the browser extraction landed 09-13: app-tab rendering moved to `lib/chrome_app_tabs.js`, with shared close rules and a lower `chrome.js` cap (`0591ec7`). This does not close Phase 6.
+
+The [09-06 summary](../MM-DD-YY-Summary/09-06-26-summary.md) records corrections to the original inventory. Remaining phases and the brand-art decision are not marked complete.
+
+**Status:** Partially completed. Build hygiene and substantial dead-code work
+landed 09-05–06; see the completion note above. Remaining phases are open.
 
 **Snapshot:** `a9311c0` plus the working tree (four modified generated Tauri
 schema files, four untracked generated permission files).
