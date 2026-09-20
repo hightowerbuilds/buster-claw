@@ -1,6 +1,6 @@
 [package]
 name = "buster-claw-desktop"
-version = "0.1.0"
+version = "0.1.1"
 description = "Tauri desktop shell for the Buster Claw Phoenix rewrite"
 edition = "2021"
 
