@@ -185,20 +185,28 @@ defmodule BusterClaw.Skills do
   08-18 and every existing workspace was left holding a prompt naming a deleted
   command.
 
-  `sound-cutup.md` is the same shape waiting to happen — 183 lines teaching 24
-  cut-up verbs that leave with the Studio when it is spun out into its own
-  project. Under `maybe_write` that file would survive the feature in every
-  workspace that already exists, and the agent would go on calling
-  `sound_index_search`. Now it can be replaced, or replaced with nothing, on the
-  next boot.
+  ## And why it also retires
+
+  `sound-cutup.md` was the same shape waiting to happen — 183 lines teaching 24
+  cut-up verbs — and on 09-19 it happened: the cut-up engine was deleted and the
+  verbs went with it. Deleting the seed from the repo removes it from no
+  workspace, so `retired/0` names it and `Seed.retire/2` removes the copy an
+  operator never edited. An edited one stays; it is theirs. A retired basename
+  appears in the outcomes as `:retired | :absent | :kept | :error`.
   """
   def ensure do
     File.mkdir_p!(dir())
 
-    outcomes =
+    written =
       Map.new(seeds(), fn {path, content, versions} ->
         {:ok, outcome} = Seed.write(path, content, versions)
         {Path.basename(path), outcome}
+      end)
+
+    outcomes =
+      Enum.reduce(retired(), written, fn {path, versions}, acc ->
+        {:ok, outcome} = Seed.retire(path, versions)
+        Map.put(acc, Path.basename(path), outcome)
       end)
 
     {:ok, outcomes}
@@ -216,10 +224,18 @@ defmodule BusterClaw.Skills do
       {roster_path(), default_roster(), roster_versions()},
       {skill_path("save-note"), default_save_note(), save_note_versions()},
       {skill_path("shader-designer"), default_shader_designer(), shader_designer_versions()},
-      {skill_path("sound-cutup"), default_sound_cutup(), sound_cutup_versions()},
       {skill_path("pockets"), default_pockets(), pockets_versions()},
       {skill_path("terminal-paint"), default_terminal_paint(), terminal_paint_versions()}
     ]
+  end
+
+  # Seeds that no longer ship, with every digest they ever shipped under. The
+  # digests outlive the file on purpose: they are the only way to tell an
+  # untouched copy from an edited one once the default itself is gone.
+  # **Never remove an entry** — a workspace that has not booted since the seed
+  # was retired still holds it.
+  defp retired do
+    [{skill_path("sound-cutup"), sound_cutup_versions()}]
   end
 
   @doc false
@@ -379,14 +395,12 @@ defmodule BusterClaw.Skills do
   @external_resource Path.join(@seed_dir, "README.md")
   @external_resource Path.join(@seed_dir, "save-note.md")
   @external_resource Path.join(@seed_dir, "shader-designer.md")
-  @external_resource Path.join(@seed_dir, "sound-cutup.md")
   @external_resource Path.join(@seed_dir, "pockets.md")
   @external_resource Path.join(@seed_dir, "terminal-paint.md")
 
   @default_roster File.read!(Path.join(@seed_dir, "README.md"))
   @default_save_note File.read!(Path.join(@seed_dir, "save-note.md"))
   @default_shader_designer File.read!(Path.join(@seed_dir, "shader-designer.md"))
-  @default_sound_cutup File.read!(Path.join(@seed_dir, "sound-cutup.md"))
   @default_pockets File.read!(Path.join(@seed_dir, "pockets.md"))
   @default_terminal_paint File.read!(Path.join(@seed_dir, "terminal-paint.md"))
 
@@ -413,7 +427,6 @@ defmodule BusterClaw.Skills do
   defp default_roster, do: @default_roster
   defp default_save_note, do: @default_save_note
   defp default_shader_designer, do: @default_shader_designer
-  defp default_sound_cutup, do: @default_sound_cutup
   defp default_pockets, do: @default_pockets
   defp default_terminal_paint, do: @default_terminal_paint
 

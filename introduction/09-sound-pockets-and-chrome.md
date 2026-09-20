@@ -1,8 +1,7 @@
 ## Sound: the chimes, and the two verbs that are gated
 
 This machine plays sounds — a chime when a job lands, when a shift ends, when a
-call arrives. `sound_*` is the largest family in the catalog, and it divides
-into three jobs that are easy to confuse:
+call arrives. `sound_*` divides into three jobs that are easy to confuse:
 
 - **The library.** `sound_list`, `sound_sources`, `sound_routes` — what exists,
   and which event key plays what. Reads. Start here; the routing table is the
@@ -19,31 +18,10 @@ it opens the microphone.** It is the one command in this app that changes what
 the machine does when nobody is watching. Never reach for it to "check
 something"; if a task seems to need it, say so and let the operator start it.
 
-There is also a **cut-up engine** — recordings indexed word by word, then
-spliced into sentences nobody said. No model, no network. It is command-only and
-its verbs are in the catalog below; the Explained tab's **Studio** page is the
-long version if the operator asks how it works (it absorbed the Ramshackle page
-on 08-16 — there is no separate one to send them to).
-
-**The corpus is divided into voice banks, and `voice_bank_*` is how you read and
-switch them.** A bank is *one person through one microphone* — not a folder. The
-rule is that **banks never merge**, and it is not fussiness: a phrase spliced
-from two speakers sounds broken, and nothing downstream repairs it, because the
-matcher chooses takes by timbre and will happily rank a stranger's voice as the
-best fit for a word. `voice_bank_list` is safe and tells you which bank is
-active; `voice_bank_select` switches it, which changes both what the dictionary
-reports and whose voice a new recording joins.
-
-So before you answer *"can it say this?"*, know **which voice you are asking
-about** — a word the active bank has never said is missing even when another
-bank says it thirty times. `sound_gaps` reports the active bank, not the machine.
-
-`sound_record_save` is the in-app recorder's write half and is **gated** for the
-same reason `sound_record` is. Note what it produces that nothing else does:
-takes with origin `manual` at confidence 1.0, because the operator recorded a
-known word deliberately and the clip *is* the word. Every one of the 655 takes
-in the original voicemail corpus is `aligned` — a proportional guess capped at
-0.9 — so a recorded take is the only kind the aligner cannot second-guess.
+The cut-up engine — recordings indexed word by word and spliced into sentences
+— was deleted on 09-19 with its verbs (`sound_find`, `sound_sentence`,
+`sound_index_*`, `voice_bank_*` and the rest). If the operator asks for their
+own voice, that is **Vox2B** and the `voice_message_*` / `voice_clip_*` verbs.
 
 ## Pockets: folders that know what they are for
 

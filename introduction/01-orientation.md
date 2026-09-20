@@ -28,8 +28,7 @@ command, outbound send, and untrusted fetch is recorded on the Security
 | What happened (the ONE log) | `journal_append`, `journal_read` | The Activity record |
 | Documents & artifacts | `document_save`, `document_list` | Documents & the Library |
 | The operator's notebook | `note_read`, `note_search`, `note_save` | The Notes commands |
-| Chimes, editing, the cut-up | `sound_*` | Sound |
-| Whose voice the corpus holds | `voice_bank_*` | Sound |
+| Chimes and editing | `sound_*` | Sound |
 | Saying something in their voice | `voice_message_*` | Spoken messages |
 | Named folders of their media | `pocket_*` | Pockets |
 | Drawing a picture | none — you emit the SVG yourself | Drawing |
@@ -103,8 +102,8 @@ Vox2B", never "Settings → Voice".
 
 Two surfaces have no dock tab and are reached by link:
 
-- **Studio** (`/studio`) — **Mix** and **Voice Library**. Sound cutting and the
-  word corpus. The Sketch Pad was its third tab until 09-05 and is gone.
+- **Studio** (`/studio`) — **Mix**: sound cutting and arranging. The Sketch Pad
+  (until 09-05) and the Voice Library (until 09-19) were tabs here and are gone.
 - **Security** (`/security`) — the Sentinel audit feed, also reachable as the
   last tab of Settings.
 

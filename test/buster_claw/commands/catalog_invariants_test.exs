@@ -153,16 +153,8 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
     #   system decoder to measure its level; that is a subprocess over a file
     #   already inside the Library root, and it writes nothing.
     #
-    #   sound_transcript_search / sound_transcript_words / sound_corpus /
-    #   sound_index_list / sound_index_words / sound_index_search (added 08-08,
-    #   STUDIO_ROADMAP Part III) — the cut-up read surface. The transcript three
-    #   read the `transcript` column of telephony events the operator already
-    #   received and report where the audio lives (a Library-relative path, never
-    #   an absolute one, and never file contents). The index three read JSON word
-    #   indexes under `sounds/studio/index/`, gated to basenames by the same
-    #   allowlist. Nothing outbound, nothing written; the writing cut-up verbs
-    #   (sound_index_import, sound_index_delete, sound_assemble) are :restricted
-    #   and deliberately absent from this list.
+    #   The cut-up read surface (the three transcript reads and the three index
+    #   reads, added 08-08) LEFT this list on 09-19 with the engine.
     #
     #   pocket_list / pocket_describe / pocket_read (added 08-08, POCKETS_ROADMAP
     #   Phase 4) — the whole Pocket surface, and it is read-only by
@@ -262,24 +254,16 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
       shift_stop
       skill_suggestions
       slides_get
-      sound_corpus
       sound_devices
-      sound_gaps
-      sound_index_list
-      sound_index_search
-      sound_index_words
       sound_input_level
       sound_list
       sound_probe
       sound_routes
       sound_sources
-      sound_transcript_search
-      sound_transcript_words
       tasks_get
       tasks_list
       terminal_tab_open
       terminal_theme_list
-      voice_bank_list
       voice_clip_list
       voice_message_list
       web_search
@@ -299,11 +283,10 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
     # data, no secret, nothing irreversible — it answers "where could financial
     # data come from", which is the same answer for every caller.
     #
-    # `sound_gaps`, `sound_devices` and `sound_input_level` reviewed and added
-    # 08-09 with the capture surface (STUDIO_ROADMAP Part V). Each is a read in
-    # the strict sense — none opens the microphone, and that is the line worth
-    # stating, because all three sit next to a verb that does:
-    #   * `sound_gaps` reads the word indexes already on disk and counts them.
+    # `sound_devices` and `sound_input_level` reviewed and added 08-09 with the
+    # capture surface. Each is a read in the strict sense — neither opens the
+    # microphone, and that is the line worth stating, because both sit next to a
+    # verb that does:
     #   * `sound_devices` ASKS WHAT EXISTS via `system_profiler`. Enumerating
     #     inputs is not capturing from one; it needs no TCC consent and returns
     #     the same answer whether or not consent was ever granted.
@@ -313,16 +296,10 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
     # `sound_record` and `sound_input_level_set` are NOT here, by design: the
     # first is `:restricted` AND `gated` (see `sound_capture_test.exs` for why
     # `:restricted` alone would not have been enough), the second `:restricted`.
-    # `voice_bank_list` reviewed and added 08-16 with the contribution surface
-    # (STUDIO_ROADMAP Part V). It reads the roster — bank names and labels — plus
-    # which one is active. The question worth asking, since a bank label is often
-    # a PERSON'S NAME: does naming the voices in the corpus leak more than the
-    # tier already allows? No. `sound_gaps` and `sound_index_list` are both
-    # already `:safe` and return the actual WORDS spoken in those recordings, so
-    # a caller that can read the vocabulary can already read far more than the
-    # label above it. Its three write siblings — `voice_bank_create`,
-    # `voice_bank_select`, `voice_bank_delete` — are all `:restricted`, and
-    # `delete` is `gated` on top.
+    #
+    # `sound_gaps` and `voice_bank_list` were reviewed onto this list (08-09,
+    # 08-16) and LEFT it on 09-19, when the cut-up engine was deleted whole
+    # (`CUTUP_DELETION_ROADMAP`).
     #
     # `sketch_get` and `sketch_list` were reviewed onto this list on 08-16 and
     # LEFT it on 09-05, when the Sketch Pad was deleted whole. The review that put

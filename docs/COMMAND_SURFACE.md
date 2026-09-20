@@ -22,7 +22,7 @@ result shape into their transport-specific response format.
 
 ## Active Domains
 
-214 commands as of 09-05 (`./buster-claw commands` is authoritative; the Explained
+196 commands as of 09-19, when the cut-up engine and its eighteen verbs were deleted (`./buster-claw commands` is authoritative; the Explained
 tab's Command List renders the same counts from a contract test):
 
 - Runtime status, orchestration shifts, and in-shift role sessions
@@ -39,9 +39,9 @@ tab's Command List renders the same counts from a contract test):
 - BusterPhone intake: voicemail, inbound SMS, trusted callers and PINs (nothing
   outbound — the phone sends no texts and places no calls)
 - Notifications (timers, alarms, reminders)
-- Sound (`sound_*` — the largest single family): the clip editor and arranger,
-  recording and input levels, the transcript/word index, chime routing
-- Voice (`voice_*`): reference-voice banks (`voice_bank_*`) and spoken messages
+- Sound (`sound_*`): the clip editor and arranger, recording and input levels,
+  chime routing
+- Voice (`voice_*`): rendered clips (`voice_clip_*`) and spoken messages
   (`voice_message_*`), which fire as notifications whose sound is a rendered line
 - The Dispatch pull-queue (list/claim/done/block/reply)
 - Memory (`memory_search`), skill suggestions, jobs and backgrounds, and the

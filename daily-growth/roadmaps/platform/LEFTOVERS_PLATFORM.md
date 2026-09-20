@@ -1,5 +1,10 @@
 # Leftovers — platform and code health
 
+> **Closed 09-19-26 by deletion.** The cut-up engine, its eighteen verbs and the
+> `sound-cutup` skill were deleted ([`CUTUP_DELETION`](../surfaces/CUTUP_DELETION_ROADMAP.md)).
+> Items below that concern `cutup/`, the word index, `sound-cutup.md`, or
+> splitting `commands/sound.ex` (now 1,122 lines) are moot and kept only as history.
+
 **Completed-work update — 2026-09-15.** `scripts/check_file_sizes.sh` now covers core, JS, and Rust (`baa691e`). Browser pages receive secure headers/CSP through `:browser_page`; raw media routes receive `nosniff` (`e9888ce`). Generated Tauri ACL artifacts are tracked and checked for build drift (`ffc788c`). The 09-06 dead-code pass removed `DataState`, redundant heartbeat fields, and seventeen unused functions. These close those specific gaps, not the remaining hotspot or DOM-harness work.
 
 **Split out of `LEFTOVERS.md` 2026-08-09.** The tail work under the app rather

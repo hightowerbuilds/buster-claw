@@ -59,14 +59,18 @@ defmodule BusterClawWeb.Explained.Registry do
   # And once more the same day for the three `voice_clip_*` verbs (211 -> 214):
   # `_list` a `:safe` read, `_make` and `_delete` `:mutate` + `:restricted`, none
   # gated — a clip is a file you can forget, not an outbound send.
+  #
+  # Recomputed 09-19: the cut-up engine was deleted with its eighteen verbs
+  # (`CUTUP_DELETION_ROADMAP`) — eight `:safe` reads, ten `:mutate` +
+  # `:restricted`, two of those gated. `trigger` does not move. Measured.
   @command_stats %{
-    total: 214,
-    read: 87,
+    total: 196,
+    read: 79,
     trigger: 17,
-    mutate: 110,
-    safe: 90,
-    restricted: 124,
-    gated: 23
+    mutate: 100,
+    safe: 82,
+    restricted: 114,
+    gated: 21
   }
 
   # Feature sub-tabs: rail + tile metadata for every non-site tab. A key in
@@ -203,9 +207,9 @@ defmodule BusterClawWeb.Explained.Registry do
       path_label: "Open the terminal"
     },
     # Studio is one tab covering the whole workshop: the library, the routing
-    # table, the four editing verbs, the single gated `sound_apply`, and the
-    # cut-up. The Sketch Pad was its third sub-tab until 09-05, when it was
-    # deleted whole.
+    # table, the four editing verbs and the single gated `sound_apply`. The
+    # Sketch Pad was its third sub-tab until 09-05 and the Voice Library (the
+    # cut-up) its second until 09-19; both were deleted whole.
     #
     # Studio and Ramshackle were TWO tabs from 08-09 to 08-16, on the argument
     # that someone wanting a custom chime should not have to read about dynamic
@@ -218,10 +222,10 @@ defmodule BusterClawWeb.Explained.Registry do
       key: "studio",
       label: "Studio",
       eyebrow: "The workshop",
-      blurb: "The experimental corner: cut audio and splice your own voice.",
+      blurb: "The experimental corner: cut audio and make your own chimes.",
       body:
-        "Two sub-tabs at /studio. Mix cuts and arranges; Voice Library splices " <>
-          "words you already said into sentences nobody said. Framed as " <>
+        "Mix, at /studio, cuts and arranges audio, and the sound verbs behind it " <>
+          "turn a recording into the chime your machine plays. Framed as " <>
           "experimental on purpose — it is where this app tries things, and it " <>
           "will keep changing shape.",
       path: "/studio",

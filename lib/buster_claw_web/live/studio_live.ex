@@ -1,7 +1,10 @@
 defmodule BusterClawWeb.StudioLive do
   @moduledoc """
-  The Studio, at `/studio` — a full-screen surface with one rail: **Mix**,
-  **Voice Library**.
+  The Studio, at `/studio` — a full-screen surface holding **Mix**.
+
+  It held a second tab, the Voice Library, until 09-19, when the cut-up engine it
+  sat on was deleted (`CUTUP_DELETION_ROADMAP`). Recording your own voice did not
+  go with it: that is Vox2B, on Home, and shares nothing with what left.
 
   ## Why it left Home
 
@@ -17,14 +20,11 @@ defmodule BusterClawWeb.StudioLive do
 
   ## The rail is flat, on purpose
 
-  Mix · Voice Library, one level. It was three until 09-05, when the Sketch Pad
-  was deleted; the flatness was argued for when a nested Studio/Sketch pair was
-  the alternative, and it survives the third tab leaving because the argument was
-  never about the count. It was the reason this repo already learned when the
-  Voice tab was
-  briefly split in two on 08-16: **a rail that makes you leave a tab to finish a
-  loop is a rail in the way.** Voice keeps its own sidebar because the sidebar
-  navigates *within* one activity; the rail chooses *between* activities.
+  One level. It was three tabs until 09-05 (the Sketch Pad), two until 09-19
+  (the Voice Library), and with one tab left `StudioPanel` draws no rail at all.
+  The registry and the whitelist stay, so a second tab is still one edit — and
+  the rule the rail was built on stands for whoever adds it: **a rail that makes
+  you leave a tab to finish a loop is a rail in the way.**
 
   ## What this owns, and what it deliberately does not
 
@@ -33,18 +33,16 @@ defmodule BusterClawWeb.StudioLive do
   FROZEN and could not grow to hold its own state; that ended 08-16. **The
   durable reason is `StudioPanel`'s `:if`** — switching sub-tabs removes the
   component from the DOM and discards it, so a selection, a trim or an undo
-  stack held inside it would not survive a look at Voice.
-  `Studio.MixState` / `Studio.VoiceState` / `Studio.RecorderState` remain the socket-in /
-  socket-out modules that do the work. They moved surface, not shape — every
-  clause below still delegates one line deep, exactly as it did in `StatusLive`.
+  stack held inside it would not survive a look at another tab.
+  `Studio.MixState` remains the socket-in / socket-out module that does the
+  work. It moved surface, not shape — every clause below still delegates one
+  line deep, exactly as it did in `StatusLive`.
   """
   use BusterClawWeb, :live_view
 
   import BusterClawWeb.Studio.MixState
 
   alias BusterClaw.Notifications.StudioMix
-  alias BusterClawWeb.Studio.RecorderState, as: Recorder
-  alias BusterClawWeb.Studio.VoiceState, as: Voice
 
   @impl true
   def mount(_params, _session, socket) do
@@ -52,8 +50,6 @@ defmodule BusterClawWeb.StudioLive do
      socket
      |> assign(:page_title, "Studio")
      |> assign_studio_tab()
-     |> Voice.assign_voice()
-     |> Recorder.assign_recorder()
      # Which source the Studio has open, the in-progress trim, the arranger's
      # selection/clipboard/undo — all still assigns of the LiveView rather than
      # the component, because `StudioPanel` renders it behind an `:if` and a
@@ -68,59 +64,11 @@ defmodule BusterClawWeb.StudioLive do
   end
 
   @impl true
-  # The Studio's sub-tab rail (Mix | Voice). Whitelisted through
+  # The Studio's sub-tab rail. Whitelisted through
   # `StudioPanel.tab_keys/0` inside `Studio.MixState.select_studio_tab/2`.
   def handle_event("select_studio_tab", %{"tab" => tab}, socket) do
     {:noreply, select_studio_tab(socket, tab)}
   end
-
-  # Voice (Ramshackle). Every clause delegates in full to `Studio.VoiceState`; the
-  # corpus read is lazy, so opening the tab is what loads it and switching away
-  # and back does not re-read ten files.
-  def handle_event("voice_search", %{"query" => query}, socket),
-    do: {:noreply, Voice.put_query(socket, query)}
-
-  def handle_event("voice_sentence", %{"sentence" => text}, socket),
-    do: {:noreply, Voice.put_sentence(socket, text)}
-
-  def handle_event("voice_refresh", _params, socket),
-    do: {:noreply, Voice.load_report(socket)}
-
-  # The Voice Library's own navigation, and the recorder inside it. ONE clause
-  # for the recorder's six sub-actions rather than six clauses: they share a
-  # shape, `Studio.RecorderState` owns the dispatch, and this file is at its cap for a
-  # reason. The take arrives separately because it carries audio.
-  def handle_event("voice_section", %{"section" => section}, socket),
-    do: {:noreply, Voice.put_section(socket, section)}
-
-  def handle_event("voice_select", %{"word" => word}, socket),
-    do: {:noreply, Voice.select_word(socket, word)}
-
-  def handle_event("voice_preview", _params, socket),
-    do: {:noreply, Voice.build_preview(socket)}
-
-  def handle_event("voice_prefer", %{"source" => source, "start" => start}, socket),
-    do: {:noreply, Voice.prefer_take(socket, source, start)}
-
-  def handle_event("voice_unprefer", _params, socket),
-    do: {:noreply, Voice.unprefer_take(socket)}
-
-  def handle_event("voice_delete", %{"source" => source, "start" => start}, socket),
-    do: {:noreply, Voice.delete_take(socket, source, start)}
-
-  # A sentence chip leads somewhere: a word that exists opens in Words, a word
-  # that does not arms the recorder for it.
-  def handle_event("voice_open_word", %{"word" => word}, socket),
-    do: {:noreply, Voice.open_word(socket, word)}
-
-  def handle_event("voice_record_word", %{"word" => word}, socket),
-    do: {:noreply, socket |> Recorder.put_word(word) |> Voice.put_section("record")}
-
-  def handle_event("contribute", %{"do" => action} = params, socket),
-    do: {:noreply, Recorder.handle(action, params, socket)}
-
-  def handle_event("contribute_take", params, socket),
-    do: {:noreply, Recorder.save_take(socket, params)}
 
   # The Studio's selection is owned HERE, not by the component: home tabs render
   # behind `:if`, which removes the DOM and discards the live_component with it,
@@ -313,10 +261,6 @@ defmodule BusterClawWeb.StudioLive do
               heading and the rest went. Everything below this is the surface. --%>
         <h1 class="font-display text-2xl font-black uppercase tracking-tight">Studio</h1>
 
-        <%!-- `voice_rows` and `voice_check` are derived here, never stored:
-              `Studio.VoiceState` computes both from the loaded report, which keeps
-              the panel presentation-only and stops a stale filter outliving a
-              report reload. --%>
         <BusterClawWeb.StudioPanel.studio_panel
           tab={@studio_tab}
           studio_source={@studio_source}
@@ -327,19 +271,6 @@ defmodule BusterClawWeb.StudioLive do
           studio_clipboard={@studio_clipboard}
           studio_undo={@studio_undo}
           studio_redo={@studio_redo}
-          voice_report={@voice_report}
-          voice_error={@voice_error}
-          voice_query={@voice_query}
-          voice_sentence={@voice_sentence}
-          voice_rows={Voice.vocabulary(assigns, @voice_query)}
-          voice_check={Voice.sentence_check(assigns, @voice_sentence)}
-          voice_section={@voice_section}
-          voice_selected={@voice_selected}
-          voice_takes={@voice_takes}
-          voice_preview={@voice_preview}
-          voice_preview_error={@voice_preview_error}
-          voice_notice={@voice_notice}
-          recorder={@recorder}
         />
       </div>
     </Layouts.app>

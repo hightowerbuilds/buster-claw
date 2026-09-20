@@ -9,6 +9,7 @@
 - Voice engine/rendering, chimes, greeting support, reference recording, and spoken messages shipped 09-02–03. Vox Phases 0–3, chat voice verbs/guidance, and Workspace tabs shipped 09-05. Real render measurements and performance fixes followed 09-06; packaged recording remains unverified.
 - Build-hygiene and dead-code work from the 09-05 review landed 09-05–06; its remaining phases stay open.
 - [Three doors](surfaces/THREE_DOORS_ROADMAP.md) shipped 09-13: chat briefing (`f666f06`), dock duty and Mailman (`dfbb55f`), browser Ask (`3028473`). Their three acceptance walks remain open.
+- **The cut-up engine was deleted 09-19** ([`CUTUP_DELETION`](surfaces/CUTUP_DELETION_ROADMAP.md)): 16 modules, 18 commands (214 → 196), the Voice Library tab and the `sound-cutup` skill seed, which `Seed.retire/2` now removes from existing workspaces. `lib/` 102,534 → 91,030 lines; `commands/sound.ex` 2,464 → 1,122, which retires its owed split. Vox2B and Mix untouched; Vox2B's recorder is unwalked since the cut.
 - Also completed 09-13: dev launcher cleanup (`d07772b`), Vox mount-crash fix (`978e3e7`), browser app-tab close controls (`0591ec7`), and one contact-entry surface in Phone (`4b2ef81`).
 
 The dated details below retain their original context; this update acknowledges completed implementation, not unrecorded external deployments or walkthroughs.
@@ -109,7 +110,7 @@ the section tables below point at it from wherever else it applies.**
 1. **[The Clinch](#part-vi--integrations)** — **Phases 0–4 complete 08-10; Phase 5 is as far as an agent can take it.** Its preconditions are pinned (`18af12e`) and every remote-mode notice is guarded (`d26c4ad`). **What remains is the tunnel spike, and it needs a person with two machines** — the roadmap forbids the gateway and the panel until a real tunnel survives a WebSocket upgrade, an upload, a long Chat response and a laptop sleep.
 2. **[BusterPhone](#part-vi--integrations)** — the only paid thing. **Inbound is live and carrying real traffic** (verified in the app 08-14, not inferred); the gap is vending a number to someone who is not the operator. **Scope narrowed 08-18: the phone becomes intake-only** and every outbound capability is deleted — a Twilio rejection made the price of sending legible, and the operator chose to stop paying it rather than resubmit. [`PHONE_INTAKE`](integrations/PHONE_INTAKE_ROADMAP.md) is the map; the paid tier is untouched.
 3. **[Apple](#part-vii--platform--release)** — **`G-1`–`G-3` DONE 08-10: a notarized, stapled DMG exists.** ~~What is next is not code — an **Apple Silicon Mac**.~~ **Corrected 08-22: what is next IS code.** The first real rehearsal of the pipeline found three defects and a cycle — the floor was wrong on both arches (`G-16b`, fixed), the DMG was never notarized by anything but a human hand (III.H, fixed), and **`G-19` turns out to block every tagged release**. The Apple Silicon Mac is still needed, but only for `G-4`, which is now seventh on the list rather than next. See [The R1 path](#the-r1-path--the-ordered-list-08-22).
-4. **[Studio → Voice Library](#part-ii-b--the-studio)** — built 08-16; **needs a person at a microphone.** Everything except capture is done and tested: banks, audition, sentence preview, and both recording paths. What has never run is V.4a — `getUserMedia` in a packaged build — and until someone clicks that dialog the recorder is honest rather than working.
+4. ~~**Studio → Voice Library**~~ — **DELETED 09-19-26** (operator) with the cut-up engine under it. Built 08-16 and never walked at a microphone; the engine had a decided exit since 09-02 and no exit date. See [`CUTUP_DELETION`](surfaces/CUTUP_DELETION_ROADMAP.md) — **the engine is its own project; do not rebuild it here.** Recording your own voice is Vox2B and was not touched.
 5. **[The Dialyzer gate](#part-vii--platform--release)** — **GREEN, exit 0, verified 08-16.** The baseline is a rule rather than a file list (`1d52cff`) and that fix has held; the three unreachable `refusal/2` clauses that 08-15 added were deleted 08-16 rather than baselined. Part VII records what the deletion cost.
 6. **The whole-codebase review (08-13)** — **ARCHIVED 08-15**, [`CODE_REVIEW_08-13-26.html`](../archive/CODE_REVIEW_08-13-26.html): every part with its argument, every large file diagnosed feature-sized vs overloaded, 21 ranked findings. **The top four landed same-day** — the gmail attachment fence (`1728e64`), both `chat.ex` contract bugs (`20a36a9`), the dead Trading hooks plus a both-directions hook guard (`577085e`). Everything else is **filed, not floating**: by section into the LEFTOVERS maps — [agent-core](agent-core/LEFTOVERS_AGENT_CORE.md), [platform](platform/LEFTOVERS_PLATFORM.md), [surfaces](surfaces/LEFTOVERS_SURFACES.md), and the shell's first, [`LEFTOVERS_SHELL`](shell/LEFTOVERS_SHELL.md), created for it. The review's two structural conclusions: the size gate covers no core/JS/Rust file (its §12 has the 19-file proposed inventory), and `commands/sound.ex` at 2,514 is the one file where the 08-08 "commands/ is correct" ruling no longer holds.
 
@@ -320,40 +321,23 @@ and zero issues in the verdict. Budget hours per release, not minutes
 **Every surface in Home renders something real.** *(The Voice Library sentence
 that used to close this paragraph moved to Part II-b with its subject.)*
 
-**Two things it can do that nothing else in the app could.** A word recorded on
-its own is the corpus's first `:manual` origin at confidence 1.0 (all 655
-existing takes are `:aligned`, a proportional guess capped at 0.9). A whole
-sentence recorded in one take is V.8's donor session in miniature — far faster
-per word, and every interior boundary an estimate, which the surface says.
-
-**What is unproven is the microphone itself.** V.4a has never been run, so the
-capability gate reports what the browser actually answered rather than claiming
-either way; in Chrome and `cargo tauri dev` it may work today, and a packaged
-build will name what stopped it. `Entitlements.plist` is deliberately untouched
-— see the note under Part VII on what granting it costs the embedded browser.
+*(Two paragraphs about the Voice Library's recorder stood here until 09-19,
+stranded since the Studio left Home on 08-16. Their subject was deleted with the
+cut-up engine.)*
 
 ---
 
 ## Part II-b — The Studio
 
-`StudioLive` at `/studio`. Three tabs, one rail. Moved out of Home on 08-16.
+`StudioLive` at `/studio`. One tab, Mix, and so no rail. Moved out of Home on 08-16.
 
 | Section | Where | State | Map |
 |---|---|---|---|
-| **Studio → Mix** | `SoundStudioComponent` | SHIPPED | [`LEFTOVERS_AGENT_CORE`](agent-core/LEFTOVERS_AGENT_CORE.md) — `commands/sound.ex` is owed a split |
-| **Studio → Voice Library** | `Studio.VoiceLibrary`, `Studio.VoiceState`, `Studio.RecorderState` | **BUILT 08-16 — one tab, sidebar over Words / Sentence / Record.** Voice banks (V.0), audition (VI.1 pane 2), sentence build-and-play through the same `Cutup.Sentence` an agent uses, and a recorder for a word *or* a whole sentence. **The microphone is unproven** — V.4a has never run, so the capability gate reports what the browser found rather than claiming | `STUDIO` (map deleted 09-02-26 — the cut-up engine is its own project now) |
+| **Studio → Mix** | `SoundStudioComponent` | SHIPPED | — (`commands/sound.ex`'s owed split was retired 09-19 by deleting the third it would have extracted) |
+| ~~Studio → Voice Library~~ | — | **DELETED 09-19** with the cut-up engine, its 18 verbs and the `sound-cutup` skill | [`CUTUP_DELETION`](surfaces/CUTUP_DELETION_ROADMAP.md) |
 
-**Voice Library is now the whole loop rather than half of it**: browse the words,
-hear a take, build a sentence, hear that, record what was missing. The binding
-constraint is still measured — **144 of 237 words are single-take**, none ever
-hand-corrected — and the recorder is what changes it.
-
-**Voice Library is built and unwalked**: it needs a person at a microphone,
-because `getUserMedia` has never run in a packaged build. It is asserted in code
-and has not been seen.
-
-The Studio had a third tab until 09-05 — the Sketch Pad, also built and also
-never walked. It was deleted rather than kept waiting for a walk that was not
+The Studio had a third tab until 09-05 — the Sketch Pad, built and never
+walked — and a second until 09-19, the Voice Library, the same. It was deleted rather than kept waiting for a walk that was not
 coming, which is the honest end for a surface nobody reached for. Its map is
 [archived](../archive/SKETCH_ROADMAP.md).
 

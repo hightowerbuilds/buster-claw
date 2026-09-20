@@ -1,9 +1,7 @@
 defmodule BusterClawWeb.StudioPanelTest do
-  # The Studio tab's sub-tab shell: Mix (the existing studio) and Voice (a
-  # placeholder). There are no features here yet, so everything below asserts
-  # STRUCTURE — that the rail, the whitelist and the dispatch are the same three
-  # views of one registry, and that switching tabs moves the two surfaces that
-  # belong to Mix (the studio itself and its toolbar) rather than half of them.
+  # The Studio's sub-tab shell. One tab today — Mix — so what is asserted is
+  # STRUCTURE: that the whitelist and the dispatch are views of one registry, and
+  # that a single tab draws no rail.
   use BusterClawWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
@@ -35,31 +33,22 @@ defmodule BusterClawWeb.StudioPanelTest do
     {view, html}
   end
 
-  defp select_sub_tab(view, key) do
-    view |> element("button[phx-value-tab='#{key}']") |> render_click()
-  end
+  # Sent as an event rather than clicked: with one tab there is no rail button
+  # to click. The handler and its whitelist are what is under test.
+  defp select_sub_tab(view, key), do: render_click(view, "select_studio_tab", %{"tab" => key})
 
   describe "the rail" do
-    test "renders both sub-tabs, with Mix leading", %{conn: conn} do
-      {view, html} = open_studio(conn)
+    # Two tabs until 09-19, when the Voice Library left with the cut-up engine
+    # (`CUTUP_DELETION_ROADMAP`). One button that selects what is already
+    # selected is a control that does nothing, so the rail is not drawn — and
+    # this is the assertion that fails the day a second tab is added without
+    # anyone deciding what the rail should look like again.
+    test "is not drawn for a single tab, and Mix is what renders", %{conn: conn} do
+      {view, _html} = open_studio(conn)
 
-      assert html =~ ~s(aria-label="Studio")
-      assert html =~ "Mix"
-      assert html =~ "Voice"
-
-      for %{key: key, label: label, blurb: blurb} <- Registry.tabs() do
-        assert has_element?(view, "#home-studio-tabs button[phx-value-tab='#{key}']"),
-               "no rail button for #{label}"
-
-        # The blurb is the button's tooltip, so a registry entry cannot carry
-        # copy that nothing renders.
-        assert html =~ blurb
-      end
-
-      assert has_element?(
-               view,
-               "#home-studio-tabs button[phx-value-tab='mix'][aria-selected='true']"
-             )
+      assert length(Registry.tabs()) == 1
+      refute has_element?(view, "#home-studio-tabs [role='tablist']")
+      assert has_element?(view, "#home-studio-tabs [data-studio-tab='mix'] #studio-panel")
     end
 
     test "an unknown sub-tab key is refused, not crashed on", %{conn: conn} do
@@ -67,91 +56,20 @@ defmodule BusterClawWeb.StudioPanelTest do
 
       # The whitelist is StudioPanel.tab_keys/0 — a forged key leaves the current
       # sub-tab in place rather than blanking the panel or raising.
-      render_click(view, "select_studio_tab", %{"tab" => "../../etc"})
-
-      assert has_element?(
-               view,
-               "#home-studio-tabs button[phx-value-tab='mix'][aria-selected='true']"
-             )
-
-      assert has_element?(view, "#studio-panel")
-    end
-
-    # Was "the sub-tab selection survives a glance at Chat" until 08-16, when the
-    # Studio left Home for `/studio`. The property is still real, but the threat
-    # changed and the test has to name the one that exists now.
-    #
-    # **On Home the danger was the `:if`.** Every home panel renders behind one,
-    # so switching to Chat destroyed the studio's DOM and its `live_component`
-    # with it — the entire reason `studio_source`, the trim, the clipboard and
-    # the undo stacks were hoisted into `StatusLive` in the first place.
-    #
-    # **On a route that danger is gone, and a different one replaces it:**
-    # navigating away from `/studio` unmounts the LiveView, so the undo stack,
-    # the trim and the clipboard do NOT survive it. That is a real behavioural
-    # change, it is accepted — the mix itself is on disk, only in-progress
-    # editing state is lost — and it is written here rather than discovered.
-    # What must still hold is the sub-tab, across a switch inside the rail.
-    test "the sub-tab selection survives a trip through another sub-tab", %{conn: conn} do
-      {view, _html} = open_studio(conn)
-      select_sub_tab(view, "voice")
-
-      select_sub_tab(view, "mix")
+      select_sub_tab(view, "../../etc")
       assert has_element?(view, "#studio-panel")
 
+      # `voice` was a real key until 09-19. An old client, or a bookmark of a
+      # habit, must land on Mix rather than on an empty panel.
       select_sub_tab(view, "voice")
-
-      assert has_element?(
-               view,
-               "#home-studio-tabs button[phx-value-tab='voice'][aria-selected='true']"
-             )
+      assert has_element?(view, "#studio-panel")
+      refute has_element?(view, "#studio-voice")
     end
   end
 
-  describe "the two tabs" do
-    # Was "Voice renders the honest placeholder" until 08-14, then the Ramshackle
-    # panes, and since 08-16 the Voice Library — a sidebar over three sections.
-    # The two refutations are the half that has survived all three: whatever
-    # Voice becomes, it must not drag the frozen studio along with it.
-    test "Voice renders the Library, opening on Words, and no studio", %{conn: conn} do
-      {view, _html} = open_studio(conn)
-      html = select_sub_tab(view, "voice")
-
-      assert has_element?(view, "#studio-voice")
-
-      # The sidebar is the tab's own navigation — one activity, three steps.
-      for key <- ~w(words sentence record) do
-        assert has_element?(view, "[phx-click='voice_section'][phx-value-section='#{key}']"),
-               "the Library sidebar has no #{key} section"
-      end
-
-      # It opens on Words, which is the only section rendered until one is picked.
-      assert html =~ "Vocabulary"
-      refute html =~ "Can it say this?"
-
-      # The frozen component is gone, not merely hidden.
-      refute has_element?(view, "#studio-panel")
-      # And nothing pretends to work: no source list, no transport controls.
-      refute html =~ "Pick something on the left"
-    end
-
-    test "the Library's sections are alternatives, not layers", %{conn: conn} do
-      {view, _html} = open_studio(conn)
-      select_sub_tab(view, "voice")
-
-      html = render_click(element(view, "[phx-value-section='sentence']"))
-      assert html =~ "Can it say this?"
-      refute html =~ "Vocabulary"
-
-      html = render_click(element(view, "[phx-value-section='record']"))
-      assert has_element?(view, "#studio-recorder")
-      refute html =~ "Can it say this?"
-    end
-
-    test "Mix renders the existing studio, unchanged, with its assigns", %{conn: conn} do
-      {view, _html} = open_studio(conn)
-      select_sub_tab(view, "voice")
-      html = select_sub_tab(view, "mix")
+  describe "Mix" do
+    test "renders the existing studio, unchanged, with its assigns", %{conn: conn} do
+      {view, html} = open_studio(conn)
 
       # `#studio-panel` is SoundStudioComponent's own root, and `home-studio` is
       # the id `Studio.MixState.send_update/2` addresses — a rename here would break
@@ -159,35 +77,22 @@ defmodule BusterClawWeb.StudioPanelTest do
       assert has_element?(view, "#studio-panel")
       assert has_element?(view, "#home-studio-tabs #studio-panel")
 
-      # The sidebar was replaced by a menu bar on 08-16, so the source catalog is
-      # behind File and Material rather than listed down the side. This used to
-      # assert the group HEADINGS ("Recordings", "Music") were on screen; those
-      # are submenu labels now, and an empty group is dropped rather than
-      # rendered as a headed empty list — so asserting one is asserting the test
-      # workspace has voicemails in it.
+      # The source catalog is behind File and Material in the menu bar (08-16).
       assert has_element?(view, "#studio-menu-bar")
       assert has_element?(view, "#studio-menu-file")
       assert has_element?(view, "#studio-menu-material")
       assert html =~ "Open something from File or Material"
+
+      # The toolbar the menu bar replaced is really gone, not merely hidden.
+      refute has_element?(view, "#studio-toolbar")
     end
 
-    # Was "the Studio toolbar belongs to Mix". The toolbar is gone: its two
-    # actions (New mix, Import) moved into the menu bar's File menu on 08-16, so
-    # the verbs now live on the surface they act on instead of in the page chrome
-    # above it. The property is unchanged — Mix's chrome must not follow you to
-    # another sub-tab — and only the element it names has moved.
-    test "the Mix menu bar belongs to Mix", %{conn: conn} do
-      {view, _html} = open_studio(conn)
-      assert has_element?(view, "#studio-menu-bar")
+    test "nothing of the Voice Library survives on the page", %{conn: conn} do
+      {view, html} = open_studio(conn)
 
-      select_sub_tab(view, "voice")
-      refute has_element?(view, "#studio-menu-bar")
-
-      select_sub_tab(view, "mix")
-      assert has_element?(view, "#studio-menu-bar")
-
-      # And the thing it replaced is really gone, not merely hidden.
-      refute has_element?(view, "#studio-toolbar")
+      refute has_element?(view, "#studio-voice")
+      refute has_element?(view, "#studio-recorder")
+      refute html =~ "Voice Library"
     end
   end
 
@@ -198,7 +103,8 @@ defmodule BusterClawWeb.StudioPanelTest do
       # somebody looks. `sketch` joined 08-16 with the move to /studio and left
       # 09-05 when the Sketch Pad was deleted whole — which is this assertion
       # doing its job in the removing direction, where it is just as useful.
-      assert StudioPanel.tab_keys() == ["mix", "voice"]
+      # `voice` left the same way on 09-19.
+      assert StudioPanel.tab_keys() == ["mix"]
 
       # Every tab is either built (it has a dispatch) or a placeholder — never
       # both, and never neither.
@@ -263,7 +169,7 @@ defmodule BusterClawWeb.StudioPanelTest do
         |> Regex.scan(File.read!(panel))
         |> Enum.map(fn [_, key] -> key end)
 
-      assert literals == ["mix", "voice"]
+      assert literals == ["mix"]
 
       for key <- literals do
         assert key in StudioPanel.tab_keys(),

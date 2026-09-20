@@ -5,8 +5,8 @@ defmodule BusterClawWeb.Studio.MixState do
   Every one of these assigns lives in the **LiveView** rather than in
   `SoundStudioComponent`, and that is deliberate: sub-tabs render behind `:if`,
   so the component — and any state it held — is discarded on every tab switch.
-  An undo stack that empties when you look at the Voice Library does not read as
-  a tab switch; it reads as the feature being broken.
+  An undo stack that empties when you look at another tab does not read as a tab
+  switch; it reads as the feature being broken.
 
   So the component renders, and the ownership of what must outlive a switch —
   the open source, the in-progress trim, the selected clip, the clipboard, and
@@ -31,8 +31,8 @@ defmodule BusterClawWeb.Studio.MixState do
   change goes through: load, apply, save, record the previous state for undo,
   and tell the component to re-read.
 
-  The Studio's own sub-tab (`Mix` | `Voice Library`) is assigned
-  here too, and for the same reason as everything above — plus a second one: the
+  The Studio's own sub-tab (`Mix` alone since 09-19, when the Voice Library left
+  with the cut-up engine) is assigned here too, and for the same reason as everything above — plus a second one: the
   LiveView keeps only the mount assign, one `handle_event` clause and one
   condition, so the wiring a sub-tab needs lands in this module.
   """
@@ -43,8 +43,6 @@ defmodule BusterClawWeb.Studio.MixState do
   alias BusterClaw.Notifications.StudioMix
   alias BusterClawWeb.SoundStudio.Catalog
   alias BusterClawWeb.Studio.Preview
-  alias BusterClawWeb.Studio.RecorderState, as: Recorder
-  alias BusterClawWeb.Studio.VoiceState, as: Voice
   alias BusterClawWeb.StudioPanel
 
   # ---------------------------------------------------------------------------
@@ -52,8 +50,7 @@ defmodule BusterClawWeb.Studio.MixState do
   # ---------------------------------------------------------------------------
 
   @doc """
-  Default the Studio's sub-tab at mount. `Mix` leads because it is the studio
-  that exists; `Voice` is a placeholder until Parts V and VI land.
+  Default the Studio's sub-tab at mount. `Mix` is the only one that exists.
   """
   def assign_studio_tab(socket), do: assign(socket, :studio_tab, "mix")
 
@@ -67,23 +64,11 @@ defmodule BusterClawWeb.Studio.MixState do
   """
   def select_studio_tab(socket, tab) do
     if tab in StudioPanel.tab_keys() do
-      socket |> assign(:studio_tab, tab) |> arriving_at(tab)
+      assign(socket, :studio_tab, tab)
     else
       socket
     end
   end
-
-  # Voice reads the corpus from disk, so it loads when the tab is opened rather
-  # than at mount — a homepage that never visits Voice should not pay for ten
-  # file reads. `ensure_report/1` is idempotent, so switching away and back is
-  # free. Dispatching on the key here rather than in `StatusLive` keeps the
-  # LiveView's clause one line, which is the point of this module.
-  # The Voice Library needs both halves: the corpus for its word list, and the
-  # device list for its recorder. Both are lazy and idempotent.
-  defp arriving_at(socket, "voice"),
-    do: socket |> Voice.ensure_report() |> Recorder.ensure_loaded()
-
-  defp arriving_at(socket, _tab), do: socket
 
   # ---------------------------------------------------------------------------
   # Arranger history
@@ -185,9 +170,9 @@ defmodule BusterClawWeb.Studio.MixState do
 
   The same `Studio.Render` the mixdown uses, so a preview cannot disagree with
   the render about what an effect does — which is the whole reason effects are
-  not approximated in WebAudio. Written under one fixed name and versioned, for
-  the reason the Voice Library's sentence preview is: the browser caches by URL
-  and would otherwise replay the previous chain.
+  not approximated in WebAudio. Written under one fixed name and versioned,
+  because the browser caches by URL and would otherwise replay the previous
+  chain.
   """
   # One clip, so ONE catalog read — `resolve_source/1` is the right call here and
   # the wrong one inside a walk. `render_mix/1` learned that difference the

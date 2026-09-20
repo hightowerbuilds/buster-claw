@@ -73,6 +73,61 @@ defmodule BusterClaw.Seed do
     end
   end
 
+  @typedoc "What `retire/2` found: gone now, never there, the operator's, or unreadable."
+  @type retirement :: :retired | :absent | :kept | :error
+
+  @doc """
+  Remove a seed that no longer ships — the same rule as `write/3`, pointed the
+  other way.
+
+  `versions` is every digest the retired seed ever shipped. A file whose bytes
+  match one was never touched by the operator, so it is ours to remove
+  (`:retired`). Anything else is theirs and stays (`:kept`), said out loud for the
+  reason a declined upgrade is. A file that is not there is `:absent`.
+
+  This exists because deleting a seed from the repo deletes it from nowhere else.
+  A skill seeded last month goes on teaching an agent verbs that answer
+  `unknown_command` until something removes the file — the 08-18 defect, arriving
+  through the skills door instead of the jobs one (09-19, the cut-up engine).
+  """
+  @spec retire(Path.t(), [String.t()]) :: {:ok, retirement()}
+  def retire(path, versions) when is_list(versions) do
+    case File.read(path) do
+      {:ok, on_disk} -> retire_if_ours(path, digest(on_disk), versions)
+      {:error, :enoent} -> {:ok, :absent}
+      {:error, reason} -> retire_error(path, reason)
+    end
+  end
+
+  defp retire_if_ours(path, on_disk_digest, versions) do
+    if on_disk_digest in versions do
+      case File.rm(path) do
+        :ok ->
+          Logger.info(
+            "Seed: retired #{Path.basename(path)} — it no longer ships and still " <>
+              "matched a shipped default, so it was not the operator's"
+          )
+
+          {:ok, :retired}
+
+        {:error, reason} ->
+          retire_error(path, reason)
+      end
+    else
+      Logger.info(
+        "Seed: kept #{Path.basename(path)} — it no longer ships, but it has been " <>
+          "edited, so it was left in place"
+      )
+
+      {:ok, :kept}
+    end
+  end
+
+  defp retire_error(path, reason) do
+    Logger.warning("Seed: could not retire #{path}: #{inspect(reason)}")
+    {:ok, :error}
+  end
+
   @doc "Lowercase hex sha256 of `content` — the identity a seed version is known by."
   @spec digest(binary()) :: String.t()
   def digest(content) when is_binary(content) do

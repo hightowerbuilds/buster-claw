@@ -582,21 +582,6 @@ defmodule BusterClaw.Commands do
   defdelegate sound_probe(args), to: BusterClaw.Commands.Sound
   # The door into the studio: a Library recording becomes an editable source
   defdelegate sound_import(args), to: BusterClaw.Commands.Sound
-  # Cut-up: transcripts (no timings), word indexes (timings), assembly
-  defdelegate sound_transcript_search(args), to: BusterClaw.Commands.Sound
-  defdelegate sound_transcript_words(args \\ %{}), to: BusterClaw.Commands.Sound
-  defdelegate sound_corpus(args \\ %{}), to: BusterClaw.Commands.Sound
-  defdelegate sound_index_list(args \\ %{}), to: BusterClaw.Commands.Sound
-  defdelegate sound_index_words(args \\ %{}), to: BusterClaw.Commands.Sound
-  defdelegate sound_index_search(args), to: BusterClaw.Commands.Sound
-  defdelegate sound_index_import(args), to: BusterClaw.Commands.Sound
-  defdelegate sound_index_delete(args), to: BusterClaw.Commands.Sound
-  defdelegate sound_align(args), to: BusterClaw.Commands.Sound
-  # Query by example: the matcher that fills an index, and the sentence that
-  # chooses between the takes in one
-  defdelegate sound_find(args), to: BusterClaw.Commands.Sound
-  defdelegate sound_sentence(args), to: BusterClaw.Commands.Sound
-  defdelegate sound_assemble(args), to: BusterClaw.Commands.Sound
   # Editing: one pure SoundStudio function each, rendered to a NEW source
   defdelegate sound_trim(args), to: BusterClaw.Commands.Sound
   defdelegate sound_fade(args), to: BusterClaw.Commands.Sound
@@ -606,23 +591,13 @@ defmodule BusterClaw.Commands do
   # The gated end of the walk, and the way back from it
   defdelegate sound_apply(args), to: BusterClaw.Commands.Sound
   defdelegate sound_restore_defaults(args \\ %{}), to: BusterClaw.Commands.Sound
-  # Capture, and the coverage report a donor passage is written against
-  # (STUDIO_ROADMAP Part V). A separate module: these point at the microphone and
-  # the OS mixer, not at the cutting surface.
-  defdelegate sound_gaps(args \\ %{}), to: BusterClaw.Commands.SoundCapture
+  # Capture (a separate module: these point at the microphone and the OS
+  # mixer, not at the editing surface).
   defdelegate sound_devices(args \\ %{}), to: BusterClaw.Commands.SoundCapture
   defdelegate sound_input_level(args \\ %{}), to: BusterClaw.Commands.SoundCapture
   defdelegate sound_input_level_set(args), to: BusterClaw.Commands.SoundCapture
   # Gated: the microphone is the one input an unattended run must not open alone
   defdelegate sound_record(args), to: BusterClaw.Commands.SoundCapture
-  # The in-app recorder's write half, and the voice banks that keep one
-  # contributor's takes from being spliced into another's (STUDIO_ROADMAP V.0:
-  # banks never merge, and a bank is a voice-and-channel, not a folder).
-  defdelegate sound_record_save(args), to: BusterClaw.Commands.SoundCapture
-  defdelegate voice_bank_list(args \\ %{}), to: BusterClaw.Commands.SoundCapture
-  defdelegate voice_bank_create(args), to: BusterClaw.Commands.SoundCapture
-  defdelegate voice_bank_select(args), to: BusterClaw.Commands.SoundCapture
-  defdelegate voice_bank_delete(args), to: BusterClaw.Commands.SoundCapture
   # Pockets — the operator's own folders of media, READ ONLY. There is no verb
   # here that records, changes or removes a mount, at any tier: mounting is an
   # operator act in the UI, and the absence is the enforcement (POCKETS_ROADMAP

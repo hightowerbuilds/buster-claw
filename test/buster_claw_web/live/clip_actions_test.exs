@@ -61,9 +61,9 @@ defmodule BusterClawWeb.ClipActionsTest do
     :ok = StudioMix.save(placed)
     [clip] = Enum.map(StudioMix.clips(placed), fn {_t, c} -> c end)
 
-    # /studio since 08-16 — was a Home sub-tab click.
+    # /studio since 08-16 — was a Home sub-tab click. It also clicked the rail's
+    # Mix button until 09-19; Mix is the only tab now, so there is no rail.
     {:ok, view, _html} = live(conn, ~p"/studio")
-    render_click(element(view, "[phx-click='select_studio_tab'][phx-value-tab='mix']"))
     send(view.pid, {:studio_select, "mix:m"})
     _ = :sys.get_state(view.pid)
 

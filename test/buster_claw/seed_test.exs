@@ -56,6 +56,36 @@ defmodule BusterClaw.SeedTest do
     end
   end
 
+  describe "retiring a seed that no longer ships" do
+    test "an untouched copy is removed", %{root: root} do
+      p = path(root)
+      File.write!(p, "v1")
+
+      assert {:ok, :retired} = Seed.retire(p, [Seed.digest("v1"), Seed.digest("v2")])
+      refute File.exists?(p)
+    end
+
+    test "an edited copy is the operator's and stays", %{root: root} do
+      p = path(root)
+      File.write!(p, "v1 plus my own notes")
+
+      assert {:ok, :kept} = Seed.retire(p, [Seed.digest("v1")])
+      assert File.read!(p) == "v1 plus my own notes"
+    end
+
+    test "a file that was never there is absent, not an error", %{root: root} do
+      assert {:ok, :absent} = Seed.retire(path(root), [Seed.digest("v1")])
+    end
+
+    test "with no recorded versions, nothing is ever removed", %{root: root} do
+      p = path(root)
+      File.write!(p, "v1")
+
+      assert {:ok, :kept} = Seed.retire(p, [])
+      assert File.exists?(p)
+    end
+  end
+
   describe "the safety asymmetry" do
     # The whole design rests on this: an unrecognised digest is ALWAYS the
     # operator's. So a forgotten version entry costs an upgrade that did not
@@ -132,8 +162,8 @@ defmodule BusterClaw.SeedTest do
     # Same guard, same reason, for the seeds converted on 09-02-26. Skills were
     # create-only until then, which meant a skill teaching an agent verbs that no
     # longer exist would have survived the feature in every workspace already
-    # installed — `sound-cutup.md` is 183 lines of exactly that, waiting for the
-    # Studio to be spun out into its own project.
+    # installed. `sound-cutup.md` was 183 lines of exactly that, and was retired
+    # on 09-19 through `Seed.retire/2` when the cut-up engine was deleted.
     test "every current default's digest is the LAST entry in its version list" do
       for %{name: name, content: content, versions: versions} <- Skills.seed_manifest() do
         digest = Seed.digest(content)
@@ -164,7 +194,6 @@ defmodule BusterClaw.SeedTest do
                "pockets.md",
                "save-note.md",
                "shader-designer.md",
-               "sound-cutup.md",
                "terminal-paint.md"
              ]
     end

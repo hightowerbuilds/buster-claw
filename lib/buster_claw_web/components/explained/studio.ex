@@ -1,6 +1,11 @@
 defmodule BusterClawWeb.Explained.Studio do
   @moduledoc """
-  The Studio tutorial — one tab covering both sub-tabs at `/studio`.
+  The Studio tutorial — Mix at `/studio`, and the sound verbs behind it.
+
+  > **The Voice Library half of this page was deleted 09-19** with the cut-up
+  > engine it described (`CUTUP_DELETION_ROADMAP`): the origin/confidence
+  > section, the nine cut-up verbs, and the recorder's honest-limit note. The
+  > history below is kept because it explains the framing that survives.
 
   ## It was two tabs, and merging them was the operator's call
 
@@ -18,11 +23,10 @@ defmodule BusterClawWeb.Explained.Studio do
   **The Studio is the experimental corner of the app and says so out loud.**
   Every other Explained tab documents something the product depends on; this one
   documents a workshop. That is not a hedge — it is the honest description of a
-  surface where the cut-up engine is complete and command-only and the recorder
-  has never been run in a packaged build. Saying "experimental" is what buys the
-  room to change both without anyone feeling misled — and it is what let the
-  Sketch Pad, the third tab this page used to describe, be deleted whole on 09-05
-  rather than maintained out of obligation.
+  surface that keeps changing shape. Saying "experimental" is what buys the room
+  to change it without anyone feeling misled — and it is what let the Sketch Pad
+  (09-05) and then the Voice Library (09-19) be deleted whole rather than
+  maintained out of obligation.
 
   ## The spine, unchanged
 
@@ -58,22 +62,18 @@ defmodule BusterClawWeb.Explained.Studio do
                 the string, because a deleted surface's ghost in the copy is the
                 drift this page keeps having. The deletion is recorded in the
                 moduledoc, which is where a reader who needs it will look. --%>
-          This is a workshop: two sub-tabs at <code>/studio</code>, at two
-          different stages of finished, and it will keep changing shape. Some of
-          what is here will grow into features you use every day; some of it will
-          be deleted. Both are the point.
+          This is a workshop at <code>/studio</code>, and it will keep changing
+          shape. Some of what is here will grow into features you use every day;
+          some of it has already been deleted. Both are the point.
         </p>
       </div>
 
       <div class="flex flex-col gap-3 text-sm leading-relaxed text-base-content/80">
         <p>
-          <span class="font-semibold text-base-content">Mix</span>
-          cuts and arranges audio. <span class="font-semibold text-base-content">Voice Library</span>
-          is the cut-up: your own words, indexed, spliced into sentences nobody
-          said.
+          <span class="font-semibold text-base-content">Mix</span> cuts and arranges audio.
         </p>
         <p>
-          Mix is the one that is genuinely finished, so it leads. Buster Claw makes
+          Buster Claw makes
           noise on purpose — a voicemail arrives, a shift ends, an alarm fires — and
           which chime rings is a table you own. The Studio is where you cut the
           audio; the sound board is where you decide what it is for.
@@ -146,10 +146,8 @@ defmodule BusterClawWeb.Explained.Studio do
           Two surfaces, and what each is for
         </h3>
         <p class="text-sm leading-relaxed text-base-content/80">
-          The cut-up on Voice Library shows you a corpus, but everything it can
-          actually do it does through verbs. This half is the other way round: two
-          screens you drive by hand, and they split along the same line as the
-          verbs do.
+          Two screens you drive by hand, and they split along the same line as
+          the verbs do.
         </p>
         <ul class="ic-unfold" style="list-style: none; padding-left: 0;">
           <li>
@@ -262,105 +260,6 @@ defmodule BusterClawWeb.Explained.Studio do
         </ol>
       </.example>
 
-      <%!-- What Ramshackle's own tab carried, kept because it is the one thing a
-            reader cannot infer from the surface: how much to trust a timing. --%>
-      <section class="flex flex-col gap-3">
-        <h3 class="font-display text-lg font-black tracking-tight">
-          Voice Library — and why a take has a confidence
-        </h3>
-        <p class="text-sm leading-relaxed text-base-content/80">
-          The cut-up indexes audio you already have — voicemails, imported files,
-          and now your own recordings — word by word, then splices those words into
-          sentences nobody said. No model, no training, no network.
-        </p>
-        <p class="text-sm leading-relaxed text-base-content/70">
-          <span class="font-semibold text-base-content">Not the same thing as Vox2B.</span>
-          Voice Library can only ever say words you have already said, cut out of
-          real recordings. Vox2B synthesizes new speech from a model that clones a
-          few seconds of you, so it can say anything and nothing it produces was
-          ever spoken. Different machinery, different tab, different tutorial.
-        </p>
-        <p class="text-sm leading-relaxed text-base-content/80">
-          Every index records an <code>origin</code>, and origin is a property of
-          the whole file rather than of a word. It is how much to trust each timing:
-        </p>
-        <ul class="ic-unfold" style="list-style: none; padding-left: 0;">
-          <li>
-            <span class="font-mono font-bold text-base-content">aligned</span>
-            — a transcript shared out across the speech proportionally, by syllable
-            count. <span class="font-semibold text-base-content">Deliberately crude</span>, and confidence
-            <span class="font-semibold text-base-content">caps at 0.9</span>
-            so it can never impersonate a measurement.
-          </li>
-          <li>
-            <span class="font-mono font-bold text-base-content">recognizer</span>
-            — measured by comparing sound to sound. The only origin where a machine
-            actually listened.
-          </li>
-          <li>
-            <span class="font-mono font-bold text-base-content">manual</span>
-            — hand-marked, or recorded one word at a time in the Studio.
-            <span class="font-semibold text-base-content">The only origin that earns 1.0.</span>
-          </li>
-        </ul>
-        <p class="text-sm leading-relaxed text-base-content/70">
-          So an index that is entirely <code>aligned</code>
-          is a vocabulary of estimates and will sound like one. That is not a bug
-          report — it is the reason the recorder exists.
-        </p>
-        <p class="text-sm leading-relaxed text-base-content/80">
-          <span class="font-semibold text-base-content">
-            The engine is command-only, and that is why these are here.
-          </span>
-          Voice Library shows you the corpus and builds a sentence, but everything
-          the cut-up can actually do it does through verbs — so the verbs are the
-          feature, and each is offered in a form you can lift straight into a
-          terminal.
-        </p>
-        <ul
-          id="explained-studio-cutup-verbs"
-          class="ic-unfold"
-          style="list-style: none; padding-left: 0;"
-        >
-          <li>
-            <.copy_command command="sound_corpus" />
-            what you have: events, how many carry a transcript, how many name a
-            recording, and <span class="font-semibold text-base-content">how many of those files are really on disk</span>. That last gap wastes an afternoon if you skip it.
-          </li>
-          <li>
-            <.copy_command command="sound_transcript_words" /> and
-            <.copy_command command="sound_index_words" />
-            count the vocabulary. The brutal question, asked early:
-            <span class="italic">how many takes of a given word do I have?</span>
-            A word you have once is a word you cannot really use.
-          </li>
-          <li>
-            <.copy_command command="sound_probe" /> and <.copy_command command="sound_import" />
-            inspect and bring audio in; <.copy_command command="sound_align" />
-            gives it an index. There is
-            <span class="font-semibold text-base-content">no recognizer</span>
-            in that step — voice-activity detection finds where sound happens and
-            the transcript is shared out across it, which is why the origin is <code>aligned</code>
-            and the confidence caps below a measurement.
-          </li>
-          <li>
-            <.copy_command command="sound_find" /> and <.copy_command command="sound_index_search" />
-            locate takes of a word by ear rather than by text.
-          </li>
-          <li>
-            <.copy_command command="sound_sentence" /> builds a phrase from the best takes;
-            <.copy_command command="sound_assemble" />
-            is the hand-cut version when you want to choose every piece yourself.
-          </li>
-        </ul>
-        <p class="rounded-sm border-l-2 border-warning pl-3 text-sm leading-relaxed text-base-content/70">
-          <span class="font-semibold text-base-content">Honest limit:</span>
-          the microphone has never been exercised in a packaged build. The recorder
-          reports what your browser actually answered rather than promising either
-          way, so if it cannot record it will say what stopped it.
-        </p>
-      </section>
-
       <section class="flex flex-col gap-3" id="explained-studio-safety">
         <h3 class="font-display text-base font-black uppercase tracking-wide">
           The way back, and the one thing you cannot undo
@@ -380,12 +279,9 @@ defmodule BusterClawWeb.Explained.Studio do
             <span class="font-mono font-bold text-base-content">sound_delete</span>
             — the irreversible one, and the only verb here that destroys anything. It
             removes working material only; the library and the routing table are
-            untouched, and it cannot remove a chime something is currently using. A
-            source that still has a word index is
-            <span class="font-semibold text-base-content">refused</span>
-            as <code>source_indexed</code>, because deleting the audio would leave a
-            word list whose every hit resolves to nothing. An imported voicemail can be
-            imported again; an assembled sentence cannot.
+            untouched, and it cannot remove a chime something is currently using. An
+            imported voicemail can be imported again; an edit rendered from it
+            cannot.
           </li>
         </ul>
         <p class="text-sm leading-relaxed text-base-content/70">
@@ -410,11 +306,10 @@ defmodule BusterClawWeb.Explained.Studio do
           — mono PCM16 at 22.05 kHz — so later joins do not hit a format mismatch.
         </p>
         <p>
-          <span class="font-semibold text-base-content">Want a sentence nobody ever said?</span>
-          That is Voice Library, the other tab at <code>/studio</code>. Ramshackle
-          indexes recordings word by word and
-          splices new sentences out of them — and what it produces is an ordinary
-          studio source, which means it arrives back here, at <code>sound_apply</code>, like anything else.
+          <span class="font-semibold text-base-content">Want your own voice saying something?</span>
+          That is Vox2B, on Home — it synthesizes new speech from a short reference
+          recording of you, and a rendered line installs into the sound library
+          like any other chime.
         </p>
       </div>
 

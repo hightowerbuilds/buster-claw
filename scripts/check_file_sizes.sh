@@ -143,7 +143,7 @@ check lib/buster_claw_web/components/explained_panel.ex        118 HELD
 # it bought: two tabs described two ENGINES rather than one place you go to make
 # something, and the Ramshackle tab had drifted into claiming the Voice surface
 # was unbuilt months after it shipped.
-check lib/buster_claw_web/components/explained/studio.ex       450 HELD
+check lib/buster_claw_web/components/explained/studio.ex       358 HELD
 # 460 -> 660 on 08-15. The tab gained a SECOND SPINE rather than more of the
 # first: three capabilities with three unrelated blockers (inbound voice works;
 # outbound SMS is built and blocked on Twilio paperwork; outbound voice needs no
@@ -486,84 +486,8 @@ check lib/buster_claw_web/live/status/weather.ex              97 HELD
 # stands as the rule — this file is a rail and a dispatch and must not become a
 # place features live — and a third tab arriving is exactly the growth it was
 # capped to make visible rather than to forbid.
-check lib/buster_claw_web/components/studio_panel.ex         215 HELD
+check lib/buster_claw_web/components/studio_panel.ex         171 HELD
 check lib/buster_claw_web/components/studio/registry.ex       85 HELD
-
-# Voice, the Ramshackle surface (VI.1), capped on arrival. `voice.ex` is the two
-# panes; `status/voice.ex` is their state, in `StatusLive` for the reason every
-# home panel's is — the panel renders behind `:if` and a half-typed sentence
-# must survive a glance at Chat.
-#
-# The seam if either grows: Pane 2 (takes, waveform, audition) is the missing
-# third pane and needs a route that serves a take's audio. That is a sibling
-# module and its own surface, not another section of these two.
-# 230 -> 240 on 08-15: both forms gained `phx-submit` after the packaged build
-# showed Enter navigating away from the tab, and the raise is almost entirely the
-# two comments explaining why an apparently decorative attribute is load-bearing
-# (DMG-review-8-15, finding 3). A later reader tidying those attributes away
-# would reintroduce the bug; form_submit_test.exs now fails if they do.
-# `studio/voice.ex` was DELETED 08-16: the Voice Library's Words and Sentence
-# panes are what it became, so leaving it would have left a module nothing
-# renders. Its cap is replaced by the Library's, split by SECTION rather than
-# by layer — `voice_library.ex` is the sidebar and the dispatch, each pane is
-# its own file, which is why none of them is large.
-#
-# `words.ex` and `sentence.ex` carry `data-play` / `data-source` / `data-start`
-# / `data-end` / `data-version`. That is `voice_audition.js`'s contract for
-# playing a slice of a file; renaming one breaks audition with the suite green.
-check lib/buster_claw_web/components/studio/voice_library.ex 190 HELD
-# 180 -> 225 on 08-16 for take curation: each take now carries a play button, a
-# "use this one" toggle and a delete, plus the line explaining what happens when
-# nothing is marked. That is three controls per row where there was one link.
-#
-# The toggle is a TOGGLE and not a radio group deliberately — clicking the chosen
-# take again clears the choice and hands selection back to `Cutup.Select`, which
-# a radio has no way to express. If a later reader "fixes" it into a radio, that
-# is the behaviour they are removing.
-check lib/buster_claw_web/components/studio/words.ex         225 HELD
-# 170 -> 185: the per-word chips became BUTTONS with two destinations —
-# `chip_event/1` sends a word that exists to Words and a word that does not to
-# the recorder, because a recording is the only thing that changes a `missing`.
-# The raise is mostly the tooltips, which now say where a chip GOES: two
-# destinations from chips differing only by colour would otherwise surprise.
-check lib/buster_claw_web/components/studio/sentence.ex      185 HELD
-# 175 -> 182 -> 320 on 08-16. The big raise is the Voice Library's merge, and it
-# is the one entry here that should be questioned first if this area grows again.
-#
-# What it bought: `load_report/1` scoped to the active bank, plus the three
-# things the Library added that are STATE rather than markup — the section
-# switch, the selected word and its takes (VI.1's pane 2), and the sentence
-# preview with its version counter. Each is small; together they are ~120 lines.
-#
-# Why they are here rather than in a fourth module: they are one surface's
-# state, and every one of them must outlive the `:if` that discards the panel on
-# a home-tab switch. A separate module would have to be threaded through
-# `StatusLive` anyway, and `StatusLive` is the file with no room.
-#
-# `status/recorder.ex` is the deliberate exception — it is the microphone half,
-# shares nothing with this but the bank, and stayed separate for that reason.
-# 320 -> 400 on 08-16 for take curation — select/prefer/unprefer/delete and the
-# sentences that report what a deletion actually removed. This file is now the
-# one to question first in this area: it is the Library's whole non-hardware
-# state, and the seam if it grows again is the TAKE half (selection, preference,
-# deletion) splitting from the CORPUS half (report, query, phrase, preview).
-check lib/buster_claw_web/live/studio/voice_state.ex          400 HELD
-
-# The recorder — the Library's Record section (V.6-V.8). Its meter subtree is
-# `phx-update="ignore"` and its interior belongs to `voice_recorder.js`: the
-# device readout, the meter, the peak hold and the button label are painted by
-# the hook, so markup that looks unused here may be the hook's contract.
-# `data-role` attributes ARE that contract.
-#
-# `status/recorder.ex` is the microphone half of the Library's state and stayed
-# separate from `status/voice.ex` on purpose: they share nothing but the bank.
-# Its 250 -> 265 raise was the two error tables becoming MAPS with a default
-# rather than a clause per atom — longer, and the length is the point, since a
-# clause set covering every error its callee returns makes the catch-all
-# unreachable (a Dialyzer `pattern_match_cov` finding) and deleting the
-# catch-all to satisfy it makes the function partial.
-check lib/buster_claw_web/components/studio/recorder.ex      280 HELD
-check lib/buster_claw_web/live/studio/recorder_state.ex       265 HELD
 
 # --- The Studio, on its own route (08-16) ------------------------------------
 #
@@ -572,7 +496,7 @@ check lib/buster_claw_web/live/studio/recorder_state.ex       265 HELD
 # `Status.Studio` / `Status.Voice` / `Status.Recorder`, which did not move — so
 # growth here means a handler that stopped delegating, which is the thing to
 # look at rather than the line count itself.
-check lib/buster_claw_web/live/studio_live.ex                415 HELD
+check lib/buster_claw_web/live/studio_live.ex                321 HELD
 
 check lib/buster_claw_web/live/notes_component.ex              744 HELD
 check lib/buster_claw_web/components/notes/editor.ex           300 HELD
@@ -1112,37 +1036,6 @@ check lib/buster_claw/integrations/github.ex                  500 HELD
 # lets it live in core at all, and what the unbuilt `sound_*` CLI will need. If
 # it grows, ask whether a web concern crept back in.
 check lib/buster_claw/notifications/studio_catalog.ex        255 HELD
-check lib/buster_claw/notifications/cutup/source_name.ex      125 HELD
-# Raised 08-16, 640 -> 655, for the `bank` field (STUDIO_ROADMAP V.0). Small and
-# worth naming, because it is a field on a CONTRACT rather than a feature: an
-# index now records whose voice it holds, which is what stops a cut-up splicing
-# two speakers together. The added lines are `build/3`'s strict validation, the
-# encode/decode pair, and `within_bank/2` on the search path.
-#
-# The rule that keeps this cheap lives in `Cutup.Bank`: a bank is METADATA, not
-# a directory, so nothing here moved, and `Bank.of/1` is deliberately pure —
-# putting a roster lookup in it would drop an Ecto query into this file's load
-# path, which broke 46 tests the one time it was tried.
-check lib/buster_claw/notifications/cutup/index.ex            655 HELD
-# `bank.ex` capped on arrival. Two thirds of it is moduledoc, and deliberately:
-# the rule it enforces (banks never merge; a bank is a voice-and-channel, not a
-# folder) was derived three independent ways in STUDIO_ROADMAP V.0 and is the
-# kind of constraint a later reader deletes as over-engineering unless the
-# argument travels with the code. `of/1` alone carries 25 lines explaining why it
-# must never read the roster.
-#
-# If it grows, ask whether a MEASUREMENT crept in. This module holds the roster
-# and the pointer and nothing else — "how many takes has this bank?" belongs to
-# `Cutup.Gaps`, because a registry that depends on the corpus it partitions is
-# the coupling this split exists to avoid.
-check lib/buster_claw/notifications/cutup/bank.ex             330 HELD
-# `takes.ex` capped on arrival. Like `bank.ex` above it, much of it is the
-# argument rather than the code: why a preference is a POINTER and not a bump to
-# `confidence` (it would make the origin field lie, and origin is what the
-# corpus's trust rests on), and the three-row table for what a deletion takes
-# with it. The audio-retention row was UNCOVERED until `takes_test.exs` existed —
-# breaking it failed nothing — so that test is load-bearing, not decoration.
-check lib/buster_claw/notifications/cutup/takes.ex            320 HELD
 # `capture/take.ex` — the recorder's server half. Capped 08-16 during the quality
 # pass, which found it was the ONE module added that day with no cap: every
 # sibling got one on arrival and this was missed, which is exactly the drift the
@@ -1152,8 +1045,7 @@ check lib/buster_claw/notifications/cutup/takes.ex            320 HELD
 # produces (`:manual` at 1.0 vs `:aligned` capped below it). If it grows, ask
 # whether DECODING and STORING have drifted apart — `decode/2` is pure and
 # testable without a workspace, `store/3` writes files; that is the seam.
-check lib/buster_claw/notifications/capture/take.ex           420 HELD
-check lib/buster_claw/notifications/cutup/features.ex         760 HELD
+check lib/buster_claw/notifications/capture/take.ex           184 HELD
 
 # The web command surface (`1eee2f8`), 894 -> 848 by collapsing the six
 # click/fill clause bodies.
@@ -1263,20 +1155,15 @@ check desktop/tauri/src/main.rs                               850 HELD
 check desktop/tauri/src/browser/js.rs                         650 HELD
 check desktop/tauri/src/browser/state.rs                      520 HELD
 
-# ── The core's largest ungoverned file, and it is not close. ─────────────────
+# ── Was the core's largest file; the cut-up deletion halved it. ──────────────
 #
-# FROZEN at exactly today's size. 24 verbs, zero DSP, at least four verb
-# families sharing ~50 lines of coercion helpers. The repo already conceded
-# this in code: `Commands.SoundCapture`'s own moduledoc says it was split out
-# on 08-09 "to stop the Sound module, already the largest file in lib/, from
-# absorbing a second concern."
-#
-# The owed split is Library / Corpus / Render behind a delegating facade so
-# `commands.ex` stays byte-identical, and the 2,524-line test file is the proof
-# harness. Until then the number may not move up. One trap for whoever takes it:
-# `under_library/1` is the security boundary of the whole family and must keep
-# exactly one home.
-check lib/buster_claw/commands/sound.ex                      2464 FROZEN
+# FROZEN at 2,464 until 09-19, with a Library / Corpus / Render split owed. The
+# Corpus third was DELETED instead (`CUTUP_DELETION_ROADMAP`): twelve of its 24
+# verbs went with the engine under them, and the split stopped being owed. What
+# is left is the library, the Studio's sources, and the edits. HELD, not frozen.
+# One trap survives for whoever touches it: `under_library/1` is the security
+# boundary of the whole family and must keep exactly one home.
+check lib/buster_claw/commands/sound.ex                      1235 HELD
 
 # ── Core files the review read and ruled feature-sized. ──────────────────────
 #
@@ -1360,7 +1247,7 @@ check lib/buster_claw/model_policy.ex                         540 HELD
 # catalog/web.ex — pure data, 37 documented entries at ~16 lines each: the
 # honest cost of the surface, per the standing entries/0 ruling.
 check lib/buster_claw/commands/catalog/web.ex                 660 HELD
-check lib/buster_claw/commands/catalog/sound.ex               530 HELD
+check lib/buster_claw/commands/catalog/sound.ex               257 HELD
 # telephony.ex — the one file in this batch the review did not diagnose
 # individually. Capped as a plain regrowth alarm; if it trips, read it properly
 # before raising the number.
@@ -1392,21 +1279,6 @@ check lib/buster_claw/notifications/sound.ex                  610 HELD
 # sound_studio.ex — PCM16 editing core + studio folder catalog. Mildly two jobs;
 # `SoundStudio.Store` is the seam IF the folder half grows, not before.
 check lib/buster_claw/notifications/sound_studio.ex           800 HELD
-# The remaining cut-up stages. The review read all twelve and found them the
-# house's best work — one stage per module, a test file each, docs carrying
-# measurements rather than adjectives. Every large one is a single algorithm
-# plus its corrections. These are +10% maintenance room, nothing more.
-#
-# One structural risk they share, recorded where someone will meet it: the
-# 25 ms / 10 ms frame clock is described everywhere as "pinned in Cutup.Types",
-# but Types is prose-and-types only — the numbers live as independent attributes
-# in signal.ex, vad.ex and dtw.ex. The pin is a convention, not a mechanism.
-check lib/buster_claw/notifications/cutup/align.ex           1030 HELD
-check lib/buster_claw/notifications/cutup/select.ex          1020 HELD
-check lib/buster_claw/notifications/cutup/mfcc.ex             660 HELD
-check lib/buster_claw/notifications/cutup/dtw.ex              630 HELD
-check lib/buster_claw/notifications/cutup/vad.ex              620 HELD
-check lib/buster_claw/notifications/cutup/signal.ex           570 HELD
 
 if [ "$fail" -ne 0 ]; then
   echo "FAIL: the file-size inventory does not hold."

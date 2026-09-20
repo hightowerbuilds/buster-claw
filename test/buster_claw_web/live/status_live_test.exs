@@ -1654,62 +1654,38 @@ defmodule BusterClawWeb.StatusLiveTest do
       refute html =~ "Tutorial in the works"
     end
 
-    # Was "the Ramshackle tab explains a command-only engine and says so". The
-    # Ramshackle tutorial was merged into Studio on 08-16 and its module deleted,
-    # so the tab is gone — but the contract it carried is the reason this test
-    # survived the merge rather than going with it: **the cut-up engine is
-    # command-only, so the verbs ARE the feature**, and a renamed one would leave
-    # the page teaching something that cannot be run.
-    test "the Studio tab offers every cut-up verb, and each one exists", %{conn: conn} do
+    # Was "the Studio tab offers every cut-up verb, and each one exists" until
+    # 09-19, when the cut-up engine, its verbs and the Voice Library half of the
+    # page were deleted (`CUTUP_DELETION_ROADMAP`). The contract survives for the
+    # verbs that are left: every command the tutorial offers must exist.
+    test "the Studio tab offers only verbs that exist, and none of the cut-up's", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
       render_click(view, "select_home_tab", %{"tab" => "explained"})
 
       html = render_click(view, "select_explained_tab", %{"tab" => "studio"})
 
-      assert has_element?(view, "#explained-studio-cutup-verbs")
+      offered =
+        ~r/data-terminal-command-copy="([a-z_]+)"/
+        |> Regex.scan(html, capture: :all_but_first)
+        |> List.flatten()
+        |> Enum.uniq()
 
-      # Every command the tutorial names must exist — the same contract the other
-      # tutorials carry. This one leans on it harder than most: the tab has no
-      # surface, so the verbs ARE the feature and a renamed one would leave the
-      # page teaching a command that cannot be run.
-      for cmd <- ~w(sound_corpus sound_transcript_words sound_import sound_align
-                    sound_find sound_sentence sound_index_search sound_assemble
-                    sound_index_words sound_probe) do
-        # Anchored on the copy attribute rather than on `<code>#{cmd}</code>`:
-        # this tab names every verb through `<.copy_command>`, which renders a
-        # classed `<code>` beside a copy button. Asserting the attribute proves
-        # the stronger thing anyway — the command is not merely mentioned, it is
-        # offered in a form the reader can lift straight into a terminal.
-        assert html =~ ~s(data-terminal-command-copy="#{cmd}"),
-               "the Voice tutorial does not offer #{cmd} as a copyable command"
+      # Not vacuous: the page teaches the library, the four edits and the gate.
+      for cmd <- ~w(sound_routes sound_list sound_trim sound_fade sound_normalize
+                    sound_concat sound_probe sound_apply) do
+        assert cmd in offered, "the Studio tutorial does not offer #{cmd} as a copyable command"
+      end
 
+      for cmd <- offered do
         assert Commands.command_type(cmd) != nil,
                "tutorial names #{cmd}, which is not in the command catalog"
       end
 
-      # A lockstep assertion on someone else's module, kept because it has already
-      # earned its keep twice. It first asserted Voice was a PLACEHOLDER, so that
-      # building the tab would fail here and force the copy to be rewritten — and
-      # on 08-14 it did exactly that. It is now the narrower claim, and the same
-      # trap applies: if Voice ever goes back to being a placeholder, this page
-      # is overclaiming and should fail rather than quietly mislead.
-      refute "voice" in Enum.map(BusterClawWeb.Studio.Registry.placeholders(), & &1.key),
-             "Voice is a placeholder again — this tutorial now overclaims what that tab does"
-
-      # REMOVED 09-02-26, and worth a note because it looked like it was testing
-      # this tutorial and was not.
-      #
-      # It asserted `href="/studio"` appeared in the rendered page, believing that
-      # proved the tutorial deep-links to the surface it describes. It never did:
-      # `studio` is in `@built`, so this tab renders `Explained.Studio`, which has
-      # no such link — only the STUB renders a registry `path`. The href it
-      # matched came from the dock nav bar, three levels up and nothing to do with
-      # the tutorial.
-      #
-      # The dock's Studio tab was removed when the Sketch Pad took it, and the
-      # assertion went red — which is the only reason anyone found out it had been
-      # reading the wrong element all along. Nothing replaces it here, because the
-      # thing it claimed to check does not exist to check.
+      # The deleted half must not leave a ghost in the copy — a tutorial naming
+      # a tab that is gone is the drift this page keeps having.
+      refute has_element?(view, "#explained-studio-cutup-verbs")
+      refute html =~ "Voice Library"
+      refute html =~ "Sketch Pad"
 
       # The framing is a contract, not decoration. Every other Explained tab
       # documents something the product depends on; this one documents a
@@ -1718,21 +1694,6 @@ defmodule BusterClawWeb.StatusLiveTest do
       # decide whether that is true.
       assert html =~ "Experimental"
       assert html =~ "where this app tries things"
-
-      # And it must keep admitting what is unfinished rather than smoothing it
-      # over. There were two honest limits on this page; the second was the
-      # Sketch Pad's missing save, and it left on 09-05 with the Pad itself —
-      # which is the good way for an admission to disappear. The recorder's
-      # unproven microphone is the one that remains, and it must keep saying so.
-      assert html =~ "never been exercised in a packaged build"
-      refute html =~ "Sketch Pad"
-
-      # sound_sentence writes a SOURCE and nothing else. The tutorial promises
-      # that twice, so assert the verb has not quietly grown a routing side
-      # effect: it must stay a restricted mutation rather than a trigger.
-      sentence = Map.fetch!(Map.new(Commands.list_commands(), &{&1.name, &1}), "sound_sentence")
-      assert sentence.type == :mutate
-      assert sentence.tier == :restricted
 
       refute html =~ "Tutorial in the works"
     end

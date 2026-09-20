@@ -250,24 +250,6 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
   end
 
   describe "selection ownership (Part V landmine 2)" do
-    test "survives leaving the tab and coming back", %{conn: conn} do
-      {view, _html} = open_studio(conn)
-      select(view, "sound:confirm.wav")
-
-      # Sub-tabs render behind `:if`, which REMOVES the DOM and discards the
-      # live_component with it. A selection held in the component would be gone
-      # here — the failure that demos perfectly and loses real work.
-      #
-      # This was a Home tab switch until 08-16. The Studio moved to `/studio`,
-      # and the hazard came with it unchanged: `StudioPanel` dispatches behind
-      # `:if` exactly as Home did, so leaving for Voice and returning to Mix
-      # destroys and rebuilds the component the same way.
-      view |> element("button[phx-value-tab='voice']") |> render_click()
-      html = view |> element("button[phx-value-tab='mix']") |> render_click()
-
-      assert html =~ "confirm"
-      assert html =~ ~s(aria-current="true")
-    end
   end
 
   describe "the frosted panel" do
@@ -281,24 +263,30 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
   end
 
   describe "the tab bar toolbar" do
-    test "New mix and Import audio ride the tab bar, only while the Studio is open",
+    # FIVE TESTS LEFT THIS FILE ON 09-19, and what they guarded is still true.
+    #
+    # `StudioPanel` renders each sub-tab behind `:if`, so leaving Mix destroys
+    # `SoundStudioComponent` and everything it holds. That is why the selection,
+    # the trim, the clipboard and the undo stacks are assigns of `StudioLive`
+    # rather than of the component, and four tests proved it by switching to the
+    # Voice Library and back; a fifth proved Mix's menu bar did not follow you
+    # there. The Voice Library was deleted with the cut-up engine
+    # (`CUTUP_DELETION_ROADMAP`), Mix is the only tab, and there is nowhere to
+    # leave to — the hazard cannot occur, so it cannot be tested.
+    #
+    # **The day a second sub-tab exists, those tests come back with it.** They
+    # are in git at `98cbad8`: "survives leaving the tab and coming back", "but
+    # it DOES survive leaving the tab", "an arrangement survives leaving the
+    # tab", "history and clipboard survive leaving the tab". Do not move the
+    # state into the component in the meantime because nothing fails.
+    test "New mix and Import audio live in the menu bar, not in chrome above it",
          %{conn: conn} do
-      # Twice-moved, and the second move is the interesting one. This was a Home
-      # tab-bar toolbar; on 08-16 it briefly rode `/studio`'s page header, and
-      # then the menu bar absorbed both its actions — so New mix and Import now
-      # live on the surface they act on rather than in chrome above it.
-      #
-      # The property is unchanged: Mix's chrome must not follow you to another
-      # sub-tab.
-      {:ok, view, html} = live(conn, ~p"/studio")
+      {:ok, _view, html} = live(conn, ~p"/studio")
 
       assert html =~ "studio-menu-bar"
       assert html =~ "new mix name"
       assert html =~ "Import audio"
       refute html =~ "studio-toolbar"
-
-      html = view |> element("button[phx-value-tab='voice']") |> render_click()
-      refute html =~ "studio-menu-bar"
     end
 
     test "the toolbar's create form reaches the component through its selector target",
@@ -471,19 +459,6 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       refute html =~ "Trim to selection"
     end
 
-    test "but it DOES survive leaving the tab (Part V landmine 2)", %{conn: conn} do
-      {view, _html} = open_studio(conn)
-      select(view, "sound:alarm.wav")
-      drag(view, 120, 480)
-
-      view |> element("button[phx-value-tab='voice']") |> render_click()
-      html = view |> element("button[phx-value-tab='mix']") |> render_click()
-
-      # An in-progress edit must outlive a glance at Chat.
-      assert html =~ "120 ms"
-      assert html =~ "480 ms"
-    end
-
     test "clearing drops the selection", %{conn: conn} do
       {view, _html} = open_studio(conn)
       select(view, "sound:alarm.wav")
@@ -513,10 +488,6 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       # The component asks the parent to open the new audio via a message, so
       # the selection lands one render after the submit returns.
       render(view)
-    end
-
-    defp open_audio(view, name) do
-      select(view, "mix:" <> name)
     end
 
     defp add_clip(view, source, track_index \\ 0) do
@@ -618,18 +589,6 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
 
       assert clip_ids(html) == [clip]
       assert html =~ "starts 2.5 s"
-    end
-
-    test "an arrangement survives leaving the tab — it was never only in memory", %{conn: conn} do
-      {view, _html} = open_studio(conn)
-      new_audio(view, "durable")
-      add_clip(view, "sound:alarm.wav")
-
-      view |> element("button[phx-value-tab='voice']") |> render_click()
-      view |> element("button[phx-value-tab='mix']") |> render_click()
-      html = open_audio(view, "durable")
-
-      assert length(clip_ids(html)) == 1
     end
 
     test "rendering mixes every track into one file and opens it", %{conn: conn, root: root} do
@@ -1069,23 +1028,6 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       # The standard contract: keeping the branch would let redo overwrite work
       # done since the undo.
       assert html =~ ~r/phx-click="studio_redo" disabled/
-    end
-
-    test "history and clipboard survive leaving the tab", %{conn: conn} do
-      {view, _name} = start_audio(conn, "durable keys")
-      add(view, "sound:boot.wav")
-      [clip] = view |> render() |> clip_ids()
-      click_clip(view, clip)
-      render_hook(view, "studio_copy", %{})
-
-      view |> element("button[phx-value-tab='voice']") |> render_click()
-      view |> element("button[phx-value-tab='mix']") |> render_click()
-      html = select(view, "mix:durable keys")
-
-      # An undo stack that evaporates on a glance at Chat reads as the feature
-      # being broken — which is why it lives in StatusLive, not the component.
-      assert html =~ "copied: boot.wav"
-      refute html =~ ~r/phx-click="studio_undo" disabled/
     end
 
     test "switching mixes drops the history rather than undoing into the wrong one",

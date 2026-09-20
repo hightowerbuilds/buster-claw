@@ -1,7 +1,9 @@
 defmodule BusterClawWeb.StudioPanel do
   @moduledoc """
-  The Studio's three tabs: `Mix` — the cutting-and-arranging studio — `Voice
-  Library`.
+  The Studio's tabs — today one, `Mix`, the cutting-and-arranging studio. The
+  Voice Library was the second until 09-19, when it left with the cut-up engine.
+  **With a single tab the rail is not drawn**: one button that selects what is
+  already selected is a control that does nothing.
 
   Presentation only. `select_studio_tab` is handled by the parent LiveView
   (`StudioLive`), which owns the `:studio_tab` assign for the same reason it
@@ -24,7 +26,6 @@ defmodule BusterClawWeb.StudioPanel do
   |---|---|
   | `Studio.Registry` | the sub-tabs, labels and blurbs — **add a tab here** |
   | `SoundStudioComponent` | Mix, rendered unchanged (see below) |
-  | `Studio.VoiceLibrary` | Voice Library — sidebar + words/sentence/record |
   | `placeholder/1`, below | a sub-tab whose surface is unwritten — **none today** |
 
   The rail, the parent's event whitelist (via `tab_keys/0`) and the dispatch
@@ -50,7 +51,6 @@ defmodule BusterClawWeb.StudioPanel do
   use BusterClawWeb, :html
 
   alias BusterClawWeb.Studio.Registry
-  alias BusterClawWeb.Studio.VoiceLibrary
 
   @doc "Sub-tab keys, in rail order — the parent's `select_studio_tab` whitelist."
   def tab_keys, do: Enum.map(Registry.tabs(), & &1.key)
@@ -69,35 +69,13 @@ defmodule BusterClawWeb.StudioPanel do
   attr :studio_undo, :list, required: true
   attr :studio_redo, :list, required: true
 
-  # Voice's, prepared by `Studio.VoiceState`. `rows` and `check` are derived rather
-  # than stored: the LiveView computes them from the loaded report so this panel
-  # stays presentation-only and does no filtering of its own.
-  attr :voice_report, :any, required: true
-  attr :voice_error, :any, required: true
-  attr :voice_query, :string, required: true
-  attr :voice_sentence, :string, required: true
-  attr :voice_rows, :list, required: true
-  attr :voice_check, :list, required: true
-
-  attr :voice_section, :string, required: true
-  attr :voice_selected, :any, required: true
-  attr :voice_takes, :list, required: true
-  attr :voice_preview, :any, required: true
-  attr :voice_preview_error, :any, required: true
-  attr :voice_notice, :any, required: true
-
-  # The recorder's whole state, as ONE assign. Deliberately unlike Voice's
-  # scalars above: this is one cohesive thing (a bank, a device, a word, a
-  # pending notice), and `status_live.ex` is at its cap for a reason worth not
-  # spending on six more attr threads. See `Studio.RecorderState`.
-  attr :recorder, :map, required: true
-
   def studio_panel(assigns) do
     assigns = assign(assigns, tabs: Registry.tabs(), placeholders: Registry.placeholders())
 
     ~H"""
     <div id="home-studio-tabs" class="flex min-h-0 flex-1 flex-col gap-2">
       <div
+        :if={length(@tabs) > 1}
         role="tablist"
         aria-label="Studio"
         class="flex shrink-0 flex-wrap gap-1 border-b-2 border-base-content/20"
@@ -136,26 +114,6 @@ defmodule BusterClawWeb.StudioPanel do
           studio_clipboard={@studio_clipboard}
           studio_undo={@studio_undo}
           studio_redo={@studio_redo}
-        />
-      </div>
-
-      <%!-- Voice Library: browse, build, record. Its assigns are StatusLive's
-            for the same reason Mix's are — see `Studio.VoiceState`. --%>
-      <div :if={@tab == "voice"} data-studio-tab="voice" class="flex min-h-0 flex-1 flex-col">
-        <VoiceLibrary.library
-          report={@voice_report}
-          error={@voice_error}
-          query={@voice_query}
-          sentence={@voice_sentence}
-          rows={@voice_rows}
-          check={@voice_check}
-          section={@voice_section}
-          selected={@voice_selected}
-          takes={@voice_takes}
-          preview={@voice_preview}
-          preview_error={@voice_preview_error}
-          notice={@voice_notice}
-          recorder={@recorder}
         />
       </div>
 

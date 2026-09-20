@@ -187,8 +187,9 @@ defmodule BusterClawWeb.ExplainedPanelTest do
       # only honest guard for it is a universal over the catalog: adding a fifth
       # `voice_*` verb must make this fail and be reconsidered on purpose.
       #
-      # `voice_bank_*` is excluded because it is not this surface: those are the
-      # Studio's corpus verbs, taught on the Studio tab.
+      # `voice_bank_*` used to be excluded here as the Studio's corpus verbs. They
+      # were deleted 09-19 with the cut-up engine, so every `voice_*` verb in the
+      # catalog is now this surface's and the filter below needs no exception.
       #
       # Four became seven on 09-05 when the clip verbs landed, and this assertion
       # is what forced the page's copy to be rewritten rather than quietly going
@@ -199,7 +200,6 @@ defmodule BusterClawWeb.ExplainedPanelTest do
         BusterClaw.Commands.list_commands()
         |> Enum.map(& &1.name)
         |> Enum.filter(&String.starts_with?(&1, "voice_"))
-        |> Enum.reject(&String.starts_with?(&1, "voice_bank_"))
         |> Enum.sort()
 
       assert voice_verbs ==

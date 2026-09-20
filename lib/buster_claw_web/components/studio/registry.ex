@@ -30,7 +30,7 @@ defmodule BusterClawWeb.Studio.Registry do
   sentence and recording a missing word are steps of a single loop, and a rail
   that makes you leave the tab to close that loop is a rail in the way.
 
-  So `Voice Library` is one tab with a **sidebar** — the loop is navigated
+  So `Voice Library` was one tab with a **sidebar** — the loop is navigated
   inside it, not above it. The registry cost of merging back was the same one
   entry, in the other direction, which is the actual thing worth recording: a
   data-only registry made the reorganisation reversible, and the reversal is
@@ -48,11 +48,6 @@ defmodule BusterClawWeb.Studio.Registry do
       key: "mix",
       label: "Mix",
       blurb: "Cut and arrange: sources, trims, clips, and saved mixes."
-    },
-    %{
-      key: "voice",
-      label: "Voice Library",
-      blurb: "Ramshackle: your words, the sentences they make, and the mic that adds more."
     }
   ]
 
@@ -67,7 +62,9 @@ defmodule BusterClawWeb.Studio.Registry do
   # its six commands and its whole context. The model keeps its ability to draw:
   # that lives in `BusterClaw.SvgViewer`, the chat's SVG channel, which shared
   # nothing with the Sketch Pad and is untouched.
-  @built ~w(mix voice)
+  # `voice` was DELETED 09-19 (operator) with the cut-up engine it browsed —
+  # `CUTUP_DELETION_ROADMAP`. Recording a reference voice is Vox2B's and stayed.
+  @built ~w(mix)
 
   @doc "The sub-tabs, in rail order."
   def tabs, do: @tabs

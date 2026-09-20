@@ -1,5 +1,10 @@
 # Leftovers — the agent core
 
+> **Closed 09-19-26 by deletion.** The cut-up engine, its eighteen verbs and the
+> `sound-cutup` skill were deleted ([`CUTUP_DELETION`](../surfaces/CUTUP_DELETION_ROADMAP.md)).
+> Items below that concern `cutup/`, the word index, `sound-cutup.md`, or
+> splitting `commands/sound.ex` (now 1,122 lines) are moot and kept only as history.
+
 **Completed-work update — 2026-09-15.** The sound command surface is implemented in `commands/sound.ex` and its catalog. `sound-cutup.md` was rewritten for the voice work on 09-02, and Skills now uses versioned seed upgrades (`dbbc54d`); the shader skill audit remains open. `AgentToolPolicy` is wired into unattended runs (`f62b225`), and workspace agent briefs now orient chat (`f666f06`). The core size inventory shipped (`baa691e`); the `agent/chat.ex` extraction remains open. The macro-series proposal below was superseded by the whole Chart Build deletion on 08-08 (`293f47f`).
 
 **Split out of `LEFTOVERS.md` 2026-08-09.** The tail work in the machinery every

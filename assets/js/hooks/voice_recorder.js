@@ -50,12 +50,11 @@ class TapProcessor extends AudioWorkletProcessor {
 registerProcessor("tap", TapProcessor)
 `
 
-// V.7: all three of these are ON by default, all three are built for conference
+// All three of these are ON by default, all three are built for conference
 // calls, and all three are TIME-VARYING — they change behaviour as the signal
-// changes. autoGainControl is the sharpest: two takes of the same word a minute
-// apart come back at different levels, so a cut-up splicing them has an audible
-// jump at every seam. That is exactly the artefact `sound_assemble`'s normalize
-// option exists to suppress, reintroduced upstream where nothing can remove it.
+// changes. autoGainControl is the sharpest: two takes a minute apart come back
+// at different levels, and a reference voice recorded through it teaches the
+// model a level that was never the speaker's.
 // noiseSuppression is nearly as bad — it gates and reshapes quiet passages,
 // which is where word onsets and plosive closures live.
 const CONSTRAINTS = {
@@ -304,9 +303,9 @@ export const VoiceRecorder = {
     if (!samples) return this.say("Nothing was captured — the take was too short.")
 
     // The event name is the element's to choose (09-03-26). This hook grew up in
-    // the Studio's Voice Library and used to hard-code `contribute_take`; the
-    // reference-clip recorder in Settings → Voice needs the same microphone,
-    // meter and encoder and a different listener. One hook with a configurable
+    // the Studio's Voice Library (deleted 09-19 with the cut-up engine) and used
+    // to hard-code `contribute_take`; Vox2B's reference recorder is now its only
+    // user, and names its own event. One hook with a configurable
     // destination beats a second copy of an AudioWorklet and a Float32 encoder
     // that would drift from this one the first time either was touched.
     //

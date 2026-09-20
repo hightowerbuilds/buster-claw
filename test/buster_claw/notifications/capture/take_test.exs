@@ -1,32 +1,18 @@
 defmodule BusterClaw.Notifications.Capture.TakeTest do
   @moduledoc """
-  `Capture.Take` — the server half of the in-app recorder (`STUDIO_ROADMAP` V.7).
+  `Capture.Take.decode/2` — what turns the browser's samples into a clip. Its
+  caller is `Voice.Reference`, the Vox2B reference recorder.
 
-  DataCase because `store/3` indexes into the active bank, which is a `Settings`
-  read. The decode half needs no database and is exercised through the same
-  setup only for convenience.
+  `store/3` and its index tests left 09-19 with the cut-up engine
+  (`CUTUP_DELETION_ROADMAP`). Nothing here touches the database or the disk any
+  more, so this runs async.
   """
-  use BusterClaw.DataCase, async: false
+  use ExUnit.Case, async: true
 
   alias BusterClaw.Notifications.Capture.Take
-  alias BusterClaw.Notifications.Cutup.Bank
-  alias BusterClaw.Notifications.Cutup.Index
   alias BusterClaw.Notifications.SoundStudio
 
   @rate 48_000
-
-  setup do
-    root = Path.join(System.tmp_dir!(), "bc_take_#{System.unique_integer([:positive])}")
-    prev = Application.get_env(:buster_claw, :workspace_root)
-    Application.put_env(:buster_claw, :workspace_root, root)
-
-    on_exit(fn ->
-      Application.put_env(:buster_claw, :workspace_root, prev)
-      File.rm_rf(root)
-    end)
-
-    {:ok, root: root}
-  end
 
   # A short tone at a given amplitude, as the browser would send it: base64
   # Float32 little-endian.
@@ -92,112 +78,6 @@ defmodule BusterClaw.Notifications.Capture.TakeTest do
     test "refuses anything that is not base64" do
       assert {:error, :invalid_pcm} = Take.decode("not base64!!", @rate)
       assert {:error, :invalid_pcm} = Take.decode(:nonsense, @rate)
-    end
-  end
-
-  describe "store" do
-    test "writes a WAV that SoundStudio can read back" do
-      {:ok, take} = Take.decode(pcm(0.5), @rate)
-
-      assert {:ok, "harbor.wav"} = Take.store(take, nil, "harbor")
-
-      path = Path.join(SoundStudio.dir(), "harbor.wav")
-      assert File.exists?(path)
-      assert {:ok, %SoundStudio{sample_rate: @rate, bits: 16}} = SoundStudio.read(path)
-    end
-
-    test "names the file from the word when no name is given" do
-      {:ok, take} = Take.decode(pcm(0.5), @rate)
-      assert {:ok, "harbor.wav"} = Take.store(take, nil, "Harbor!")
-    end
-
-    test "an explicit name wins over the word" do
-      {:ok, take} = Take.decode(pcm(0.5), @rate)
-      assert {:ok, "take-one.wav"} = Take.store(take, "take-one", "harbor")
-    end
-
-    # This test asserted that a DERIVED name collision was refused too, until
-    # 08-16. That half was wrong and the corpus paid for it: the recorder could
-    # capture each word exactly once, which makes a cut-up impossible by
-    # construction — every word would be quote-only forever.
-    #
-    # The rule that survives is V.7's actual one, *"a recording is unrepeatable;
-    # a name collision prompts, always"*, applied to the name the OPERATOR chose.
-    test "a name the operator chose is REFUSED on collision, never overwritten" do
-      {:ok, take} = Take.decode(pcm(0.5), @rate)
-      {:ok, "chosen.wav"} = Take.store(take, "chosen", "harbor")
-
-      assert {:error, :name_taken} = Take.store(take, "chosen", "harbor")
-      assert Enum.count(SoundStudio.list(), &(&1 == "chosen.wav")) == 1
-    end
-
-    test "a name derived from the word NUMBERS UP, so a word can have many takes" do
-      {:ok, take} = Take.decode(pcm(0.5), @rate)
-
-      assert {:ok, "harbor.wav"} = Take.store(take, nil, "harbor")
-      assert {:ok, "harbor-2.wav"} = Take.store(take, nil, "harbor")
-      assert {:ok, "harbor-3.wav"} = Take.store(take, nil, "harbor")
-
-      # Three files, not one overwritten three times.
-      assert length(SoundStudio.list()) == 3
-    end
-
-    test "a word that normalizes to nothing is refused, not saved as track.wav" do
-      {:ok, take} = Take.decode(pcm(0.5), @rate)
-
-      assert {:error, :name_required} = Take.store(take, nil, "!!!")
-      assert {:error, :name_required} = Take.store(take, nil, nil)
-      refute File.exists?(Path.join(SoundStudio.dir(), "track.wav"))
-    end
-  end
-
-  describe "the index a recorded word produces" do
-    test "is one manual take at confidence 1.0 spanning the whole clip" do
-      {:ok, take} = Take.decode(pcm(0.5), @rate)
-      {:ok, source} = Take.store(take, nil, "harbor")
-
-      assert {:ok, index} = Index.load(source)
-      assert index.origin == :manual
-      assert [%{word: "harbor", confidence: 1.0, start_ms: +0.0} = word] = index.words
-      assert_in_delta word.end_ms, take.duration_ms, 0.001
-    end
-
-    test "is the corpus's first origin the aligner cannot second-guess" do
-      # Every take in the voicemail corpus is `:aligned` — a proportional guess
-      # capped at 0.9. This path is the only one that produces `:manual`.
-      {:ok, take} = Take.decode(pcm(0.5), @rate)
-      {:ok, source} = Take.store(take, nil, "harbor")
-
-      {:ok, index} = Index.load(source)
-      assert index.origin == :manual
-      refute index.origin == :aligned
-    end
-
-    test "lands in the ACTIVE bank, so a contributor's take is never mis-filed" do
-      {:ok, _} = Bank.create("luke")
-      {:ok, "luke"} = Bank.set_active("luke")
-
-      {:ok, take} = Take.decode(pcm(0.5), @rate)
-      {:ok, source} = Take.store(take, nil, "harbor")
-
-      assert {:ok, %{bank: "luke"}} = Index.load(source)
-    end
-
-    test "audio with no word is stored unindexed rather than refused" do
-      {:ok, take} = Take.decode(pcm(0.5), @rate)
-
-      assert {:ok, "room-tone.wav"} = Take.store(take, "room-tone", nil)
-      assert File.exists?(Path.join(SoundStudio.dir(), "room-tone.wav"))
-      assert {:error, :not_found} = Index.load("room-tone.wav")
-    end
-
-    test "the audio survives an index that could not be built" do
-      # A take is unrepeatable, so a failed index must never discard the WAV.
-      {:ok, take} = Take.decode(pcm(0.5), @rate)
-      {:ok, source} = Take.store(take, "keeper", "!!!")
-
-      assert File.exists?(Path.join(SoundStudio.dir(), source))
-      assert {:error, :not_found} = Index.load(source)
     end
   end
 end
