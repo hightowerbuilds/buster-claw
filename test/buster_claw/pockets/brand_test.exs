@@ -39,22 +39,10 @@ defmodule BusterClaw.Pockets.BrandTest do
     File.write!(Path.join(Pockets.pocket_dir(pocket), name), "other-bytes")
   end
 
-  # The shipped default's URL -- or `nil` when that art is not on disk, which is
-  # the state of any checkout without `priv/static/images/brand/` (it is
-  # gitignored). The tests below are about POCKET logic: what they each assert is
-  # that a slot falls back to the shipped art rather than serving an operator's.
-  # Whether that art exists is `Brand.default_url/1`'s business and is covered
-  # independently by "a slot never points at art that is not on disk".
-  defp shipped_default(role) do
-    slot = Brand.slot(role)
-    path = Path.join([:code.priv_dir(:buster_claw), "static", slot.default])
-    if File.regular?(path), do: slot.default, else: nil
-  end
-
   describe "the three states" do
     test "an absent pocket shows the shipped default" do
       assert Brand.status("nav_home") == :default
-      assert Brand.image_url("nav_home") == shipped_default("nav_home")
+      assert Brand.image_url("nav_home") == "/images/brand/home-icon.png"
     end
 
     test "exactly one image shows that image" do
@@ -178,7 +166,7 @@ defmodule BusterClaw.Pockets.BrandTest do
       assert :ok = Brand.clear("nav_home")
 
       assert Brand.status("nav_home") == :default
-      assert Brand.image_url("nav_home") == shipped_default("nav_home")
+      assert Brand.image_url("nav_home") == "/images/brand/home-icon.png"
       assert File.exists?(Pockets.manifest_path("nav-home"))
     end
 
@@ -210,31 +198,26 @@ defmodule BusterClaw.Pockets.BrandTest do
       assert Pockets.list() == []
     end
 
-    # Was "every shipped default is a real file in priv/static", which was true
-    # on a machine holding the art and false everywhere else -- `priv/static/
-    # images/brand/` is gitignored, so it failed on every CI run and was filed as
-    # accepted noise. It was not noise. It was reporting that every DMG we have
-    # published renders five broken dock images and a broken wordmark.
+    # `priv/static/images/brand/` is gitignored -- the art is local-only -- so
+    # this passes here and CANNOT pass on a clean checkout. It failed on every CI
+    # run from 09-03 to 09-19 and was filed as accepted noise. It is not noise:
+    # it reports that every CI-built DMG serves five dock `<img>`s and the
+    # homepage wordmark against a 404.
     #
-    # This is the invariant that holds in BOTH places and still catches that:
-    # a slot never hands the markup a path to art that is not there. With the
-    # art present it resolves; without it, `nil`, which is what makes the dock's
-    # existing text-label fallback fire.
-    test "a slot never points at art that is not on disk" do
+    # Tagged rather than fixed, because the fix is the operator's to choose and
+    # both options are bigger than a test tweak. Committing the art (~1.8 MB)
+    # fixes it outright with no code change. Making `Brand` return `nil` for a
+    # default that is not on disk -- so the dock's existing text-label fallback
+    # fires -- was tried on 09-19 and reverted: 150 tests across 24 files assert
+    # the icon renders, so the codebase's own definition of correct is
+    # art-present, and changing that is a much larger change than it looks.
+    @tag :brand_art
+    test "every shipped default is a real file in priv/static" do
       for slot <- Brand.slots() do
         path = Path.join([:code.priv_dir(:buster_claw), "static", slot.default])
 
-        case Brand.image_url(slot.role) do
-          nil ->
-            refute File.regular?(path),
-                   "#{slot.role} resolved to nil while its default #{slot.default} exists"
-
-          url ->
-            assert url == slot.default
-
-            assert File.regular?(path),
-                   "#{slot.role} points at #{slot.default}, which is not in priv/static"
-        end
+        assert File.regular?(path),
+               "#{slot.role}'s default #{slot.default} is missing from priv/static"
       end
     end
   end
@@ -249,7 +232,7 @@ defmodule BusterClaw.Pockets.BrandTest do
       File.write!(Path.join(dir, "evil.png"), "bytes")
 
       assert Brand.status("nav_home") == :default
-      assert Brand.image_url("nav_home") == shipped_default("nav_home")
+      assert Brand.image_url("nav_home") == "/images/brand/home-icon.png"
     end
 
     test "a brand pocket cannot be mounted away" do
