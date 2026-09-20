@@ -350,7 +350,7 @@ turned out to be different amounts of work, and only the first blocks shipping.
       > `tauri-plugin-updater` must also be a Cargo dependency and registered in
       > `main.rs`. That answer is the difference between an hour and a day, and
       > guessing it wrong costs a notarization round trip.
-- [ ] **`G-46`.** **Make the trap loud.** `build_desktop.sh` must refuse early —
+- [x] **`G-46`.** *(DONE 09-19 — `scripts/check_updater_config.sh`, called by `build_desktop.sh` right after its preflight; refuses in under a second and names `G-19a`. Its test pins that the real config has no updater block yet, so **landing `G-19a` fails that test on purpose** — flip it there, deliberately. Both guards broken first and seen to fail.)* **Make the trap loud.** `build_desktop.sh` must refuse early —
       before `mix release`, before Rust, before anything Apple sees — when
       `TAURI_SIGNING_PRIVATE_KEY` is set and `plugins.updater` is absent, with a
       message naming `G-19a`. Today that combination surfaces as

@@ -214,14 +214,14 @@ opens.** Everything below is ordered by what blocks what, not by importance.
 |---|---|---|---|
 | 1 | **An artifact exists** — signed, notarized, stapled, both arches | *in flight 08-22* | [`APPLE`](platform/APPLE_ROADMAP.md) |
 | 2 | **Walk it on a machine that has never seen it** | 1 | [`FRESH_MACHINE_WALK`](platform/FRESH_MACHINE_WALK.md) |
-| 3 | **`G-46` — make the trap loud** | nothing | [`UPDATE`](platform/UPDATE_ROADMAP.md) |
+| 3 | ~~**`G-46` — make the trap loud**~~ **DONE 09-19** | — | [`UPDATE`](platform/UPDATE_ROADMAP.md) |
 | 4 | **`G-19a` — make a tag possible** | nothing | [`UPDATE`](platform/UPDATE_ROADMAP.md) |
 | 5 | **Tag → a real Release with a real URL** | 4 | [`APPLE`](platform/APPLE_ROADMAP.md) |
 | 6 | **`G-21` / `G-24` / `G-45` — the site stops lying and points at 5** | 5 (partly) | [`WEBSITE`](website/WEBSITE_ROADMAP.md) |
 | 7 | **`G-4` — the arm64 walk on real hardware** | an Apple Silicon Mac | [`RELEASE_GATE`](platform/RELEASE_GATE_ROADMAP.md) |
 | — | **`G-47` — credential hygiene** | nothing | [`APPLE`](platform/APPLE_ROADMAP.md) |
 
-**Steps 3, 4 and `G-47` are unblocked right now** and are the only things on this
+**Step 3 (`G-46`) landed 09-19. Step 4 and `G-47` are unblocked right now** and are the only things on this
 list that a session can start without waiting for a machine, a person, or Apple.
 
 ### Two notes that change the size of the work

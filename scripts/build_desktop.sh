@@ -55,6 +55,14 @@ preflight() {
 
 preflight
 
+# UPDATE_ROADMAP G-46. A signing key with no `plugins.updater` block fails
+# several minutes from here, deep in the Tauri bundler, with a message that reads
+# as a Tauri bug. Refuse it now instead -- before `mix release`, before Rust,
+# before anything Apple sees. A no-op without the key, so keyless builds are
+# unchanged. After preflight on purpose: the check reads JSON with node, and
+# preflight is what guarantees node exists.
+"$REPO_ROOT/scripts/check_updater_config.sh"
+
 echo "==> Syncing version from VERSION file"
 "$REPO_ROOT/scripts/sync_version.sh"
 

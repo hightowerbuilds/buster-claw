@@ -22,6 +22,7 @@ money) — run it before touching the thing it names.
 | `check_file_sizes.sh` | File-size gate: holds the line-count inventory so decomposed files cannot silently regrow. | precommit |
 | `check_macos_floor.sh` | Asserts the advertised `minimumSystemVersion` is one every Mach-O in the bundle (shell + bundled ERTS) can actually load on. | CI (`release-desktop.yml`), after `build_desktop.sh` |
 | `check_rust.sh` | The Rust gate for the desktop shell: `cargo fmt --check`, `clippy -D warnings`, `cargo test` (incl. the ACL lockstep guard). | precommit. CI's `rust` job re-types the same three commands rather than calling this script, so the two can drift — check both when you change either |
+| `check_updater_config.sh` | `UPDATE_ROADMAP` `G-46`: refuses a build that has `TAURI_SIGNING_PRIVATE_KEY` set while `tauri.conf.json` has no `plugins.updater` block — the combination that otherwise fails minutes later inside the Tauri bundler as `plugins > updater doesn't exist`. A no-op without the key. | `build_desktop.sh`, right after its toolchain preflight and before anything is built; `test/scripts/check_updater_config_test.exs` drives it directly |
 
 ## Build and release
 
