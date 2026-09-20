@@ -188,7 +188,7 @@ defmodule BusterClaw.Pockets.Brand do
       slot ->
         case images(slot) do
           [one] -> custom_url(slot, one)
-          [] -> slot.default
+          [] -> default_url(slot)
           _too_many -> nil
         end
     end
@@ -355,8 +355,25 @@ defmodule BusterClaw.Pockets.Brand do
 
   defp custom_url(slot, filename) do
     case Pockets.load(slot.pocket) do
-      {:ok, pocket} -> Pockets.asset_url(pocket, filename) || slot.default
-      _ -> slot.default
+      {:ok, pocket} -> Pockets.asset_url(pocket, filename) || default_url(slot)
+      _ -> default_url(slot)
     end
+  end
+
+  # The shipped default, but only when it is really on disk.
+  #
+  # `priv/static/images/brand/` is gitignored -- the art is local-only -- so a
+  # clean checkout has none of these files. That is every CI build and every DMG
+  # published so far, and this used to hand back the path regardless: the dock
+  # rendered five `<img>`s against a 404, plus the homepage wordmark.
+  #
+  # `nil` is what `image_url/1` already answers for a slot in error, and the
+  # markup has rendered `item.label` in its place since Calendar shipped without
+  # a PNG. A missing default now takes that same path, so a build without the art
+  # shows "Home" rather than a broken icon. Committing the art is the other half
+  # and is the operator's call, not this function's.
+  defp default_url(slot) do
+    path = Path.join([:code.priv_dir(:buster_claw), "static", slot.default])
+    if File.regular?(path), do: slot.default, else: nil
   end
 end

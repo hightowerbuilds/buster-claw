@@ -433,6 +433,9 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
   end
 
   describe "probe/1" do
+    # Needs /usr/bin/afinfo, which exists only on macOS; off Darwin `probe/1`
+    # correctly answers {:error, :no_prober} and there is nothing to assert.
+    @tag :macos
     test "reads duration and format from the header without decoding" do
       path =
         Path.join(System.tmp_dir!(), "studio-probe-#{System.unique_integer([:positive])}.wav")
@@ -454,6 +457,7 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
       assert {:error, :not_found} = SoundStudio.probe(nil)
     end
 
+    @tag :macos
     test "a text file fails cleanly" do
       path =
         Path.join(

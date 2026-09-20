@@ -958,7 +958,13 @@ check lib/buster_claw/terminal_paint.ex                        81 HELD
 # `FileManager.import_file/4` already had it.
 # Raised again 08-09, 347 -> 362, for `topic/0` and the two broadcasts that make
 # a swap reach surfaces the operator is not looking at.
-check lib/buster_claw/pockets/brand.ex                        362 HELD
+# Raised 09-19, 362 -> 379, for `default_url/1`: the shipped default is only
+# returned when the file is actually on disk. The art is gitignored, so every
+# build from a clean checkout -- every DMG published so far -- was serving paths
+# that 404 and rendering broken images where the dock's text-label fallback
+# should have fired. Four lines of function; the rest is the comment saying why,
+# because the next reader will otherwise "simplify" the check back out.
+check lib/buster_claw/pockets/brand.ex                        379 HELD
 # 146 -> 175 on 08-15: the file picker became a shared `upload_form/1` so the
 # Dock icon slot could use it. That is a NET reduction in risk, not growth for
 # its own sake — the four places an upload can fail are rendered once instead of

@@ -64,6 +64,9 @@ defmodule BusterClaw.TccUsageLockstepTest do
     end
   end
 
+  # `plutil` is macOS-only. The plist it lints is macOS-only too, so there is
+  # nothing for a Linux runner to check here.
+  @tag :macos
   test "the plist parses, because a broken one fails at bundle time and not before" do
     assert {_, 0} = System.cmd("plutil", ["-lint", @plist], stderr_to_stdout: true)
   end

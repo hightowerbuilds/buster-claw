@@ -206,6 +206,8 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
                ~s(data-studio-source="sound:confirm.wav" data-source-label="confirm" data-deletable)
     end
 
+    # The header probe behind this pane is /usr/bin/afinfo — macOS only.
+    @tag :macos
     test "a file over the decode cap still shows length and format, via the header probe",
          %{conn: conn, root: root} do
       # ~3.4 minutes of internal-format silence — over the 8 MB inline-decode
@@ -1237,6 +1239,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       refute html =~ ~s(data-studio-source="mix:#{name}") <> ~s([^>]*data-sourceable)
     end
 
+    @tag :macos
     test "Info reports the path, size, and header facts without decoding", %{
       conn: conn,
       root: root
