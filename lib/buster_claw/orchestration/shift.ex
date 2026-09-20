@@ -6,6 +6,10 @@ defmodule BusterClaw.Orchestration.Shift do
 
   @statuses ~w(active stopped completed)
 
+  # Named by `BusterClaw.Duty.go_on_duty/2`'s spec since 09-13, and undefined
+  # until 09-19 — which held the Dialyzer gate red for a week on `unknown_type`.
+  @type t :: %__MODULE__{}
+
   schema "shifts" do
     field :started_at, :utc_datetime
     field :status, :string, default: "active"
