@@ -7,23 +7,7 @@ defmodule BusterClawWeb.SplitLive do
   """
   use BusterClawWeb, :live_view
 
-  # Views that are safe to embed in a split pane (they render from mount-set
-  # assigns, not route params). Every workspace tab — including Home — is
-  # joinable; chrome is suppressed centrally by `BusterClawWeb.ChromeHook` +
-  # `Layouts.app`. Excluded only: /split itself (no nested splits) and /setup
-  # (the first-run wizard).
-  @panes %{
-    "/" => {BusterClawWeb.StatusLive, "Home"},
-    "/browse" => {BusterClawWeb.BrowseLive, "Browser"},
-    "/calendar" => {BusterClawWeb.CalendarLive, "Calendar"},
-    "/terminal" => {BusterClawWeb.TerminalLive, "Terminal"},
-    "/workspace" => {BusterClawWeb.WorkspaceLive, "Workspace"},
-    "/integrations" => {BusterClawWeb.IntegrationsLive, "Integrations"},
-    "/security" => {BusterClawWeb.SecurityLive, "Security"},
-    "/settings" => {BusterClawWeb.SettingsLive, "Settings"},
-    "/appearance" => {BusterClawWeb.AppearanceLive, "Appearance"},
-    "/manual" => {BusterClawWeb.UserGuideLive, "Manual"}
-  }
+  alias BusterClawWeb.PaneRoutes
 
   @impl true
   def mount(_params, _session, socket) do
@@ -53,10 +37,13 @@ defmodule BusterClawWeb.SplitLive do
   defp pane_spec(_side, nil), do: nil
 
   defp pane_spec(side, path) when is_binary(path) do
+    path =
+      if String.split(path, ~r/[?#]/) |> hd() == "/voice", do: "/settings?tab=speech", else: path
+
     pathname = path |> String.split("?") |> hd()
     url = pane_url(path)
 
-    case Map.fetch(@panes, pathname) do
+    case PaneRoutes.fetch(pathname) do
       {:ok, {module, label}} ->
         %{
           path: path,
@@ -86,6 +73,14 @@ defmodule BusterClawWeb.SplitLive do
     end
   end
 
+  defp pane_child_session("/settings", path, _url, side) do
+    %{
+      "settings_tab" => pane_params(path)["tab"],
+      "settings_id_prefix" => "split-#{side}-",
+      "speech_id" => "settings-speech-#{side}"
+    }
+  end
+
   defp pane_child_session("/terminal", path, _url, _side) do
     params = pane_params(path)
 
@@ -94,10 +89,11 @@ defmodule BusterClawWeb.SplitLive do
     |> maybe_put("terminal_label", params["label"])
   end
 
-  # A browser pane carries its surface id ("left"/"right") so the native browser
-  # runs as an independent instance per side (two browsers side by side).
-  defp pane_child_session("/browse", _path, url, side) do
-    %{} |> maybe_put("url", url) |> Map.put("surface_id", side)
+  # Carry a browser's existing native surface through a join or swap. Legacy
+  # split URLs without an explicit surface still get independent left/right IDs.
+  defp pane_child_session("/browse", path, url, side) do
+    surface = PaneRoutes.browser_surface(pane_params(path), side)
+    %{} |> maybe_put("url", url) |> Map.put("surface_id", surface)
   end
 
   defp pane_child_session(_pathname, _path, nil, _side), do: %{}

@@ -1,0 +1,66 @@
+.olympus {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  overflow: hidden;
+  background: #142130;
+  color: #f1eee6;
+  font-family: "IBM Plex Sans", sans-serif;
+  color-scheme: dark;
+}
+.olympus-canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+.olympus-canvas:active { cursor: grabbing; }
+.olympus-header {
+  position: absolute; inset: 0 0 auto; padding: 30px 42px;
+  display: flex; align-items: center; justify-content: space-between;
+  background: linear-gradient(#0a15264d, transparent); pointer-events: none;
+}
+.olympus-brand { display: flex; align-items: center; gap: 13px; font-size: 14px; letter-spacing: .32em; }
+.olympus-chapter, .olympus-eyebrow, .olympus-footer, .olympus-control-title {
+  font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: .16em;
+}
+.olympus-chapter { color: #c5cfdb; }
+.olympus-chapter span { padding: 0 14px; opacity: .4; }
+.olympus-exit { pointer-events: auto; padding: 9px; border: 1px solid #ffffff25; border-radius: 50%; transition: background .2s; }
+.olympus-exit:hover { background: #ffffff20; }
+.olympus-heading { position: absolute; top: 16%; left: 6%; pointer-events: none; }
+.olympus-eyebrow { color: #e3d4ba; font-size: 9px; letter-spacing: .24em; margin-bottom: 13px; }
+.olympus-heading h1 { font-family: Georgia, "Times New Roman", serif; font-weight: 400; font-size: clamp(34px, 4.5vw, 70px); line-height: 1.15; letter-spacing: -.045em; text-shadow: 0 2px 30px #0a152640; }
+.olympus-heading > p:last-child { margin-top: 12px; color: #d2d9df; font-size: 13px; font-weight: 400; }
+.olympus-controls {
+  position: absolute; right: 42px; bottom: 95px; width: 228px; padding: 20px;
+  border: 1px solid #e7edf322; border-radius: 3px;
+  background: #18243180; backdrop-filter: blur(20px);
+  box-shadow: 0 10px 50px #060f1b15;
+}
+.olympus-control-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; color: #e0d6c4; font-size: 9px; }
+.olympus-indicator { height: 5px; width: 5px; border-radius: 50%; background: #d7c49f; box-shadow: 0 0 10px #d7c49f55; }
+.olympus-controls > label { display: flex; justify-content: space-between; align-items: center; font-size: 11px; margin-bottom: 8px; color: #dbe0e5; }
+.olympus-controls .fieldset { margin: 0; padding: 0; gap: 0; }
+.olympus-controls output { font-family: "IBM Plex Mono", monospace; font-size: 9px; color: #c1c7ce; }
+.olympus-controls input[type="range"] { display: block; width: 100%; height: 16px; margin: 0 0 20px; accent-color: #d9cab1; cursor: pointer; }
+.olympus-buttons { display: flex; gap: 8px; }
+.olympus-controls button { flex: 1; padding: 9px 4px; border: 1px solid #ffffff25; font-size: 10px; border-radius: 2px; cursor: pointer; transition: background .2s, border-color .2s; }
+.olympus-controls button:hover { background: #ffffff18; border-color: #ffffff60; }
+.olympus-controls button[aria-pressed="true"] { background: #d5c8ae26; border-color: #d5c8ae70; color: #f6e6c9; }
+.olympus-controls > button { width: 100%; margin-top: 8px; border-color: transparent; color: #bac4ce; }
+.olympus :focus-visible { outline: 2px solid #e3d1aa; outline-offset: 4px; }
+.olympus-footer { position: absolute; inset: auto 42px 27px; display: flex; align-items: center; justify-content: space-between; gap: 20px; font-size: 8px; color: #d9e0e8; pointer-events: none; }
+.olympus-status { max-width: 360px; }
+.olympus-hint { color: #e2e6ea; }
+.olympus-hint span { padding: 0 10px; }
+.olympus-coordinate { color: #c5ced7; }
+.olympus[data-state="error"] .olympus-status { padding: 16px; background: #172333; font-size: 12px; letter-spacing: normal; }
+.olympus[data-state="error"] .olympus-controls { display: none; }
+@media (max-width: 700px) {
+  .olympus-header { padding: 20px; }
+  .olympus-chapter { display: none; }
+  .olympus-heading { left: 24px; top: 13%; }
+  .olympus-heading > p:last-child { max-width: 200px; font-size: 12px; }
+  .olympus-controls { right: 20px; bottom: 65px; width: 190px; padding: 15px; }
+  .olympus-footer { inset: auto 20px 20px; font-size: 7px; }
+  .olympus-hint, .olympus-coordinate { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .olympus * { transition: none !important; }
+}

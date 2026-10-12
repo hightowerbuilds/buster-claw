@@ -11,6 +11,8 @@
 buster_claw-*.tar
 /priv/static/assets/
 /priv/static/cache_manifest.json
+# Pinned Messages adapter, staged and verified by the desktop build.
+/priv/messages/
 # Phoenix digest hashed copies + precompressed assets
 /priv/static/*-*.ico
 /priv/static/*-*.txt

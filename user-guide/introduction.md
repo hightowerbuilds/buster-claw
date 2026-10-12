@@ -35,8 +35,7 @@ stops the polling you can see; it does not end the shift.
 The dock at the bottom switches between five surfaces:
 
 - **Home** — the main screen, with its own row of sub-tabs: **Chat** (talk to
-  your agent), **Vox2B** (your recorded voice: record it, make spoken alerts,
-  have messages read aloud), **Pockets** (your own folders of media — the
+  your agent), **Pockets** (your own folders of media — the
   background pool, the dock icon), **Phone** (BusterPhone's message machine),
   **Explained** (guided tours of each feature), and **Activity** (the one log of
   what your agent did).
@@ -48,9 +47,11 @@ The dock at the bottom switches between five surfaces:
   window with a payment gate that stops before money moves.
 - **Terminal** — your agent's shell, inside the app. Each click of the dock
   button opens a new one.
-- **Settings** — six tabs: **Appearance**, **Notify**, **Integrations**,
+- **Settings** — five tabs: **Appearance**, **Notify**, **Integrations**,
   **Configuration**, and **Security**. Connecting Google
   Workspace and choosing which model runs where are both on **Configuration**.
+  Its **Speech** page chooses the macOS voice and speed for reading chat replies
+  aloud in the desktop app. Notification sound routing stays in **Notify**.
 
 **Security** (the last Settings tab, or `/security` directly) is the **Sentinel
 audit feed**: every command that changes something, every outbound send, and
@@ -58,8 +59,7 @@ every untrusted fetch is logged there. Plain reads are not, so the feed stays
 legible.
 
 One surface has no dock button at all: the **Studio** (`/studio`), where you cut
-sounds (**Mix**) and build the word corpus your voice is spliced from (**Voice
-Library**).
+and arrange recorded sounds in **Mix**.
 
 Every one of these opens as a tab across the top. Drag one tab onto another to
 join them into a side-by-side split — a terminal beside the browser, say.

@@ -95,6 +95,8 @@ config :buster_claw, :agent_chat_persist, false
 # Chat run auditing is off in tests (it writes to Sentinel/DB); the persistence
 # suite flips it on under the sandbox to assert the audit event is written.
 config :buster_claw, :agent_chat_audit, false
+# Browser-only unit tests stay DB-free; receipt integration tests enable capture.
+config :buster_claw, :browser_activity_enabled, false
 # The projector writes into the workspace on every dispatch event; off by default
 # in tests so unrelated dispatch tests don't write files. Projector tests start it
 # explicitly against a tmp workspace.

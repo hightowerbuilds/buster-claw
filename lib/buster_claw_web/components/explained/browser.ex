@@ -45,7 +45,7 @@ defmodule BusterClawWeb.Explained.Browser do
         <svg
           viewBox="0 0 560 240"
           role="img"
-          aria-label="The agent can drive three surfaces: your live tab, which is logged in, watched, and audited; an ephemeral sandbox tab with no cookies that forgets everything, the default for new tabs; and the Agent Mode window, its own Chromium with a frozen scope and a payment gate."
+          aria-label="The agent can drive three surfaces: your live logged-in tab; a sandbox tab with a temporary session, the default for new tabs; and Agent Mode's Chromium window with a frozen scope and a payment gate."
           class="w-full text-base-content/70"
         >
           <defs>
@@ -91,7 +91,7 @@ defmodule BusterClawWeb.Explained.Browser do
             <text x="287" y="46" font-weight="bold">YOUR LIVE TAB</text>
             <text x="287" y="60" font-size="8">LOGGED IN · YOU WATCH</text>
             <text x="287" y="114" font-weight="bold">SANDBOX TAB</text>
-            <text x="287" y="128" font-size="8">NO COOKIES · FORGETS</text>
+            <text x="287" y="128" font-size="8">CLEAN SESSION · TEMPORARY</text>
             <text x="287" y="182" font-weight="bold">AGENT WINDOW</text>
             <text x="287" y="196" font-size="8">OWN CHROMIUM · SCOPE FROZEN</text>
           </g>
@@ -133,8 +133,10 @@ defmodule BusterClawWeb.Explained.Browser do
             Library plus a screenshot in the workspace. (<code>browser_screenshot</code> alone when you just want the picture.)
           </li>
           <li>
-            The summary arrives in chat; the reads are on the feed. Nothing was
-            clicked, nothing left the machine.
+            The summary arrives in chat and the capture stays in your Library.
+            Page content is shared with your selected agent for the summary;
+            this step clicks nothing. Ordinary reads are omitted from the
+            Security feed.
           </li>
         </ol>
       </.example>
@@ -175,15 +177,15 @@ defmodule BusterClawWeb.Explained.Browser do
         title="A fresh tab that forgets"
         want="Some errands shouldn't ride your session at all."
         needs="The desktop app. No logins — that is the point of this cycle."
-        touches="Opens a tab with no cookies and no storage, reads it, and forgets it. Your sessions are not involved and nothing is saved."
+        touches="Opens a temporary session without your existing cookies. Its cookies and storage are discarded when it closes; browser activity receipts and explicit captures can still be retained."
         confirm="None needed, because the default is the safe one: a new tab is ephemeral unless someone explicitly opts into your session."
-        result="The extracted section in chat; the tab is excluded from restore and leaves nothing behind. A condition that never arrives comes back as unmatched rather than as an error."
+        result="The extracted section in chat; the temporary tab is excluded from restore. A condition that never arrives comes back as unmatched rather than as an error."
       >
         <.prompt text="Open the Stripe docs in a clean tab and find the webhook signature section — don't use my logins for this." />
         <ol class="ic-unfold">
           <li>
             <code>browser_open_tab</code> opens it — and by default that tab is an
-            ephemeral sandbox: no cookies, nothing saved, excluded from restore.
+            ephemeral sandbox: a clean session, excluded from restore.
             Riding your real session is opt-in, never the default.
           </li>
           <li>
@@ -274,6 +276,13 @@ defmodule BusterClawWeb.Explained.Browser do
           </li>
         </ol>
       </.example>
+
+      <p id="explained-browser-activity" class="text-sm leading-relaxed text-base-content/70">
+        In the Browser tab, <span class="font-semibold text-base-content">Activity graph</span>
+        toggles the action history below the page. It shows recorded browser
+        actions and outcomes, with filters for the shared tab and Agent Mode.
+        Closing or pausing the graph changes its display; recording continues.
+      </p>
 
       <p class="text-sm leading-relaxed text-base-content/70">
         If any of this misbehaves, one diagnostic proves the whole engine end to

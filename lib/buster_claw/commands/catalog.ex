@@ -15,6 +15,7 @@ defmodule BusterClaw.Commands.Catalog do
 
   alias BusterClaw.Commands.Catalog.{
     Appearance,
+    AppTabs,
     Finance,
     Google,
     GoogleContacts,
@@ -34,6 +35,7 @@ defmodule BusterClaw.Commands.Catalog do
   def entries,
     do:
       Library.entries() ++
+        AppTabs.entries() ++
         Integrations.entries() ++
         Google.entries() ++
         GoogleFiles.entries() ++

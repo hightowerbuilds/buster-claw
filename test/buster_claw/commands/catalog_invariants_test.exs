@@ -184,9 +184,16 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
     #   the webview already fetches. Nothing is written and nothing is applied;
     #   `background_set`, which changes what the operator is looking at, is
     #   :restricted and deliberately absent from this list.
+    # app_tabs_* (10-11): read or rearrange the connected app's existing tabs.
+    # Join can also open a named local view, but cannot supply a new URL or
+    # execute a browser action. Layout changes preserve the live browser and
+    # require a UI acknowledgement; no deletion or external write is performed.
     @safe_tier ~w(
       activity_report
       agent_run_status
+      app_tabs_join
+      app_tabs_list
+      app_tabs_separate
       background_list
       bookmark_export
       bookmark_list
@@ -264,20 +271,9 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
       tasks_list
       terminal_tab_open
       terminal_theme_list
-      voice_clip_list
-      voice_message_list
       web_search
     )
 
-    # `voice_message_list` reviewed and added 09-03 with the spoken-message
-    # surface (VOICE_ROADMAP). A read of a manifest in the workspace — name, text,
-    # whether the audio exists — plus a `File.regular?` per row. It opens no
-    # microphone, spawns no engine, fires nothing and reaches no network; the
-    # three verbs beside it that DO change things (`_create` renders and writes,
-    # `_fire` creates a notification, `_delete` removes files) are all
-    # :restricted, and that is the line: any token may ask what messages exist,
-    # only a trusted one may make the room speak.
-    #
     # `finance_sources` reviewed and added 08-03: a pure read of a static,
     # code-shipped catalogue of public API metadata. No outbound call, no user
     # data, no secret, nothing irreversible — it answers "where could financial

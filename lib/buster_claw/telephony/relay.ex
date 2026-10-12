@@ -22,8 +22,7 @@ defmodule BusterClaw.Telephony.Relay do
 
   alias BusterClaw.Clinch.AppKeys
 
-  # Fixed, not per-render: the Edge Function has to be able to find it without
-  # being told, and one greeting is the only thing a phone number can have.
+  # Shared with the Edge Function. Existing published greetings survive upgrades.
   @greeting_path "greeting/greeting.wav"
 
   @doc "True when both the relay URL and service-role key are configured."
@@ -97,48 +96,16 @@ defmodule BusterClaw.Telephony.Relay do
   def greeting_path, do: @greeting_path
 
   @doc """
-  Publish the outgoing greeting — the audio every caller hears before the beep.
-
-  **This is the one durable object in a bucket that is otherwise a queue.**
-  Everything else here exists to be deleted: voicemail audio sits in someone
-  else's cloud only until this Mac comes and gets it. The greeting is the
-  opposite — it is configuration, it is meant to persist, and it is *supposed* to
-  be readable by a stranger, because a stranger phoning the number is exactly who
-  hears it. It lives under the `greeting/` prefix, which nothing in the drain path
-  ever enumerates or erases, so the two cannot collide.
-
-  Upserts: re-publishing after editing the line must replace what callers hear,
-  not fail because something is already there.
+  Check the remote greeting without changing it. Only a 404 establishes that
+  callers use the default greeting; unavailable storage remains an error.
   """
-  def upload_greeting(bytes, opts \\ []) when is_binary(bytes) do
-    request(opts)
-    |> Req.merge(
-      url: "/storage/v1/object/recordings/" <> @greeting_path,
-      headers: [{"content-type", "audio/wav"}, {"x-upsert", "true"}],
-      body: bytes
-    )
-    |> Req.post()
-    |> case do
-      {:ok, %{status: status}} when status in 200..299 -> :ok
-      {:ok, %{status: status, body: body}} -> {:error, {:storage_status, status, body}}
-      {:error, reason} -> {:error, {:storage_request_failed, reason}}
-    end
-  end
-
-  @doc """
-  Whether a greeting has been published.
-
-  Answered by asking storage rather than by trusting a local flag: the object is
-  what the phone line actually plays, and a Mac that was restored from a backup
-  can hold a flag for audio that is not there.
-  """
-  def greeting_published?(opts \\ []) do
-    request(opts)
-    |> Req.merge(url: "/storage/v1/object/recordings/" <> @greeting_path)
-    |> Req.head()
-    |> case do
-      {:ok, %{status: status}} when status in 200..299 -> true
-      _ -> false
+  def greeting_status(opts \\ []) do
+    with {:ok, response} <- greeting_request(:head, opts) do
+      case response do
+        %{status: status} when status in 200..299 -> {:ok, :published}
+        %{status: 404} -> {:ok, :default}
+        %{status: status, body: body} -> {:error, {:storage_status, status, body}}
+      end
     end
   end
 
@@ -148,14 +115,12 @@ defmodule BusterClaw.Telephony.Relay do
   A 404 is success: absent is the state being asked for.
   """
   def delete_greeting(opts \\ []) do
-    request(opts)
-    |> Req.merge(url: "/storage/v1/object/recordings/" <> @greeting_path)
-    |> Req.delete()
-    |> case do
-      {:ok, %{status: status}} when status in 200..299 -> :ok
-      {:ok, %{status: 404}} -> {:ok, :gone}
-      {:ok, %{status: status, body: body}} -> {:error, {:storage_status, status, body}}
-      {:error, reason} -> {:error, {:storage_request_failed, reason}}
+    with {:ok, response} <- greeting_request(:delete, opts) do
+      case response do
+        %{status: status} when status in 200..299 -> :ok
+        %{status: 404} -> {:ok, :gone}
+        %{status: status, body: body} -> {:error, {:storage_status, status, body}}
+      end
     end
   end
 
@@ -182,6 +147,26 @@ defmodule BusterClaw.Telephony.Relay do
       {:ok, %{status: status}} when status in 200..299 -> :ok
       {:ok, %{status: status, body: body}} -> {:error, {:relay_status, status, body}}
       {:error, reason} -> {:error, {:relay_request_failed, reason}}
+    end
+  end
+
+  defp greeting_request(method, opts) do
+    if configured?() do
+      opts =
+        Keyword.put_new(
+          opts,
+          :req_options,
+          Application.get_env(:buster_claw, :greeting_req_options, [])
+        )
+
+      request(opts)
+      |> Req.request(method: method, url: "/storage/v1/object/recordings/" <> @greeting_path)
+      |> case do
+        {:ok, response} -> {:ok, response}
+        {:error, reason} -> {:error, {:storage_request_failed, reason}}
+      end
+    else
+      {:error, :not_configured}
     end
   end
 

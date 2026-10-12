@@ -61,6 +61,11 @@ RELEASE_DIR="$APP/Contents/Resources/release"
 # actually copied, which is a different question and the one that shipped broken.
 say "checking the bundle carries a release"
 [ -x "$RELEASE_BIN" ] || fail "no executable release at $RELEASE_BIN — the bundle has no Erlang VM"
+# Mix's --overwrite retains older application versions unless the generated
+# release directory was cleared first. Those versions can carry removed code.
+APP_LIBS=("$RELEASE_DIR"/lib/buster_claw-*)
+[ "${#APP_LIBS[@]}" -eq 1 ] && [ -d "${APP_LIBS[0]}" ] ||
+  fail "expected exactly one application version in the bundle; rebuild from a clean release directory"
 compgen -G "$RELEASE_DIR"/erts-* >/dev/null || fail "no erts-* in $RELEASE_DIR — the bundle has no ERTS"
 BEAM="$(find "$RELEASE_DIR" -name beam.smp -print -quit)"
 [ -n "$BEAM" ] || fail "no beam.smp under $RELEASE_DIR"

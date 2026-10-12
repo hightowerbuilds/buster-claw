@@ -427,12 +427,9 @@ defmodule BusterClaw.Notifications.Sound do
   a completely empty workspace library, a timer still rings with `timer.wav`.
   Returns `nil` only when a key has no bundled default either.
   """
-  # A notification may name its own sound — a spoken message installed by
-  # `Voice.Messages` as `message-<name>.wav`. It wins over the routing walk,
-  # because the message says what it says regardless of which chime `reminder`
-  # happens to be routed to. Only a name actually in the library counts: a
-  # dangling name falls through to the walk rather than to silence, so a message
-  # whose audio was deleted still rings *something*.
+  # A notification may name its own library sound, ahead of the routing walk.
+  # A missing file falls through to the normal routing and bundled defaults, so
+  # previously scheduled notifications remain audible after a sound is removed.
   def for_notification(%{metadata: %{"sound" => name}} = notification) when is_binary(name) do
     if name in list(),
       do: name,

@@ -25,6 +25,7 @@ defmodule BusterClawWeb.BrowseLive do
   webview — this surface is the watchtower and the payment-confirmation desk.
   """
   use BusterClawWeb, :live_view
+  import BusterClawWeb.Browser.ActivityGraph
 
   alias BusterClaw.BrowserControl.AgentMode
   alias BusterClaw.BrowserControl.AgentMode.Mode
@@ -41,10 +42,14 @@ defmodule BusterClawWeb.BrowseLive do
         _ -> session["url"]
       end
 
-    # Native browser surface id: "main" for the solo /browse, "left"/"right" when
-    # embedded as a split pane (set by SplitLive). Keeps two side-by-side browsers
-    # independent.
-    surface_id = session["surface_id"] || "main"
+    # Layout changes carry the existing native surface in the route so an open
+    # browser moves between solo and joined views without reloading its page.
+    surface_id =
+      session["surface_id"] ||
+        BusterClawWeb.PaneRoutes.browser_surface(
+          if(is_map(params), do: params, else: %{}),
+          "main"
+        )
 
     if connected?(socket), do: AgentMode.subscribe_runs()
 
@@ -53,6 +58,8 @@ defmodule BusterClawWeb.BrowseLive do
      |> assign(:page_title, "Browse")
      |> assign(:initial_url, initial_url || "")
      |> assign(:surface_id, surface_id)
+     |> assign(:activity_open, is_map(params) and params["activity"] == "1")
+     |> assign(:activity_expanded, false)
      |> assign(:confirmation, "")
      # A SET, not a single id. It held one run_id until 08-09, and runs stay
      # registered after they end — so with two finished runs, dismissing the
@@ -69,6 +76,15 @@ defmodule BusterClawWeb.BrowseLive do
   def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
+  def handle_event("toggle_activity", _params, socket),
+    do: {:noreply, socket |> update(:activity_open, &(!&1)) |> assign(:activity_expanded, false)}
+
+  def handle_event("close_activity", _params, socket),
+    do: {:noreply, assign(socket, activity_open: false, activity_expanded: false)}
+
+  def handle_event("expand_activity", _params, socket),
+    do: {:noreply, update(socket, :activity_expanded, &(!&1))}
+
   def handle_event("agent_take_wheel", _params, socket),
     do: run_call(socket, &AgentMode.take_wheel/1)
 
@@ -221,8 +237,36 @@ defmodule BusterClawWeb.BrowseLive do
         data-initial-url={@initial_url}
         data-surface-id={@surface_id}
         data-agent-mirror={@agent_live? && "1"}
+        data-activity-expanded={@activity_expanded && "1"}
         class="flex min-h-0 flex-1 flex-col"
       >
+        <div class="ic-browser-activity-bar">
+          <span>
+            Browse <span class="ic-browser-activity-divider">/</span> Follow the agent's path
+          </span>
+          <div class="flex items-center gap-4">
+            <button
+              :if={@activity_open}
+              id={"browser-activity-expand-" <> @surface_id}
+              type="button"
+              phx-click="expand_activity"
+              aria-expanded={to_string(@activity_expanded)}
+            >
+              <.icon name="hero-arrows-pointing-out" class="size-3.5" />
+              {if @activity_expanded, do: "Show browser", else: "Expand graph"}
+            </button>
+            <button
+              id={"browser-activity-toggle-" <> @surface_id}
+              type="button"
+              phx-click="toggle_activity"
+              aria-expanded={to_string(@activity_open)}
+              aria-controls={"browser-activity-" <> @surface_id}
+            >
+              <.icon name="hero-share" class="size-3.5" />
+              {if @activity_open, do: "Hide graph", else: "Activity graph"}
+            </button>
+          </div>
+        </div>
         <%!-- Agent-workspace mode: the visible switch. Rendered OUTSIDE the
              surface div, so the native webview shrinks around it. --%>
         <div
@@ -300,7 +344,7 @@ defmodule BusterClawWeb.BrowseLive do
           </div>
         </div>
 
-        <div class="flex min-h-0 flex-1">
+        <div :if={!@activity_expanded} class="flex min-h-0 flex-1">
           <%!-- The mirror (Phase 7). While a run is live this takes the surface
                slot and the native webviews are hidden by the hook, so the browse
                tab genuinely BECOMES the agent's workspace instead of showing an
@@ -397,6 +441,12 @@ defmodule BusterClawWeb.BrowseLive do
               </li>
             </ol>
           </aside>
+        </div>
+        <div
+          :if={@activity_open}
+          class={["ic-browser-activity-panel", @activity_expanded && "expanded"]}
+        >
+          <.graph id={"browser-activity-" <> @surface_id} />
         </div>
       </section>
     </Layouts.app>

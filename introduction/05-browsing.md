@@ -19,6 +19,21 @@ an account does.
 (SSRF-guarded). Neither carries the user's cookies. Prefer these for lookups
 — they are cheap, need no window, and cannot act.
 
+### Joining app tabs from chat
+
+When the operator asks to join the Browser with chat, run
+`./buster-claw run app_tabs_join --json '{"tab":"browser"}'`. It reuses an
+already open Browser tab, including its live page, beside the current app tab.
+If Browser is not open, it opens that view. `with` can name another tab instead
+of the current one, for example `{"tab":"browser","with":"chat"}`.
+
+`app_tabs_list` returns the exact paths, labels, current tab, and joined panes.
+Use an exact path if more than one tab matches. `app_tabs_separate` separates
+the current joined view into two tabs without closing either, keeping chat
+visible when present; pass `tab` to separate another joined view. These commands
+require a connected app window and report failure if it cannot answer. They
+arrange Buster Claw's app tabs; `browser_open_tab` opens a website tab instead.
+
 ### Co-presence: the tab the user is looking at
 
 The `browser_*` commands move **the actual window the user sees** (real

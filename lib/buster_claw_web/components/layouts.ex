@@ -63,13 +63,6 @@ defmodule BusterClawWeb.Layouts do
                   # Left the dock 08-08 (now a Home sub-tab); still reachable by
                   # deep link and in a split pane, so it still needs a label.
                   "/phone" => "Phone",
-                  # Same story, 09-05: Voice left the SETTINGS rail when the
-                  # surface became the Home "Vox2B" sub-tab. It is therefore no
-                  # longer collapsed under the Settings group, so it can no longer
-                  # borrow that group's label — without this line the strip would
-                  # title a deep link "/voice", which is the raw-path failure
-                  # `SettingsTabsTest` was written about.
-                  "/voice" => "Vox2B",
                   "/integrations" => "Integrations",
                   "/security" => "Security",
                   "/settings" => "Settings",
@@ -225,6 +218,7 @@ defmodule BusterClawWeb.Layouts do
           phx-hook="TabStrip"
           phx-update="ignore"
           data-labels={@tab_labels}
+          data-joinable={Jason.encode!(BusterClawWeb.PaneRoutes.paths())}
           role="tablist"
           aria-label="Open tabs"
           class="flex min-h-9 items-end gap-1 overflow-x-auto border-b border-base-300 bg-base-200/80 px-2 pt-1 backdrop-blur"

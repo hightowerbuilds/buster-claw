@@ -31,7 +31,7 @@ defmodule BusterClaw.Commands.Catalog.Orchestration do
         tier: :restricted,
         gated: true,
         description:
-          "Read or set which Claude model each agent surface runs on. With no args, lists what is in force for every surface: the model, the source that decided it (surface | floor | default | cli), and the surface's floor — that is the answer to \"I set a default, so why is this surface on something else?\". With \"surface\" and \"model\", records one; surface \"default\" sets the global default, and \"clear\": true removes an entry so the surface inherits again (an empty model is refused, never stored). With nothing stored no --model flag is passed at all and the CLI decides, which is the shipped state. A surface may declare a capability floor the global default cannot lower; none does today, and going below one means naming that surface explicitly.",
+          "Read or set which harness and model each agent surface runs on. With no args, lists what is in force for every surface: the model, the source that decided it (surface | floor | default | cli), and the surface's floor — that is the answer to \"I set a default, so why is this surface on something else?\". With \"surface\" and \"model\", records one; surface \"default\" sets the selected harness default, and \"clear\": true removes an entry so the surface inherits again (an empty model is refused, never stored). With nothing stored no --model flag is passed at all and the CLI decides, which is the shipped state. A surface may declare a capability floor the global default cannot lower; none does today, and going below one means naming that surface explicitly.",
         args: %{
           "surface" => %{
             type: :string,

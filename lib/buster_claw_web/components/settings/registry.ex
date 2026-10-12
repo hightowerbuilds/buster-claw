@@ -17,7 +17,7 @@ defmodule BusterClawWeb.Settings.Registry do
 
   ## Why Models leads
 
-  Configuration is four unrelated features, and only one of them has to be right
+  Configuration gathers independent features, and only one of them has to be right
   for the app to do anything at all: without an agent harness there is nothing
   to run. Google Workspace, the profile and the credentials are all additions to
   a working app. The 08-15 DMG review found first launch showing a fully
@@ -40,6 +40,11 @@ defmodule BusterClawWeb.Settings.Registry do
       key: "models",
       label: "Agent & models",
       blurb: "Which agent CLI runs each surface, and on which model."
+    },
+    %{
+      key: "speech",
+      label: "Speech",
+      blurb: "Choose the Mac voice and speed for reading chat replies aloud."
     },
     %{
       key: "google",

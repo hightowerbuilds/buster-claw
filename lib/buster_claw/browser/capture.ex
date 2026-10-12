@@ -42,6 +42,14 @@ defmodule BusterClaw.Browser.Capture do
   (`:capture_unavailable`, `:capture_timeout`, or a desktop-reported reason).
   """
   def request(opts \\ []) when is_list(opts) do
+    started = System.monotonic_time(:millisecond)
+    result = request_result(opts)
+    elapsed = System.monotonic_time(:millisecond) - started
+    BusterClaw.Browser.Activity.capture_shared(:screenshot, %{}, result, %{}, elapsed)
+    result
+  end
+
+  defp request_result(opts) do
     case Process.whereis(__MODULE__) do
       nil ->
         {:error, :capture_unavailable}

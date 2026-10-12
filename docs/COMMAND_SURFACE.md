@@ -22,11 +22,13 @@ result shape into their transport-specific response format.
 
 ## Active Domains
 
-196 commands as of 09-19, when the cut-up engine and its eighteen verbs were deleted (`./buster-claw commands` is authoritative; the Explained
-tab's Command List renders the same counts from a contract test):
+192 commands after removing voice generation. The three app-tab layout commands
+remain included. `./buster-claw commands` is authoritative; the Explained tab's
+Command List renders the same counts from a contract test:
 
 - Runtime status, orchestration shifts, and in-shift role sessions
 - Visible in-app terminal tabs
+- App tab layouts: `app_tabs_list`, `app_tabs_join`, `app_tabs_separate`
 - Workspace document library
 - The operator's Notes vault (`note_*`) and the Activity record (`journal_*`)
 - Calendar events (the app's own, distinct from Google's)
@@ -41,8 +43,6 @@ tab's Command List renders the same counts from a contract test):
 - Notifications (timers, alarms, reminders)
 - Sound (`sound_*`): the clip editor and arranger, recording and input levels,
   chime routing
-- Voice (`voice_*`): rendered clips (`voice_clip_*`) and spoken messages
-  (`voice_message_*`), which fire as notifications whose sound is a rendered line
 - The Dispatch pull-queue (list/claim/done/block/reply)
 - Memory (`memory_search`), skill suggestions, jobs and backgrounds, and the
   model-policy / runtime-status probes
@@ -68,6 +68,15 @@ state, trigger outbound effects, or send messages. A refusal returns
 
 Restricted refusals and consequential command invocations are recorded through
 `BusterClaw.Sentinel`.
+
+## App Tab Layouts
+
+To join the Browser with the current chat, use
+`./buster-claw run app_tabs_join --json '{"tab":"browser"}'`.
+`app_tabs_list` reports open app tabs and exact paths; `app_tabs_separate`
+returns a joined view to two tabs. Existing browser sessions are reused, and
+ambiguous names require an exact path. Layout commands are safe-tier UI
+operations and require a connected app window to acknowledge the result.
 
 ## In-App Terminal Tabs
 

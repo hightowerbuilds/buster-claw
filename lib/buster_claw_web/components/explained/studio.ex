@@ -31,11 +31,8 @@ defmodule BusterClawWeb.Explained.Studio do
   ## The spine, unchanged
 
   `Catalog.Sound`'s own moduledoc draws the line this tutorial teaches, so the
-  page is built on it rather than on a restatement of it: every write verb
-  produces a **new source** in `sounds/studio/` and stops — except `sound_apply`,
-  *"the only one that changes what the machine does when nobody is watching"*,
-  which is why it carries the gate. `sound_delete` is the other one worth care,
-  because it is the only irreversible verb.
+  page separates source editing from installing a chime with `sound_apply`.
+  `sound_delete` removes a source; `sound_restore_defaults` can reset routes.
   """
   use BusterClawWeb, :html
   import BusterClawWeb.Explained.Shared
@@ -105,8 +102,8 @@ defmodule BusterClawWeb.Explained.Studio do
           <span class="font-semibold text-base-content">
             Only one verb moves a sound from the first bucket to the other two.
           </span>
-          Everything else writes a new file and stops. That is the safety model of
-          this whole surface, and the rest of this page is built around it.
+          The editing verbs stop at a new source. Deleting a source and restoring
+          the default routes are separate operations, described below.
         </p>
       </div>
 
@@ -224,7 +221,7 @@ defmodule BusterClawWeb.Explained.Studio do
         title="Make it the sound the machine actually plays"
         want="The finished clip installed in the library and wired to an event."
         needs="A finished source in the studio. Nothing else — the library and the routing table are created as needed."
-        touches="Copies the source into the sound library AND repoints one routing key at it. This is the only verb on this page that changes behaviour."
+        touches="Copies the source into the sound library AND repoints one routing key at it. Restoring default routes can also change what plays."
         confirm="GATED — the only verb on this page that is. An unknown route is refused BEFORE the file is written, so a typo can never surface later as a chime that never plays."
         result="Reports what the key played before, so the change can be undone. name_taken and shadows_bundled refuse unless overwrite is true."
       >
@@ -254,8 +251,8 @@ defmodule BusterClawWeb.Explained.Studio do
           </li>
           <li>
             This is the verb where an agent should tell you what it is about to do
-            before it does it. Everything else on this page is a file appearing in a
-            folder; this one is your machine sounding different at 3am.
+            before it does it: this step changes what the machine plays when an
+            event arrives.
           </li>
         </ol>
       </.example>
@@ -285,12 +282,10 @@ defmodule BusterClawWeb.Explained.Studio do
           </li>
         </ul>
         <p class="text-sm leading-relaxed text-base-content/70">
-          Worth noticing what the shape of this surface says: of everything here,
-          exactly one verb changes behaviour, one destroys, and one is the undo.
-          Every other one writes a file and stops. The
-          gate is on the smallest possible thing rather than on the whole family —
-          which is why an agent can do the tedious ninety percent of an edit without
-          ever being in a position to change what your machine does.
+          Editing a source leaves your active chimes alone. Applying it changes
+          what plays, deleting it discards working material, and restoring routes
+          clears assignments. These are separate choices, so an agent can prepare
+          an edit before you decide to install it.
         </p>
       </section>
 
@@ -306,10 +301,11 @@ defmodule BusterClawWeb.Explained.Studio do
           — mono PCM16 at 22.05 kHz — so later joins do not hit a format mismatch.
         </p>
         <p>
-          <span class="font-semibold text-base-content">Want your own voice saying something?</span>
-          That is Vox2B, on Home — it synthesizes new speech from a short reference
-          recording of you, and a rendered line installs into the sound library
-          like any other chime.
+          <span class="font-semibold text-base-content">Bring your own audio.</span>
+          Record a line yourself or produce a WAV in another tool, save it under
+          the Library root, and import it with <code>sound_import</code>.
+          Use <code>sound_apply</code>
+          when you are ready to install it as a chime.
         </p>
       </div>
 

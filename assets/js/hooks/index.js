@@ -1,6 +1,8 @@
 // Aggregates every LiveView hook into one object for the LiveSocket. Each hook
 // lives in its own domain module; add new ones here.
 import {CornerWidget} from "./corner_widget.js"
+import {BrowserActivity} from "./browser_activity.js"
+import {Olympus} from "./olympus.js"
 import {Clock, DockClock} from "./clock.js"
 import {ScreenshotBridge, EmbeddedBrowser} from "./browser.js"
 import {AppIconBridge} from "./app_icon.js"
@@ -19,7 +21,6 @@ import {WaveTrim} from "./wave_trim.js"
 import {TrackArrange} from "./track_arrange.js"
 import {StudioKeys} from "./studio_keys.js"
 import {StudioAudition} from "./studio_audition.js"
-import {VoiceRecorder} from "./voice_recorder.js"
 import {VoiceAudition} from "./voice_audition.js"
 import {StudioContextMenu} from "./studio_context_menu.js"
 import {ShaderFace} from "./shader_face.js"
@@ -37,7 +38,8 @@ import {NoteContextMenu, NoteTitle} from "./note_context.js"
 import {ClinchManager, ClinchAppKeys, RecoveryKey} from "./clinch.js"
 
 export const Hooks = {
-  VoiceRecorder,
+  BrowserActivity,
+  Olympus,
   VoiceAudition,
   CornerWidget,
   Clock,

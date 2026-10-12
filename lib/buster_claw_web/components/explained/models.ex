@@ -71,7 +71,7 @@ defmodule BusterClawWeb.Explained.Models do
         <svg
           viewBox="0 0 560 198"
           role="img"
-          aria-label="How the model for a surface is decided, first match wins: the surface's own model wins outright; otherwise the global default applies; and if nothing is set, no model flag is passed and your CLI decides."
+          aria-label="Within the selected harness, the surface's own model wins; otherwise that harness's default applies. If neither is set, the CLI decides."
           class="w-full text-base-content/70"
         >
           <defs>
@@ -125,15 +125,15 @@ defmodule BusterClawWeb.Explained.Models do
 
           <g class="font-mono" fill="currentColor" font-size="10">
             <text x="54" y="58" font-weight="bold">THIS SURFACE'S OWN MODEL</text>
-            <text x="54" y="110" font-weight="bold">THE GLOBAL DEFAULT</text>
+            <text x="54" y="110" font-weight="bold">THIS HARNESS'S DEFAULT</text>
             <text x="54" y="162" font-weight="bold">NOTHING SET</text>
           </g>
 
           <g class="font-mono" fill="currentColor" font-size="8">
             <text x="302" y="52">honoured as-is,</text>
             <text x="302" y="63">whatever you name</text>
-            <text x="302" y="104">applies to every surface</text>
-            <text x="302" y="115">you did not name</text>
+            <text x="302" y="104">same harness,</text>
+            <text x="302" y="115">no surface override</text>
           </g>
           <g class="font-mono" fill="var(--color-primary)" font-size="8">
             <text x="302" y="156">no --model is passed;</text>
@@ -177,7 +177,7 @@ defmodule BusterClawWeb.Explained.Models do
         want="Before you change anything, find out what is in force."
         needs="An agent CLI installed and signed in. Nothing configured — this is the first thing to run on a fresh install."
         touches="Reads the model policy. Changes nothing."
-        confirm="None — a read of your own settings."
+        confirm="The command is restricted and policy-gated, including this read-only use. Run it from your trusted chat or terminal, or inspect Configuration."
         result="A per-surface list in chat, each row naming the model and where it came from. On a fresh install every row says your CLI decides, which is the shipped state rather than an error."
       >
         <.prompt text="Which model is each part of Buster Claw running right now — and if I set one default, where would it not apply?" />
@@ -205,29 +205,25 @@ defmodule BusterClawWeb.Explained.Models do
 
       <.example
         n={2}
-        title="Spend less, everywhere"
-        want="One knob for the whole app."
+        title="Set a default for your harness"
+        want="Share a model choice across surfaces using the same harness."
         needs="A model name your chosen harness recognizes — model names do not carry across harnesses."
-        touches="Writes one setting: the global default. Every surface you have not named individually follows it from the next run onward; runs already in flight are unaffected."
-        confirm="None. It is a local preference, and clearing it puts you back to passing no model flag at all."
+        touches="Writes the selected harness's default model. Surfaces using that harness without their own override inherit it; other harnesses keep their own choices."
+        confirm="model_policy is policy-gated: an untrusted-origin run is refused. Your trusted chat, terminal, and Configuration controls can change it."
         result="The new default shows in the model section of Configuration and in `model_policy`. Name a model your harness does not know and the failure surfaces on the next run from that CLI, not here."
       >
-        <.prompt text="I'm doing a lot of small errands today. Put everything on a cheaper model." />
+        <.prompt text="Show me my current harness and model choices, then help me choose a cheaper default for the harness I use for errands." />
         <ol class="ic-unfold">
           <li>
-            One global default does it — the model section in Settings, or <code>model_policy</code>
-            naming the default and the model. Every surface
-            you have not named individually follows it from the next run onward.
+            Pick a harness first in Configuration, then set its default model.
+            Through <code>model_policy</code>, name <code>surface: default</code>
+            and the model. Only surfaces using that harness without their own
+            model override inherit the choice.
           </li>
           <li>
-            Every surface follows it today. The app keeps a
-            <span class="font-mono font-bold text-primary">floor</span>
-            mechanism — a surface can refuse to go below a named model, and says
-            <span class="font-mono font-bold text-primary">floor</span>
-            rather than <span class="font-mono font-bold text-base-content">default</span>
-            when it overrides you — but no surface declares one right now. The two
-            that did were the trading reads and order submission, and they left
-            with the trading stack.
+            Read the per-surface list after a change to see what each surface
+            will use. Existing conversations can retain their current session;
+            start a new conversation when you want the new choice immediately.
           </li>
           <li>
             Clearing the default puts you back to unset, which means back to no <code>--model</code>
@@ -243,9 +239,9 @@ defmodule BusterClawWeb.Explained.Models do
           or <code>opencode</code>
           — whichever you have installed. Pick the harness
           first, then the model inside it, because a model name only means something
-          to its own harness: <code>claude-opus-5</code>
-          means nothing to OpenCode,
-          which wants <code>opencode-go/glm-5.1</code>. Your models are remembered
+          to its own harness. Claude and Codex accept model IDs; OpenCode uses
+          a <code>provider/model</code>
+          name. Your models are remembered
           per harness, so trying one and going back does not lose the other's
           settings. Leave it on <code>auto</code>
           and the app uses whichever CLI it
@@ -256,9 +252,9 @@ defmodule BusterClawWeb.Explained.Models do
           There is no per-conversation model picker — the choice is per surface, so
           every chat runs on the chat surface's model. Every harness does report
           what a run cost — Claude and OpenCode in dollars, Codex in tokens —
-          but there is no per-surface or per-day total anywhere yet. And a Codex
-          conversation starts fresh each turn rather than resuming, because Codex
-          spells resume as a subcommand rather than a flag.
+          but there is no per-surface or per-day total anywhere yet. Codex keeps
+          a conversation thread when live steering is enabled; the fallback
+          one-shot adapter starts a fresh session each turn.
         </p>
       </div>
 

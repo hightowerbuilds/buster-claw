@@ -510,16 +510,18 @@ fn main() {
                             return;
                         };
 
-                        let target = if healthy {
-                            phoenix_url.clone()
+                        // Startup may beat the initial document's JavaScript
+                        // context. Native navigation does not depend on that
+                        // context being ready (eval could leave a blank window).
+                        let navigation = if healthy {
+                            window.navigate(
+                                tauri::Url::parse(&phoenix_url).expect("fixed dev URL is valid"),
+                            )
                         } else {
-                            "error.html".to_string()
+                            window.eval("window.location.replace('error.html')")
                         };
 
-                        if let Err(e) = window.eval(format!(
-                            "window.location.replace({})",
-                            browser::js_str(&target)
-                        )) {
+                        if let Err(e) = navigation {
                             eprintln!("[buster-claw] failed to navigate webview: {e}");
                         }
 

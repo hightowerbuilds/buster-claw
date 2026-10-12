@@ -6,12 +6,10 @@ defmodule BusterClawWeb.StatusLiveTest do
 
   alias BusterClaw.Agent.Attachments
   alias BusterClaw.Appearance
-  alias BusterClaw.Calendar
   alias BusterClaw.ChatSkin
   alias BusterClaw.ChatTextSize
   alias BusterClaw.Commands
   alias BusterClaw.Contacts
-  alias BusterClaw.LocalTime
   alias BusterClaw.ModelPolicy
   alias BusterClaw.Settings
   alias BusterClaw.Telephony
@@ -1096,10 +1094,6 @@ defmodule BusterClawWeb.StatusLiveTest do
     test "Activity is the far-right Home tab" do
       expected = [
         {"chat", "Chat"},
-        # Vox arrived beside Chat on 09-05 (`VOX_TAB_ROADMAP` `D3`), at the
-        # operator's word — it is the surface you work at, not a setting you
-        # visit, so it sits here rather than out at the Settings end.
-        {"vox", "Vox2B"},
         # Notes and Calendar LEFT the same day, for the Workspace page's rail.
         # This snapshot failing in the REMOVING direction is the same service it
         # does when a tab is added: somebody has to look.

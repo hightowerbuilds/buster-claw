@@ -197,7 +197,7 @@ defmodule BusterClawWeb.Settings.ModelsComponent do
               name="model"
               value=""
               autocomplete="off"
-              placeholder="claude-sonnet-4-6"
+              placeholder="Model ID or alias"
               class="input mt-1 w-full font-mono text-xs"
             />
           </label>
@@ -239,7 +239,7 @@ defmodule BusterClawWeb.Settings.ModelsComponent do
             <div class="max-w-md min-w-0 space-y-1">
               <p class="text-sm font-semibold">{entry.description}</p>
               <p class="font-mono text-xs text-base-content/70">
-                {backend_display(entry.backend)} · {model_display(entry.model)} · {source_note(
+                {backend_display(entry.backend)} · {model_display(entry.model, entry.backend)} · {source_note(
                   entry.source
                 )}
               </p>
@@ -303,14 +303,14 @@ defmodule BusterClawWeb.Settings.ModelsComponent do
               >
                 <option value="" selected={entry.source != :surface}>— inherit —</option>
                 <option
-                  :for={model <- @model_choices}
+                  :for={model <- entry.choices}
                   value={model}
                   selected={entry.source == :surface and entry.model == model}
                 >
                   {model}
                 </option>
                 <option
-                  :if={entry.source == :surface and entry.model not in @model_choices}
+                  :if={entry.source == :surface and entry.model not in entry.choices}
                   value={entry.model}
                   selected
                 >
@@ -337,14 +337,18 @@ defmodule BusterClawWeb.Settings.ModelsComponent do
 
     socket
     |> assign(:model_default_backend, default_backend)
-    # The offered models follow the CHOSEN harness, not claude forever. Resolved
-    # here rather than at mount for that reason: a list that never changes would
-    # have offered claude model IDs to an operator running opencode, which is the
-    # one mistake `plausible_model?/2` exists to catch.
+    # Each surface may use a different harness from the global default.
     |> assign(:model_choices, ModelPolicy.known_models(default_backend))
-    |> assign(:model_rows, Enum.map(ModelPolicy.surface_keys(), &{&1, Map.fetch!(in_force, &1)}))
+    |> assign(:model_rows, model_rows(in_force))
     |> assign(:model_default, ModelPolicy.model_for(default_backend, :default))
     |> assign_backend_missing()
+  end
+
+  defp model_rows(in_force) do
+    Enum.map(ModelPolicy.surface_keys(), fn surface ->
+      entry = Map.fetch!(in_force, surface)
+      {surface, Map.put(entry, :choices, ModelPolicy.known_models(entry.backend))}
+    end)
   end
 
   # Derived rather than asserted: the note reads off the same two lists the
@@ -393,7 +397,7 @@ defmodule BusterClawWeb.Settings.ModelsComponent do
   end
 
   defp model_note(:default, nil, _in_force),
-    do: "Cleared. Every surface without a model of its own lets your claude CLI decide again."
+    do: "Cleared. Every surface without a model of its own lets its CLI decide again."
 
   defp model_note(:default, model, in_force) do
     held = for {surface, entry} <- in_force, entry.source == :floor, do: surface_label(surface)
@@ -415,12 +419,12 @@ defmodule BusterClawWeb.Settings.ModelsComponent do
   defp model_error({:unknown_surface, _surface}), do: "That is not a surface Buster Claw runs."
   defp model_error(_reason), do: "Could not save that model."
 
-  defp model_display(nil), do: "Your claude CLI decides"
-  defp model_display(model), do: model
+  defp model_display(nil, backend), do: "Your #{backend || :claude} CLI decides"
+  defp model_display(model, _backend), do: model
 
   # Why the row resolved the way it did. `:cli` has to read as an answer, not as
   # a blank — "nothing is set" is a real, and shipped, state.
-  defp source_note(:cli), do: "your claude CLI decides"
+  defp source_note(:cli), do: "CLI default"
   defp source_note(:default), do: "from the global default"
   defp source_note(:surface), do: "set for this surface"
   defp source_note(:floor), do: "held at the floor — the global default is lower"

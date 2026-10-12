@@ -1,6 +1,7 @@
 defmodule BusterClaw.Telephony.PinsTest do
-  use ExUnit.Case, async: false
+  use BusterClaw.DataCase, async: false
 
+  alias BusterClaw.Clinch
   alias BusterClaw.Telephony.Pins
 
   setup do
@@ -139,6 +140,46 @@ defmodule BusterClaw.Telephony.PinsTest do
       assert {:error, :not_configured} = Pins.set_pin("+15035551234", "4815", opts())
       assert {:error, :not_configured} = Pins.remove_pin("+15035551234", opts())
       assert {:error, :not_configured} = Pins.list_pins(opts())
+    end
+
+    test "stored credentials support listing, setting, and removing PINs without shell configuration" do
+      assert {:ok, _} = Clinch.put({:app_key, "supabase_url"}, "https://stored.supabase.co")
+      assert {:ok, _} = Clinch.put({:app_key, "supabase_service_role_key"}, "stored-role")
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        assert conn.host == "stored.supabase.co"
+        assert Plug.Conn.get_req_header(conn, "apikey") == ["stored-role"]
+        assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer stored-role"]
+
+        if conn.method == "GET",
+          do: Req.Test.json(conn, []),
+          else: Plug.Conn.send_resp(conn, 204, "")
+      end)
+
+      assert Pins.configured?()
+      assert {:ok, []} = Pins.list_pins(opts())
+      assert {:ok, "+15035551234"} = Pins.set_pin("+15035551234", "4815", opts())
+      assert :ok = Pins.remove_pin("+15035551234", opts())
+    end
+
+    test "credential rotation and revocation take effect on the next request" do
+      assert {:ok, _} = Clinch.put({:app_key, "supabase_url"}, "https://stored.supabase.co")
+      assert {:ok, _} = Clinch.put({:app_key, "supabase_service_role_key"}, "old-role")
+      assert Pins.configured?()
+      assert {:ok, _} = Clinch.put({:app_key, "supabase_service_role_key"}, "new-role")
+
+      Req.Test.expect(__MODULE__, fn conn ->
+        assert Plug.Conn.get_req_header(conn, "apikey") == ["new-role"]
+        assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer new-role"]
+        Req.Test.json(conn, [])
+      end)
+
+      assert {:ok, []} = Pins.list_pins(opts())
+      assert {:ok, _} = Clinch.delete({:app_key, "supabase_service_role_key"})
+      refute Pins.configured?()
+      assert {:error, :not_configured} = Pins.list_pins(opts())
+      assert {:error, :not_configured} = Pins.set_pin("+15035551234", "4815", opts())
+      assert {:error, :not_configured} = Pins.remove_pin("+15035551234", opts())
     end
   end
 end

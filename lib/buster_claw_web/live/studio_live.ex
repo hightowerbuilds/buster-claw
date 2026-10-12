@@ -3,8 +3,7 @@ defmodule BusterClawWeb.StudioLive do
   The Studio, at `/studio` — a full-screen surface holding **Mix**.
 
   It held a second tab, the Voice Library, until 09-19, when the cut-up engine it
-  sat on was deleted (`CUTUP_DELETION_ROADMAP`). Recording your own voice did not
-  go with it: that is Vox2B, on Home, and shares nothing with what left.
+  sat on was deleted (`CUTUP_DELETION_ROADMAP`). Mix still edits recorded audio.
 
   ## Why it left Home
 

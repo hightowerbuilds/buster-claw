@@ -13,6 +13,7 @@ import {resolve as resolveUrl, display as displayUrl, deriveLabel, faviconFor} f
 // otherwise insert a tofu glyph instead of moving the caret.
 import {installCaretKeys} from "./lib/caret_keys.js"
 import {renderAppTabChips} from "./lib/chrome_app_tabs.js"
+import {installBrowserNav} from "./lib/browser_nav.js"
 
 installCaretKeys()
 
@@ -773,11 +774,7 @@ function bookmark() {
 }
 
 document.getElementById("form").addEventListener("submit", function (e) { e.preventDefault(); go() })
-document.getElementById("home").addEventListener("click", function () { inv("browser_navigate", {tabId: activeId, url: homeUrl}) })
-document.getElementById("pages").addEventListener("click", function () { inv("browser_navigate", {tabId: activeId, url: origin + "/browser/pages"}) })
-document.getElementById("back").addEventListener("click", function () { inv("browser_back", {tabId: activeId}) })
-document.getElementById("fwd").addEventListener("click", function () { inv("browser_forward", {tabId: activeId}) })
-document.getElementById("reload").addEventListener("click", function () { inv("browser_reload", {tabId: activeId}) })
+installBrowserNav(inv, () => activeId, origin, homeUrl, SID)
 document.getElementById("bookmark").addEventListener("click", bookmark)
 
 // --- "Ask about this page" (THREE_DOORS Phase 3) ---

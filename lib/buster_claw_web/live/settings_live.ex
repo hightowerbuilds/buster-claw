@@ -56,14 +56,17 @@ defmodule BusterClawWeb.SettingsLive do
   alias BusterClawWeb.Settings.Registry
 
   @impl true
-  def mount(params, _session, socket) do
+  def mount(params, session, socket) do
     if connected?(socket), do: Google.subscribe()
 
     {:ok,
      socket
      |> assign(:page_title, "Configuration")
+     |> assign(:id_prefix, session["settings_id_prefix"] || "")
+     |> assign(:speech_id, session["speech_id"] || "settings-speech")
+     |> assign(:messages_probe, nil)
      # The rail. `?tab=` is read but never written — see `Settings.Rail`.
-     |> assign(:settings_tab, Registry.resolve(tab_param(params)))
+     |> assign(:settings_tab, Registry.resolve(tab_param(params) || session["settings_tab"]))
      # --- Google Workspace ---
      |> assign(:bundled_available, BusterClaw.Google.BundledClient.available?())
      |> assign(:gws_tab, :accounts)
@@ -124,6 +127,16 @@ defmodule BusterClawWeb.SettingsLive do
   @impl true
   def handle_event("select_settings_tab", %{"tab" => tab}, socket) do
     {:noreply, assign(socket, :settings_tab, Registry.resolve(tab))}
+  end
+
+  def handle_event("probe_messages", _params, %{assigns: %{messages_probe: :checking}} = socket),
+    do: {:noreply, socket}
+
+  def handle_event("probe_messages", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:messages_probe, :checking)
+     |> start_async(:messages_probe, fn -> BusterClaw.Messages.probe() end)}
   end
 
   # --- Google Workspace events -------------------------------------------
@@ -347,18 +360,27 @@ defmodule BusterClawWeb.SettingsLive do
   end
 
   @impl true
+  def handle_async(:messages_probe, {:ok, result}, socket),
+    do: {:noreply, assign(socket, :messages_probe, result)}
+
+  def handle_async(:messages_probe, {:exit, _reason}, socket),
+    do: {:noreply, assign(socket, :messages_probe, {:error, :unavailable})}
+
+  @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} socket={@socket}>
-      <section id="settings" class="space-y-6">
-        <BusterClawWeb.SettingsTabs.tabs active={:configuration} />
-        <BusterClawWeb.Settings.Rail.rail active={@settings_tab} />
+      <section id={"#{@id_prefix}settings"} class="space-y-6">
+        <BusterClawWeb.SettingsTabs.tabs active={:configuration} id_prefix={@id_prefix} />
+        <BusterClawWeb.Settings.Rail.rail active={@settings_tab} id_prefix={@id_prefix} />
 
         <.live_component
           :if={@settings_tab == "models"}
           module={BusterClawWeb.Settings.ModelsComponent}
           id="settings-models"
         />
+
+        <BusterClawWeb.Settings.Speech.panel :if={@settings_tab == "speech"} id={@speech_id} />
 
         <section :if={@settings_tab == "google"} class="ic-panel space-y-4 p-6">
           <h2 class="ic-eyebrow">Google Workspace</h2>
@@ -552,6 +574,10 @@ defmodule BusterClawWeb.SettingsLive do
             binary. Quote both lines when reporting a problem.
           </p>
         </section>
+        <BusterClawWeb.MessagesProbe.panel
+          :if={@settings_tab == "about"}
+          result={@messages_probe}
+        />
       </section>
     </Layouts.app>
     """

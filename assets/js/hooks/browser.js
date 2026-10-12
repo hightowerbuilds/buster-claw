@@ -46,6 +46,9 @@ export const ScreenshotBridge = {
         })
         return
       }
+      // Address only: the activity graph never receives the page's contents or
+      // form values. A failed observation must not prevent the actual action.
+      const context = action === "render" ? {} : await invoke("browser_current").catch(() => ({}))
       try {
         let data = {ok: true}
         if (action === "current") {
@@ -114,9 +117,9 @@ export const ScreenshotBridge = {
           this.reportCommand(ref, {error: "unknown browser command"})
           return
         }
-        this.reportCommand(ref, data)
+        this.reportCommand(ref, {...data, context: {url: context.url}})
       } catch (e) {
-        this.reportCommand(ref, {error: String(e).slice(0, 200)})
+        this.reportCommand(ref, {error: String(e).slice(0, 200), context: {url: context.url}})
       }
     })
   },
@@ -154,6 +157,15 @@ export const EmbeddedBrowser = {
     // two panes of a browser+browser split. Keeps the native surfaces (and
     // their chromes) independent so two browsers can sit side by side.
     this.sid = this.el.dataset.surfaceId || "main"
+    // The chrome shares this origin. Its Graph button toggles this pane without
+    // navigating either webview or changing which app/browser tab is active.
+    this.onActivity = event => {
+      if (event.key !== "bc.browser.activity") return
+      try {
+        if (JSON.parse(event.newValue)?.sid === this.sid) this.pushEvent("toggle_activity", {})
+      } catch { /* Ignore malformed or cleared storage. */ }
+    }
+    window.addEventListener("storage", this.onActivity)
 
     if (!this.invoke) {
       if (this.fallback) {
@@ -223,7 +235,7 @@ export const EmbeddedBrowser = {
   updated() {
     if (!this.invoke) return
 
-    const mirroring = this.el.dataset.agentMirror === "1"
+    const mirroring = this.el.dataset.agentMirror === "1" || this.el.dataset.activityExpanded === "1"
 
     if (mirroring) {
       if (!this.mirrorHidden) {
@@ -252,6 +264,7 @@ export const EmbeddedBrowser = {
   },
 
   destroyed() {
+    window.removeEventListener("storage", this.onActivity)
     if (this.ro) this.ro.disconnect()
     if (this.onResize) window.removeEventListener("resize", this.onResize)
     if (this.onScroll) window.removeEventListener("scroll", this.onScroll, true)

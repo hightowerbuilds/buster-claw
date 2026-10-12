@@ -2,12 +2,15 @@ import {canonicalGroupKey, closeTabIn, loadTabs, saveTabs, labelForPath, openNew
 import {escapeHtml} from "../lib/html.js"
 import {TabRename} from "./tab_rename.js"
 import {dutyTabs} from "./duty_tab.js"
+import {TabLayout} from "./tab_layout.js"
+import {recoverRetiredRoute} from "../lib/retired_tabs.js"
 
 // Browser-style tab strip. Open routes are persisted client-side in
 // localStorage so they survive LiveView navigations; the dock buttons open
 // routes, and each open route shows up here as a tab with a close (×) button.
 export const TabStrip = {
   ...TabRename,
+  ...TabLayout,
   mounted() {
     this.labels = this.parseLabels()
     this.el.addEventListener("click", (e) => this.onClick(e))
@@ -58,8 +61,11 @@ export const TabStrip = {
     this.render()
     // Heal any native browser surface left stuck by a prior full-page reload.
     this.reconcileBrowserSurfaces()
+    this.setupTabCommands()
   },
+  reconnected() { this.onTabsFocus() },
   destroyed() {
+    window.removeEventListener("focus", this.onTabsFocus)
     window.removeEventListener("bc:duty-changed", this.onDuty)
     this.closeMenu()
     if (window.__bcMenuShortcut) delete window.__bcMenuShortcut
@@ -91,13 +97,11 @@ export const TabStrip = {
     return dutyTabs(loadTabs(), document.getElementById("duty-tab-state")?.dataset.active === "true")
   },
   save(tabs) { saveTabs(tabs) },
-  // Tab key is the full path incl. query, so multiple /browse tabs
-  // (each /browse?t=<id>) are distinct, independent tabs. Any Settings
-  // sub-route collapses to the single /settings key so they share one top tab.
+  // Full paths distinguish browser tabs; Settings routes share one tab.
   currentKey() {
     const group = canonicalGroupKey(window.location.pathname)
     if (group) return group
-    return window.location.pathname + window.location.search
+    return recoverRetiredRoute(window.location.pathname + window.location.search)
   },
   labelFor(key) {
     return labelForPath(key, this.labels)
@@ -268,104 +272,6 @@ export const TabStrip = {
     this.save(tabs)
     this.render()
   },
-  // A pane carries its browsed page as ?url=<page> so the split can load it.
-  paneParam(tabPath) {
-    const tab = this.load().find((t) => t.path === tabPath)
-    if (tab && tab.url) {
-      return tabPath.split("?")[0] + "?url=" + encodeURIComponent(tab.url)
-    }
-    return tabPath
-  },
-  joinTabs(a, b) {
-    if (a === "/duty" || b === "/duty") return
-    // Don't join a tab to itself or nest splits inside splits.
-    if (!a || !b || a === b) return
-    if (a.split("?")[0] === "/split" || b.split("?")[0] === "/split") return
-    const left = this.paneParam(a)
-    const right = this.paneParam(b)
-    // The two source tabs now live inside the joined tab — drop them.
-    this.save(this.load().filter((t) => t.path !== a && t.path !== b))
-    const dest = `/split?left=${encodeURIComponent(left)}&right=${encodeURIComponent(right)}`
-    // Close a pre-existing solo browser surface so it can't linger over the
-    // split; the pane reopens it fresh on its side.
-    this.tearDownSplitBrowsers(a, b).finally(() => (window.location.href = dest))
-  },
-  // Swap the two sides of a joined tab.
-  swapSides(splitPath) {
-    const params = new URLSearchParams(splitPath.split("?")[1] || "")
-    const left = params.get("left")
-    const right = params.get("right")
-    if (!left || !right) return
-    const newPath = `/split?left=${encodeURIComponent(right)}&right=${encodeURIComponent(left)}`
-    this.save(
-      this.load().map((t) =>
-        t.path === splitPath ? {path: newPath, label: this.labelFor(newPath)} : t
-      )
-    )
-    // A browser's surface id is its side, so swapping moves it across; close the
-    // old surface first or it stays painted on the side it was on.
-    this.tearDownSplitBrowsers(left, right).finally(() => (window.location.href = newPath))
-  },
-  // Close one pane of a joined tab; the other side stays open as a solo tab.
-  closeSplitPane(side) {
-    const cur = this.currentKey()
-    if (cur.split("?")[0] !== "/split") return
-    const params = new URLSearchParams(cur.split("?")[1] || "")
-    const keep = side === "left" ? params.get("right") : params.get("left")
-    if (!keep) return
-    const tabs = this.load().filter((t) => t.path !== cur)
-    if (!tabs.some((t) => t.path === keep)) {
-      tabs.push({path: keep, label: this.labelFor(keep)})
-    }
-    this.save(tabs)
-    this.tearDownSplitBrowsers(params.get("left"), params.get("right")).finally(
-      () => (window.location.href = keep)
-    )
-  },
-  // Split a joined tab back into its two component tabs.
-  separateTabs(splitPath) {
-    const params = new URLSearchParams(splitPath.split("?")[1] || "")
-    const left = params.get("left")
-    const right = params.get("right")
-    if (!left || !right) return
-    const tabs = this.load().filter((t) => t.path !== splitPath)
-    for (const p of [left, right]) {
-      if (!tabs.some((t) => t.path === p)) tabs.push({path: p, label: this.labelFor(p)})
-    }
-    this.save(tabs)
-    this.tearDownSplitBrowsers(left, right).finally(() => (window.location.href = left))
-  },
-  // Close every native browser surface if any of the given pane paths is a
-  // browser. Native webviews are owned by Rust and survive the full-page reload
-  // our split navigations do, so a stale surface stays pinned to its old box
-  // (wrong side / "stuck") unless we close it first. Returns a promise so the
-  // caller can wait for the close before the reload reopens a fresh surface on
-  // the correct side — otherwise the close can race ahead and kill the new one.
-  tearDownSplitBrowsers(...panePaths) {
-    if (!panePaths.some((p) => (p || "").split("?")[0] === "/browse")) return Promise.resolve()
-    const invoke = window.__TAURI__?.core?.invoke
-    if (!invoke) return Promise.resolve()
-    return invoke("browser_close").catch(() => {})
-  },
-  // Reconcile native browser surfaces against the current route. Surfaces are
-  // owned by the Rust shell and survive the full-page reload our
-  // window.location.href navigations do; on such a reload the EmbeddedBrowser
-  // hook's destroyed() (which hides its surface) doesn't fire, so a surface can
-  // be left stuck on top of the next page. The route says which are valid —
-  // "main" on /browse, "left"/"right" on /split, none anywhere else — so HIDE
-  // the rest. Hide, never close: this hook remounts on every LiveView
-  // navigation (the app shell renders inside each LiveView), and closing here
-  // destroyed all browser tabs on any tab switch away from /browse. Hiding is
-  // idempotent, safe on absent surfaces, and keeps every tab alive for the
-  // return to /browse (browser_open re-shows the saved active tab).
-  reconcileBrowserSurfaces() {
-    const invoke = window.__TAURI__?.core?.invoke
-    if (!invoke) return
-    const base = window.location.pathname
-    const stale =
-      base === "/browse" ? ["left", "right"] : base === "/split" ? ["main"] : ["main", "left", "right"]
-    for (const sid of stale) invoke("browser_hide", {surfaceId: sid}).catch(() => {})
-  },
   // ----- Right-click context menu -----
   // Primary trigger in WebKit: right-button mousedown fires even on draggable
   // tabs, where `contextmenu` does not.
@@ -529,14 +435,7 @@ export const TabStrip = {
     // Closing a tab that owns native browser webviews — a /browse tab, or a
     // /split holding a browser pane — must destroy them, else they linger
     // painted over whatever page we land on (the hook only *hides* on switch).
-    const base = path.split("?")[0]
-    let teardown = Promise.resolve()
-    if (base === "/browse") {
-      teardown = this.tearDownSplitBrowsers("/browse")
-    } else if (base === "/split") {
-      const params = new URLSearchParams(path.split("?")[1] || "")
-      teardown = this.tearDownSplitBrowsers(params.get("left"), params.get("right"))
-    }
+    const teardown = this.tearDownSplitBrowsers(path)
     this.save(tabs)
     if (path === this.currentKey()) {
       teardown.finally(() => (window.location.href = next ? this.navTarget(next) : "/"))

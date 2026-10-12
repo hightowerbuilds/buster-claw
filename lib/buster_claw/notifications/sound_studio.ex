@@ -695,9 +695,8 @@ defmodule BusterClaw.Notifications.SoundStudio do
   @doc """
   The int16 samples of a PCM binary, as a list.
 
-  Public since 08-16: `Studio.Effects` and `Capture.Take` both read samples, and
-  each had grown its own copy of this one-liner. Three readings of "what is a
-  sample" is two that can disagree with the format module that defines it.
+  Shared with `Studio.Effects` so readers use the format module's definition of
+  a sample.
   """
   def samples(data), do: for(<<s::little-signed-16 <- data>>, do: s)
 
@@ -721,11 +720,6 @@ defmodule BusterClaw.Notifications.SoundStudio do
 
   @doc """
   Round and saturate a value into int16.
-
-  **Every write of a sample goes through here**, and that sentence was a comment
-  on a private function until 08-16 — by which point `Studio.Effects` and
-  `Capture.Take` had each written their own, so the claim was false in exactly
-  the way a single-door claim must never be. Made public and the copies deleted.
 
   Rounding a scaled sample can land one step outside int16, and a wrapped sample
   is not quiet distortion — it is a full-scale sign flip, the loudest possible

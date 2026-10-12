@@ -1,21 +1,27 @@
 defmodule BusterClawWeb.Status.ChatSystemPromptTest do
-  # The home chat's system-prompt addendum. Until 09-13 it was the drawing and
-  # voice-clip guides alone, and nothing asserted on it — so the assistant in the
-  # app's front door had never been told which app it was in, and no test could
-  # have said so. THREE_DOORS Phase 1.
+  # The home chat's system-prompt addendum identifies the app and describes
+  # capabilities that need guidance beyond the generated command catalog.
   use ExUnit.Case, async: true
 
   alias BusterClaw.Introduction
   alias BusterClaw.SvgViewer
-  alias BusterClaw.Voice.Clips
   alias BusterClawWeb.Status.Chat
 
-  test "opens with the pointer, then keeps both channel guides" do
+  test "opens with the pointer and keeps drawing and app-tab guidance" do
     prompt = Chat.system_prompt()
 
     assert String.starts_with?(prompt, Introduction.pointer())
     assert prompt =~ SvgViewer.guide()
-    assert prompt =~ Clips.guide()
+    assert prompt =~ "app_tabs_join"
+    assert prompt =~ "app_tabs_separate"
+  end
+
+  test "does not advertise removed voice generation" do
+    prompt = Chat.system_prompt()
+
+    for removed <- ~w(VoxCPM Vox2B voice_clip_ voice_message_) do
+      refute prompt =~ removed
+    end
   end
 
   test "stays small, because the shipped transports re-send it every turn" do

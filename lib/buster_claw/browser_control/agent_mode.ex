@@ -226,6 +226,7 @@ defmodule BusterClaw.BrowserControl.AgentMode do
        # Host of the last successful navigation — the egress policy key for
        # content-returning acts on the current page.
        current_host: nil,
+       current_url: nil,
        # Per-host egress levels, frozen at start like the scope. Until 08-03
        # `Egress.prepare/3` was called with no opts, so `Policy`'s `:overrides`
        # mechanism existed, was tested, and could never be fed by anything.
@@ -341,6 +342,13 @@ defmodule BusterClaw.BrowserControl.AgentMode do
       {:ok, next} ->
         prev = s.mode
         s = %{s | mode: next}
+
+        BusterClaw.Browser.Activity.capture_agent(
+          s.run_id,
+          %{type: event, outcome: next},
+          s.current_url
+        )
+
         broadcast(s, {:mode, %{from: prev, to: next, event: event, meta: meta}})
         broadcast(s, {:mode_changed, next})
         {:reply, {:ok, next}, s}
@@ -357,7 +365,7 @@ defmodule BusterClaw.BrowserControl.AgentMode do
       {:ok, origin} ->
         # The origin describes where we LANDED, not what was requested, so this
         # is what keeps Egress's per-host level honest across a redirect.
-        s = %{s | current_host: origin[:host] || s.current_host}
+        s = %{s | current_host: origin[:host] || s.current_host, current_url: origin[:url]}
 
         s =
           record(s, %{
@@ -381,6 +389,7 @@ defmodule BusterClaw.BrowserControl.AgentMode do
         s =
           record(s, %{
             type: :handoff,
+            origin: Map.take(meta, [:url, :host]),
             summary: "payment handoff #{meta[:url]}#{handoff_cart_line(cart_summary)}",
             outcome: :awaiting_human
           })
@@ -392,7 +401,12 @@ defmodule BusterClaw.BrowserControl.AgentMode do
 
       {:halt, reason, meta} ->
         s =
-          record(s, %{type: :halt, summary: halt_summary(reason, meta), outcome: :halted})
+          record(s, %{
+            type: :halt,
+            summary: halt_summary(reason, meta),
+            origin: Map.take(meta, [:url, :host]),
+            outcome: :halted
+          })
 
         {_, next} = safe_transition(s, :halt)
         s = %{s | mode: next}
@@ -400,7 +414,14 @@ defmodule BusterClaw.BrowserControl.AgentMode do
         {:reply, {:halt, reason, meta}, s}
 
       other ->
-        s = record(s, %{type: :navigate, summary: "navigate #{url}", outcome: :error})
+        s =
+          record(s, %{
+            type: :navigate,
+            summary: "navigate #{url}",
+            origin: %{url: url},
+            outcome: :error
+          })
+
         {:reply, other, s}
     end
   end
@@ -592,6 +613,8 @@ defmodule BusterClaw.BrowserControl.AgentMode do
     attrs = Map.put_new(attrs, :at, s.clock.())
     traj = Trajectory.step(s.trajectory, attrs)
     s = %{s | trajectory: traj}
+    url = (attrs[:origin] || %{})[:url] || s.current_url
+    BusterClaw.Browser.Activity.capture_agent(s.run_id, Trajectory.last(traj), url)
     broadcast(s, {:step, Trajectory.last(traj)})
     s
   end

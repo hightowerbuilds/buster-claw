@@ -437,9 +437,15 @@ defmodule BusterClaw.IntroductionTest do
     assert File.stat!(path, time: :posix).mtime == mtime
 
     # A changed on-disk file is overwritten back to the generated content.
-    File.write!(path, "STALE")
+    File.write!(path, "Home → Vox2B. Run voice_clip_make or voice_message_create.")
     assert {:ok, ^path} = Introduction.install!()
-    assert File.read!(path) =~ "Operating Guide"
+    upgraded = File.read!(path)
+    assert upgraded =~ "Operating Guide"
+    assert upgraded =~ "Configuration → Speech"
+
+    for removed <- ~w(VoxCPM Vox2B voice_clip_ voice_message_) do
+      refute upgraded =~ removed
+    end
   end
 
   test "read returns the installed file, or generates when absent", %{root: root} do

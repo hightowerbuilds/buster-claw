@@ -51,8 +51,8 @@ defmodule BusterClaw.Commands.SoundCapture do
 
   So `record/1` reads the result back and refuses a silent take rather than
   storing it, and this verb's description says so. It is a convenience for a
-  trusted caller. The operator's own recording path is Vox2B's recorder, which
-  captures inside the signed app where consent can actually be attributed.
+  trusted caller. Existing recordings can also enter the sound library through
+  `sound_import` without opening the microphone.
   """
 
   alias BusterClaw.Notifications.Capture

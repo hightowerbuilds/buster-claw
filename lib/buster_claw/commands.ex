@@ -565,13 +565,6 @@ defmodule BusterClaw.Commands do
   defdelegate notify_list(args \\ %{}), to: BusterClaw.Commands.Notify
   defdelegate notify_get(args), to: BusterClaw.Commands.Notify
   defdelegate notify_create(args), to: BusterClaw.Commands.Notify
-  defdelegate voice_message_create(args), to: BusterClaw.Commands.Notify
-  defdelegate voice_message_list(args \\ %{}), to: BusterClaw.Commands.Notify
-  defdelegate voice_clip_make(args), to: BusterClaw.Commands.Notify
-  defdelegate voice_clip_list(args \\ %{}), to: BusterClaw.Commands.Notify
-  defdelegate voice_clip_delete(args), to: BusterClaw.Commands.Notify
-  defdelegate voice_message_fire(args), to: BusterClaw.Commands.Notify
-  defdelegate voice_message_delete(args), to: BusterClaw.Commands.Notify
   defdelegate notify_snooze(args), to: BusterClaw.Commands.Notify
   defdelegate notify_dismiss(args), to: BusterClaw.Commands.Notify
   defdelegate notify_delete(args), to: BusterClaw.Commands.Notify
@@ -749,6 +742,9 @@ defmodule BusterClaw.Commands do
   defdelegate activity_report(args \\ %{}), to: BusterClaw.Commands.Orchestration
   defdelegate model_policy(args \\ %{}), to: BusterClaw.Commands.Orchestration
   defdelegate terminal_tab_open(args \\ %{}), to: BusterClaw.Commands.Orchestration
+  defdelegate app_tabs_list(args \\ %{}), to: BusterClaw.Commands.AppTabs
+  defdelegate app_tabs_join(args), to: BusterClaw.Commands.AppTabs
+  defdelegate app_tabs_separate(args \\ %{}), to: BusterClaw.Commands.AppTabs
 
   defdelegate shift_status(args \\ %{}), to: BusterClaw.Commands.Orchestration
   defdelegate shift_start(args \\ %{}), to: BusterClaw.Commands.Orchestration

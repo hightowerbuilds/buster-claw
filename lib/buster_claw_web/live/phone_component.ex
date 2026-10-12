@@ -1,7 +1,7 @@
 defmodule BusterClawWeb.PhoneComponent do
   @moduledoc """
   The Message Machine: BusterPhone's call/text log as a shader window, behind a
-  two-tab rail. **Messages** is the log (left) beside Playback (right, over the
+  sub-tab rail. **Messages** is the log (left) beside Playback (right, over the
   telephone `keypad` WGSL shader); **Contacts** is the address book and the
   shaderface card, which gets the whole panel rather than the bottom third of a
   column. Voicemails play inline from the
@@ -510,6 +510,10 @@ defmodule BusterClawWeb.PhoneComponent do
           contact_error={@contact_error}
           face_shaders={@face_shaders}
         />
+      </div>
+
+      <div :if={@tab == "greeting"} data-phone-tab="greeting" class="min-h-0 flex-1 overflow-y-auto">
+        <.live_component module={BusterClawWeb.Phone.GreetingComponent} id={"#{@id}-greeting"} />
       </div>
     </div>
     """

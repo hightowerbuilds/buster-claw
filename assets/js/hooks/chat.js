@@ -54,19 +54,9 @@ export const AgentChat = {
 // that. The element only exists while the work is in flight, so mount/destroy
 // bound the timer's lifetime.
 //
-// Two call sites, and the differences between them are data attributes rather
-// than a second copy of this — the same move `voice_recorder.js` made when the
-// Vox2B recorder needed its event names (09-03):
-//
-//   * data-label-running / data-label-done — the chat says "Thinking"/"Thought",
-//     Vox2B says "Making"/"Made". Defaulted, so the chat's markup is unchanged.
-//   * data-elapsed-ms — how long the work had ALREADY been running when this
-//     element mounted. The chat needs no offset: its chip exists for the whole
-//     turn. Vox2B does, because the homepage discards the tab's panel on a tab
-//     switch — without this, wandering off to Chat and back would remount the
-//     timer and cheerfully report "0.2s" into a four-minute render. Read ONCE in
-//     mounted() on purpose: re-reading it on every update would make the label
-//     jump every time an unrelated assign changed.
+// Optional data-label-running / data-label-done override "Thinking"/"Thought".
+// data-elapsed-ms resumes elapsed time when a timer is mounted during work.
+// Read the offset once at mount so unrelated updates cannot make it jump.
 export const ThinkingTimer = {
   mounted() {
     this.labelEl = this.el.querySelector("[data-thinking-label]")

@@ -14,32 +14,9 @@ even if this conversation is long over — a modal on the homepage plus a chime.
 "remind me" or "in twenty minutes" — a Notes entry is a record,
 not a reminder, and nothing will wake them up.
 
-## Spoken messages
-
-A notification can arrive as a sentence **in the operator's own recorded
-voice** instead of a chime. Four verbs:
-
-    ./buster-claw run voice_message_list                                        # safe
-    ./buster-claw run voice_message_create --json '{"name":"report-done","text":"The report is finished."}'
-    ./buster-claw run voice_message_fire --json '{"name":"report-done"}'         # or in_seconds / at
-    ./buster-claw run voice_message_delete --json '{"name":"report-done"}'
-
-`name` is a slug; `text` is what gets said. **`voice_message_create` returns
-before the audio exists** — the speech engine takes minutes on a slow machine —
-so it comes back `ready=false` and `voice_message_list` is how you learn it has
-landed. Firing one that is not ready is refused with `not_ready`, so wait,
-don't retry blindly. All of this needs the speech engine installed; if it isn't,
-say so rather than promising a message that will never render.
-
-`voice_message_fire` **plays out loud in whatever room the machine is in**, in a
-voice the operator will hear as their own. It fires now by default;
-`in_seconds` makes it a timer and `at` (ISO-8601) an alarm. That is louder than
-a chime in every sense — fire one because they asked for this message at this
-moment, not to confirm the feature works.
-
-In the app these are at **Home → Vox2B → Alerts**. They were under Settings →
-Notify until 09-05; Notify still owns the routing table that decides which
-*sound* plays for which event, which is a different thing from a spoken message.
+Notification sounds are routed in **Settings → Notify**. Existing installed
+WAVs, including recordings of spoken lines, continue to work as ordinary sounds.
+Use the `sound_*` library and routing commands to inspect or change them.
 
 ## Memory & self-improvement
 

@@ -115,15 +115,26 @@ defmodule BusterClaw.Browser.Bridge do
       unknown -> raise ArgumentError, bad_payload_message(action, unknown)
     end
 
+    started = System.monotonic_time(:millisecond)
+    {result, context} = request_result(action, payload, timeout)
+    elapsed = System.monotonic_time(:millisecond) - started
+    BusterClaw.Browser.Activity.capture_shared(action, payload, result, context, elapsed)
+    result
+  end
+
+  defp request_result(action, payload, timeout) do
     case Process.whereis(__MODULE__) do
       nil ->
-        {:error, :browser_unavailable}
+        {{:error, :browser_unavailable}, %{}}
 
       _pid ->
         try do
-          GenServer.call(__MODULE__, {:request, action, payload, timeout}, timeout + 2_000)
+          case GenServer.call(__MODULE__, {:request, action, payload, timeout}, timeout + 2_000) do
+            {:observed, result, context} -> {result, context}
+            result -> {result, %{}}
+          end
         catch
-          :exit, _ -> {:error, :browser_timeout}
+          :exit, _ -> {{:error, :browser_timeout}, %{}}
         end
     end
   end
@@ -141,8 +152,10 @@ defmodule BusterClaw.Browser.Bridge do
   end
 
   @doc "Deliver a command result for `ref` (called by the browser command controller)."
-  def fulfill(ref, result) when is_binary(ref) do
-    if Process.whereis(__MODULE__), do: GenServer.cast(__MODULE__, {:fulfill, ref, result})
+  def fulfill(ref, result, context \\ %{}) when is_binary(ref) and is_map(context) do
+    if Process.whereis(__MODULE__),
+      do: GenServer.cast(__MODULE__, {:fulfill, ref, {:observed, result, context}})
+
     :ok
   end
 

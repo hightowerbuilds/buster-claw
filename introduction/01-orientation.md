@@ -29,7 +29,6 @@ command, outbound send, and untrusted fetch is recorded on the Security
 | Documents & artifacts | `document_save`, `document_list` | Documents & the Library |
 | The operator's notebook | `note_read`, `note_search`, `note_save` | The Notes commands |
 | Chimes and editing | `sound_*` | Sound |
-| Saying something in their voice | `voice_message_*` | Spoken messages |
 | Named folders of their media | `pocket_*` | Pockets |
 | Drawing a picture | none — you emit the SVG yourself | Drawing |
 | What's behind the surfaces | `background_list`, `background_set` | Shader patterns |
@@ -89,16 +88,16 @@ The **dock** across the bottom of the window has five tabs:
 
 | Dock tab | What is on it |
 |---|---|
-| **Home** | Sub-tabs, left to right: **Chat** · **Vox2B** · **Pockets** · **Phone** · **Explained** · **Activity** |
+| **Home** | Sub-tabs, left to right: **Chat** · **Pockets** · **Phone** · **Explained** · **Activity** |
 | **Workspace** | Sub-tabs: **Directory** (the file tree over the folders above) · **Notes** · **Calendar** |
 | **Browser** | The in-app browser, and where an Agent Mode run is mirrored live |
 | **Terminal** | The in-app shell. Each click of the dock item opens a new one |
 | **Settings** | Sub-tabs: **Appearance** · **Notify** · **Integrations** · **Configuration** · **Security** |
 
-**Vox2B** (Home → Vox2B) is the voice surface, with its own sidebar:
-**Create** · **Files** · **Alerts** · **Engine** · **Reading aloud**. Spoken
-messages are on its **Alerts** tab. Settings has no Voice page — say "Home →
-Vox2B", never "Settings → Voice".
+**Reading chat aloud** uses native macOS speech in the desktop app. Voice and
+speed controls are at **Settings → Configuration → Speech**. Notification
+sound routing remains in **Notify**; custom phone-greeting status and reset
+are on **Phone**.
 
 Two surfaces have no dock tab and are reached by link:
 

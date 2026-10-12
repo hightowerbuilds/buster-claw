@@ -10,7 +10,8 @@ defmodule BusterClawWeb.BrowserCommandController do
   alias BusterClaw.Browser.Bridge
 
   def create(conn, %{"ref" => ref} = params) when is_binary(ref) and ref != "" do
-    Bridge.fulfill(ref, result_for(params))
+    context = if is_map(params["context"]), do: Map.take(params["context"], ["url"]), else: %{}
+    Bridge.fulfill(ref, result_for(params), context)
     send_resp(conn, 204, "")
   end
 

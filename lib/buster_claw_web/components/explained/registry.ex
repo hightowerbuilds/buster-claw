@@ -43,10 +43,6 @@ defmodule BusterClawWeb.Explained.Registry do
   # verbs remain, all intake. Measured from `Catalog.entries/0`, not derived by
   # hand.
   #
-  # Recomputed 09-03 for the four spoken-message verbs (VOICE_ROADMAP):
-  # `voice_message_list` is a :safe read; `_create`, `_fire` and `_delete` are
-  # :mutate, :restricted, none gated. total +4, read +1, mutate +3, safe +1,
-  # restricted +3.
   # Recomputed 09-05: the Sketch Pad was deleted whole, taking its six verbs.
   # `sketch_list` and `sketch_get` were `:safe` reads; `sketch_create`, `_add`,
   # `_update` and `_delete` were `:mutate` + `:restricted` and none was gated —
@@ -56,20 +52,18 @@ defmodule BusterClawWeb.Explained.Registry do
   # `terminal_command_*` verbs — `_list` was a `:safe` read, `_set` a `:mutate`
   # `:restricted`, neither gated. Which is why `trigger` and `gated` do not move.
   #
-  # And once more the same day for the three `voice_clip_*` verbs (211 -> 214):
-  # `_list` a `:safe` read, `_make` and `_delete` `:mutate` + `:restricted`, none
-  # gated — a clip is a file you can forget, not an outbound send.
-  #
   # Recomputed 09-19: the cut-up engine was deleted with its eighteen verbs
   # (`CUTUP_DELETION_ROADMAP`) — eight `:safe` reads, ten `:mutate` +
   # `:restricted`, two of those gated. `trigger` does not move. Measured.
+  # Recomputed from Catalog.entries/0 after removing voice generation; the three
+  # app-tab layout commands remain included.
   @command_stats %{
-    total: 196,
-    read: 79,
-    trigger: 17,
-    mutate: 100,
-    safe: 82,
-    restricted: 114,
+    total: 192,
+    read: 78,
+    trigger: 19,
+    mutate: 95,
+    safe: 83,
+    restricted: 109,
     gated: 21
   }
 
@@ -77,8 +71,7 @@ defmodule BusterClawWeb.Explained.Registry do
   # @built has its own tutorial panel; anything not in it renders the generic
   # stub (a true paragraph, a deep link, an honest "tutorial in the works"
   # line). Every key is built as of 09-05 — the stub path is the on-ramp for the
-  # NEXT tab, not a backlog. `vox` was the last one added and it arrived with
-  # its panel, so the stub has still never shipped.
+  # NEXT tab, not a backlog; the stub has never shipped.
   #
   # A tile's `blurb` is the launcher-grid one-liner and a stub's `body` is the
   # placeholder page; a built tab uses the blurb and ignores the body, so a
@@ -166,25 +159,6 @@ defmodule BusterClawWeb.Explained.Registry do
       path: "/",
       path_label: "Open the home screen"
     },
-    # Added 09-05, the day the voice became a Home sub-tab. It sits beside
-    # Pockets because both are Home sub-tabs with no tutorial-visible URL, and
-    # its own closing button fires `select_home_tab` for the same reason
-    # Pockets' does. Its `path` is the home screen for that reason too: `/voice`
-    # is a real route, but it is a deep link to the same component with none of
-    # the home chrome, so sending a reader there would teach the wrong place.
-    %{
-      key: "vox",
-      label: "Vox2B",
-      eyebrow: "The voice",
-      blurb: "The app talks, in a voice cloned from ten seconds of you.",
-      body:
-        "Record yourself once and every notification line, phone greeting and " <>
-          "typed clip is rendered in your voice by a speech engine you install " <>
-          "yourself. Four verbs let an agent leave you a spoken message; " <>
-          "recording, engine settings and publishing the greeting have none.",
-      path: "/",
-      path_label: "Open the home screen"
-    },
     %{
       key: "cmd",
       label: "Command List",
@@ -238,7 +212,7 @@ defmodule BusterClawWeb.Explained.Registry do
   # returns [] and the `:for` that renders them is vacuous. Left in place rather
   # than deleted — the stub is what makes adding a tab a one-line edit here, and
   # a `@features` entry with no panel must still render something true.
-  @built ~w(models shaders pockets vox phone browser cmd gws studio)
+  @built ~w(models shaders pockets phone browser cmd gws studio)
 
   # The two outbound tabs. They are not features — neither teaches this app, and
   # both send you to a website — which is why they sit last rather than second
@@ -250,7 +224,7 @@ defmodule BusterClawWeb.Explained.Registry do
       key: "site",
       label: "BusterClaw.lol",
       eyebrow: "Headquarters",
-      blurb: "Where the app lives — and where your agent's number comes from."
+      blurb: "The project's website, releases, and documentation."
     },
     %{
       key: "ntf",

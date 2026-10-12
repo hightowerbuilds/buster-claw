@@ -29,9 +29,7 @@ defmodule BusterClawWeb.Phone.Registry do
   room: the log wants width and the contact face wants height. Splitting them
   also gives the contact face card the whole panel instead of the bottom third.
 
-  There is no `@built` list here, unlike Studio's. Both surfaces exist — they
-  are the panels the tab already rendered — so a placeholder arm would be an
-  unreachable branch shipped for a hypothetical third tab.
+  Greeting preserves status and reset for an existing outgoing recording.
 
   ## What `badge` is for
 
@@ -56,6 +54,12 @@ defmodule BusterClawWeb.Phone.Registry do
       label: "Contacts",
       badge: nil,
       blurb: "Who the machine knows, their shaderface, and whether they reach the agent."
+    },
+    %{
+      key: "greeting",
+      label: "Greeting",
+      badge: nil,
+      blurb: "Check the outgoing greeting or return to the default voice."
     }
   ]
 

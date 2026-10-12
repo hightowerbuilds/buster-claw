@@ -41,6 +41,18 @@ anything is missing), syncs the version, installs JS deps (`npm ci`), builds the
 Phoenix release + production assets, and runs `cargo tauri build`. The first
 build compiles the Rust shell and bundles ERTS — expect several minutes.
 
+The build also downloads and verifies the pinned `imsg` adapter (currently
+0.15.6), staging it and its resource bundles into the release's `priv/messages/`.
+The cache is `tmp/imessage-spike/imsg-macos.zip`; a checksum mismatch fails the
+build. The optional injected helper is excluded. License notices ship in
+`priv/third_party/imsg/`. The adapter retains its upstream signature rather than
+receiving the Erlang VM's entitlements.
+
+In the built app, **Settings → Configuration → About → Check iMessage access**
+runs the readiness probe from Phoenix. It does not read conversations or send.
+Messages permissions and text delivery remain separate acceptance tests;
+Twilio voicemail continues to use its existing path.
+
 ## Output
 
 | Artifact | Path |

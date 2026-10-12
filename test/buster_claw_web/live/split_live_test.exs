@@ -159,6 +159,75 @@ defmodule BusterClawWeb.SplitLiveTest do
              html =~ "can't be opened in a split pane"
   end
 
+  test "a joined browser reuses the existing solo native surface", %{conn: conn} do
+    browser = URI.encode_www_form("/browse?t=existing&surface=main")
+    {:ok, view, _html} = live(conn, "/split?left=/&right=#{browser}")
+
+    assert has_element?(
+             view,
+             "[data-split-pane='right'] #browse-shell-main[data-surface-id='main']"
+           )
+  end
+
+  test "a separated browser keeps its former pane surface", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/browse?surface=left")
+    assert has_element?(view, "#browse-shell-left[data-surface-id='left']")
+  end
+
+  test "an old speech split opens Speech and preserves its browser neighbor", %{conn: conn} do
+    browser = URI.encode_www_form("/browse?t=existing&surface=main&url=https://example.com/keep")
+    {:ok, view, _html} = live(conn, "/split?left=/voice&right=#{browser}")
+
+    assert has_element?(view, "[data-split-pane='left'] #settings-speech-left-picker")
+
+    assert has_element?(
+             view,
+             "[data-split-pane='right'] #browse-shell-main[data-surface-id='main']"
+           )
+
+    assert has_element?(
+             view,
+             "[data-split-pane='right'] [data-initial-url='https://example.com/keep']"
+           )
+
+    refute has_element?(view, "[phx-hook='VoiceRecorder']")
+  end
+
+  test "the recovered speech destination also opens in a split", %{conn: conn} do
+    speech = URI.encode_www_form("/settings?tab=speech")
+    {:ok, view, _html} = live(conn, "/split?left=/terminal&right=#{speech}")
+
+    assert has_element?(view, "[data-split-pane='right'] #settings-speech-right-picker")
+    assert has_element?(view, "[data-split-pane='left'] [data-session-key='main']")
+  end
+
+  for right <- ["/voice", "/settings"] do
+    test "recovered Speech beside #{right} has independent Settings rails", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/split?left=/voice&right=#{unquote(right)}")
+      left = find_live_child(view, "split-pane-left")
+      right = find_live_child(view, "split-pane-right")
+
+      for side <- ["left", "right"] do
+        assert has_element?(view, "#split-#{side}-settings")
+        assert has_element?(view, "#split-#{side}-settings-tabs")
+        assert has_element?(view, "#split-#{side}-settings-tab-configuration")
+        assert has_element?(view, "#split-#{side}-settings-config-rail")
+      end
+
+      refute has_element?(view, "#settings")
+      refute has_element?(view, "#settings-tabs")
+      refute has_element?(view, "#settings-config-rail")
+
+      right |> element("#split-right-settings-config-tab-speech") |> render_click()
+      left |> element("#split-left-settings-config-tab-profile") |> render_click()
+
+      assert has_element?(left, "#split-left-settings-config-tab-profile[aria-selected='true']")
+      assert has_element?(right, "#split-right-settings-config-tab-speech[aria-selected='true']")
+      assert has_element?(right, "#settings-speech-right-picker")
+      refute has_element?(left, "#settings-speech-left-picker")
+    end
+  end
+
   test "panes carry no inline chrome (no Open as tab, no Split view header, no swap link)",
        %{conn: conn} do
     {:ok, _view, html} = live(conn, "/split?left=/browse&right=/calendar")

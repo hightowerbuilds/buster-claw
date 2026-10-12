@@ -2,7 +2,7 @@
 
 **An assistant on your Mac that uses your tools, keeps working, and shows you what it did.**
 
-Ask it in the app's own Chat, email it, or drive it from the built-in terminal. It reads and acts inside the browser tab you're actually looking at, your Gmail, Calendar and Drive, and it works a durable queue that survives a restart — one canonical command surface, 196 commands. Everything it changes lands on an auditable feed you can read afterwards, and restricted actions are refused outright for untrusted callers.
+Ask it in the app's own Chat, email it, or drive it from the built-in terminal. It reads and acts inside the browser tab you're actually looking at, your Gmail, Calendar and Drive, and it works a durable queue that survives a restart — one canonical command surface, 192 commands. Everything it changes lands on an auditable feed you can read afterwards, and restricted actions are refused outright for untrusted callers.
 
 **You bring the intelligence.** There is no LLM inside Buster Claw and it needs no API keys: it runs **Claude Code, Codex, or OpenCode** under the agent subscription you already pay for. The app is the hands, the memory, and the receipts.
 
@@ -22,7 +22,7 @@ That indirection is the whole design. It means work survives a crash, an agent c
 
 ## Features
 
-- **One command surface.** 196 commands across documents, browser, Google Workspace, integrations, finance, phone, sound and voice, notes, memory, skills, and orchestration — reachable from the CLI and an HTTP API, with per-caller trust tiers and an audit trail covering everything that changes state.
+- **One command surface.** 192 commands across documents, browser, app tabs, Google Workspace, integrations, finance, phone, sound, notes, memory, skills, and orchestration — reachable from the CLI and an HTTP API, with per-caller trust tiers and an audit trail covering everything that changes state.
 - **A real browser the agent can drive.** Not a headless scraper: the agent reads and acts inside **the tab you're actually looking at**, logged-in session and all (`browser_read`, `browser_click`, `browser_fill`), plus SSRF-guarded fetch for everything else.
 - **Google Workspace.** One-click connect, then sync and act on Gmail, Calendar, Drive, Docs, and Contacts.
 - **Integrations.** GitHub — polled on demand (by you or the agent; there is no background poller) or webhook-triggered, with signature verification that fails closed.
@@ -31,7 +31,7 @@ That indirection is the whole design. It means work survives a crash, an agent c
 - **BusterPhone.** An answering machine and inbound SMS archive for your agent. Voice greets the caller, records, transcribes, and files the message in the Library; signed inbound SMS is archived, and a text from a trusted number enters the `sms-triage` job. The trusted-caller and PIN gates decide which of those messages becomes queue work — a stranger's voicemail is still recorded, just never enqueued. **It sends nothing: no outbound SMS, no outbound calling.** That is the design rather than a gap — a phone that cannot send carries no carrier registration, no consent obligation, and no way to be talked into texting a stranger. See `daily-growth/roadmaps/integrations/PHONE_INTAKE_ROADMAP.md`.
 - **Sentinel.** The security spine. Mutations are recorded and redacted (by key name *and* value shape — card numbers and API keys don't leak into the log). Untrusted callers can't run restricted commands, and refusals surface on the Security feed rather than being dropped silently. Two limits worth knowing up front: audit writes are **best-effort** — a failed write is logged and the action still proceeds — and a refusal is currently **visible, not approvable**. Reviewing and approving a refused action is not built yet.
 - **It can draw.** The model emits a fenced ` ```svg ` block and the chat renders it as a real, crisp SVG instead of raw markup (`BusterClaw.SvgViewer`) — sanitized first, behind a CSP that allows no inline script at all. There is no shared drawing canvas: the model writes the SVG, the app renders it.
-- **Vox2B.** Record a reference of your own voice and the app renders text in it, locally. The engine (VoxCPM) is **bring-your-own** — discovered at runtime, never bundled, because the weights are larger than the whole app. A rendered line installs into the sound library, so a spoken message is just a notification whose sound is your voice saying the words. Two limits stated up front: a render takes **minutes, not seconds**, so it pre-renders and never speaks live; and reading chat replies aloud is macOS `say`, not your voice.
+- **Read replies aloud.** The desktop app uses macOS speech for chat replies. Choose the voice and speed in Settings → Configuration → Speech. Notification sounds remain configurable in Notify, and Studio Mix edits recorded audio.
 - **A workspace you own.** Everything is markdown on your disk. No lock-in; `grep` works.
 - **WebGPU shaders.** The homepage runs a live WGSL background. Drop a `.wgsl` file into your workspace and it compiles at runtime — no rebuild. If the machine has no WebGPU the canvas simply stays blank; nothing else changes.
 

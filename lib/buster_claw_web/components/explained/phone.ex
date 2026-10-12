@@ -89,8 +89,8 @@ defmodule BusterClawWeb.Explained.Phone do
           in a real install. There is no one-click
           number yet — buying one from
           <span class="font-semibold text-base-content">busterclaw.lol</span>
-          is planned work, not a store you can visit. Until then this tab is the
-          map, and the Phone tab shows an empty machine.
+          is planned work, not a store you can visit. Your own configured number
+          and relay work today; before messages arrive, Phone shows an empty archive.
         </p>
       </div>
 
@@ -323,11 +323,11 @@ defmodule BusterClawWeb.Explained.Phone do
         title="Decide who can give orders"
         want="Turn a number into a trusted one — and add the second factor."
         needs="A number in E.164 form (+15035551234). A PIN must be 4–10 digits."
-        touches="Writes policy: the trusted-number list, and the caller-PIN table. `phone_pin_set` hashes the PIN here and stores hash + salt on the relay — the plaintext never leaves this machine."
+        touches="Writes policy: the local trusted-number list and the caller-PIN table. phone_pin_set sends the relay a hash and salt, not the plaintext PIN. A PIN typed into chat is also part of that conversation; run the command yourself in the terminal to keep it out of chat."
         confirm="All four write verbs are policy-gated: an untrusted-provenance run is blocked and files a pending approval instead. This line sends nothing, so these four are the most consequential writes on the tab: they decide who may drive the queue."
-        result="The number appears in `phone_trusted_list`; `phone_pin_list` shows it has a PIN, with failed-attempt telemetry and never the hash. With no relay configured these fail closed with a not-configured error rather than half-writing."
+        result="The number appears in phone_trusted_list. PIN operations need the configured relay; without it they return not_configured, while local trust changes can still succeed. phone_pin_list reports failed-attempt telemetry without returning hashes."
       >
-        <.prompt text="Trust my mobile, +1 503 555 1234, and set its access code to 4815 so my voicemails can actually become work." />
+        <.prompt text="Trust my mobile, +1 503 555 1234. Show me how to set its access code from the terminal so my voicemails can become work." />
         <ol class="ic-unfold">
           <li>
             <code>phone_trusted_add</code>

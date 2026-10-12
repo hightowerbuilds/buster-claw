@@ -22,13 +22,14 @@ defmodule BusterClawWeb.Settings.Rail do
   alias BusterClawWeb.Settings.Registry
 
   attr :active, :string, required: true
+  attr :id_prefix, :string, default: ""
 
   def rail(assigns) do
     assigns = assign(assigns, :tabs, Registry.tabs())
 
     ~H"""
     <div
-      id="settings-config-rail"
+      id={"#{@id_prefix}settings-config-rail"}
       role="tablist"
       aria-label="Configuration sections"
       class="flex flex-wrap gap-1 border-b-2 border-base-content/20"
@@ -37,7 +38,7 @@ defmodule BusterClawWeb.Settings.Rail do
         :for={t <- @tabs}
         type="button"
         role="tab"
-        id={"settings-config-tab-#{t.key}"}
+        id={"#{@id_prefix}settings-config-tab-#{t.key}"}
         title={t.blurb}
         aria-selected={to_string(@active == t.key)}
         phx-click="select_settings_tab"

@@ -1,7 +1,7 @@
 # Leftovers — platform and code health
 
 > **Closed 09-19-26 by deletion.** The cut-up engine, its eighteen verbs and the
-> `sound-cutup` skill were deleted ([`CUTUP_DELETION`](../surfaces/CUTUP_DELETION_ROADMAP.md)).
+> `sound-cutup` skill were deleted ([`CUTUP_DELETION`](../../archive/CUTUP_DELETION_ROADMAP.md)).
 > Items below that concern `cutup/`, the word index, `sound-cutup.md`, or
 > splitting `commands/sound.ex` (now 1,122 lines) are moot and kept only as history.
 

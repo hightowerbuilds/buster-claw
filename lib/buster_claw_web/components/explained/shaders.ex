@@ -68,16 +68,16 @@ defmodule BusterClawWeb.Explained.Shaders do
         <p>
           That drift behind this page is not a video and not a GIF. It is a real
           WGSL shader, compiled in the webview and rendered on the GPU every frame.
-          Two surfaces in the app can carry one — the
-          <span class="font-semibold text-base-content">homepage</span>
-          and the <span class="font-semibold text-base-content">terminal</span>
+          Three surfaces in the app can carry one — the <span class="font-semibold text-base-content">homepage</span>,
+          the <span class="font-semibold text-base-content">terminal</span>,
+          and the <span class="font-semibold text-base-content">Time & Place card</span>
           — and they draw from a single shared catalog you can add to.
         </p>
         <p class="border-l-2 border-primary pl-3">
           <span class="font-semibold text-base-content">An agent can change your
             background. It cannot put GPU code you have never looked at on your screen.</span>
           Ask for <code>background_set</code>
-          and it will point the homepage or the terminal at a built-in design, at an
+          and it will point any of those surfaces at a built-in design, at an
           image you uploaded, or at a workspace shader <span class="italic">you have already applied yourself</span>. Ask it to
           apply the <code>.wgsl</code>
           it just wrote for you and it is refused, by name: the file exists, and it
@@ -100,7 +100,7 @@ defmodule BusterClawWeb.Explained.Shaders do
 
       <section class="flex flex-col gap-3" id="explained-shader-catalog">
         <h3 class="font-display text-base font-black uppercase tracking-wide">
-          One catalog, two targets
+          One catalog, three targets
         </h3>
         <p class="text-sm leading-relaxed text-base-content/80">
           <.link navigate="/appearance" class="font-semibold text-primary hover:opacity-80">
@@ -143,7 +143,7 @@ defmodule BusterClawWeb.Explained.Shaders do
         <p class="text-sm leading-relaxed text-base-content/70">
           Shaders are named rather than pictured. A live thumbnail per row would mean
           a GPU device per row, and the only honest preview of a shader is the shader
-          — which is what the two surface panels are for.
+          — which is what the surface panels are for.
         </p>
       </section>
 
@@ -151,7 +151,7 @@ defmodule BusterClawWeb.Explained.Shaders do
         n={1}
         title="Change what's behind this page"
         want="Before writing any WGSL, drive the thing that already works."
-        needs="The desktop app — shaders need WebGPU. Nothing else; the built-ins ship with the app."
+        needs="A browser or desktop webview with WebGPU available. The built-ins ship with the app."
         touches="One setting per surface. Changes nothing on disk and nothing outside the app's own appearance."
         confirm="None, and none is needed: it is your click, it is instant, and it is reversible by clicking something else."
         result="The homepage redraws immediately — the shader layer remounts on any change. Where WebGPU is unavailable the layer simply does not paint and the surface stays solid; the app over it is unaffected."
@@ -191,7 +191,7 @@ defmodule BusterClawWeb.Explained.Shaders do
         n={2}
         title="Give the terminal its own"
         want="Two surfaces, independently set, from the one list."
-        needs="Nothing beyond the desktop app. An image target additionally needs an image in the pool."
+        needs="The desktop app for the in-app terminal, with WebGPU for shaders. An image target also needs an image in the pool."
         touches="The terminal's own background setting, stored separately from the homepage's."
         confirm="None. Open terminals re-render live when it changes — no restart, no reopen."
         result="The terminal panel previews it immediately. Clear a pool slot that a surface is using and that surface falls back to its own default rather than jumping to some other image you didn't pick."
@@ -276,7 +276,7 @@ defmodule BusterClawWeb.Explained.Shaders do
         needs="An agent CLI signed in, and the shader-designer skill in your workspace (it ships seeded)."
         touches="Writes one file, `shaders/<name>.wgsl`, in your workspace. It touches no setting and no surface."
         confirm="The hard stop is structural: `background_set` applies a workspace shader only when the file's current bytes are ones you applied yourself, and a file written a second ago matches nothing you have ever seen. So the agent cannot apply what it just wrote — a pattern that arrived after you did runs the first time because you clicked it."
-        result="A new row in the Appearance catalog under Shaders, once the page reads the folder again. Invalid WGSL never appears there; a file that compiles but throws leaves the surface unpainted rather than crashing the page."
+        result="A new row appears after the catalog reads the folder again if the file has a valid name, is within the size limit, and declares fs_main. Compilation happens when it is displayed; a compile failure leaves the shader layer unpainted."
       >
         <.prompt text="Read the shader-designer skill, then write me a background shader called deep-tide — slow diagonal swells, mostly dark, with the accent color only in the crests. Put it in my shaders folder and tell me what to click." />
         <ol class="ic-unfold">
@@ -313,8 +313,8 @@ defmodule BusterClawWeb.Explained.Shaders do
       <div class="flex flex-col gap-3 text-sm leading-relaxed text-base-content/70">
         <p>
           <span class="font-semibold text-base-content">When it doesn't draw.</span>
-          Shaders want WebGPU, which means the desktop app; in a plain browser the
-          layer stays unpainted and the surface reads as solid. A shader that fails
+          Shaders need WebGPU in the browser or desktop webview. If it is unavailable,
+          the layer stays unpainted and the surface reads as solid. A shader that fails
           to compile, or a custom file that cannot be fetched, does the same thing —
           the app is never held hostage by its own wallpaper. And anything stale
           degrades rather than breaking: a selection pointing at a deleted file or an

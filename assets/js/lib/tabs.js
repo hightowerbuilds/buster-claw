@@ -1,5 +1,6 @@
 // Tab-strip model: client-side persistence of open routes plus the path/label
 // helpers shared by the TabStrip, SplitResizer, and TerminalView hooks.
+import {recoverRetiredRoute, recoverRetiredTabs} from "./retired_tabs.js"
 
 // The Settings section presents several routes behind one in-page tab bar. In
 // the top browser-style tab strip those routes collapse into a single "Settings"
@@ -36,12 +37,14 @@ export function canonicalGroupKey(path) {
 // Validate it against today's group before links and keyboard shortcuts use it.
 export function tabDestination(tab) {
   if (!tab) return undefined
+  if (tab.path.split(/[?#]/)[0] === "/voice") return recoverRetiredRoute(tab.path)
   const group = canonicalGroupKey(tab.path)
   if (group && tab.href) {
-    const [path] = splitPathQuery(tab.href.split("#")[0])
-    return canonicalGroupKey(path) === group ? tab.href : "/appearance"
+    const href = recoverRetiredRoute(tab.href)
+    const [path] = splitPathQuery(href.split("#")[0])
+    return canonicalGroupKey(path) === group ? href : "/appearance"
   }
-  return tab.href || tab.path
+  return recoverRetiredRoute(tab.href || tab.path)
 }
 
 const TAB_STORAGE_KEY = "bc:tabs"
@@ -55,7 +58,14 @@ function splitPathQuery(fullPath) {
 }
 
 export function loadTabs() {
-  try { return JSON.parse(localStorage.getItem(TAB_STORAGE_KEY)) || [] } catch (_e) { return [] }
+  try {
+    const saved = JSON.parse(localStorage.getItem(TAB_STORAGE_KEY)) || []
+    const tabs = recoverRetiredTabs(saved)
+    if (JSON.stringify(tabs) !== JSON.stringify(saved)) {
+      try { saveTabs(tabs) } catch (_e) { /* Still recover when storage is full. */ }
+    }
+    return tabs
+  } catch (_e) { return [] }
 }
 
 export function saveTabs(tabs) {
@@ -149,13 +159,25 @@ export function closeTabIn(tabs, path) {
 // each browser surface records which app tab it is showing (`EmbeddedBrowser`
 // writes it on mount) and the chrome reads it back to know which chip is "here".
 const BROWSER_APP_TAB_KEY = "bc:browser-app-tab:"
+const BROWSER_SURFACES_KEY = "bc:browser-surfaces"
+
+export function knownBrowserSurfaces() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(BROWSER_SURFACES_KEY))
+    return [...new Set(["main", "left", "right", ...(Array.isArray(saved) ? saved : [])])]
+      .filter(sid => typeof sid === "string" && /^[A-Za-z0-9]{1,64}$/.test(sid))
+  } catch { return ["main", "left", "right"] }
+}
 
 export function rememberBrowserAppTab(sid, path) {
-  try { localStorage.setItem(BROWSER_APP_TAB_KEY + sid, path) } catch (_e) { /* storage unavailable */ }
+  try {
+    localStorage.setItem(BROWSER_APP_TAB_KEY + sid, path)
+    localStorage.setItem(BROWSER_SURFACES_KEY, JSON.stringify([...new Set([...knownBrowserSurfaces(), sid])]))
+  } catch (_e) { /* storage unavailable */ }
 }
 
 export function browserAppTab(sid) {
-  try { return localStorage.getItem(BROWSER_APP_TAB_KEY + sid) } catch (_e) { return null }
+  try { return recoverRetiredRoute(localStorage.getItem(BROWSER_APP_TAB_KEY + sid)) } catch (_e) { return null }
 }
 
 // Chips for the chrome's row: Home first (the guaranteed way back), then every

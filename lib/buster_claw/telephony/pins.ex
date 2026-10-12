@@ -38,6 +38,7 @@ defmodule BusterClaw.Telephony.Pins do
   # keypad honest; the plaintext is validated here and then only ever hashed.
   @pin_format ~r/^\d{4,10}$/
 
+  alias BusterClaw.Clinch.AppKeys
   alias BusterClaw.TrustedNumbers
 
   @doc "True when both the Supabase URL and service-role key are configured."
@@ -165,6 +166,7 @@ defmodule BusterClaw.Telephony.Pins do
     |> Req.merge(Keyword.get(opts, :req_options, []))
   end
 
-  defp url, do: Application.get_env(:buster_claw, :telephony_relay_url)
-  defp key, do: Application.get_env(:buster_claw, :telephony_relay_key)
+  # Use the same live credentials as Relay, including packaged-app settings.
+  defp url, do: AppKeys.get("supabase_url")
+  defp key, do: AppKeys.get("supabase_service_role_key")
 end

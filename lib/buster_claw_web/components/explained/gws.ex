@@ -139,7 +139,7 @@ defmodule BusterClawWeb.Explained.Gws do
         needs="Google connected, your own address on the trusted-sender list, and an on-duty shift running."
         touches="Enqueues a durable Dispatch item from your mail, then sends a threaded Gmail reply and marks the item done — all with nobody watching."
         confirm="Different mechanism from cycle 2, and worth knowing: `dispatch_reply` has no confirm argument and is not policy-gated. Trusting the sender and starting the shift ARE the controls for this path."
-        result="A reply in your phone's inbox and the item marked done, with the run's receipts on the Security feed. Off-duty, or an untrusted sender, and the mail is archived without ever becoming work."
+        result="A reply in your phone's inbox and the item marked done, with the run's receipts on the Security feed. Off-duty, queued work waits. Mail from untrusted senders is archived without being enqueued."
       >
         <p class="text-sm leading-relaxed text-base-content/80">
           One-time setup: add your own phone's email address as a contact on the Phone tab and

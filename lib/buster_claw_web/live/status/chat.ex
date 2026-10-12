@@ -38,7 +38,6 @@ defmodule BusterClawWeb.Status.Chat do
   alias BusterClaw.ChatTextSize
   alias BusterClaw.Introduction
   alias BusterClaw.SvgViewer
-  alias BusterClaw.Voice.Clips
   alias BusterClaw.Voice.Speech
   alias BusterClawWeb.Status.ChatAttachments
 
@@ -133,17 +132,23 @@ defmodule BusterClawWeb.Status.Chat do
   @doc """
   The system-prompt addendum every home conversation starts with.
 
-  Three parts. The **pointer** (THREE_DOORS Phase 1) says which app this is and
-  where the on-disk brief lives — until 09-13 the addendum was the two guides
-  alone, so the assistant in the front door had never been told Buster Claw
-  existed; the full surface stays on disk because the shipped transports re-send
-  this text on every turn. The two **guides** teach a CHANNEL rather than a
-  command: drawing is a fenced block this app extracts, and a phrase is a render
-  that outlives the turn that asked for it. A model that knows neither has both
-  capabilities and uses neither.
+  The pointer identifies the app and its on-disk operating guide. The tab guide
+  explains how chat can arrange open app tabs, and the drawing guide teaches the
+  fenced SVG channel. The full command surface stays on disk because the shipped
+  transports re-send this addendum on every turn.
   """
   def system_prompt do
-    Enum.join([Introduction.pointer(), SvgViewer.guide(), Clips.guide()], "\n\n")
+    Enum.join([Introduction.pointer(), tab_guide(), SvgViewer.guide()], "\n\n")
+  end
+
+  defp tab_guide do
+    ~S"""
+    To arrange app tabs from chat, use `./buster-claw run app_tabs_list`,
+    `./buster-claw run app_tabs_join --json '{"tab":"browser"}'`, or
+    `./buster-claw run app_tabs_separate`. Join reuses an already open tab
+    beside the current chat; separate keeps both tabs. Use exact paths from
+    the list when multiple tabs match.
+    """
   end
 
   def dispatch_chat(socket, text, delivery) do

@@ -180,6 +180,12 @@ sign_one() {
 }
 
 for object in "${OBJECTS[@]}"; do
+  # The pinned Messages executable carries its upstream hardened signature and
+  # embedded usage descriptions. Do not replace those with BEAM entitlements.
+  # It is verified below alongside every other object in the release.
+  if [[ "$object" == */priv/messages/imsg ]]; then
+    continue
+  fi
   sign_one "$object"
 done
 rm -f /tmp/codesign_err.$$

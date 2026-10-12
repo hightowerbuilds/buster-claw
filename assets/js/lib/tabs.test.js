@@ -84,7 +84,7 @@ describe("chromeChips", () => {
 
 describe("remembered Settings destination", () => {
   test("removed and moved subpages fall back to Appearance", () => {
-    for (const href of ["/cmd-list", "/cmd-list?tab=commands", "/voice", "/gws", "/get-started"]) {
+    for (const href of ["/cmd-list", "/cmd-list?tab=commands", "/gws", "/get-started"]) {
       expect(tabDestination({path: "/settings", href})).toBe("/appearance")
     }
   })
@@ -119,14 +119,10 @@ describe("canonicalGroupKey", () => {
     expect(canonicalGroupKey("/get-started")).toBeNull()
   })
 
-  // /voice left the Settings rail on 09-05 when the surface became the Home
-  // "Vox2B" sub-tab. Pinned as its own case rather than just deleted from the
-  // list above: an ungrouped route needs a label in Layouts' @tab_labels, and
-  // silently re-adding /voice to the group would take that label out of use
-  // without anything saying so.
-  test("/voice no longer collapses into Settings", () => {
-    expect(canonicalGroupKey("/voice")).toBeNull()
-    expect(labelForPath("/voice", {"/voice": "Vox2B"})).toBe("Vox2B")
+  test("retired speech links recover to the Settings speech panel", () => {
+    expect(tabDestination({path: "/voice"})).toBe("/settings?tab=speech")
+    expect(tabDestination({path: "/settings", href: "/voice?tab=reading"}))
+      .toBe("/settings?tab=speech")
   })
 
   test("ungrouped routes return null", () => {

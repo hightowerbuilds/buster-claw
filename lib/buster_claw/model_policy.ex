@@ -82,13 +82,17 @@ defmodule BusterClaw.ModelPolicy do
   # recognise is worse than the floor going unenforced for it.
   @capability_rank %{
     "claude-haiku-4-5" => 1,
+    "claude-haiku-5-5" => 1,
     "claude-sonnet-4-6" => 2,
     "claude-sonnet-5" => 2,
+    "claude-sonnet-5-5" => 2,
     "claude-opus-4-6" => 3,
     "claude-opus-4-7" => 3,
     "claude-opus-4-8" => 3,
     "claude-opus-5" => 3,
-    "claude-fable-5" => 4
+    "claude-opus-5-5" => 3,
+    "claude-fable-5" => 4,
+    "claude-fable-5-1" => 4
   }
 
   # Every surface that spawns a run, and what it is.
@@ -139,8 +143,8 @@ defmodule BusterClaw.ModelPolicy do
   @doc """
   The models to offer for `backend` without asking its CLI.
 
-  Per backend since 08-03: only claude ships a list. See
-  `AgentBackend.enumerate_models/1` for opencode, which can list its own.
+  Claude and Codex ship lists. See `AgentBackend.enumerate_models/1` for
+  OpenCode, which can list its own.
   """
   def known_models(backend \\ @implicit_backend),
     do: AgentBackend.known_models(bucket(backend))

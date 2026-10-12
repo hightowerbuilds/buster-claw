@@ -73,9 +73,11 @@ defmodule BusterClawWeb.Router do
 
     # Older tab storage can still point at the retired command-list editor.
     get "/cmd-list", LegacySettingsController, :index
+    get "/voice", LegacyVoiceController, :index
 
     live_session :default, on_mount: [BusterClawWeb.RequireOnboarding] do
       live "/", StatusLive, :home
+      live "/olympus", OlympusLive, :index
       live "/duty", DutyLive, :index
       live "/browse", BrowseLive, :index
       live "/split", SplitLive, :index
@@ -85,7 +87,6 @@ defmodule BusterClawWeb.Router do
       live "/security", SecurityLive, :index
       live "/settings", SettingsLive, :index
       live "/appearance", AppearanceLive, :index
-      live "/voice", VoiceLive, :index
       live "/notify-settings", NotifySettingsLive, :index
       live "/phone", PhoneLive, :index
       # NO DOCK TAB as of 09-02-26 — the Studio is being spun out into its own
@@ -159,15 +160,6 @@ defmodule BusterClawWeb.Router do
     get "/sound/:name", NotifySoundController, :named
   end
 
-  # The operator's voice played back to them — reference recordings and rendered
-  # clips for the players on the Vox2B surface. Only `:media`; the name is an
-  # allowlist over real directory listings, never joined from raw input.
-  scope "/voice-audio", BusterClawWeb do
-    pipe_through :media
-
-    get "/:name", VoiceAudioController, :show
-  end
-
   # Renders a workspace file (Markdown → HTML, .html as-is) for the in-app browser.
   # Only `:media`: returns a raw HTML document, not a LiveView page, so no root layout
   # and no CSRF. Path-guarded to the workspace by FileManager; loopback-only.
@@ -221,6 +213,7 @@ defmodule BusterClawWeb.Router do
     get "/chrome", BrowserChromeController, :show
     get "/home", BrowserHomeController, :show
     get "/pages", BrowserPagesController, :show
+    get "/activity/events", BrowserActivityController, :index
     get "/workspace", BrowserWorkspaceController, :show
     get "/history", BrowserHistoryPageController, :show
     post "/history", BrowserHistoryController, :create

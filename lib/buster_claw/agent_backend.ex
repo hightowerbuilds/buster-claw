@@ -74,7 +74,13 @@ defmodule BusterClaw.AgentBackend do
       # and `modelUsage`, and `StreamEvent` has parsed the cost field the whole
       # time. Measured: `total_cost_usd = 0.0802325` on a one-word prompt.
       reports_usage: :cost,
+      # Current IDs verified 2026-10-11; older choices remain available.
+      # https://platform.claude.com/docs/en/models/overview
       known_models: [
+        "claude-opus-5-5",
+        "claude-sonnet-5-5",
+        "claude-haiku-5-5",
+        "claude-fable-5-1",
         "claude-fable-5",
         "claude-opus-5",
         "claude-sonnet-5",
@@ -91,25 +97,19 @@ defmodule BusterClaw.AgentBackend do
       # app owns no price table — a computed cost would be a number the operator
       # trusts and we invented.
       reports_usage: :tokens,
-      # Added 08-04 at the operator's request, reversing "ship no list for a
-      # harness that cannot enumerate". The reason for that rule — a fixed list
-      # goes stale — is real but is covered by the free-text field, which stays;
-      # the cost of NO list is that every codex user types an ID by hand.
-      #
-      # Codex does not validate the model up front (a nonsense ID is passed
-      # straight through to the provider), so a wrong entry here fails late and
-      # confusingly. Evidence for each, so the next person can tell what was
-      # measured from what was inferred:
-      #   gpt-5.6-sol   — the operator's own ~/.codex/config.toml
-      #   gpt-5.6-luna  — present in `opencode models` as opencode-go/gpt-5.6-luna
-      #   gpt-5.6-terra — named by the operator; follows the family pattern, NOT
-      #                   independently verified against a catalog
-      # Listed in the order the operator named them, not by capability: nothing
-      # here ranks them, and inventing an order would imply knowledge we lack.
+      # Verified 2026-10-11: https://learn.chatgpt.com/docs/models
+      # These are picker suggestions, not a claim about account access. Free
+      # text still accepts newer IDs; previous generations remain selectable.
+      # GPT-5.5 is also in the installed CLI's model catalog on this date.
       known_models: [
+        "gpt-6.1-sol",
+        "gpt-6-astra",
+        "gpt-6-luna",
+        "gpt-6-sol",
         "gpt-5.6-sol",
         "gpt-5.6-terra",
-        "gpt-5.6-luna"
+        "gpt-5.6-luna",
+        "gpt-5.5"
       ]
     },
     opencode: %{

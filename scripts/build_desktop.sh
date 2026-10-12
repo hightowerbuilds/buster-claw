@@ -78,6 +78,12 @@ echo "==> Building production assets (tailwind, esbuild, phx.digest)"
 MIX_ENV=prod mix assets.deploy
 
 echo "==> Assembling Elixir release"
+echo "==> Staging pinned Messages adapter"
+bash "$REPO_ROOT/scripts/stage_messages_adapter.sh"
+# --overwrite replaces the current version but keeps older lib/buster_claw-*
+# directories. A desktop bundle must contain only this build, including after
+# a feature deletion; do not ship a previous version's compiled modules too.
+rm -rf "$REPO_ROOT/_build/prod/rel/buster_claw"
 MIX_ENV=prod mix release --overwrite
 
 echo "==> Staging release into Tauri resources"
@@ -170,6 +176,12 @@ BUNDLE_DIR="$REPO_ROOT/desktop/tauri/target/release/bundle/macos"
 # with lib/tzdata-1.1.4 and nothing else, and only smoke_release_boot.sh
 # caught it. Same rule as above: assert the artifact, at the last artifact.
 BUNDLED_REL="$BUNDLE_DIR/Buster Claw.app/Contents/Resources/release"
+MESSAGES_ADAPTER="$BUNDLED_REL/lib/buster_claw-$(cat "$REPO_ROOT/VERSION")/priv/messages/imsg"
+if [ ! -x "$MESSAGES_ADAPTER" ]; then
+  echo "FATAL: the bundled app is missing its Messages adapter." >&2
+  exit 1
+fi
+codesign --verify --strict "$MESSAGES_ADAPTER"
 if [ ! -x "$BUNDLED_REL/bin/buster_claw" ] || ! compgen -G "$BUNDLED_REL/erts-*" >/dev/null; then
   echo "" >&2
   echo "FATAL: the bundled .app does not carry a runnable release." >&2

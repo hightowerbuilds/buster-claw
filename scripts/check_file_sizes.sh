@@ -193,16 +193,9 @@ check lib/buster_claw_web/components/explained/shared.ex       182 HELD
 # compares the two — the comment is what makes the next recompute reviewable
 # rather than a diff of seven integers.
 #
-# 252 -> 275 on 09-05 for the `vox` feature entry: the voice stopped being a
-# Settings page and became a Home sub-tab, so Explained owed it a tile. A
-# feature entry is ~15 lines of `body` prose by construction, and this one
-# carries a comment as well — its `path` is the home screen rather than
-# `/voice`, which is a real route to the same component with none of the home
-# chrome. The alternative to the comment is the next reader "fixing" the path
-# to the deep link and sending everyone to the wrong place.
-# 275 -> 290 on 09-05. The Vox2B entry earned the first raise; this one is the
-# comment recording why the Cmd List removal moved six numbers in @command_stats
-# at once. A stats block whose history is deleted is a block nobody can audit.
+# 10-11: retired the Vox feature entry and recalculated the live command stats.
+# Its tutorial, component panels and recorder decoder no longer have caps:
+# those files left with the synthesis integration, rather than moving uncapped.
 check lib/buster_claw_web/components/explained/registry.ex     290 HELD
 # The ninth tutorial (08-15). Pockets earns a tile where five parked candidates
 # did not, and the argument is worth keeping: it is already load-bearing in three
@@ -211,14 +204,7 @@ check lib/buster_claw_web/components/explained/registry.ex     290 HELD
 # arrival.
 check lib/buster_claw_web/components/explained/pockets.ex      365 HELD
 check lib/buster_claw_web/components/explained/intro.ex        151 HELD
-# The tenth tutorial (09-05), capped on arrival. Vox2B earns a tile for the
-# reason Pockets did: it is a top-level Home sub-tab a user meets before any
-# page explains it. The page carries two claims that are expensive to get wrong
-# and cheap to state — the two engines on it are not interchangeable (VoxCPM
-# pre-renders files, `say` reads chat live), and four verbs reach the whole
-# surface while recording, engine settings and publishing the greeting have
-# none. Growth here should be a third claim, not a longer version of these two.
-check lib/buster_claw_web/components/explained/vox.ex          331 HELD
+# 10-11: removed the Vox tutorial with the product it described.
 
 # The Message Machine's three panels, and the registry that decides which of
 # them a sub-tab shows. `registry.ex` is capped on arrival: it is data-only by
@@ -505,93 +491,10 @@ check lib/buster_claw_web/components/notes/switcher.ex         134 HELD
 
 # --- FROZEN: named by an unstarted phase; capped at today's size -------------
 
-# VOX_TAB_ROADMAP Phase 3, capped on arrival at exactly what it weighs.
-#
-# This file is not new code — it is `voice_live.ex`'s nine panels moved into a
-# LiveComponent so the homepage tab and `/voice` render one source instead of two
-# (`D2`). A move deserves a cap the day it lands, not the day it has grown: the
-# whole reason it is 1,139 lines is that a settings ROUTE was allowed to
-# accumulate nine panels with nothing counting, and putting it on the homepage
-# without a number would repeat that in a place the operator looks at daily.
-#
-# FROZEN rather than HELD because Phase 3 is written and unstarted: the panels
-# get a Train / Make / Assign rail, which is an extraction, not a rewrite. Until
-# then a tenth panel has to be funded by taking one out — which is the outcome
-# this tier keeps producing elsewhere in this file.
-#
-# 1139 -> 1072 the same day, and banked here rather than left as headroom. The
-# operator asked for "a tidy minimalist style" and the restyle paid for itself:
-# nine `.ic-panel` cards with `text-2xl font-black uppercase` headings and a
-# paragraph each became one surface with hairlines, mono act labels and one-line
-# hints. Sixty-seven lines came out of the CHROME while every control stayed.
-# The acts (Train / Make / Assign / Reading aloud) are Phase 3's grouping arriving
-# as presentation; the rail itself is still unbuilt, which is why this stays
-# FROZEN rather than becoming HELD.
-#
-# 1072 -> 1026 later the same day: the engine "Run it" button, its handler, its
-# `engine_check` assign and the six-clause `check_sentence/1` came out together
-# when the operator reported the control produced no experience. A feature
-# leaving is the cheapest way a FROZEN file shrinks, and it is banked here for
-# the same reason a decomposition would be.
-#
-# 1026 -> 1005, and this one is the tier doing precisely what it is for. The
-# operator asked for a render animation, which is an ADDITION to a file with no
-# headroom — so the panel that needed it least came out first: `What it says` is
-# now `components/vox/chimes.ex` (a `Progress.chip` went with it), and the
-# feature landed inside the space that made. A raised cap would have bought the
-# same feature and left the file bigger; the freeze bought it and left the file
-# smaller. Fourth time. It is also Phase 3's first real cut.
-#
-# 1005 -> 935 the same day, and the largest single arrival yet: Phase 2 moved the
-# spoken-messages feature IN from Settings -> Notify — a panel plus three
-# handlers and its state, ~90 lines. Two panels went out to pay for it, `How it
-# speaks` and `What callers hear`, both to `components/vox/`. Fifth and sixth
-# time this tier has answered "a feature needs room" with "then something else
-# leaves", and Phase 3's per-panel shape is now four files rather than a plan.
-#
-# 931 -> 741 when the sidebar landed (operator: nine panels stacked was "quite
-# busy and rough on the eyes"). Every remaining inline section left for
-# `components/vox/`; what is here is state, handlers and a five-way dispatch.
-# Nine files where there was one, and this one is now the smallest it has ever
-# been while the surface does the most it ever has.
-# 741 -> 775 on 09-06, and the reason is written here rather than left as a
-# number that moved. The Vox surface gained a cost quote and a recording grade
-# after a five-word render ran nine and a half minutes and then failed, having
-# never once succeeded on the operator's machine. The RULE this tier carries is
-# "extract before you raise", and that is what happened: 148 lines left for
-# `components/vox/quality.ex`, which owns the grade, the quote, and the two
-# socket assigns behind them. What stayed is the +27 that cannot leave a host —
-# one event handler, two aliases, and the assign calls at their three sites.
-# An extraction that does not fully offset its feature is still an extraction;
-# a raise with no module to show for it is the thing to refuse.
-check lib/buster_claw_web/live/vox_component.ex               775 FROZEN
-
-# Vox2B's panels, capped on arrival. Each is markup plus its own attrs and owns
-# no state — the state stayed in `vox_component.ex`, which is the whole reason
-# extracting them is cheap and the reason growth HERE is the thing to look at: a
-# panel gaining logic means behaviour leaked out of the component that owns it.
-check lib/buster_claw_web/components/vox/chimes.ex             115 HELD
-# 160 -> 175 on 09-06: the panel gained a `phx-change` for the live quote and
-# two component calls. No logic came with them — the grade and the quote are
-# computed in `vox/quality.ex` and arrive as assigns, which is exactly the
-# property this block says to watch for.
-check lib/buster_claw_web/components/vox/create.ex             175 HELD
-check lib/buster_claw_web/components/vox/engine_probe.ex       75 HELD
-# 156 -> 190 on 09-06. Steps stopped being a bare number box whose placeholder
-# read "default" and became a named dial that states its own cost — it is the
-# largest lever on render time (the engine runs this many passes per chunk and
-# warms up for the same count), and nothing on the page said so while a
-# five-word line took nine and a half minutes. Markup only: the sentence under
-# it is computed in `vox/quality.ex` and arrives as an assign.
-check lib/buster_claw_web/components/vox/engine_settings.ex    190 HELD
-check lib/buster_claw_web/components/vox/files.ex              137 HELD
-check lib/buster_claw_web/components/vox/greeting.ex           122 HELD
-check lib/buster_claw_web/components/vox/messages.ex           140 HELD
-check lib/buster_claw_web/components/vox/progress.ex           88 HELD
-# Capped on arrival (09-06). The answer to "will this work, and how long" —
-# both halves, so neither can drift from the other.
-check lib/buster_claw_web/components/vox/quality.ex            190 HELD
-check lib/buster_claw_web/components/vox/reading.ex            79 HELD
+# 10-11: deleted VoxComponent and its synthesis panels. Native speech moved
+# into Configuration; the surviving phone greeting owns only status and reset.
+check lib/buster_claw_web/components/settings/speech.ex       88 HELD
+check lib/buster_claw_web/live/phone/greeting_component.ex    121 HELD
 
 # Phase 3. 20% markup, so ~987 lines of logic in a live_component. The source
 # catalog comes out to core, where the missing sound_* CLI will need it.
@@ -1036,16 +939,7 @@ check lib/buster_claw/integrations/github.ex                  500 HELD
 # lets it live in core at all, and what the unbuilt `sound_*` CLI will need. If
 # it grows, ask whether a web concern crept back in.
 check lib/buster_claw/notifications/studio_catalog.ex        255 HELD
-# `capture/take.ex` — the recorder's server half. Capped 08-16 during the quality
-# pass, which found it was the ONE module added that day with no cap: every
-# sibling got one on arrival and this was missed, which is exactly the drift the
-# inventory exists to make visible.
-#
-# Roughly half is the moduledoc's table of what one word versus a whole sentence
-# produces (`:manual` at 1.0 vs `:aligned` capped below it). If it grows, ask
-# whether DECODING and STORING have drifted apart — `decode/2` is pure and
-# testable without a workspace, `store/3` writes files; that is the seam.
-check lib/buster_claw/notifications/capture/take.ex           184 HELD
+# 10-11: Capture.Take left with its final caller, the Vox reference recorder.
 
 # The web command surface (`1eee2f8`), 894 -> 848 by collapsing the six
 # click/fill clause bodies.
@@ -1128,7 +1022,9 @@ check lib/buster_claw/appearance/migration.ex                 170 HELD
 # the app-tab row, and the close buttons it was missing, moved to
 # lib/chrome_app_tabs.js, and the cap ratchets down to what that left. FROZEN.
 check assets/js/chrome.js                                     859 FROZEN
-check assets/js/hooks/tab_strip.js                            664 FROZEN
+# 664 -> 536 on 10-11: layout planning and native surface lifecycle moved to
+# tab_layout.js modules shared by manual controls and chat commands, with tests.
+check assets/js/hooks/tab_strip.js                            536 FROZEN
 # note_editor.js is the opposite case and is capped as a regrowth alarm only:
 # all parsing and commands are already extracted and tested, and ~120 lines are
 # the design essay guarding against rebuilding the two editors that shipped

@@ -63,7 +63,7 @@ defmodule BusterClawWeb.Studio.Registry do
   # that lives in `BusterClaw.SvgViewer`, the chat's SVG channel, which shared
   # nothing with the Sketch Pad and is untouched.
   # `voice` was DELETED 09-19 (operator) with the cut-up engine it browsed —
-  # `CUTUP_DELETION_ROADMAP`. Recording a reference voice is Vox2B's and stayed.
+  # `CUTUP_DELETION_ROADMAP`. Mix remains the recorded-audio editor.
   @built ~w(mix)
 
   @doc "The sub-tabs, in rail order."

@@ -55,12 +55,10 @@ defmodule BusterClaw.AgentBackendTest do
       end
     end
 
-    test "codex's list is the gpt-5.6 family the operator named" do
-      assert AgentBackend.known_models(:codex) == [
-               "gpt-5.6-sol",
-               "gpt-5.6-terra",
-               "gpt-5.6-luna"
-             ]
+    test "codex keeps the previously offered gpt-5.6 family" do
+      for model <- ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"] do
+        assert model in AgentBackend.known_models(:codex)
+      end
     end
   end
 

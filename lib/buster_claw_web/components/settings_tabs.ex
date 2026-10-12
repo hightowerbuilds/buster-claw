@@ -5,12 +5,8 @@ defmodule BusterClawWeb.SettingsTabs do
   Security), with the active one highlighted. (Get Started's 3-step
   onboarding moved to the home Explained tab's Intro, 08-02.)
 
-  **Voice left this rail on 09-05**, when the whole surface became the homepage's
-  Vox2B sub-tab (`VOX_TAB_ROADMAP`). The `/voice` route still exists for deep
-  links and split panes, exactly as `/calendar` and `/phone` do — but it is no
-  longer a *settings* page, so it is neither listed here nor grouped under the
-  Settings tab in the strip. Its tab-strip label moved to `Layouts`'s
-  `@tab_labels` for that reason.
+  Native read-aloud controls live under Configuration → Speech. The legacy
+  `/voice` route redirects there, so it needs no separate rail entry.
   """
   use BusterClawWeb, :html
 
@@ -32,6 +28,7 @@ defmodule BusterClawWeb.SettingsTabs do
   def paths, do: Enum.map(@tabs, & &1.path)
 
   attr :active, :atom, required: true
+  attr :id_prefix, :string, default: ""
 
   def tabs(assigns) do
     assigns = assign(assigns, :tabs, @tabs)
@@ -40,13 +37,13 @@ defmodule BusterClawWeb.SettingsTabs do
     <div class="space-y-4">
       <.page_wordmark src={~p"/images/brand/settings-icon.png"} alt="Settings" />
       <nav
-        id="settings-tabs"
+        id={"#{@id_prefix}settings-tabs"}
         aria-label="Settings sections"
         class="flex gap-2 overflow-x-auto rounded-lg border border-base-300 bg-base-100 p-1"
       >
         <.link
           :for={tab <- @tabs}
-          id={"settings-tab-#{tab.key}"}
+          id={"#{@id_prefix}settings-tab-#{tab.key}"}
           navigate={tab.path}
           class={[
             "whitespace-nowrap rounded px-4 py-2 text-sm font-semibold transition",

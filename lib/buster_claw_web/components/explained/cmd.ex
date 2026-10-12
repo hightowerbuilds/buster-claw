@@ -50,7 +50,7 @@ defmodule BusterClawWeb.Explained.Cmd do
           <li id="explained-command-operation-types">
             <span class="font-mono font-bold text-base-content">operation type</span>
             — {@command_stats.read} read, {@command_stats.trigger} trigger, and {@command_stats.mutate} mutate. A read does not change app state, but it
-            may still contact a service such as Google, a broker, or the public web.
+            may still contact a service such as Google or the public web.
           </li>
           <li id="explained-command-trust-tiers">
             <span class="font-mono font-bold text-base-content">trust tier</span>

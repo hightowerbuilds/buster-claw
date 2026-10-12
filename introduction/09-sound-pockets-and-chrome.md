@@ -20,8 +20,9 @@ something"; if a task seems to need it, say so and let the operator start it.
 
 The cut-up engine — recordings indexed word by word and spliced into sentences
 — was deleted on 09-19 with its verbs (`sound_find`, `sound_sentence`,
-`sound_index_*`, `voice_bank_*` and the rest). If the operator asks for their
-own voice, that is **Vox2B** and the `voice_message_*` / `voice_clip_*` verbs.
+`sound_index_*`, `voice_bank_*` and the rest). The app does not clone voices or
+generate new speech recordings. To use audio produced elsewhere as a chime,
+put the WAV under the Library root, then use `sound_import` and `sound_apply`.
 
 ## Pockets: folders that know what they are for
 

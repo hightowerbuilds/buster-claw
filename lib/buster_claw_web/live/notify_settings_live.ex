@@ -316,25 +316,6 @@ defmodule BusterClawWeb.NotifySettingsLive do
             </div>
           </div>
 
-          <%!-- Spoken messages MOVED to Home → Vox2B on 09-05 (VOX_TAB_ROADMAP
-                Phase 2). A pointer rather than nothing, because this is where the
-                feature lived for two days and where anyone who used it will look
-                first — and rather than a duplicate, because two places to write
-                the same line is how the two disagree. --%>
-          <div class="ic-panel overflow-hidden">
-            <header class="border-b-2 border-base-content/20 px-5 py-4">
-              <p class="ic-eyebrow">Spoken messages</p>
-              <h2 class="font-display text-xl font-black uppercase tracking-tight">
-                Notes to yourself, in your voice
-              </h2>
-              <p class="mt-1 text-sm text-base-content/65">
-                These moved to <.link navigate={~p"/voice"} class="font-semibold text-primary">Vox2B</.link>, beside the voice that speaks them
-                and the recording they are cloned from. Notify still owns which sound plays for
-                which event — that is the table above.
-              </p>
-            </header>
-          </div>
-
           <div class="ic-panel overflow-hidden">
             <header class="border-b-2 border-base-content/20 px-5 py-4">
               <p class="ic-eyebrow">Library</p>
