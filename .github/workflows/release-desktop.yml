@@ -59,8 +59,10 @@ jobs:
         include:
           - runner: macos-15
             arch: aarch64
+            cli_sha256: 82bdcb9ae7f407882321680ae50750f11623fae22445f8b00b096e10f815d604
           - runner: macos-15-intel
             arch: x86_64
+            cli_sha256: f10dfcc103ccb79248ca27cb9aff7b8a65499d1b0df79fe0465e8aa0a8e7cbef
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     env:
@@ -97,6 +99,7 @@ jobs:
         with:
           workspaces: desktop/tauri
           key: ${{ matrix.arch }}
+          cache-on-failure: true
 
       - name: Cache mix deps and _build
         uses: actions/cache@v4
@@ -112,25 +115,35 @@ jobs:
       # staples what the crate builds, so a CLI three minor versions behind the
       # crate means shipping a signing path nobody has ever run locally.
       #
-      # cargo install is slow but rust-cache keeps the binary across runs, so
-      # compare the VERSION rather than merely checking the binary exists: the
-      # cache persists ~/.cargo/bin, and an existence check would pin CI to
-      # whatever was installed the first time this workflow ever ran. Bumping the
-      # version below would then be a silent no-op on every warm run, which is
-      # exactly how this drifted to 2.8.0 while the crate moved to 2.11.
+      # Use Tauri's official prebuilt CLI, pinned by version and archive digest.
+      # Compiling the CLI adds about 20 minutes to an uncached Intel release.
+      # Check cached binary versions so a version bump cannot silently reuse an
+      # older bundler. Update both matrix digests when changing this version.
       - name: Install tauri-cli
         env:
           TAURI_CLI_VERSION: "2.11.4"
+          TAURI_CLI_ARCH: ${{ matrix.arch }}
+          TAURI_CLI_SHA256: ${{ matrix.cli_sha256 }}
         run: |
           set -euo pipefail
           have="$(cargo-tauri --version 2>/dev/null | awk '{print $2}' || true)"
           if [ "$have" != "$TAURI_CLI_VERSION" ]; then
             echo "tauri-cli: have '${have:-none}', want $TAURI_CLI_VERSION"
-            cargo install tauri-cli --version "=$TAURI_CLI_VERSION" --locked --force
+            archive="$RUNNER_TEMP/cargo-tauri.zip"
+            unpack="$RUNNER_TEMP/cargo-tauri-unpacked"
+            cargo_bin="${CARGO_HOME:-$HOME/.cargo}/bin"
+            curl --fail --location --retry 3 --retry-delay 5 \
+              "https://github.com/tauri-apps/tauri/releases/download/tauri-cli-v${TAURI_CLI_VERSION}/cargo-tauri-${TAURI_CLI_ARCH}-apple-darwin.zip" \
+              --output "$archive"
+            printf '%s  %s\n' "$TAURI_CLI_SHA256" "$archive" | shasum -a 256 -c -
+            mkdir -p "$unpack" "$cargo_bin"
+            unzip -q "$archive" -d "$unpack"
+            install -m 755 "$unpack/cargo-tauri" "$cargo_bin/cargo-tauri"
           else
             echo "tauri-cli $TAURI_CLI_VERSION already installed"
           fi
           cargo-tauri --version
+          test "$(cargo-tauri --version | awk '{print $2}')" = "$TAURI_CLI_VERSION"
 
       # Import the Developer ID cert into a throwaway keychain that lives only
       # for this job. Never the default login keychain: a hosted runner is
@@ -312,9 +325,9 @@ jobs:
           # Stapling is what makes a first launch work with no network. Without
           # it the app is notarized on Apple's servers and unopenable on a plane.
           echo "==> Ticket is stapled to the .app and the .dmg"
-          xcrun stapler validate "$APP"
+          bash scripts/stapler_retry.sh validate "$APP"
           for dmg in desktop/tauri/target/release/bundle/dmg/*.dmg; do
-            xcrun stapler validate "$dmg"
+            bash scripts/stapler_retry.sh validate "$dmg"
           done
 
           # beam.smp is spawned as its own process and does not inherit the

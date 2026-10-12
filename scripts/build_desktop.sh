@@ -260,8 +260,8 @@ if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
   xcrun notarytool submit "$DMG_PATH" "${NOTARY_AUTH[@]}" --wait
 
   echo "==> Stapling the ticket to the DMG"
-  xcrun stapler staple "$DMG_PATH"
-  xcrun stapler validate "$DMG_PATH"
+  bash "$REPO_ROOT/scripts/stapler_retry.sh" staple "$DMG_PATH"
+  bash "$REPO_ROOT/scripts/stapler_retry.sh" validate "$DMG_PATH"
 fi
 
 # Restore the dev-mode placeholder so `cargo tauri dev` keeps working without the
