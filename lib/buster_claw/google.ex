@@ -101,7 +101,7 @@ defmodule BusterClaw.Google do
     unless already? do
       Sentinel.observe(
         :google_auth,
-        "Google session for #{account.email} expired — reconnect in Settings → GWS to resume mail/calendar work.",
+        "Google session for #{account.email} expired — reconnect in Settings → Configuration → Google Workspace to resume mail/calendar work.",
         %{account_id: account.id, email: account.email, reason: "invalid_grant"}
       )
 
