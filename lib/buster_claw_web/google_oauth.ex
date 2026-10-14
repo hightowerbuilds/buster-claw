@@ -67,11 +67,12 @@ defmodule BusterClawWeb.GoogleOAuth do
   end
 
   @doc """
-  Whether the bundled OAuth app is still in Google's "Testing" status — i.e.
-  the unverified-beta era: only hand-added testers can connect, and refresh
-  tokens expire weekly. Drives the request-access + weekly-reconnect copy;
-  flip `:google_oauth_app_status` to `"verified"` when Google verification
-  clears and that copy disappears on its own.
+  Whether the bundled OAuth app is still in Google's "Testing" status — the
+  era when only hand-added testers could connect and refresh tokens expired
+  weekly. Drives the request-access + weekly-reconnect copy. The consent
+  screen went to In production on 2026-10-13 (`:google_oauth_app_status` is
+  `"published"`), so this is false unless an env override says otherwise;
+  verification, when it clears, only removes Google's warning screen.
   """
   def beta_testing? do
     Application.get_env(:buster_claw, :google_oauth_app_status, "testing") == "testing"
@@ -84,18 +85,18 @@ defmodule BusterClawWeb.GoogleOAuth do
   call here.** It exists because three of them said "you'll do this once" while a
   fourth correctly warned about reconnecting weekly — the wizard contradicted
   itself on the same screen, and the pleasant version was the wrong one. Under
-  `beta_testing?/0` (the default, and the state on 2026-08-10) Google caps the app
-  at 100 hand-added testers and **expires their refresh tokens every 7 days**, so
-  "once" is false for every early user — exactly the people being handed a trial
-  build.
+  `beta_testing?/0` (the state from 2026-08-10 until the app was published on
+  2026-10-13) Google caps the app at 100 hand-added testers and **expires their
+  refresh tokens every 7 days**, so "once" is false for every early user — exactly
+  the people being handed a trial build.
 
   A user told "once" who is then asked again on day eight does not conclude that
   Google's verification queue is slow. They conclude the app is broken, and that
   is the impression a first week is made of.
 
   Returning a sentence rather than a boolean is deliberate: a caller cannot render
-  half of this correctly. When verification clears, `:google_oauth_app_status`
-  flips to `"verified"` and every call site becomes truthful in one edit.
+  half of this correctly. `:google_oauth_app_status` flipped off `"testing"` in one
+  edit and every call site became truthful with it.
   """
   def reconnect_sentence do
     if beta_testing?() do

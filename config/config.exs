@@ -18,10 +18,12 @@ config :buster_claw,
   # still win, as ever.)
   workspace_root: Path.expand("../tmp/dev-workspace", __DIR__),
   library_root: Path.expand("../tmp/dev-workspace/library", __DIR__),
-  # Bundled Google OAuth app verification status: "testing" (unverified beta —
-  # tester-list gate + weekly refresh-token expiry, and the UI says so) or
-  # "verified" (the beta copy disappears). Flip when Google verification clears.
-  google_oauth_app_status: "testing",
+  # Bundled Google OAuth app publishing status. "testing" = Google's Testing
+  # status: tester-list gate + weekly refresh-token expiry, and the UI says so.
+  # Anything else ("published", later "verified") drops that copy. Flipped to
+  # "published" 2026-10-13 when the consent screen went to In production —
+  # still unverified (warning screen, 100-user cap), but tokens no longer expire.
+  google_oauth_app_status: "published",
   dispatch_projector_enabled: true,
   notifications_scheduler_enabled: true,
   orchestrator_enabled: true,
