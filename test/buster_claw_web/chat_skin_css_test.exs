@@ -75,7 +75,7 @@ defmodule BusterClawWeb.ChatSkinCssTest do
       # asserts on the things a reader reads.
       section = skin_section()
 
-      for anchor <- ~w(data-chat-body data-chat-input data-chat-empty) do
+      for anchor <- ~w(data-chat-body data-chat-input data-chat-empty data-chat-queued) do
         [_ | rules] = String.split(section, "[#{anchor}]")
 
         sized =

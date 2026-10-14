@@ -1005,6 +1005,10 @@ body { background-color: var(--color-base-100); }
 [data-chat-role="meta"] { font-size: calc(0.62rem * var(--chat-scale, 1)); }
 [data-chat-input] { font-size: calc(1.0625rem * var(--chat-scale, 1)); }
 [data-chat-empty] { font-size: calc(1.0625rem * var(--chat-scale, 1)); }
+/* A queued piece on the rail is a user message that has not been sent yet, so
+   it reads at the user body's size — per skin, below — not at a literal that
+   outgrew the minimal skin's 13px body (reported 10-13). */
+[data-chat-queued] { font-size: calc(0.9375rem * var(--chat-scale, 1)); }
 
 /* ---- industrial — the app's own look ----
    Deliberately empty. The baseline IS the Tailwind utilities in the markup, so
@@ -1052,6 +1056,10 @@ body { background-color: var(--color-base-100); }
 [data-chat-skin="minimal"] [data-chat-role="error"] {
   align-items: flex-start;
   gap: 0;
+}
+
+[data-chat-skin="minimal"] [data-chat-queued] {
+  font-size: calc(0.8125rem * var(--chat-scale, 1));
 }
 
 [data-chat-skin="minimal"] [data-chat-body] {

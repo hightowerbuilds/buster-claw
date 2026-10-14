@@ -697,7 +697,7 @@ defmodule BusterClawWeb.ChatPanel do
           ]}
         >
           <.icon name="hero-bars-2" class="size-3.5 shrink-0 text-base-content/30" />
-          <span class="flex-1 truncate text-[15px]">{item.text}</span>
+          <span data-chat-queued class="flex-1 truncate">{item.text}</span>
           <span
             :if={idx == 0}
             class="shrink-0 font-mono text-[0.55rem] uppercase tracking-wider text-primary"
