@@ -25,6 +25,13 @@ const APP_DATA_DIR_NAME: &str = "BusterClaw";
 // bundle identifier so it stays stable across a rename.
 const KEYCHAIN_SERVICE: &str = "BusterClaw";
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(30);
+// How long a release that is still ALIVE but not yet listening gets before the
+// shell gives up on it. The first launch of a new build parks the BEAM behind
+// macOS's "access files in your Desktop folder" prompt until the operator
+// clicks Allow; on 10-13 that took longer than HEALTH_TIMEOUT and the shell
+// showed "failed to start the local runtime" over a release that came up fine
+// seconds later. A release that has EXITED still fails fast (HEALTH_TIMEOUT).
+const HEALTH_TIMEOUT_ALIVE: Duration = Duration::from_secs(10 * 60);
 const HEALTH_POLL_INTERVAL: Duration = Duration::from_millis(250);
 
 // Respawn guardrails for the bundled Phoenix release. If the BEAM exits while
@@ -94,9 +101,10 @@ impl ReleaseLauncher {
         let health_url = format!("{}/_health", self.phoenix_url);
         let handle = self.handle.clone();
         let phoenix_url = self.phoenix_url.clone();
+        let child = Arc::clone(&self.release_child);
 
         runtime.block_on(async move {
-            let healthy = wait_for_health(&health_url).await;
+            let healthy = wait_for_health(&health_url, Some(&child)).await;
             let Some(window) = handle.get_webview_window("main") else {
                 eprintln!("[buster-claw] main window missing during startup transition");
                 return;
@@ -502,7 +510,8 @@ fn main() {
 
                 std::thread::spawn(move || {
                     runtime.block_on(async move {
-                        let healthy = wait_for_health(&health_url).await;
+                        // No release child in dev: the server is external.
+                        let healthy = wait_for_health(&health_url, None).await;
                         let Some(window) = handle.get_webview_window("main") else {
                             eprintln!(
                                 "[buster-claw] main window missing during startup transition"
@@ -755,7 +764,11 @@ fn open_log(logs_dir: &Path, file: &str) -> Result<File, String> {
         .map_err(|e| format!("failed to open log {file}: {e}"))
 }
 
-async fn wait_for_health(url: &str) -> bool {
+/// Poll `/_health` until the release answers. Gives up after `HEALTH_TIMEOUT`
+/// once the release child is gone (or when there is no child to watch), but
+/// keeps waiting up to `HEALTH_TIMEOUT_ALIVE` while the child is still running —
+/// a BEAM parked behind a permission prompt is slow, not dead.
+async fn wait_for_health(url: &str, child: Option<&Arc<Mutex<Option<Child>>>>) -> bool {
     let client = match reqwest::Client::builder()
         .timeout(Duration::from_secs(2))
         .build()
@@ -764,16 +777,40 @@ async fn wait_for_health(url: &str) -> bool {
         Err(_) => return false,
     };
 
-    let deadline = Instant::now() + HEALTH_TIMEOUT;
-    while Instant::now() < deadline {
+    let started = Instant::now();
+    let soft_deadline = started + HEALTH_TIMEOUT;
+    let hard_deadline = started + HEALTH_TIMEOUT_ALIVE;
+
+    loop {
         if let Ok(resp) = client.get(url).send().await {
             if resp.status().is_success() {
                 return true;
             }
         }
+
+        let now = Instant::now();
+        if now >= hard_deadline {
+            return false;
+        }
+        if now >= soft_deadline && !child.is_some_and(release_alive) {
+            return false;
+        }
+
         tokio::time::sleep(HEALTH_POLL_INTERVAL).await;
     }
-    false
+}
+
+/// Whether the spawned release is still running. Takes the lock briefly, the
+/// same way the respawn monitor does, so a concurrent `shutdown_release` can
+/// always reap the child.
+fn release_alive(child: &Arc<Mutex<Option<Child>>>) -> bool {
+    let Ok(mut guard) = child.lock() else {
+        return false;
+    };
+    match guard.as_mut() {
+        Some(process) => matches!(process.try_wait(), Ok(None)),
+        None => false,
+    }
 }
 
 fn shutdown_release(child: &Arc<Mutex<Option<Child>>>) {
