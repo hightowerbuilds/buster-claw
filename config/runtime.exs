@@ -211,6 +211,15 @@ if config_env() == :prod do
     config :buster_claw, :agent_api_token, agent_token
   end
 
+  # Clinch #7: the token the shell hands the in-app terminal's PTY. The shell
+  # had injected this since b8721aa, but nothing here read it, so the release
+  # minted its own and every in-app `./buster-claw` call got 401 — found 10-13
+  # when `on-duty` from the terminal said "unauthorized". Guarded by
+  # desktop/tauri/tests/secret_provisioning.rs (every_injected_secret_is_read_by_runtime_exs).
+  if terminal_token = System.get_env("BUSTER_CLAW_TERMINAL_API_TOKEN") do
+    config :buster_claw, :terminal_api_token, terminal_token
+  end
+
   port = String.to_integer(System.get_env("PORT") || "4000")
 
   config :buster_claw, BusterClawWeb.Endpoint,

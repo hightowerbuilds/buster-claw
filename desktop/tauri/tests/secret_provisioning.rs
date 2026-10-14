@@ -16,6 +16,7 @@
 use std::collections::BTreeSet;
 
 const MAIN_RS: &str = include_str!("../src/main.rs");
+const RUNTIME_EXS: &str = include_str!("../../../config/runtime.exs");
 
 /// Every account name passed to `ensure_secret(&data_dir, "<name>", ...)`.
 ///
@@ -118,4 +119,24 @@ fn the_parsers_still_find_something() {
         "the .env(...) parser found {} vars; main.rs may have been reshaped",
         injected_env_vars().len()
     );
+}
+
+/// The third leg. Injecting the variable is worthless if `config/runtime.exs`
+/// never reads it: `BusterClaw.ApiToken` then falls back to generating its own
+/// value, and the shell and the BEAM hold two different tokens for the same
+/// name. That is exactly what shipped for `terminal_token` (Clinch #7): the
+/// Tauri shell handed the PTY the Keychain token while the release minted a
+/// stranger, so every in-app `./buster-claw` call was answered with 401.
+#[test]
+fn every_injected_secret_is_read_by_runtime_exs() {
+    for (account, var) in EXPECTED {
+        let needle = format!("System.get_env(\"{var}\")");
+        assert!(
+            RUNTIME_EXS.contains(&needle),
+            "`{account}` is injected as `{var}` but config/runtime.exs never reads it. \
+             The BEAM will generate and persist its own token, which will not match the \
+             one the shell hands out. Add an `if token = {needle} do config ... end` \
+             block next to the other loopback tokens."
+        );
+    }
 }
