@@ -132,9 +132,13 @@ defmodule BusterClawWeb.Layouts do
   # A split pane: render only the view's content, no tab strip / dock / flash.
   # Full-bleed (no padding) so panes like the terminal can sit flush against the
   # pane partition; views that want breathing room add their own padding.
+  #
+  # No background of its own: the pane section in SplitLive decides whether it
+  # is opaque, a veil, or transparent, and a `bg-base-100` here sat between that
+  # decision and the split's shared shader, hiding it behind every pane (10-13).
   defp bare(assigns) do
     ~H"""
-    <div class="flex h-full min-h-0 flex-col bg-base-100">{render_slot(@inner_block)}</div>
+    <div class="flex h-full min-h-0 flex-col">{render_slot(@inner_block)}</div>
     """
   end
 

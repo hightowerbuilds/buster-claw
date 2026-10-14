@@ -19,8 +19,17 @@ defmodule BusterClawWeb.TerminalLive do
     startup_submit = startup_submit(params, session)
     dom_id = "terminal-root-#{System.unique_integer([:positive])}"
 
+    # Set only when mounted inside a joined tab (SplitLive): who else is in the
+    # join, so the terminal can tell when the homepage background is the shared
+    # field it should go transparent over (SplitField).
+    split_panes = session["split_panes"]
+
     if connected?(socket) do
       Phoenix.PubSub.subscribe(BusterClaw.PubSub, BusterClaw.Appearance.topic())
+
+      if split_panes,
+        do: Phoenix.PubSub.subscribe(BusterClaw.PubSub, BusterClaw.Appearance.topic(:home))
+
       BusterClaw.TerminalCommands.subscribe()
     end
 
@@ -28,6 +37,8 @@ defmodule BusterClawWeb.TerminalLive do
      socket
      |> assign(:page_title, terminal_label)
      |> assign(:terminal_bg, BusterClaw.Appearance.terminal_background())
+     |> assign(:home_bg, BusterClaw.Appearance.home_background_state())
+     |> assign(:split_panes, split_panes)
      |> assign(:terminal_session_key, terminal_session_key)
      |> assign(:terminal_label, terminal_label)
      |> assign(:startup_profile, startup_profile)
@@ -40,6 +51,7 @@ defmodule BusterClawWeb.TerminalLive do
        terminal_path(terminal_session_key, terminal_label, startup_profile)
      )
      |> assign(:embedded?, BusterClawWeb.ChromeHook.embedded?())
+     |> assign_shared_home()
      |> assign(:cwd, Artifact.workspace_root())
      |> assign(:dom_id, dom_id)
      |> assign(:toolbar_id, "#{dom_id}-toolbar")
@@ -57,10 +69,13 @@ defmodule BusterClawWeb.TerminalLive do
         id={"#{@dom_id}-session"}
         data-terminal-session-shell
         data-terminal-embedded={to_string(@embedded?)}
-        data-terminal-bg-active={to_string(bg_active?(@terminal_bg))}
+        data-terminal-bg-active={to_string(bg_active?(@terminal_bg) or @shared_home?)}
         class={[
           "relative isolate flex min-h-0 flex-col overflow-hidden",
-          if(@embedded? and bg_active?(@terminal_bg), do: "bg-transparent", else: "bg-base-100"),
+          if(@embedded? and (bg_active?(@terminal_bg) or @shared_home?),
+            do: "bg-transparent",
+            else: "bg-base-100"
+          ),
           if(@embedded?, do: "h-full", else: "ic-panel -mt-6 h-[calc(100dvh-8rem)]")
         ]}
       >
@@ -174,12 +189,12 @@ defmodule BusterClawWeb.TerminalLive do
           data-toolbar-id={@toolbar_id}
           data-status-id={@status_id}
           data-terminal-embedded={to_string(@embedded?)}
-          data-terminal-bg-active={to_string(bg_active?(@terminal_bg))}
-          data-terminal-bg-source={terminal_background_source(@terminal_bg, @embedded?)}
-          data-terminal-bg-image={terminal_host_background(@terminal_bg, @embedded?)}
+          data-terminal-bg-active={to_string(bg_active?(@terminal_bg) or @shared_home?)}
+          data-terminal-bg-source={bg_source(@terminal_bg, @embedded?, @shared_home?)}
+          data-terminal-bg-image={bg_image(@terminal_bg, @embedded?, @shared_home?)}
           class={[
             "relative z-10 min-h-0 flex-1 overflow-hidden p-3",
-            if(bg_active?(@terminal_bg), do: "bg-transparent", else: "bg-base-100"),
+            if(bg_active?(@terminal_bg) or @shared_home?, do: "bg-transparent", else: "bg-base-100"),
             if(@embedded?, do: "h-full", else: "")
           ]}
         >
@@ -310,17 +325,43 @@ defmodule BusterClawWeb.TerminalLive do
   end
 
   def handle_info({:terminal_background, bg}, socket) do
-    embedded? = socket.assigns.embedded?
-
-    {:noreply,
-     socket
-     |> assign(:terminal_bg, bg)
-     |> push_event("terminal-background", %{
-       active: bg_active?(bg),
-       source: terminal_background_source(bg, embedded?),
-       image: terminal_host_background(bg, embedded?)
-     })}
+    {:noreply, socket |> assign(:terminal_bg, bg) |> assign_shared_home() |> push_background()}
   end
+
+  # Only subscribed inside a join (see mount): the homepage background changing
+  # can start or stop being this terminal's shared field.
+  def handle_info({:home_background, bg}, socket) do
+    {:noreply, socket |> assign(:home_bg, bg) |> assign_shared_home() |> push_background()}
+  end
+
+  # Whether this terminal sits over the homepage background as the join's shared
+  # field (SplitField) — transparent, painting nothing of its own.
+  defp assign_shared_home(socket) do
+    %{embedded?: embedded?, split_panes: panes, terminal_bg: terminal_bg, home_bg: home_bg} =
+      socket.assigns
+
+    assign(
+      socket,
+      :shared_home?,
+      embedded? and BusterClawWeb.SplitField.home_field?(panes, terminal_bg, home_bg)
+    )
+  end
+
+  defp push_background(socket) do
+    %{terminal_bg: bg, embedded?: embedded?, shared_home?: shared?} = socket.assigns
+
+    push_event(socket, "terminal-background", %{
+      active: bg_active?(bg) or shared?,
+      source: bg_source(bg, embedded?, shared?),
+      image: bg_image(bg, embedded?, shared?)
+    })
+  end
+
+  defp bg_source(_bg, _embedded?, true), do: "shared"
+  defp bg_source(bg, embedded?, false), do: terminal_background_source(bg, embedded?)
+
+  defp bg_image(_bg, _embedded?, true), do: ""
+  defp bg_image(bg, embedded?, false), do: terminal_host_background(bg, embedded?)
 
   defp bg_active?(%{kind: :none}), do: false
   defp bg_active?(_bg), do: true

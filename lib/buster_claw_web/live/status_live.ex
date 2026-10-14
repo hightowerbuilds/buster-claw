@@ -60,10 +60,16 @@ defmodule BusterClawWeb.StatusLive do
   def home_tabs, do: @home_tabs
 
   @impl true
-  def mount(params, _session, socket) do
+  def mount(params, session, socket) do
+    # Set only inside a joined tab (SplitLive): who else is in the join. When the
+    # split paints the homepage background across the whole tab (SplitField),
+    # this pane must not draw a second copy underneath its own panels.
+    split_panes = session["split_panes"]
+
     if connected?(socket) do
       Phoenix.PubSub.subscribe(BusterClaw.PubSub, Appearance.home_topic())
       Phoenix.PubSub.subscribe(BusterClaw.PubSub, Appearance.topic(:widget))
+      if split_panes, do: Phoenix.PubSub.subscribe(BusterClaw.PubSub, Appearance.topic(:terminal))
       subscribe_chat_look()
       Notifications.subscribe()
       # Keep the corner-widget's "Recent activity" live as calls/texts land.
@@ -80,6 +86,8 @@ defmodule BusterClawWeb.StatusLive do
      socket
      |> assign(:page_title, "Home")
      |> assign(:home_bg, Appearance.home_background_state())
+     |> assign(:terminal_bg, Appearance.terminal_background())
+     |> assign(:split_panes, split_panes)
      |> assign(:widget_bg, Appearance.background(:widget))
      |> assign_chat_look()
      |> assign(status: Status.snapshot())
@@ -517,6 +525,12 @@ defmodule BusterClawWeb.StatusLive do
     {:noreply, assign(socket, :widget_bg, state)}
   end
 
+  # Only subscribed inside a join (see mount): a terminal background appearing
+  # takes the field away from the homepage, and this pane paints its own again.
+  def handle_info({:terminal_background, state}, socket) do
+    {:noreply, assign(socket, :terminal_bg, state)}
+  end
+
   def handle_info({:home_background, state}, socket) do
     socket = assign(socket, :home_bg, state)
 
@@ -617,21 +631,40 @@ defmodule BusterClawWeb.StatusLive do
 
   @impl true
   def render(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :field_shared?,
+        BusterClawWeb.ChromeHook.embedded?() and
+          BusterClawWeb.SplitField.home_field?(
+            assigns.split_panes,
+            assigns.terminal_bg,
+            assigns.home_bg
+          )
+      )
+
     ~H"""
     <Layouts.app flash={@flash} socket={@socket} fit_viewport>
       <section class="ic-home relative isolate flex min-h-0 flex-1 flex-col">
         <%!-- Homepage background (Appearance setting): an uploaded image, or a
               hook-owned WebGPU shader canvas that LiveView never patches inside.
               The shader div is keyed by design name, so changing it remounts the
-              hook with the new shader. --%>
+              hook with the new shader. Skipped when a joined tab paints this same
+              background across the whole split (SplitField) — the panels here
+              are veils over that one. --%>
         <div
-          :if={@home_bg.mode == "image"}
+          :if={@home_bg.mode == "image" and not @field_shared?}
           class="ic-home-bg"
           style={"background-image:url('#{@home_bg.image_url}');background-size:cover;background-position:center;"}
           aria-hidden="true"
         >
         </div>
-        <BusterClawWeb.ShaderCanvas.shader_canvas bg={@home_bg} prefix="home" class="ic-home-bg" />
+        <BusterClawWeb.ShaderCanvas.shader_canvas
+          bg={@home_bg}
+          prefix="home"
+          class="ic-home-bg"
+          render?={not @field_shared?}
+        />
         <div class="relative z-10 flex min-h-0 flex-1 flex-col space-y-8">
           <div class="flex items-stretch gap-4 border-b-2 border-base-content/20 pb-5">
             <div class="shrink-0 space-y-4">

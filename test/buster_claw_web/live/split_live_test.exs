@@ -133,6 +133,69 @@ defmodule BusterClawWeb.SplitLiveTest do
            )
   end
 
+  # A join that includes Home: the homepage background is the one thing the
+  # operator sees behind everything, so the split paints it ONCE across the whole
+  # tab and the panes sit on it — the Home pane transparent (its own panels are
+  # already veils), every other pane a translucent veil. Reported 10-13: a
+  # terminal joined with Home was a solid block beside the shader.
+  test "home joined with a terminal shares the home background across the split",
+       %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/split?left=/&right=/terminal")
+
+    assert has_element?(view, "#split-root.ic-home[data-split-bg-field='home']")
+    assert has_element?(view, "#split-root [id^='split-shader-']")
+    # The Home pane does not draw a second copy of the same shader.
+    refute has_element?(view, "[data-split-pane='left'] [id^='home-shader-']")
+
+    assert has_element?(view, "[data-split-pane='left'][data-split-pane-veiled='false']")
+
+    assert has_element?(
+             view,
+             "[data-split-pane='right'][data-split-pane-terminal='true'][data-split-pane-veiled='true']"
+           )
+
+    # The terminal goes transparent over the shared field, with no host image.
+    assert has_element?(
+             view,
+             "[id^='terminal-root'][data-terminal-embedded='true'][data-terminal-bg-active='true'][data-terminal-bg-source='shared'][data-terminal-bg-image='']"
+           )
+  end
+
+  test "a home split without a terminal still fills the field", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/split?left=/browse&right=/")
+
+    assert has_element?(view, "#split-root[data-split-bg-field='home']")
+    assert has_element?(view, "[data-split-pane='left'][data-split-pane-veiled='true']")
+    assert has_element?(view, "[data-split-pane='right'][data-split-pane-veiled='false']")
+  end
+
+  test "an active terminal background outranks the home field", %{conn: conn} do
+    put_terminal_background()
+
+    {:ok, view, _html} = live(conn, "/split?left=/&right=/terminal")
+
+    assert has_element?(view, "#split-root[data-split-bg-field='terminal']")
+    refute has_element?(view, "#split-root.ic-home")
+    # Home keeps its own canvas and its normal, opaque pane.
+    assert has_element?(view, "[data-split-pane='left'] [id^='home-shader-']")
+    assert has_element?(view, "[data-split-pane='left'][data-split-pane-veiled='false']")
+
+    assert has_element?(
+             view,
+             "[id^='terminal-root'][data-terminal-embedded='true'][data-terminal-bg-source='host']"
+           )
+  end
+
+  test "a home background set to off leaves the split plain", %{conn: conn} do
+    {:ok, _} = BusterClaw.Appearance.set_background(:home, "off")
+
+    {:ok, view, _html} = live(conn, "/split?left=/&right=/terminal")
+
+    assert has_element?(view, "#split-root[data-split-bg-field='none']")
+    assert has_element?(view, "[data-split-pane='right'][data-split-pane-veiled='false']")
+    refute has_element?(view, "[id^='terminal-root'][data-terminal-bg-source='shared']")
+  end
+
   test "embedded panes render bare (no nested tab strip / dock)", %{conn: conn} do
     {:ok, _view, html} = live(conn, "/split?left=/browse&right=/browse")
 

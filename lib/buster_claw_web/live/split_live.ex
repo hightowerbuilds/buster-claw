@@ -8,17 +8,20 @@ defmodule BusterClawWeb.SplitLive do
   use BusterClawWeb, :live_view
 
   alias BusterClawWeb.PaneRoutes
+  alias BusterClawWeb.SplitField
 
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
-      Phoenix.PubSub.subscribe(BusterClaw.PubSub, BusterClaw.Appearance.topic())
+      Phoenix.PubSub.subscribe(BusterClaw.PubSub, BusterClaw.Appearance.topic(:terminal))
+      Phoenix.PubSub.subscribe(BusterClaw.PubSub, BusterClaw.Appearance.topic(:home))
     end
 
     {:ok,
      socket
      |> assign(:page_title, "Split")
-     |> assign(:terminal_bg, BusterClaw.Appearance.terminal_background())}
+     |> assign(:terminal_bg, BusterClaw.Appearance.terminal_background())
+     |> assign(:home_bg, BusterClaw.Appearance.home_background_state())}
   end
 
   @impl true
@@ -26,13 +29,33 @@ defmodule BusterClawWeb.SplitLive do
     {:noreply, assign(socket, :terminal_bg, bg)}
   end
 
+  def handle_info({:home_background, bg}, socket) do
+    {:noreply, assign(socket, :home_bg, bg)}
+  end
+
   @impl true
   def handle_params(params, _uri, socket) do
+    left = pane_spec("left", params["left"])
+    right = pane_spec("right", params["right"])
+
+    # Every pane learns its company, so it can compute the field (SplitField)
+    # from the same facts this view does.
+    panes = %{
+      "terminal" => terminal_pane?(left) or terminal_pane?(right),
+      "home" => home_pane?(left) or home_pane?(right)
+    }
+
     {:noreply,
      socket
-     |> assign(:left, pane_spec("left", params["left"]))
-     |> assign(:right, pane_spec("right", params["right"]))}
+     |> assign(:panes, panes)
+     |> assign(:left, with_panes(left, panes))
+     |> assign(:right, with_panes(right, panes))}
   end
+
+  defp with_panes(nil, _panes), do: nil
+
+  defp with_panes(%{child_session: child_session} = spec, panes),
+    do: %{spec | child_session: Map.put(child_session, "split_panes", panes)}
 
   defp pane_spec(_side, nil), do: nil
 
@@ -122,34 +145,42 @@ defmodule BusterClawWeb.SplitLive do
 
   @impl true
   def render(assigns) do
-    assigns =
-      assign(assigns, :split_bg, split_bg(assigns.left, assigns.right, assigns.terminal_bg))
+    {field, split_bg} = SplitField.field(assigns.panes, assigns.terminal_bg, assigns.home_bg)
+    assigns = assigns |> assign(:split_field, field) |> assign(:split_bg, split_bg)
 
     ~H"""
     <Layouts.app flash={@flash} socket={@socket} full_bleed>
       <div
         id="split-root"
         phx-hook="SplitResizer"
-        data-split-terminal-bg-active={to_string(@split_bg.kind != :none)}
-        data-terminal-bg-active={to_string(@split_bg.kind != :none)}
-        class={[
-          "relative isolate flex min-h-0 flex-1 flex-col lg:flex-row",
-          if(@split_bg.kind == :image, do: "bg-cover bg-center", else: nil),
-          @split_bg.kind != :none && "bc-split-terminal-bg-active"
-        ]}
+        data-split-bg-field={@split_field}
+        data-split-terminal-bg-active={to_string(@split_field == :terminal)}
+        data-terminal-bg-active={to_string(@split_field == :terminal)}
+        class={
+          [
+            "relative isolate flex min-h-0 flex-1 flex-col lg:flex-row",
+            if(@split_bg.kind == :image, do: "bg-cover bg-center", else: nil),
+            @split_field == :terminal && "bc-split-terminal-bg-active",
+            # `.ic-home .ic-panel` is the homepage's veil rule; wearing the class
+            # here gives every panel inside the join the same translucency.
+            @split_field == :home && "ic-home"
+          ]
+        }
         style={split_background_style(@split_bg)}
       >
-        <%!-- One shader across the whole split when the active terminal background
-              is a shader and at least one pane is a terminal — the panes go
-              transparent (below) and reveal this shared canvas, so a terminal/
-              terminal split reads as one continuous field. --%>
+        <%!-- One background across the whole split (SplitField): the terminal's
+              when a terminal pane has one set, else the homepage's when Home is in
+              the join. Panes go transparent or translucent (below) and reveal this
+              shared canvas, so the join reads as one continuous field. --%>
         <BusterClawWeb.ShaderCanvas.shader_canvas bg={@split_bg} prefix="split" />
         <.pane
           side="left"
           class="bc-split-left"
           pane={@left}
           socket={@socket}
-          bg_active={@split_bg.kind != :none and terminal_pane?(@left)}
+          bg_active={@split_field == :terminal and terminal_pane?(@left)}
+          owner={@split_field == :home and home_pane?(@left)}
+          veiled={@split_field == :home and not home_pane?(@left)}
         />
         <.split_divider />
         <.pane
@@ -157,19 +188,13 @@ defmodule BusterClawWeb.SplitLive do
           class="bc-split-right"
           pane={@right}
           socket={@socket}
-          bg_active={@split_bg.kind != :none and terminal_pane?(@right)}
+          bg_active={@split_field == :terminal and terminal_pane?(@right)}
+          owner={@split_field == :home and home_pane?(@right)}
+          veiled={@split_field == :home and not home_pane?(@right)}
         />
       </div>
     </Layouts.app>
     """
-  end
-
-  # The active terminal background is only painted on the split when at least one
-  # pane is a terminal; otherwise it collapses to `:none`. Terminal panes then go
-  # transparent so a terminal/terminal split reads as one continuous background
-  # (image or shader), while non-terminal panes keep their normal surface.
-  defp split_bg(left, right, bg) do
-    if terminal_pane?(left) or terminal_pane?(right), do: bg, else: %{kind: :none}
   end
 
   defp split_background_style(%{kind: :image, image_url: url}),
@@ -179,6 +204,9 @@ defmodule BusterClawWeb.SplitLive do
 
   defp terminal_pane?(%{module: BusterClawWeb.TerminalLive}), do: true
   defp terminal_pane?(_pane), do: false
+
+  defp home_pane?(%{module: BusterClawWeb.StatusLive}), do: true
+  defp home_pane?(_pane), do: false
 
   # The draggable partition between the two joined panes. Dragging it resizes the
   # split (SplitResizer hook); the centered button swaps the two sides. Only shown
@@ -208,7 +236,13 @@ defmodule BusterClawWeb.SplitLive do
   attr :class, :string, default: nil
   attr :pane, :map, default: nil
   attr :socket, :map, required: true
+  # Transparent over the terminal field (a terminal pane with its background set).
   attr :bg_active, :boolean, default: false
+  # The Home pane over the home field: transparent, its own panels are the veils.
+  attr :owner, :boolean, default: false
+  # Any other pane over the home field: a translucent veil, so the field shows
+  # through and the pane's text stays legible.
+  attr :veiled, :boolean, default: false
 
   defp pane(assigns) do
     ~H"""
@@ -216,15 +250,22 @@ defmodule BusterClawWeb.SplitLive do
       data-split-pane={@side}
       data-split-pane-terminal={to_string(terminal_pane?(@pane))}
       data-terminal-bg-active={to_string(@bg_active)}
+      data-split-pane-veiled={to_string(@veiled)}
       class={
         [
           # z-10 keeps the pane above the split's shared shader canvas (z-0).
           "relative z-10 flex min-h-0 min-w-0 flex-col overflow-hidden",
           @class,
-          if(@bg_active,
-            do: "bg-transparent",
-            else: "rounded-lg border border-base-300 bg-base-100 shadow-sm"
-          )
+          cond do
+            @bg_active or @owner ->
+              "bg-transparent"
+
+            @veiled ->
+              "rounded-lg border border-base-300 bg-base-100/70 shadow-sm backdrop-blur-[10px]"
+
+            true ->
+              "rounded-lg border border-base-300 bg-base-100 shadow-sm"
+          end
         ]
       }
     >
@@ -245,7 +286,7 @@ defmodule BusterClawWeb.SplitLive do
         :if={not terminal_pane?(@pane)}
         class={[
           "flex items-center justify-between gap-2 px-4 py-2",
-          if(@bg_active, do: "bg-transparent", else: "border-b border-base-300")
+          if(@bg_active or @veiled, do: "bg-transparent", else: "border-b border-base-300")
         ]}
       >
         <span class="truncate text-sm font-semibold">{pane_label(@pane)}</span>
