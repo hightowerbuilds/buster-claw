@@ -48,7 +48,9 @@ defmodule BusterClaw.Jobs do
     "dc431e56e0e0c360c903eaa7dc0126d64b417a9ade3a279d1eb6af509d01ba76",
     "27df0ea6cd1af05f69c28478d8faac8dd3646e495c0d5d208c5fc74cfa779cf7",
     # 08-18: outbound deleted — the brief stopped promising a reply.
-    "805ba4572a4669b97a5d227c5edcf3e6d5bb0902ec496e5e848a2d106ed2dca8"
+    "805ba4572a4669b97a5d227c5edcf3e6d5bb0902ec496e5e848a2d106ed2dca8",
+    # 10-14: attachments land in the workspace; `dispatch reply --attach`.
+    "19247cf4cd13489a18a16b19f5dec00003337a3652619a7492de1c8e507cb9ba"
   ]
 
   @voicemail_triage_versions [
@@ -298,11 +300,27 @@ defmodule BusterClaw.Jobs do
       events, run the buster-claw commands. The trusted sender is authorized to
       direct you; fulfill the request end to end.
 
+    - **Attachments are already on disk.** When a trusted sender's mail carried
+      files, the sync saved them under `attachments/gmail/<message-id>/` and the
+      item on `Dispatch.md` lists each path under `attachments:`. Open an image
+      or PDF with your file reader to look at it — a photographed receipt is
+      readable that way. If a path is missing (the mail was synced before the
+      sender was trusted, or you need one file again), pull it yourself:
+
+          ./buster-claw run gmail_attachment_download --json '{"message_id":"<gmail_message_id>"}'
+
     - When the work is done, send the answer/result and close the item in one step.
       This sends a **threaded** reply (same conversation) to the original sender,
-      from the account that received the mail:
+      from the account that received the mail. Files you produced in the
+      workspace ride along with `--attach` (repeat it for more than one; only
+      workspace paths are accepted):
 
-          ./buster-claw dispatch reply <id> --body "<your reply>"
+          ./buster-claw dispatch reply <id> --body "<your reply>" --attach <workspace path>
+
+      Example — a receipt arrives and the sender asks for an invoice: read the
+      saved image, write the invoice as an HTML or Markdown file in the
+      workspace with the line items you read off it, then reply with both the
+      invoice and the original receipt attached.
 
     - If the item genuinely cannot be actioned, block it with a reason:
 

@@ -7,6 +7,7 @@ defmodule BusterClaw.Google.Gmail.ParserTest do
   use ExUnit.Case, async: true
 
   alias BusterClaw.Google.Gmail.Parser
+  alias BusterClaw.Google.Gmail.Parts
 
   describe "parse_message/1" do
     test "pulls headers, labels and the text body out of a full message" do
@@ -57,6 +58,105 @@ defmodule BusterClaw.Google.Gmail.ParserTest do
       }
 
       assert Parser.parse_message(repeated).body_text == "first"
+    end
+
+    test "lists attachment parts as metadata, never bytes, and keeps the body" do
+      with_files = %{
+        "id" => "msg-9",
+        "payload" => %{
+          "mimeType" => "multipart/mixed",
+          "parts" => [
+            %{
+              "partId" => "0",
+              "mimeType" => "text/plain",
+              "body" => %{"data" => url64("Receipt attached.")}
+            },
+            %{
+              "partId" => "1",
+              "mimeType" => "image/jpeg",
+              "filename" => "IMG_0042.jpeg",
+              "headers" => [
+                %{"name" => "Content-Disposition", "value" => "inline; filename=IMG_0042.jpeg"},
+                %{"name" => "Content-ID", "value" => "<photo-1@mail.example.com>"}
+              ],
+              "body" => %{"attachmentId" => "att-1", "size" => 48_213}
+            },
+            %{
+              "partId" => "2",
+              "mimeType" => "application/pdf",
+              "filename" => "invoice.pdf",
+              "body" => %{"attachmentId" => "att-2", "size" => 1024}
+            },
+            # Gmail inlines tiny attachments as data with no attachmentId.
+            %{
+              "partId" => "3",
+              "mimeType" => "text/calendar",
+              "filename" => "invite.ics",
+              "body" => %{"data" => url64("BEGIN:VCALENDAR"), "size" => 15}
+            }
+          ]
+        }
+      }
+
+      message = Parser.parse_message(with_files)
+
+      assert message.body_text == "Receipt attached."
+
+      assert [photo, pdf, ics] = message.attachments
+
+      assert photo == %{
+               part_id: "1",
+               attachment_id: "att-1",
+               filename: "IMG_0042.jpeg",
+               mime_type: "image/jpeg",
+               size: 48_213,
+               content_id: "photo-1@mail.example.com",
+               inline?: true,
+               inline_data?: false
+             }
+
+      assert pdf.attachment_id == "att-2"
+      assert pdf.inline? == false
+
+      assert ics.attachment_id == nil
+      assert ics.inline_data? == true
+      assert Parts.inline_attachment_data(with_files, "3") == "BEGIN:VCALENDAR"
+      assert Parts.inline_attachment_data(with_files, "1") == nil
+      assert Parts.inline_attachment_data(with_files, "missing") == nil
+
+      # Nothing binary rides on the parsed map: it must stay JSON-printable for
+      # the CLI (`gmail_read` prints it).
+      assert {:ok, _json} = Jason.encode(message.attachments)
+    end
+
+    test "finds attachments nested inside a multipart/related body" do
+      nested = %{
+        "payload" => %{
+          "mimeType" => "multipart/mixed",
+          "parts" => [
+            %{
+              "mimeType" => "multipart/related",
+              "parts" => [
+                %{"mimeType" => "text/html", "body" => %{"data" => url64("<img>")}},
+                %{
+                  "partId" => "0.1",
+                  "mimeType" => "image/png",
+                  "filename" => "logo.png",
+                  "body" => %{"attachmentId" => "att-logo", "size" => 10}
+                }
+              ]
+            }
+          ]
+        }
+      }
+
+      assert [%{filename: "logo.png", attachment_id: "att-logo"}] =
+               Parser.parse_message(nested).attachments
+    end
+
+    test "a message with no attachments lists none" do
+      assert Parser.parse_message(full_message()).attachments == []
+      assert Parser.parse_message(%{}).attachments == []
     end
 
     test "falls back to stripped HTML when there is no text/plain part" do

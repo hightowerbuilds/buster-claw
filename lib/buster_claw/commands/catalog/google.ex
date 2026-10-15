@@ -76,6 +76,25 @@ defmodule BusterClaw.Commands.Catalog.Google do
           })
       },
       %{
+        name: "gmail_attachment_download",
+        type: :read,
+        tier: :safe,
+        description:
+          "Save a Gmail message's attachments into the workspace (attachments/gmail/<message-id>/) and return their paths. Pass attachment_id, filename, or index to pick one; default is all.",
+        args:
+          Helpers.google_args(%{
+            "message_id" => %{type: :string, required: true},
+            "attachment_id" => %{type: :string, required: false},
+            "filename" => %{type: :string, required: false},
+            "index" => %{type: :integer, required: false, description: "1-based position."},
+            "destination" => %{
+              type: :string,
+              required: false,
+              description: "Workspace-relative directory to save into."
+            }
+          })
+      },
+      %{
         name: "gmail_sync",
         type: :trigger,
         tier: :safe,

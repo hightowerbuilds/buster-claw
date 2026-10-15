@@ -912,7 +912,9 @@ check lib/buster_claw_web/chrome_hook.ex                      125 HELD
 # someone read it.
 check lib/buster_claw/google/gmail.ex                         330 HELD
 check lib/buster_claw/google/gmail/mime.ex                    340 HELD
-check lib/buster_claw/google/gmail/parser.ex                  260 HELD
+check lib/buster_claw/google/gmail/parser.ex                  223 HELD
+check lib/buster_claw/google/gmail/parts.ex                   150 HELD
+check lib/buster_claw/google/gmail_attachments.ex             300 HELD
 
 # Integrations (`a23c702`), 539 -> 482 by collapsing five near-verbatim
 # failure-recording blocks into one recorder.

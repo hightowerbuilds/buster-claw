@@ -57,12 +57,13 @@ defmodule BusterClawWeb.Explained.Registry do
   # `:restricted`, two of those gated. `trigger` does not move. Measured.
   # Recomputed from Catalog.entries/0 after removing voice generation; the three
   # app-tab layout commands remain included.
+  # 10-14: `gmail_attachment_download` — one `:safe` `:read`.
   @command_stats %{
-    total: 192,
-    read: 78,
+    total: 193,
+    read: 79,
     trigger: 19,
     mutate: 95,
-    safe: 83,
+    safe: 84,
     restricted: 109,
     gated: 21
   }

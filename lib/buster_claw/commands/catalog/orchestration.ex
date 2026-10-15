@@ -233,7 +233,12 @@ defmodule BusterClaw.Commands.Catalog.Orchestration do
         args:
           Helpers.google_args(%{
             "id" => %{type: :integer, required: true},
-            "body" => %{type: :string, required: true}
+            "body" => %{type: :string, required: true},
+            "attachments" => %{
+              type: :array,
+              required: false,
+              description: "Workspace-relative file paths to attach (fenced to the workspace)."
+            }
           })
       },
       # Cross-run memory (Phase 2) — recall what past runs did.

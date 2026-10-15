@@ -57,6 +57,52 @@ defmodule BusterClaw.Google.GmailSyncTest do
     end)
   end
 
+  defp stub_message_with_receipt(opts \\ []) do
+    fetch =
+      Keyword.get(opts, :attachment_fetch, fn conn ->
+        Req.Test.json(conn, %{
+          "size" => 9,
+          "data" => Base.url_encode64("JPEGBYTES", padding: false)
+        })
+      end)
+
+    Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+      conn = Plug.Conn.fetch_query_params(conn)
+
+      case {conn.request_path, conn.query_params["format"]} do
+        {"/gmail/v1/users/me/messages", _format} ->
+          Req.Test.json(conn, %{
+            "resultSizeEstimate" => 1,
+            "messages" => [%{"id" => "msg-1", "threadId" => "thread-1"}]
+          })
+
+        {"/gmail/v1/users/me/messages/msg-1", "full"} ->
+          Req.Test.json(conn, message_with_receipt())
+
+        {"/gmail/v1/users/me/messages/msg-1/attachments/att-1", _format} ->
+          fetch.(conn)
+      end
+    end)
+  end
+
+  defp message_with_receipt do
+    full_message()
+    |> put_in(["payload", "mimeType"], "multipart/mixed")
+    |> put_in(["payload", "parts"], [
+      %{
+        "partId" => "0",
+        "mimeType" => "text/plain",
+        "body" => %{"data" => Base.url_encode64("Hello from Gmail.", padding: false)}
+      },
+      %{
+        "partId" => "1",
+        "mimeType" => "image/jpeg",
+        "filename" => "IMG_0042.jpeg",
+        "body" => %{"attachmentId" => "att-1", "size" => 9}
+      }
+    ])
+  end
+
   test "syncs Gmail messages into stable Library raw documents" do
     Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
       conn = Plug.Conn.fetch_query_params(conn)
@@ -308,6 +354,74 @@ defmodule BusterClaw.Google.GmailSyncTest do
              )
 
     assert [_only_one] = Dispatch.list_open()
+  end
+
+  test "a trusted sender's attachments land in the workspace, on the doc, and on the queue item",
+       %{root: root} do
+    trust_sender!(root, "ada@example.com")
+    stub_message_with_receipt()
+    account = connected_account!()
+
+    assert {:ok, result} =
+             GmailSync.sync(account,
+               query: "in:inbox",
+               limit: 1,
+               req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+             )
+
+    assert result.synced == 1
+
+    saved = Path.join(root, "attachments/gmail/msg-1/IMG_0042.jpeg")
+    assert File.read!(saved) == "JPEGBYTES"
+
+    # The Library doc lists the file by workspace path, and is tagged.
+    assert [document] = Library.list_documents()
+    assert "has-attachments" in document.tags["items"]
+    content = File.read!(Path.join(root, document.artifact_path))
+    assert content =~ "## Attachments"
+
+    assert content =~
+             "- IMG_0042.jpeg (image/jpeg, 9 B) → `attachments/gmail/msg-1/IMG_0042.jpeg`"
+
+    assert content =~ "Hello from Gmail."
+
+    # The queue item carries the same paths, so Dispatch.md can name them.
+    assert [item] = Dispatch.list_open()
+
+    assert [
+             %{
+               "filename" => "IMG_0042.jpeg",
+               "path" => "attachments/gmail/msg-1/IMG_0042.jpeg",
+               "mime_type" => "image/jpeg",
+               "bytes" => 9
+             }
+           ] =
+             item.metadata["attachments"]
+  end
+
+  test "an untrusted sender's attachments are listed but never downloaded", %{root: root} do
+    stub_message_with_receipt(
+      attachment_fetch: fn _conn ->
+        flunk("attachment bytes must not be fetched for an untrusted sender")
+      end
+    )
+
+    account = connected_account!()
+
+    assert {:ok, result} =
+             GmailSync.sync(account,
+               query: "in:inbox",
+               limit: 1,
+               req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+             )
+
+    assert result.synced == 1
+    refute File.exists?(Path.join(root, "attachments"))
+
+    assert [document] = Library.list_documents()
+    content = File.read!(Path.join(root, document.artifact_path))
+    assert content =~ "- IMG_0042.jpeg (image/jpeg, 9 B) — not downloaded (attachment_id: att-1)"
+    assert Dispatch.list_open() == []
   end
 
   test "does not enqueue for an untrusted sender (archived to Library only)", %{root: _root} do

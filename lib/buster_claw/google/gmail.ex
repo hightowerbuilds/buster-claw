@@ -14,6 +14,7 @@ defmodule BusterClaw.Google.Gmail do
   alias BusterClaw.Google.Client
   alias BusterClaw.Google.Gmail.Mime
   alias BusterClaw.Google.Gmail.Parser
+  alias BusterClaw.Google.Gmail.Parts
 
   @default_limit 10
   @max_limit 50
@@ -119,6 +120,27 @@ defmodule BusterClaw.Google.Gmail do
 
     with {:ok, body} <- Client.get_json(account, path, opts) do
       {:ok, Parser.parse_message(body)}
+    end
+  end
+
+  @doc """
+  Fetch one attachment's bytes (`messages.attachments.get`), base64url-decoded.
+  `attachment_id` comes from a parsed message's `attachments` list.
+  """
+  def attachment(%Account{} = account, message_id, attachment_id, opts \\ []) do
+    path =
+      "users/me/messages/#{URI.encode_www_form(to_string(message_id))}/attachments/" <>
+        URI.encode_www_form(to_string(attachment_id))
+
+    # Attachments can run to Gmail's 25 MB cap; the default 10 s receive timeout
+    # sized for JSON metadata is too tight for that on a slow link.
+    opts = Keyword.put_new(opts, :receive_timeout, 60_000)
+
+    with {:ok, body} <- Client.get_json(account, path, opts) do
+      case body |> Map.get("data") |> Parts.decode_base64url() do
+        nil -> {:error, {:attachment_empty, to_string(attachment_id)}}
+        data -> {:ok, data}
+      end
     end
   end
 

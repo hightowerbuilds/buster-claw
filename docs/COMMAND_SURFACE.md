@@ -22,8 +22,8 @@ result shape into their transport-specific response format.
 
 ## Active Domains
 
-192 commands after removing voice generation. The three app-tab layout commands
-remain included. `./buster-claw commands` is authoritative; the Explained tab's
+193 commands (`gmail_attachment_download` joined on 10-14). The three app-tab
+layout commands remain included. `./buster-claw commands` is authoritative; the Explained tab's
 Command List renders the same counts from a contract test:
 
 - Runtime status, orchestration shifts, and in-shift role sessions

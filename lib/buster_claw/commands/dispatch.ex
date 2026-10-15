@@ -125,7 +125,7 @@ defmodule BusterClaw.Commands.Dispatch do
       |> put_new_string("email", blank_to_nil(item.source_account))
 
     Google.with_google_account(selector, fn account ->
-      case Gmail.send_message(account, reply_message_attrs(item, body)) do
+      case Gmail.send_message(account, reply_message_attrs(item, body, args)) do
         {:ok, sent} ->
           # The mail is already sent. If finishing the Dispatch item fails we must
           # NOT crash and report the whole reply as failed — surface the partial
@@ -174,7 +174,10 @@ defmodule BusterClaw.Commands.Dispatch do
     end)
   end
 
-  defp reply_message_attrs(item, body) do
+  # `attachments` rides through untouched: `Gmail.Mime` owns the fence (workspace
+  # paths only) and the header sanitization, so an invoice the agent wrote into
+  # the workspace can go back on the sender's thread, and nothing else can.
+  defp reply_message_attrs(item, body, args) do
     %{
       "to" => item.sender,
       "subject" => reply_subject(item.subject),
@@ -183,7 +186,12 @@ defmodule BusterClaw.Commands.Dispatch do
       "references" => item.gmail_rfc_message_id,
       "thread_id" => item.gmail_thread_id
     }
+    |> put_attachments(Map.get(args, "attachments"))
   end
+
+  defp put_attachments(attrs, nil), do: attrs
+  defp put_attachments(attrs, []), do: attrs
+  defp put_attachments(attrs, attachments), do: Map.put(attrs, "attachments", attachments)
 
   defp reply_subject(subject) do
     case blank_to_nil(subject) do

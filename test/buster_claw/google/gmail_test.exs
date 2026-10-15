@@ -531,6 +531,25 @@ defmodule BusterClaw.Google.GmailTest do
              )
   end
 
+  test "fetches an attachment by id and decodes Gmail's base64url payload" do
+    Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+      assert conn.request_path == "/gmail/v1/users/me/messages/msg-1/attachments/att-1"
+
+      Req.Test.json(conn, %{
+        "size" => 4,
+        "data" => Base.url_encode64(<<0xFF, 0xD8, 0xFF, 0xE0>>, padding: false)
+      })
+    end)
+
+    assert {:ok, <<0xFF, 0xD8, 0xFF, 0xE0>>} =
+             Gmail.attachment(
+               connected_account!(),
+               "msg-1",
+               "att-1",
+               req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+             )
+  end
+
   # Attachments must live inside the workspace now (the fence in
   # `resolve_attachment_path/1` refuses everything else), so test files are
   # written there rather than to `System.tmp_dir!()`.

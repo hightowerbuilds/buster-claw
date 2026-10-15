@@ -98,6 +98,7 @@ defmodule BusterClaw.CLI do
       status: :string,
       note: :string,
       body: :string,
+      attach: [:string, :keep],
       job: :string,
       subject: :string,
       source: :string,
@@ -390,6 +391,14 @@ defmodule BusterClaw.CLI do
     end
   end
 
+  # `--attach <path>` repeats; OptionParser's `:keep` yields one entry per use.
+  defp attach_paths(opts) do
+    case Keyword.get_values(opts, :attach) do
+      [] -> nil
+      paths -> paths
+    end
+  end
+
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
@@ -496,6 +505,7 @@ defmodule BusterClaw.CLI do
       |> maybe_put("body", Keyword.get(opts, :body))
       |> maybe_put("email", Keyword.get(opts, :email))
       |> maybe_put("account_id", Keyword.get(opts, :account_id))
+      |> maybe_put("attachments", attach_paths(opts))
 
     dispatch_request("dispatch_reply", args, opts, &format_dispatch_reply/1)
   end
@@ -901,6 +911,7 @@ defmodule BusterClaw.CLI do
       dispatch claim         Claim the next open item (--job to scope, --session).
       dispatch done <id>     Mark an item done (--note).
       dispatch block <id>    Mark an item blocked (--note).
+      dispatch reply <id>    Threaded Gmail reply to the sender, then done (--body, --attach).
       dispatch strategy <id> <single|swarm>  Set an item's execution strategy.
       jobs list              List the defined jobs (role roster).
       jobs show <key>        Read one job description.
@@ -924,6 +935,8 @@ defmodule BusterClaw.CLI do
       --status <status>      Filter `dispatch list` (e.g. queued, claimed).
       --job <key>            Scope `on-duty` / `dispatch list` / `dispatch claim` to a job.
       --note <text>          Note for `dispatch done` / `dispatch block` / `off-duty`.
+      --body <text>          Reply body for `dispatch reply`.
+      --attach <path>        Workspace file to attach to `dispatch reply` (repeatable).
       --no-activate          Queue the tab without navigating to it.
       --verbose              Print full JSON for Gmail sync output.
       --url <url>            Override BUSTER_CLAW_URL (default #{@default_url}).

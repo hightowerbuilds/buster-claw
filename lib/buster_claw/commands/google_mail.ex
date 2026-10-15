@@ -11,7 +11,7 @@ defmodule BusterClaw.Commands.Google.Mail do
 
   import BusterClaw.Commands.Google.Accounts, only: [with_google_account: 2, truthy?: 1]
 
-  alias BusterClaw.Google.{Gmail, GmailSync}
+  alias BusterClaw.Google.{Gmail, GmailAttachments, GmailSync}
 
   def gmail_label_list(args \\ %{}) do
     with_google_account(args, fn account ->
@@ -37,6 +37,32 @@ defmodule BusterClaw.Commands.Google.Mail do
         Gmail.read(account, message_id)
       end)
     end
+  end
+
+  @doc """
+  Save a message's attachments into the workspace (default
+  `attachments/gmail/<message-id>/`). Narrow to one with `attachment_id`,
+  `filename`, or 1-based `index`; `destination` picks another directory, fenced
+  to the workspace. Returns the saved paths so the agent can open them.
+  """
+  def gmail_attachment_download(args) do
+    with_message_id(args, fn account, message_id ->
+      with {:ok, message} <- Gmail.read(account, message_id) do
+        case GmailAttachments.select(message, args) do
+          [] when message.attachments == [] ->
+            {:error, :no_attachments}
+
+          [] ->
+            {:error, {:attachment_not_found, message.attachments}}
+
+          selected ->
+            GmailAttachments.save(account, message,
+              select: selected,
+              destination: Map.get(args, "destination")
+            )
+        end
+      end
+    end)
   end
 
   def gmail_sync(args) do

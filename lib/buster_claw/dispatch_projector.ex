@@ -154,11 +154,25 @@ defmodule BusterClaw.DispatchProjector do
     ### ##{item.id} — #{inline(item.subject) || "(no subject)"}
 
     - status: #{item.status}
-    - source: #{inline(item.source)}#{sender_line(item)}
+    - source: #{inline(item.source)}#{sender_line(item)}#{attachment_lines(item)}
 
     #{fenced(item.request_body_excerpt)}
     """
   end
+
+  # Files the sync saved from a trusted sender's mail, by workspace path. This
+  # is how the agent learns a receipt photo arrived without opening the message:
+  # the path is app-chosen (sanitized basename under attachments/gmail/), the
+  # sender's filename is display data only, so it goes through `inline/1` like
+  # the subject.
+  defp attachment_lines(%{metadata: %{"attachments" => [_ | _] = attachments}}) do
+    "\n- attachments:" <>
+      Enum.map_join(attachments, "", fn attachment ->
+        "\n  - `#{inline(attachment["path"])}` (#{inline(attachment["mime_type"]) || "unknown"})"
+      end)
+  end
+
+  defp attachment_lines(_item), do: ""
 
   defp sender_line(%{sender: sender}) when is_binary(sender) and sender != "",
     do: "\n- sender: #{inline(sender)}"

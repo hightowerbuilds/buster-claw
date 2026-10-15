@@ -224,6 +224,7 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
       finance_news
       finance_quote
       finance_sources
+      gmail_attachment_download
       gmail_label_list
       gmail_read
       gmail_search

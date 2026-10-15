@@ -626,6 +626,7 @@ defmodule BusterClaw.Commands do
   defdelegate gmail_label_list(args \\ %{}), to: BusterClaw.Commands.Google
   defdelegate gmail_search(args), to: BusterClaw.Commands.Google
   defdelegate gmail_read(args), to: BusterClaw.Commands.Google
+  defdelegate gmail_attachment_download(args), to: BusterClaw.Commands.Google
   defdelegate gmail_sync(args), to: BusterClaw.Commands.Google
   defdelegate gmail_draft_create(args), to: BusterClaw.Commands.Google
   defdelegate gmail_send(args), to: BusterClaw.Commands.Google

@@ -690,6 +690,48 @@ defmodule BusterClaw.CommandsTest do
       assert {:ok, _} = Commands.dispatch_reply(%{"id" => item.id, "body" => "ok"})
     end
 
+    test "attaches workspace files to the reply, and refuses paths outside it", %{item: item} do
+      root = BusterClaw.Library.Artifact.workspace_root()
+      File.mkdir_p!(Path.join(root, "invoices"))
+      invoice = Path.join(root, "invoices/invoice-#{System.unique_integer([:positive])}.html")
+      File.write!(invoice, "<h1>Invoice</h1>")
+      on_exit(fn -> File.rm(invoice) end)
+
+      Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        raw = body |> Jason.decode!() |> Map.fetch!("raw") |> decode_base64url!()
+
+        assert raw =~ "Content-Type: multipart/mixed;"
+        assert raw =~ ~s(Content-Disposition: attachment; filename="#{Path.basename(invoice)}")
+        assert raw =~ Base.encode64("<h1>Invoice</h1>")
+
+        Req.Test.json(conn, %{"id" => "msg-sent-11", "threadId" => "thread-1"})
+      end)
+
+      # Workspace-relative, as the agent will write it.
+      assert {:ok, %{status: "done"}} =
+               Commands.dispatch_reply(%{
+                 "id" => item.id,
+                 "body" => "Invoice attached.",
+                 "attachments" => ["invoices/" <> Path.basename(invoice)]
+               })
+    end
+
+    test "an attachment outside the workspace fails before anything is sent", %{item: item} do
+      Req.Test.stub(BusterClaw.GoogleHTTP, fn _conn ->
+        flunk("nothing may be sent when an attachment is outside the workspace")
+      end)
+
+      assert {:error, {:attachment_outside_workspace, _}} =
+               Commands.dispatch_reply(%{
+                 "id" => item.id,
+                 "body" => "here",
+                 "attachments" => ["/etc/hosts"]
+               })
+
+      assert Dispatch.get_item!(item.id).status == "queued"
+    end
+
     test "requires a body", %{item: item} do
       assert {:error, :missing_body} = Commands.dispatch_reply(%{"id" => item.id, "body" => "  "})
       assert Dispatch.get_item!(item.id).status == "queued"
@@ -713,6 +755,140 @@ defmodule BusterClaw.CommandsTest do
                Commands.dispatch_reply(%{"id" => item.id, "body" => "calling you back"})
 
       assert Dispatch.get_item!(item.id).status == "queued"
+    end
+  end
+
+  describe "gmail_attachment_download/1" do
+    setup do
+      previous = Application.get_env(:buster_claw, :google_req_options)
+      prev_ws = Application.get_env(:buster_claw, :workspace_root)
+      tmp = Path.join(System.tmp_dir!(), "bc_attach_cmd_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(tmp)
+
+      Application.put_env(:buster_claw, :google_req_options,
+        plug: {Req.Test, BusterClaw.GoogleHTTP}
+      )
+
+      Application.put_env(:buster_claw, :workspace_root, tmp)
+
+      on_exit(fn ->
+        if previous,
+          do: Application.put_env(:buster_claw, :google_req_options, previous),
+          else: Application.delete_env(:buster_claw, :google_req_options)
+
+        if prev_ws,
+          do: Application.put_env(:buster_claw, :workspace_root, prev_ws),
+          else: Application.delete_env(:buster_claw, :workspace_root)
+
+        File.rm_rf(tmp)
+      end)
+
+      {:ok, _account} =
+        Google.create_account(%{
+          "email" => "me@example.com",
+          "client_id" => "client-id",
+          "client_secret" => "client-secret",
+          "refresh_token" => "refresh-token",
+          "access_token" => "access-token",
+          "access_token_expires_at" => DateTime.utc_now() |> DateTime.add(3600, :second)
+        })
+
+      Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+        case conn.request_path do
+          "/gmail/v1/users/me/messages/msg-1" ->
+            Req.Test.json(conn, %{
+              "id" => "msg-1",
+              "threadId" => "thread-1",
+              "payload" => %{
+                "mimeType" => "multipart/mixed",
+                "parts" => [
+                  %{
+                    "partId" => "0",
+                    "mimeType" => "text/plain",
+                    "body" => %{"data" => Base.url_encode64("hi", padding: false)}
+                  },
+                  %{
+                    "partId" => "1",
+                    "mimeType" => "image/jpeg",
+                    "filename" => "receipt.jpg",
+                    "body" => %{"attachmentId" => "att-1", "size" => 3}
+                  },
+                  %{
+                    "partId" => "2",
+                    "mimeType" => "application/pdf",
+                    "filename" => "terms.pdf",
+                    "body" => %{"attachmentId" => "att-2", "size" => 4}
+                  }
+                ]
+              }
+            })
+
+          "/gmail/v1/users/me/messages/msg-1/attachments/att-1" ->
+            Req.Test.json(conn, %{"data" => Base.url_encode64("JPG", padding: false)})
+
+          "/gmail/v1/users/me/messages/msg-1/attachments/att-2" ->
+            Req.Test.json(conn, %{"data" => Base.url_encode64("%PDF", padding: false)})
+
+          "/gmail/v1/users/me/messages/msg-2" ->
+            Req.Test.json(conn, %{
+              "id" => "msg-2",
+              "payload" => %{
+                "mimeType" => "text/plain",
+                "body" => %{"data" => Base.url_encode64("no files", padding: false)}
+              }
+            })
+        end
+      end)
+
+      %{tmp: tmp}
+    end
+
+    test "saves every attachment by default and returns workspace paths", %{tmp: tmp} do
+      assert {:ok, result} = Commands.gmail_attachment_download(%{"message_id" => "msg-1"})
+      assert result.directory == "attachments/gmail/msg-1"
+
+      assert [
+               %{path: "attachments/gmail/msg-1/receipt.jpg"},
+               %{path: "attachments/gmail/msg-1/terms.pdf"}
+             ] = result.saved
+
+      assert File.read!(Path.join(tmp, "attachments/gmail/msg-1/receipt.jpg")) == "JPG"
+    end
+
+    test "narrows to one attachment by filename, id, or index", %{tmp: tmp} do
+      assert {:ok, %{saved: [%{filename: "terms.pdf"}]}} =
+               Commands.gmail_attachment_download(%{"id" => "msg-1", "filename" => "terms.pdf"})
+
+      assert {:ok, %{saved: [%{filename: "receipt.jpg"}]}} =
+               Commands.gmail_attachment_download(%{
+                 "message_id" => "msg-1",
+                 "attachment_id" => "att-1"
+               })
+
+      assert {:ok, %{saved: [%{filename: "receipt.jpg"}]}} =
+               Commands.gmail_attachment_download(%{"message_id" => "msg-1", "index" => 1})
+
+      refute File.exists?(Path.join(tmp, "attachments/gmail/msg-1/receipt.jpg")) == false
+    end
+
+    test "says so when the message has no attachments, or the selector matches none" do
+      assert {:error, :no_attachments} =
+               Commands.gmail_attachment_download(%{"message_id" => "msg-2"})
+
+      assert {:error, {:attachment_not_found, [_, _]}} =
+               Commands.gmail_attachment_download(%{
+                 "message_id" => "msg-1",
+                 "filename" => "nope.png"
+               })
+
+      assert {:error, :missing_message_id} = Commands.gmail_attachment_download(%{})
+    end
+
+    test "the command is a safe read in the catalog with the documented arguments" do
+      entry = Enum.find(Commands.list_commands(), &(&1.name == "gmail_attachment_download"))
+      assert %{type: :read, tier: :safe} = entry
+      assert Map.has_key?(entry.args, "message_id")
+      assert Map.has_key?(entry.args, "destination")
     end
   end
 

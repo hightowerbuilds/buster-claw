@@ -3,9 +3,10 @@ defmodule BusterClaw.Google.Gmail.Parser do
   Turns raw Gmail API JSON into the plain maps the rest of the app consumes.
 
   Owns the inbound half of the Gmail seam: the message/label/draft/history
-  builders, MIME part traversal (`multipart/*` payloads are a tree — the body
-  can be at any depth), base64url body decoding, the HTML-to-text fallback used
-  when a message carries no `text/plain` part, and `internalDate` parsing.
+  builders, the HTML-to-text fallback used when a message carries no
+  `text/plain` part, and `internalDate` parsing. The MIME tree walk, the
+  header map, base64url decoding and the attachment listing live in
+  `BusterClaw.Google.Gmail.Parts`, which this module reads.
 
   Pure and total by design: it performs no HTTP and never raises on shape.
   Anything missing from a response comes back as `nil` or `[]` rather than
@@ -13,10 +14,12 @@ defmodule BusterClaw.Google.Gmail.Parser do
   the `format` requested (`metadata` responses have no bodies at all).
   """
 
+  alias BusterClaw.Google.Gmail.Parts
+
   @doc "Build the full message map from a `format=full` messages.get response."
   def parse_message(body) do
     payload = Map.get(body, "payload", %{})
-    headers = headers_map(payload)
+    headers = Parts.headers_map(payload)
     {text, html} = message_bodies(payload)
 
     %{
@@ -35,6 +38,7 @@ defmodule BusterClaw.Google.Gmail.Parser do
       message_id_header: Map.get(headers, "message-id"),
       body_text: text || html_to_text(html),
       body_html: html,
+      attachments: Parts.attachments(payload),
       raw: body
     }
   end
@@ -42,7 +46,7 @@ defmodule BusterClaw.Google.Gmail.Parser do
   @doc "Build the headers-only summary used by search results and modify/trash."
   def message_summary(body) do
     payload = Map.get(body, "payload", %{})
-    headers = headers_map(payload)
+    headers = Parts.headers_map(payload)
 
     %{
       id: Map.get(body, "id"),
@@ -143,19 +147,11 @@ defmodule BusterClaw.Google.Gmail.Parser do
     |> Enum.uniq()
   end
 
-  defp headers_map(payload) do
-    payload
-    |> Map.get("headers", [])
-    |> Map.new(fn header ->
-      {header |> Map.get("name", "") |> String.downcase(), Map.get(header, "value")}
-    end)
-  end
-
   defp message_bodies(payload) do
     payload
-    |> flatten_parts()
+    |> Parts.flatten()
     |> Enum.reduce({nil, nil}, fn part, {text, html} ->
-      decoded = part |> Map.get("body", %{}) |> Map.get("data") |> decode_base64url()
+      decoded = part |> Map.get("body", %{}) |> Map.get("data") |> Parts.decode_base64url()
 
       case {Map.get(part, "mimeType"), decoded} do
         {"text/plain", value} when is_binary(value) -> {text || value, html}
@@ -163,35 +159,6 @@ defmodule BusterClaw.Google.Gmail.Parser do
         _other -> {text, html}
       end
     end)
-  end
-
-  defp flatten_parts(payload) do
-    parts = Map.get(payload, "parts", [])
-
-    if parts == [] do
-      [payload]
-    else
-      Enum.flat_map(parts, &flatten_parts/1)
-    end
-  end
-
-  defp decode_base64url(nil), do: nil
-
-  defp decode_base64url(data) do
-    data
-    |> pad_base64()
-    |> Base.url_decode64()
-    |> case do
-      {:ok, decoded} -> decoded
-      :error -> nil
-    end
-  end
-
-  defp pad_base64(data) do
-    case rem(String.length(data), 4) do
-      0 -> data
-      missing -> data <> String.duplicate("=", 4 - missing)
-    end
   end
 
   defp html_to_text(nil), do: nil

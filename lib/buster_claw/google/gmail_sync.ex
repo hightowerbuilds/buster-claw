@@ -8,6 +8,7 @@ defmodule BusterClaw.Google.GmailSync do
   alias BusterClaw.Google.Account
   alias BusterClaw.Google.Client
   alias BusterClaw.Google.Gmail
+  alias BusterClaw.Google.GmailAttachments
   alias BusterClaw.Library
   alias BusterClaw.LocalTime
   alias BusterClaw.TrustedSenders
@@ -170,12 +171,51 @@ defmodule BusterClaw.Google.GmailSync do
   end
 
   defp sync_message(%Account{} = account, message_id, opts) do
-    with {:ok, message} <- Gmail.read(account, message_id, opts),
-         {:ok, document} <- save_message(account, message) do
-      maybe_enqueue_dispatch(account, message, document, opts)
-      {:ok, document, message}
+    with {:ok, message} <- Gmail.read(account, message_id, opts) do
+      trusted_sender = TrustedSenders.match(message.from)
+      saved = maybe_save_attachments(account, message, trusted_sender, opts)
+
+      with {:ok, document} <- save_message(account, message, saved) do
+        maybe_enqueue_dispatch(account, message, document, trusted_sender, saved, opts)
+        {:ok, document, message}
+      end
     end
   end
+
+  # Attachment bytes are fetched for TRUSTED senders only — the same line that
+  # decides whether mail becomes agent work decides whether its files land in
+  # the workspace the agent reads. Untrusted mail is still archived with the
+  # attachment *list* (names, types, sizes) so the operator can see what came
+  # in and pull one deliberately with `gmail_attachment_download`.
+  # Best-effort like the enqueue: a failed download is logged and the message
+  # still syncs, and the doc records which files did not arrive.
+  defp maybe_save_attachments(_account, %{attachments: []}, _trusted, _opts), do: nil
+  defp maybe_save_attachments(_account, _message, nil, _opts), do: nil
+
+  defp maybe_save_attachments(%Account{} = account, message, _trusted, opts) do
+    if Keyword.get(opts, :attachments, true) do
+      case GmailAttachments.save(account, message, client_opts(opts)) do
+        {:ok, result} ->
+          Enum.each(result.errors, fn error ->
+            Logger.error(
+              "Gmail sync: message #{message.id} attachment #{inspect(error.filename)} " <>
+                "failed to download: #{inspect(error.reason)}"
+            )
+          end)
+
+          result
+
+        {:error, reason} ->
+          Logger.error(
+            "Gmail sync: message #{message.id} attachments not saved: #{inspect(reason)}"
+          )
+
+          nil
+      end
+    end
+  end
+
+  defp client_opts(opts), do: Keyword.take(opts, [:req_options, :receive_timeout])
 
   # Trusted-sender mail also lands on the Dispatch queue so the agent can act on
   # it. Untrusted mail is archived to the Library only (above) — never enqueued.
@@ -183,9 +223,9 @@ defmodule BusterClaw.Google.GmailSync do
   # the sync, but an unexpected enqueue failure is logged — it means a trusted
   # sender's mail silently never became agent work. The item links back to the
   # saved Library doc via metadata.
-  defp maybe_enqueue_dispatch(%Account{} = account, message, document, opts) do
+  defp maybe_enqueue_dispatch(%Account{} = account, message, document, entry, saved, opts) do
     if Keyword.get(opts, :enqueue, true) do
-      case TrustedSenders.match(message.from) do
+      case entry do
         nil ->
           :skip
 
@@ -196,12 +236,33 @@ defmodule BusterClaw.Google.GmailSync do
             trusted_sender: entry,
             recommended_role_key: Keyword.get(opts, :dispatch_role, "mail-triage"),
             request_summary: message.subject,
-            metadata: %{"artifact_path" => document.artifact_path}
+            metadata:
+              %{"artifact_path" => document.artifact_path}
+              |> put_attachment_metadata(saved)
           })
           |> log_enqueue_failure(message)
       end
     end
   end
+
+  # The queue item carries the saved files so `Dispatch.md` can name them: the
+  # agent learns a receipt arrived from the fridge, not from re-reading the mail.
+  defp put_attachment_metadata(metadata, %{saved: [_ | _] = saved}) do
+    Map.put(
+      metadata,
+      "attachments",
+      Enum.map(saved, fn entry ->
+        %{
+          "filename" => entry.filename,
+          "path" => entry.path,
+          "mime_type" => entry.mime_type,
+          "bytes" => entry.bytes
+        }
+      end)
+    )
+  end
+
+  defp put_attachment_metadata(metadata, _saved), do: metadata
 
   # Dedupe conflicts (re-sync of an already-queued message) are expected and
   # stay quiet; anything else is trusted mail that never reached the queue.
@@ -220,19 +281,22 @@ defmodule BusterClaw.Google.GmailSync do
     :ok
   end
 
-  defp save_message(%Account{} = account, message) do
+  defp save_message(%Account{} = account, message, saved) do
     Library.save_raw_document(%{
       date: message_date(message),
       filename: "gmail-#{safe_message_id(message.id)}.md",
       source_url: source_url(account, message),
       name: message.subject || "(no subject)",
-      tags: ["gmail", "google-workspace" | message.label_ids],
-      content: message_markdown(account, message),
+      tags: ["gmail", "google-workspace" | message.label_ids] ++ attachment_tags(message),
+      content: message_markdown(account, message, saved),
       fetched_at: timestamp()
     })
   end
 
-  defp message_markdown(%Account{} = account, message) do
+  defp attachment_tags(%{attachments: [_ | _]}), do: ["has-attachments"]
+  defp attachment_tags(_message), do: []
+
+  defp message_markdown(%Account{} = account, message, saved) do
     metadata =
       [
         {"Account", account.email},
@@ -255,10 +319,65 @@ defmodule BusterClaw.Google.GmailSync do
     #{metadata}
 
     #{body}
+    #{attachments_section(message, saved)}
     """
     |> String.trim()
     |> Kernel.<>("\n")
   end
+
+  # One line per attachment the message carried. A saved file names its
+  # workspace path; one that was not fetched (untrusted sender, over the cap, a
+  # failed download) says so, with the id `gmail_attachment_download` takes.
+  defp attachments_section(%{attachments: []}, _saved), do: ""
+
+  defp attachments_section(message, saved) do
+    by_attachment = index_saved(saved)
+
+    lines =
+      Enum.map_join(message.attachments, "\n", fn attachment ->
+        label =
+          "#{attachment.filename || "(unnamed)"} (#{attachment.mime_type || "unknown"}#{size_suffix(attachment.size)})"
+
+        case Map.get(by_attachment, saved_key(attachment)) do
+          %{path: path} -> "- #{label} → `#{path}`"
+          nil -> "- #{label} — not downloaded#{not_downloaded_reason(attachment, saved)}"
+        end
+      end)
+
+    "\n## Attachments\n\n" <> lines
+  end
+
+  defp index_saved(%{saved: saved}) do
+    Map.new(saved, fn entry -> {entry.attachment_id || entry.part_id, entry} end)
+  end
+
+  defp index_saved(_saved), do: %{}
+
+  defp saved_key(attachment), do: attachment.attachment_id || attachment.part_id
+
+  defp not_downloaded_reason(attachment, %{skipped: skipped}) do
+    case Enum.find(skipped, &(&1.filename == attachment.filename)) do
+      %{reason: :too_large} ->
+        " (over the #{div(GmailAttachments.max_bytes(), 1024 * 1024)} MB cap)"
+
+      _other ->
+        id_hint(attachment)
+    end
+  end
+
+  defp not_downloaded_reason(attachment, _saved), do: id_hint(attachment)
+
+  defp id_hint(%{attachment_id: id}) when is_binary(id), do: " (attachment_id: #{id})"
+  defp id_hint(_attachment), do: ""
+
+  defp size_suffix(size) when is_integer(size) and size > 0, do: ", #{human_size(size)}"
+  defp size_suffix(_size), do: ""
+
+  defp human_size(bytes) when bytes >= 1024 * 1024,
+    do: "#{Float.round(bytes / (1024 * 1024), 1)} MB"
+
+  defp human_size(bytes) when bytes >= 1024, do: "#{div(bytes, 1024)} KB"
+  defp human_size(bytes), do: "#{bytes} B"
 
   defp synced_documents(results) do
     Enum.flat_map(results, fn

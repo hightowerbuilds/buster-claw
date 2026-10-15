@@ -68,6 +68,32 @@ defmodule BusterClaw.DispatchProjectorTest do
     assert File.exists?(Path.join(tmp, ".buster-claw/dispatch/2026-06-09/Dispatch.md"))
   end
 
+  test "saved attachments are named on the fridge by workspace path", %{tmp: tmp} do
+    enqueue!(%{
+      subject: "Receipt for the new tires",
+      request_body_excerpt: "Please invoice this.",
+      metadata: %{
+        "artifact_path" => "library/raw/2026-06-09/gmail-msg-1.md",
+        "attachments" => [
+          %{
+            "filename" => "IMG 0042.jpeg",
+            "path" => "attachments/gmail/msg-1/IMG_0042.jpeg",
+            "mime_type" => "image/jpeg",
+            "bytes" => 48_213
+          }
+        ]
+      }
+    })
+
+    fridge = fridge(tmp)
+    assert fridge =~ "- attachments:\n  - `attachments/gmail/msg-1/IMG_0042.jpeg` (image/jpeg)"
+  end
+
+  test "an item without attachments renders no attachments line", %{tmp: tmp} do
+    enqueue!(%{subject: "Plain", metadata: %{"artifact_path" => "x.md"}})
+    refute fridge(tmp) =~ "attachments:"
+  end
+
   test "finishing an item drops it from the fridge but keeps the diary", %{tmp: tmp} do
     item = enqueue!(%{subject: "Invoice question", dedupe_key: "inv-1"})
 
