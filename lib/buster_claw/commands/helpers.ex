@@ -72,6 +72,28 @@ defmodule BusterClaw.Commands.Helpers do
   end
 
   @doc """
+  `resolve_workspace_path/1`, then refuse the result unless it lies inside the
+  workspace root (`BusterClaw.FileManager.within?/2`, which canonicalizes
+  through symlinks). Returns `{:ok, abs}` or `{:error, {:outside_workspace, abs}}`.
+
+  Use this for any caller-supplied path a command will READ to send somewhere
+  (an upload is an exfiltration channel: `~/.ssh/id_ed25519` named as a Drive
+  upload source would simply leave the machine) or WRITE on the caller's say-so
+  (a download destination of `~/.zshrc` is an overwrite). The same fence
+  `Gmail.Mime` and `GmailAttachments` apply, in one place for the commands.
+  """
+  def fenced_workspace_path(path) do
+    abs = resolve_workspace_path(path)
+    root = BusterClaw.Library.Artifact.workspace_root()
+
+    if BusterClaw.FileManager.within?(abs, root) do
+      {:ok, abs}
+    else
+      {:error, {:outside_workspace, abs}}
+    end
+  end
+
+  @doc """
   Reduce a downloaded filename to a safe basename (no path separators / traversal,
   only word chars, dot and dash), so it can't escape the downloads folder.
   """

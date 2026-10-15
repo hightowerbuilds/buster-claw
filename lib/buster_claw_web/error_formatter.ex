@@ -78,6 +78,37 @@ defmodule BusterClawWeb.ErrorFormatter do
   # unnecessary detour onto Agent Mode.
   def format({:browser_failed, msg}) when is_binary(msg), do: "browser: #{msg}"
 
+  # The workspace fences. Every one of these used to fall to the "unexpected
+  # error" fallback, so an agent that named a path outside the workspace was
+  # told nothing it could act on. The path is the operator's own machine shown
+  # to the operator's own agent over loopback; naming it is the fix.
+  def format({:outside_workspace, abs}) when is_binary(abs),
+    do: "refused: #{abs} is outside the workspace (only workspace paths are allowed)"
+
+  def format({:destination_outside_workspace, abs}) when is_binary(abs),
+    do: "refused: destination #{abs} is outside the workspace"
+
+  def format({:attachment_outside_workspace, abs}) when is_binary(abs),
+    do: "refused: attachment #{abs} is outside the workspace (only workspace files can be sent)"
+
+  def format({:attachment_unreadable, abs, reason}) when is_binary(abs),
+    do: "attachment #{abs} could not be read: #{format(reason)}"
+
+  def format({:file_unreadable, abs, reason}) when is_binary(abs),
+    do: "file #{abs} could not be read: #{format(reason)}"
+
+  def format({:google_native_file, mime_type}) when is_binary(mime_type) do
+    "#{mime_type} is a Google-native file and cannot be downloaded as bytes — " <>
+      "use drive_export with a mime_type (e.g. application/pdf, text/csv)"
+  end
+
+  def format({:attachment_not_found, attachments}) when is_list(attachments) do
+    names = Enum.map_join(attachments, ", ", &(&1[:filename] || &1[:attachment_id]))
+    "no attachment matched; the message carries: #{names}"
+  end
+
+  def format({:attachment_empty, id}), do: "attachment #{id} came back empty"
+
   def format({:missing_config, key}), do: "missing config: #{key}"
   def format({:unexpected_response, _body}), do: "unexpected response from upstream"
 

@@ -34,14 +34,16 @@ defmodule BusterClaw.Commands.Catalog.GoogleFiles do
         name: "drive_download",
         type: :read,
         tier: :safe,
-        description: "Download a Drive file's bytes into the workspace. Returns the saved path.",
+        description:
+          "Download a Drive file's bytes (images, PDFs, uploads) into the workspace and return the saved path. Google-native Docs/Sheets/Slides cannot be downloaded — use drive_export with a mime_type.",
         args:
           Helpers.google_args(%{
             "file_id" => %{type: :string, required: true},
             "destination" => %{
               type: :string,
               required: false,
-              description: "Workspace-relative (or absolute) path to write to."
+              description:
+                "Workspace-relative file path to write to (fenced to the workspace). Default: the file's own name at the workspace root."
             }
           })
       },
@@ -50,12 +52,17 @@ defmodule BusterClaw.Commands.Catalog.GoogleFiles do
         type: :read,
         tier: :safe,
         description:
-          "Export a Google-native doc (Docs/Sheets/Slides) to a MIME type into the workspace.",
+          "Export a Google-native doc (Docs/Sheets/Slides) to a MIME type (e.g. application/pdf, text/csv) and save it in the workspace.",
         args:
           Helpers.google_args(%{
             "file_id" => %{type: :string, required: true},
             "mime_type" => %{type: :string, required: true},
-            "destination" => %{type: :string, required: false}
+            "destination" => %{
+              type: :string,
+              required: false,
+              description:
+                "Workspace-relative file path (fenced). Default: the file's name plus the extension the mime_type implies."
+            }
           })
       },
       %{
@@ -79,7 +86,8 @@ defmodule BusterClaw.Commands.Catalog.GoogleFiles do
             "path" => %{
               type: :string,
               required: true,
-              description: "Local file path (workspace-relative or absolute) to upload."
+              description:
+                "Workspace file to upload (workspace-relative; fenced to the workspace)."
             },
             "name" => %{
               type: :string,

@@ -23,10 +23,11 @@ loop was already possible; only the intake half was missing.
 
 | | |
 |---|---|
-| (this commit) | Inbound Gmail attachments, end to end: listed by the parser, fetched by the client, saved into the workspace by one fenced store, named on `Dispatch.md`, and carried back out on `dispatch reply --attach`. +1 command (192 → 193). |
+| `f8d5653` | Inbound Gmail attachments, end to end: listed by the parser, fetched by the client, saved into the workspace by one fenced store, named on `Dispatch.md`, and carried back out on `dispatch reply --attach`. +1 command (192 → 193). |
+| (second commit) | The Drive fences. `drive_download` / `drive_export` destinations and the `drive_upload` source all go through one `Helpers.fenced_workspace_path/1`; a Google-native file is turned away before `alt=media` with a pointer to `drive_export`; the fence refusals finally render as sentences instead of "unexpected error". |
 
-22 files, **+723 / −71** before this summary. `mix precommit` green at 3,396
-tests.
+First commit 22 files, **+723 / −71**; second 7 files. `mix precommit` green
+at 3,414 tests.
 
 ## The pieces
 
@@ -78,14 +79,30 @@ tests.
   the outside-workspace test failed on the `flunk` inside the HTTP stub; put
   back, green. Per the house rule.
 
+## The Drive fences (second commit)
+
+The first commit's "left open" list had two Drive items. Reading them closely
+turned up a third that mattered more than either: **`drive_upload` read any
+path the app could read and shipped it to Drive.** That is the exact shape
+`Gmail.Mime`'s attachment fence was written for in `1728e64` — an exfiltration
+channel named by a path argument — and the Drive verb had never been given the
+same fence. Now all three Drive path arguments go through
+`Helpers.fenced_workspace_path/1`; the default download name is reduced to a
+safe basename (a Drive file named `../../.zshrc` is just a file); `drive_export`
+names its output after the document plus the extension the MIME type implies
+(`Q3 invoice` → `Q3_invoice.pdf`, where before it was `Q3 invoice` with no
+extension at all).
+
+The other find: **every fence refusal in the app rendered as "unexpected
+error".** `{:attachment_outside_workspace, _}`, `{:file_unreadable, _, _}`, the
+new `{:outside_workspace, _}` — none had an `ErrorFormatter` clause, so an
+agent that named a bad path learned nothing it could act on. They are
+sentences now, naming the path and the rule. The fence was broken on purpose
+once more (`drive_upload` with the plain resolver) and the test failed on
+`/etc/hosts`; restored, green.
+
 ## Left open
 
-- `drive_download` accepts an absolute `destination` with no workspace fence —
-  the outbound Mime path and the new inbound store both fence, Drive does not.
-  One line; not touched today because it was not the ask.
-- The catalog says `drive_download` works on "a Drive file"; Google-native
-  files (Docs, Sheets) return 403 and need `drive_export`. The description
-  should say so.
 - Live walk not performed: a real receipt photo through a real trusted-sender
   sync on this machine. Every seam is unit-tested against `Req.Test` stubs
   shaped from the Gmail API; the suite cannot prove Google's actual payload

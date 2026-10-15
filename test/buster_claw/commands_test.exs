@@ -1050,6 +1050,143 @@ defmodule BusterClaw.CommandsTest do
     end
   end
 
+  describe "drive_download / drive_export / drive_upload are fenced to the workspace" do
+    setup do
+      tmp = Path.join(System.tmp_dir!(), "bc-drive-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(tmp)
+      prev_ws = Application.get_env(:buster_claw, :workspace_root)
+      prev_req = Application.get_env(:buster_claw, :google_req_options)
+      Application.put_env(:buster_claw, :workspace_root, tmp)
+
+      Application.put_env(:buster_claw, :google_req_options,
+        plug: {Req.Test, BusterClaw.GoogleHTTP}
+      )
+
+      on_exit(fn ->
+        restore_env(:workspace_root, prev_ws)
+        restore_env(:google_req_options, prev_req)
+        File.rm_rf(tmp)
+      end)
+
+      {:ok, _account} =
+        Google.create_account(%{
+          "email" => "me@example.com",
+          "client_id" => "client-id",
+          "client_secret" => "client-secret",
+          "refresh_token" => "refresh-token",
+          "access_token" => "access-token",
+          "access_token_expires_at" => DateTime.utc_now() |> DateTime.add(3600, :second)
+        })
+
+      Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+        conn = Plug.Conn.fetch_query_params(conn)
+
+        case {conn.request_path, conn.query_params} do
+          {"/drive/v3/files/photo-1", %{"alt" => "media"}} ->
+            conn
+            |> Plug.Conn.put_resp_content_type("image/jpeg")
+            |> Plug.Conn.send_resp(200, "JPG")
+
+          {"/drive/v3/files/photo-1", _} ->
+            Req.Test.json(conn, %{
+              "id" => "photo-1",
+              "name" => "../../Receipt (tires).jpeg",
+              "mimeType" => "image/jpeg"
+            })
+
+          {"/drive/v3/files/doc-1/export", %{"mimeType" => "application/pdf"}} ->
+            conn
+            |> Plug.Conn.put_resp_content_type("application/pdf")
+            |> Plug.Conn.send_resp(200, "%PDF")
+
+          {"/drive/v3/files/doc-1", %{"alt" => "media"}} ->
+            flunk("alt=media must not be attempted for a Google-native file")
+
+          {"/drive/v3/files/doc-1", _} ->
+            Req.Test.json(conn, %{
+              "id" => "doc-1",
+              "name" => "Q3 invoice",
+              "mimeType" => "application/vnd.google-apps.document"
+            })
+
+          {"/upload/drive/v3/files", _} ->
+            Req.Test.json(conn, %{"id" => "up-1", "name" => "invoice.html"})
+        end
+      end)
+
+      %{tmp: tmp}
+    end
+
+    test "download lands at the workspace root under a sanitized name by default", %{tmp: tmp} do
+      assert {:ok, result} = Commands.drive_download(%{"file_id" => "photo-1"})
+      assert result.path == "Receipt_tires_.jpeg"
+      assert result.absolute_path == Path.join(tmp, "Receipt_tires_.jpeg")
+      assert result.mime_type == "image/jpeg"
+      assert File.read!(result.absolute_path) == "JPG"
+      refute File.exists?(Path.expand("../../Receipt (tires).jpeg", tmp))
+    end
+
+    test "an explicit destination is honoured inside the workspace and refused outside it", %{
+      tmp: tmp
+    } do
+      assert {:ok, %{path: "receipts/tires.jpg"}} =
+               Commands.drive_download(%{
+                 "file_id" => "photo-1",
+                 "destination" => "receipts/tires.jpg"
+               })
+
+      assert File.exists?(Path.join(tmp, "receipts/tires.jpg"))
+
+      outside =
+        Path.join(System.tmp_dir!(), "bc-escape-#{System.unique_integer([:positive])}.jpg")
+
+      assert {:error, {:outside_workspace, _}} =
+               Commands.drive_download(%{"file_id" => "photo-1", "destination" => outside})
+
+      assert {:error, {:outside_workspace, _}} =
+               Commands.drive_download(%{
+                 "file_id" => "photo-1",
+                 "destination" => "../escape.jpg"
+               })
+
+      refute File.exists?(outside)
+    end
+
+    test "a Google-native file is refused before alt=media, pointing at drive_export" do
+      assert {:error, {:google_native_file, "application/vnd.google-apps.document"}} =
+               Commands.drive_download(%{"file_id" => "doc-1"})
+    end
+
+    test "export names the file after the document plus the MIME type's extension", %{tmp: tmp} do
+      assert {:ok, result} =
+               Commands.drive_export(%{"file_id" => "doc-1", "mime_type" => "application/pdf"})
+
+      assert result.path == "Q3_invoice.pdf"
+      assert File.read!(Path.join(tmp, "Q3_invoice.pdf")) == "%PDF"
+
+      assert {:error, {:outside_workspace, _}} =
+               Commands.drive_export(%{
+                 "file_id" => "doc-1",
+                 "mime_type" => "application/pdf",
+                 "destination" => "/tmp/out.pdf"
+               })
+    end
+
+    test "upload reads only workspace files", %{tmp: tmp} do
+      File.write!(Path.join(tmp, "invoice.html"), "<h1>Invoice</h1>")
+
+      assert {:ok, %{id: "up-1"}} = Commands.drive_upload(%{"path" => "invoice.html"})
+
+      assert {:error, {:outside_workspace, _}} = Commands.drive_upload(%{"path" => "/etc/hosts"})
+
+      assert {:error, {:outside_workspace, _}} =
+               Commands.drive_upload(%{"path" => "../../etc/hosts"})
+
+      assert {:error, {:file_unreadable, _, :enoent}} =
+               Commands.drive_upload(%{"path" => "missing.html"})
+    end
+  end
+
   describe "browser_download → drive_upload pipeline" do
     test "browser_download is restricted, not gated, and validates its url" do
       assert Commands.command_tier("browser_download") == :restricted

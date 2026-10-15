@@ -29,6 +29,37 @@ defmodule BusterClawWeb.ErrorFormatterTest do
       assert ErrorFormatter.format(:some_weird_atom) == "some weird atom"
     end
 
+    test "workspace-fence refusals name the path instead of falling to 'unexpected error'" do
+      assert ErrorFormatter.format({:outside_workspace, "/etc/hosts"}) =~
+               "/etc/hosts is outside the workspace"
+
+      assert ErrorFormatter.format({:destination_outside_workspace, "/tmp/x"}) =~
+               "destination /tmp/x"
+
+      assert ErrorFormatter.format({:attachment_outside_workspace, "/x/id_ed25519"}) =~
+               "attachment /x/id_ed25519"
+
+      assert ErrorFormatter.format({:file_unreadable, "/ws/a.txt", :enoent}) =~
+               "could not be read"
+
+      assert ErrorFormatter.format({:attachment_unreadable, "/ws/a.txt", :enoent}) =~
+               "could not be read"
+    end
+
+    test "a Google-native file points at drive_export" do
+      assert ErrorFormatter.format({:google_native_file, "application/vnd.google-apps.document"}) =~
+               "use drive_export"
+    end
+
+    test "a missed attachment selector lists what the message carries" do
+      msg =
+        ErrorFormatter.format(
+          {:attachment_not_found, [%{filename: "a.jpg"}, %{filename: "b.pdf"}]}
+        )
+
+      assert msg =~ "a.jpg, b.pdf"
+    end
+
     test "{:bad_status, n} returns HTTP status" do
       assert ErrorFormatter.format({:bad_status, 502}) == "HTTP 502"
       assert ErrorFormatter.format({:bad_status, 500, "body"}) == "HTTP 500"
