@@ -89,7 +89,7 @@ defmodule BusterClaw.BrowserHistory do
   has no searchable terms.
   """
   def search(query, opts \\ []) do
-    case build_match(query) do
+    case BusterClaw.FTS.match(query) do
       :empty ->
         {:error, :empty_query}
 
@@ -123,19 +123,6 @@ defmodule BusterClaw.BrowserHistory do
   @doc "How many times `url` has been visited."
   def visit_count(url) when is_binary(url) do
     Repo.aggregate(from(e in Entry, where: e.url == ^url), :count, :id)
-  end
-
-  @doc """
-  Per-URL visit counts, most-visited first: `[{url, count}]`. Useful for a
-  \"frequently visited\" view.
-  """
-  def visit_counts(limit \\ 50) do
-    Entry
-    |> group_by([e], e.url)
-    |> select([e], {e.url, count(e.id)})
-    |> order_by([e], desc: count(e.id))
-    |> maybe_limit(limit)
-    |> Repo.all()
   end
 
   @doc "Delete every history row. Returns the number deleted."
@@ -174,21 +161,4 @@ defmodule BusterClaw.BrowserHistory do
 
   defp maybe_limit(query, :infinity), do: query
   defp maybe_limit(query, limit) when is_integer(limit), do: limit(query, ^limit)
-
-  # Build a safe FTS5 MATCH expression: extract alphanumeric terms, quote each
-  # (so punctuation/operators in user input can't break FTS5 syntax), and OR them
-  # for broad recall — bm25 `rank` then orders by relevance.
-  defp build_match(query) do
-    terms =
-      query
-      |> to_string()
-      |> String.downcase()
-      |> then(&Regex.scan(~r/[a-z0-9]+/, &1))
-      |> List.flatten()
-
-    case terms do
-      [] -> :empty
-      ts -> Enum.map_join(ts, " OR ", &~s("#{&1}"))
-    end
-  end
 end

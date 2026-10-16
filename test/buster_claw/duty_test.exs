@@ -101,7 +101,7 @@ defmodule BusterClaw.DutyTest do
   end
 
   describe "the queue counts" do
-    test "count_open counts queued, claimed and running; count_queued only queued" do
+    test "count_open counts queued, claimed and running" do
       assert Dispatch.count_open() == 0
       {:ok, a} = Dispatch.enqueue(%{source: "gmail", subject: "a", dedupe_key: "a"})
       {:ok, b} = Dispatch.enqueue(%{source: "gmail", subject: "b", dedupe_key: "b"})
@@ -109,7 +109,6 @@ defmodule BusterClaw.DutyTest do
       {:ok, _} = Dispatch.update_item(a, %{status: "queued"})
 
       assert Dispatch.count_open() == 2
-      assert Dispatch.count_queued() == 1
 
       {:ok, _} = Dispatch.update_item(b, %{status: "done"})
       assert Dispatch.count_open() == 1

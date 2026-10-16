@@ -1088,7 +1088,7 @@ check lib/buster_claw/notes.ex                                610 HELD
 check lib/buster_claw/finance/sources.ex                      580 HELD
 # cli.ex — a thin escript HTTP client owning no command logic. Two of its
 # longest comments memorialize real shipped bugs; they are not padding.
-check lib/buster_claw/cli.ex                                 1000 HELD
+check lib/buster_claw/cli.ex                                 776 HELD
 # commands.ex — the back two-thirds is a wall of 218 defdelegates and the size
 # IS the point: a reviewable inventory of the whole surface, and it must stay
 # one module for `apply(__MODULE__, …)` to preserve the single policy door.

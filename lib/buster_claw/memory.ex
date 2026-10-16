@@ -42,7 +42,7 @@ defmodule BusterClaw.Memory do
   query has no searchable terms.
   """
   def search(query, opts \\ []) do
-    case build_match(query) do
+    case BusterClaw.FTS.match(query) do
       :empty ->
         {:error, :empty_query}
 
@@ -60,23 +60,6 @@ defmodule BusterClaw.Memory do
         ids = Enum.map(rows, fn [id] -> id end)
         by_id = RunSummary |> where([r], r.id in ^ids) |> Repo.all() |> Map.new(&{&1.id, &1})
         {:ok, Enum.flat_map(ids, fn id -> List.wrap(Map.get(by_id, id)) end)}
-    end
-  end
-
-  # Build a safe FTS5 MATCH expression: extract alphanumeric terms, quote each (so
-  # punctuation/operators in user input can't break FTS5 syntax), and OR them for
-  # broad recall — bm25 `rank` then orders by relevance.
-  defp build_match(query) do
-    terms =
-      query
-      |> to_string()
-      |> String.downcase()
-      |> then(&Regex.scan(~r/[a-z0-9]+/, &1))
-      |> List.flatten()
-
-    case terms do
-      [] -> :empty
-      ts -> Enum.map_join(ts, " OR ", &~s("#{&1}"))
     end
   end
 

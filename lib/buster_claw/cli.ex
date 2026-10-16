@@ -25,6 +25,8 @@ defmodule BusterClaw.CLI do
     never writes one — it only fires for a data dir that predates that shell.
   """
 
+  alias BusterClaw.CLI.Format
+
   @default_url "http://127.0.0.1:4000"
   @default_receive_timeout_ms 5_000
   @mailman_receive_timeout_ms 300_000
@@ -59,10 +61,10 @@ defmodule BusterClaw.CLI do
     do: dispatch_strategy_cmd(id, strategy, opts)
 
   defp route(["jobs", "list"], opts),
-    do: dispatch_request("job_list", %{}, opts, &format_job_list/1)
+    do: dispatch_request("job_list", %{}, opts, &Format.job_list/1)
 
   defp route(["jobs", "show", key], opts),
-    do: dispatch_request("job_show", %{"key" => key}, opts, &format_job/1)
+    do: dispatch_request("job_show", %{"key" => key}, opts, &Format.job/1)
 
   defp route(["run", name], opts), do: run(name, opts)
   defp route([noun, verb], opts), do: run("#{noun}_#{verb}", opts)
@@ -263,7 +265,7 @@ defmodule BusterClaw.CLI do
          ) do
       {:ok, %{"ok" => true, "result" => result}} ->
         trap_off_duty(opts, result)
-        IO.puts(format_on_duty(result))
+        IO.puts(Format.on_duty(result))
         mailman_poll(opts)
 
       {:ok, %{"ok" => false, "error" => error} = payload} ->
@@ -287,10 +289,10 @@ defmodule BusterClaw.CLI do
            opts: opts
          ) do
       {:ok, %{"ok" => true, "result" => result}} ->
-        IO.puts(format_off_duty(result))
+        IO.puts(Format.off_duty(result))
 
       {:ok, %{"ok" => false, "error" => error}} ->
-        IO.puts(off_duty_error(error))
+        IO.puts(Format.off_duty_error(error))
 
       {:error, reason} ->
         die(reason, 1)
@@ -344,33 +346,6 @@ defmodule BusterClaw.CLI do
       )
 
     System.halt(0)
-  end
-
-  def format_on_duty(result) when is_map(result) do
-    job = result["job_name"] || result["job_key"] || "lookout"
-    id = result["shift_id"]
-
-    """
-    On duty#{if id, do: " (shift ##{id})", else: ""} — #{job}, unattended.
-    Trusted-sender mail is worked end to end: the agent reads each request, does
-    the work with Buster Claw's command surface, and replies in-thread.
-    Polling Gmail below. Ctrl-C stops the polling only — the shift keeps
-    running. Run `./buster-claw off-duty` to stand down.
-    """
-    |> String.trim_trailing()
-  end
-
-  def format_on_duty(result), do: pretty(result)
-
-  defp format_off_duty(%{"shift_id" => id}), do: "Off duty — shift ##{id} stopped."
-  defp format_off_duty(result), do: pretty(result)
-
-  defp off_duty_error(error) do
-    if is_binary(error) and String.contains?(error, "no_active_shift") do
-      "Already off duty — no active shift."
-    else
-      "error: #{error}"
-    end
   end
 
   defp run(name, opts, args \\ nil) do
@@ -462,7 +437,7 @@ defmodule BusterClaw.CLI do
         |> maybe_put("strategy", if(Keyword.get(opts, :swarm), do: "swarm"))
         |> maybe_put("trusted", if(Keyword.get(opts, :untrusted), do: false))
 
-      dispatch_request("dispatch_enqueue", args, opts, &format_dispatch_enqueue/1)
+      dispatch_request("dispatch_enqueue", args, opts, &Format.dispatch_enqueue/1)
     end
   end
 
@@ -473,11 +448,11 @@ defmodule BusterClaw.CLI do
       |> maybe_put("job", Keyword.get(opts, :job))
       |> maybe_put("limit", Keyword.get(opts, :limit))
 
-    dispatch_request("dispatch_list", args, opts, &format_dispatch_list/1)
+    dispatch_request("dispatch_list", args, opts, &Format.dispatch_list/1)
   end
 
   defp dispatch_show_cmd(id, opts) do
-    dispatch_request("dispatch_show", %{"id" => id}, opts, &format_dispatch_item/1)
+    dispatch_request("dispatch_show", %{"id" => id}, opts, &Format.dispatch_item/1)
   end
 
   defp dispatch_claim_cmd(opts) do
@@ -486,17 +461,17 @@ defmodule BusterClaw.CLI do
       |> maybe_put("job", Keyword.get(opts, :job))
       |> maybe_put("claimed_by", Keyword.get(opts, :session) || Keyword.get(opts, :job))
 
-    dispatch_request("dispatch_claim", args, opts, &format_dispatch_claim/1)
+    dispatch_request("dispatch_claim", args, opts, &Format.dispatch_claim/1)
   end
 
   defp dispatch_finish_cmd(command, id, opts) do
     args = maybe_put(%{"id" => id}, "note", Keyword.get(opts, :note))
-    dispatch_request(command, args, opts, &format_dispatch_finish/1)
+    dispatch_request(command, args, opts, &Format.dispatch_finish/1)
   end
 
   defp dispatch_strategy_cmd(id, strategy, opts) do
     args = %{"id" => id, "strategy" => strategy}
-    dispatch_request("dispatch_strategy", args, opts, &format_dispatch_finish/1)
+    dispatch_request("dispatch_strategy", args, opts, &Format.dispatch_finish/1)
   end
 
   defp dispatch_reply_cmd(id, opts) do
@@ -507,7 +482,7 @@ defmodule BusterClaw.CLI do
       |> maybe_put("account_id", Keyword.get(opts, :account_id))
       |> maybe_put("attachments", attach_paths(opts))
 
-    dispatch_request("dispatch_reply", args, opts, &format_dispatch_reply/1)
+    dispatch_request("dispatch_reply", args, opts, &Format.dispatch_reply/1)
   end
 
   defp dispatch_request(command, args, opts, formatter) do
@@ -525,110 +500,6 @@ defmodule BusterClaw.CLI do
     end
   end
 
-  @doc false
-  def format_dispatch_list(items) when is_list(items) do
-    case items do
-      [] ->
-        "No open Dispatch items."
-
-      _ ->
-        "#{length(items)} Dispatch #{plural(length(items), "item")}:\n" <>
-          Enum.map_join(items, "\n", &dispatch_line/1)
-    end
-  end
-
-  def format_dispatch_list(other), do: pretty(other)
-
-  defp format_dispatch_item(%{"empty" => true}), do: "Queue empty — nothing to claim."
-
-  defp format_dispatch_item(item) when is_map(item) do
-    [
-      "##{item["id"]} [#{item["status"]}] #{item["subject"] || "(no subject)"}",
-      dispatch_kv("Source", item["source"]),
-      dispatch_kv("Sender", item["sender"]),
-      dispatch_kv("Job", item["recommended_role_key"]),
-      dispatch_kv("Summary", item["request_summary"])
-    ]
-    |> Enum.reject(&blank?/1)
-    |> Enum.join("\n")
-  end
-
-  defp format_dispatch_item(other), do: pretty(other)
-
-  @doc false
-  def format_dispatch_claim(%{"empty" => true}), do: "Queue empty — nothing to claim."
-
-  def format_dispatch_claim(item) when is_map(item),
-    do: "Claimed:\n" <> format_dispatch_item(item)
-
-  def format_dispatch_claim(other), do: pretty(other)
-
-  @doc false
-  def format_dispatch_finish(item) when is_map(item),
-    do: "Marked ##{item["id"]} #{item["status"]}."
-
-  def format_dispatch_finish(other), do: pretty(other)
-
-  defp format_dispatch_enqueue(item) when is_map(item),
-    do:
-      "Queued ##{item["id"]} (#{item["strategy"]}): #{item["request_summary"] || item["subject"]}"
-
-  defp format_dispatch_enqueue(other), do: pretty(other)
-
-  @doc false
-  def format_dispatch_reply(%{"dispatch_item_id" => id} = result) do
-    "Replied to #{result["to"]} and closed item ##{id} (thread #{result["thread_id"] || "?"})."
-  end
-
-  def format_dispatch_reply(other), do: pretty(other)
-
-  defp dispatch_line(item) do
-    suffix =
-      [item["sender"], item["recommended_role_key"]]
-      |> Enum.reject(&blank?/1)
-      |> case do
-        [] -> ""
-        parts -> " — " <> Enum.join(parts, " · ")
-      end
-
-    "  ##{item["id"]} [#{item["status"]}] #{item["subject"] || "(no subject)"}#{suffix}"
-  end
-
-  defp dispatch_kv(_label, value) when value in [nil, ""], do: nil
-  defp dispatch_kv(label, value), do: "  #{label}: #{value}"
-
-  # ---- Jobs ----
-
-  @doc false
-  def format_job_list(jobs) when is_list(jobs) do
-    case jobs do
-      [] ->
-        "No jobs defined. Drop a `<key>.md` in jobs/."
-
-      _ ->
-        "#{length(jobs)} #{plural(length(jobs), "job")}:\n" <>
-          Enum.map_join(jobs, "\n", fn job ->
-            "  #{job["key"]} — #{job["name"]}#{job_summary_suffix(job["summary"])}"
-          end)
-    end
-  end
-
-  def format_job_list(other), do: pretty(other)
-
-  @doc false
-  def format_job(job) when is_map(job) do
-    header = "#{job["name"]} (#{job["key"]})"
-    summary = if blank?(job["summary"]), do: [], else: ["", job["summary"]]
-    body = if blank?(job["body"]), do: [], else: ["", job["body"]]
-    Enum.join([header] ++ summary ++ body, "\n")
-  end
-
-  def format_job(other), do: pretty(other)
-
-  defp job_summary_suffix(summary) do
-    if blank?(summary), do: "", else: " · #{summary}"
-  end
-
   # ---- HTTP ----
 
   @doc false
@@ -638,33 +509,6 @@ defmodule BusterClaw.CLI do
       _ -> default_ms
     end
   end
-
-  @doc false
-  def format_mailman_result(result) when is_map(result) do
-    documents = list_value(result, "documents")
-    errors = list_value(result, "errors")
-    account = map_value(result, "account")
-    synced = value(result, "synced") || length(documents)
-    requested = value(result, "requested")
-    query = value(result, "query")
-    estimate = value(result, "result_size_estimate")
-    email = value(account, "email")
-    last_synced_at = value(result, "last_synced_at")
-
-    [
-      mailman_summary_line(synced, requested, email),
-      optional_line("Query", query),
-      optional_line("Mailbox matches", estimate),
-      optional_line("Last synced", last_synced_at),
-      format_mailman_documents(documents),
-      format_mailman_errors(errors)
-    ]
-    |> List.flatten()
-    |> Enum.reject(&blank?/1)
-    |> Enum.join("\n")
-  end
-
-  def format_mailman_result(result), do: pretty(result)
 
   defp http_get(path) do
     url = base_url() <> path
@@ -783,110 +627,11 @@ defmodule BusterClaw.CLI do
 
   # ---- Output / errors ----
 
-  defp pretty(value), do: Jason.encode!(value, pretty: true)
+  defp pretty(value), do: Format.pretty(value)
 
   defp mailman_result_output(result, opts) do
-    if Keyword.get(opts, :verbose), do: pretty(result), else: format_mailman_result(result)
+    if Keyword.get(opts, :verbose), do: Format.pretty(result), else: Format.mailman_result(result)
   end
-
-  defp mailman_summary_line(0, requested, email) do
-    suffix = requested_suffix(requested) <> account_suffix(email)
-    "No new Gmail messages synced#{suffix}."
-  end
-
-  defp mailman_summary_line(synced, requested, email) do
-    suffix = requested_suffix(requested) <> account_suffix(email)
-    "Synced #{synced} Gmail #{plural(synced, "message")}#{suffix}."
-  end
-
-  defp requested_suffix(nil), do: ""
-  defp requested_suffix(requested), do: " (requested #{requested})"
-
-  defp account_suffix(nil), do: ""
-  defp account_suffix(""), do: ""
-  defp account_suffix(email), do: " for #{email}"
-
-  defp optional_line(_label, nil), do: nil
-  defp optional_line(_label, ""), do: nil
-  defp optional_line(label, value), do: "#{label}: #{value}"
-
-  defp format_mailman_documents([]), do: "Documents: none"
-
-  defp format_mailman_documents(documents) do
-    visible = Enum.take(documents, 5)
-    hidden = max(length(documents) - length(visible), 0)
-
-    lines =
-      Enum.flat_map(visible, fn document ->
-        title = value(document, "name") || value(document, "filename") || "Untitled Gmail message"
-        date = value(document, "date")
-        path = value(document, "artifact_path")
-
-        [
-          "  - #{title}#{date_suffix(date)}",
-          if(path in [nil, ""], do: nil, else: "    #{path}")
-        ]
-      end)
-
-    ["Documents:" | lines ++ more_documents_line(hidden)]
-  end
-
-  defp more_documents_line(0), do: []
-  defp more_documents_line(count), do: ["  - ...and #{count} more"]
-
-  defp format_mailman_errors([]), do: nil
-
-  defp format_mailman_errors(errors) do
-    ["Errors:" | Enum.map(errors, &"  - #{format_error_line(&1)}")]
-  end
-
-  defp format_error_line(error) when is_binary(error), do: error
-  defp format_error_line(error), do: inspect(error)
-
-  defp date_suffix(nil), do: ""
-  defp date_suffix(""), do: ""
-  defp date_suffix(date), do: " (#{date})"
-
-  defp plural(1, singular), do: singular
-  defp plural(_count, singular), do: singular <> "s"
-
-  defp list_value(map, key) do
-    case value(map, key) do
-      value when is_list(value) -> value
-      _ -> []
-    end
-  end
-
-  defp map_value(map, key) do
-    case value(map, key) do
-      value when is_map(value) -> value
-      _ -> %{}
-    end
-  end
-
-  defp value(map, key) when is_map(map) do
-    Map.get(map, key) || Map.get(map, atom_key(key))
-  end
-
-  defp value(_map, _key), do: nil
-
-  defp atom_key("account"), do: :account
-  defp atom_key("artifact_path"), do: :artifact_path
-  defp atom_key("date"), do: :date
-  defp atom_key("documents"), do: :documents
-  defp atom_key("email"), do: :email
-  defp atom_key("errors"), do: :errors
-  defp atom_key("filename"), do: :filename
-  defp atom_key("last_synced_at"), do: :last_synced_at
-  defp atom_key("name"), do: :name
-  defp atom_key("query"), do: :query
-  defp atom_key("requested"), do: :requested
-  defp atom_key("result_size_estimate"), do: :result_size_estimate
-  defp atom_key("synced"), do: :synced
-
-  defp blank?(nil), do: true
-  defp blank?(""), do: true
-  defp blank?(_value), do: false
 
   defp pad(str, width) do
     String.pad_trailing(str, width)

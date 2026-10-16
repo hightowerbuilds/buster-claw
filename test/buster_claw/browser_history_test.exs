@@ -48,14 +48,6 @@ defmodule BusterClaw.BrowserHistoryTest do
     assert BrowserHistory.visit_count("https://never.com") == 0
   end
 
-  test "visit_counts ranks most-visited first" do
-    {:ok, _} = BrowserHistory.record("https://a.com", "A")
-    {:ok, _} = BrowserHistory.record("https://a.com", "A")
-    {:ok, _} = BrowserHistory.record("https://b.com", "B")
-
-    assert [{"https://a.com", 2}, {"https://b.com", 1}] = BrowserHistory.visit_counts()
-  end
-
   test "search matches url and title, ranked by relevance" do
     {:ok, _} = BrowserHistory.record("https://news.example.com", "Breaking weather news")
     {:ok, _} = BrowserHistory.record("https://shopping.example.com", "Cheap shoes")

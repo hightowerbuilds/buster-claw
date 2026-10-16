@@ -631,18 +631,15 @@ defmodule BusterClaw.Notifications.SoundStudio do
   `"import:<name>"`, so the rename would otherwise leave it pointing at nothing.
   `StudioMix.retarget/2` is that step; `SoundStudioComponent` does both together.
   """
-  def rename(name, stem) when is_binary(name) and is_binary(stem) do
-    with path when is_binary(path) <- path_for(name),
-         {:ok, new_name} <- BusterClaw.Notifications.Sound.renamed_to(name, stem),
-         false <- new_name in list(),
-         :ok <- File.rename(path, Path.join(dir(), new_name)) do
-      {:ok, new_name}
-    else
-      nil -> {:error, :not_found}
-      true -> {:error, :name_taken}
-      {:error, _reason} = error -> error
-    end
-  end
+  def rename(name, stem) when is_binary(name) and is_binary(stem),
+    do:
+      BusterClaw.Notifications.Sound.rename_file(
+        path_for(name),
+        dir(),
+        name,
+        stem,
+        &(&1 in list())
+      )
 
   def rename(_name, _stem), do: {:error, :not_found}
 

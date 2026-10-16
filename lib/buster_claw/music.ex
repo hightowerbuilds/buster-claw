@@ -181,18 +181,15 @@ defmodule BusterClaw.Music do
   filename — so renaming is also how you *fix* a track's displayed artist and
   title, and a sanitizer that ate the separator would take that away.
   """
-  def rename(name, stem) when is_binary(name) and is_binary(stem) do
-    with path when is_binary(path) <- path_for(name),
-         {:ok, new_name} <- BusterClaw.Notifications.Sound.renamed_to(name, stem),
-         false <- new_name in list(),
-         :ok <- File.rename(path, Path.join(dir(), new_name)) do
-      {:ok, new_name}
-    else
-      nil -> {:error, :not_found}
-      true -> {:error, :name_taken}
-      {:error, _reason} = error -> error
-    end
-  end
+  def rename(name, stem) when is_binary(name) and is_binary(stem),
+    do:
+      BusterClaw.Notifications.Sound.rename_file(
+        path_for(name),
+        dir(),
+        name,
+        stem,
+        &(&1 in list())
+      )
 
   def rename(_name, _stem), do: {:error, :not_found}
 
@@ -259,17 +256,6 @@ defmodule BusterClaw.Music do
 
   @doc "True when the library holds at least one playable file."
   def any?, do: list() != []
-
-  @doc """
-  Total bytes held by the library. The DataZone is the user's own disk and music
-  is the largest thing anyone will put in it, so the tab shows this rather than
-  imposing a quota (MUSIC_ROADMAP Risk 5).
-  """
-  def total_bytes do
-    list()
-    |> Enum.map(&(size_of(&1) || 0))
-    |> Enum.sum()
-  end
 
   @doc """
   Create the `music/` folder and a README explaining how music gets here, so the

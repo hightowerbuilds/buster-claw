@@ -29,7 +29,6 @@ defmodule BusterClaw.MusicTest do
       assert Music.list() == []
       assert Music.tracks() == []
       refute Music.any?()
-      assert Music.total_bytes() == 0
     end
 
     test "survives the folder not existing at all", %{root: root} do
@@ -39,7 +38,6 @@ defmodule BusterClaw.MusicTest do
       # because the user can delete this folder in Finder at any time.
       assert Music.list() == []
       refute Music.any?()
-      assert Music.total_bytes() == 0
     end
   end
 
@@ -234,13 +232,11 @@ defmodule BusterClaw.MusicTest do
     end
   end
 
-  describe "total_bytes/0 and any?/0" do
-    test "sum only counts library files", %{root: root} do
+  describe "any?/0" do
+    test "only library files count", %{root: root} do
       track(root, "a.mp3", String.duplicate("x", 100))
-      track(root, "b.flac", String.duplicate("x", 50))
       track(root, "notes.txt", String.duplicate("x", 999))
 
-      assert Music.total_bytes() == 150
       assert Music.any?()
     end
   end
@@ -460,7 +456,6 @@ defmodule BusterClaw.MusicTest do
       # they land, with no separate registration step.
       assert Music.path_for(name) != nil
       assert Music.track_info(name).artist == "Artist"
-      assert Music.total_bytes() > 0
     end
   end
 

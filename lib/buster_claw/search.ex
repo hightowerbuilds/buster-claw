@@ -50,27 +50,6 @@ defmodule BusterClaw.Search do
       String.contains?(down, "challenge")
   end
 
-  def format_results([]), do: "No search results found."
-
-  def format_results(results) do
-    results
-    |> Enum.with_index(1)
-    |> Enum.map_join("\n\n", fn {%Result{} = result, index} ->
-      snippet =
-        result.snippet
-        |> to_string()
-        |> String.trim()
-
-      [
-        "#{index}. #{result.title}",
-        result.url,
-        snippet
-      ]
-      |> Enum.reject(&(&1 == ""))
-      |> Enum.join("\n")
-    end)
-  end
-
   def parse_results(body) do
     body
     |> String.split(~r/<div[^>]+class=["'][^"']*result[^"']*["'][^>]*>/i)

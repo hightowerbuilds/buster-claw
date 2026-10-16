@@ -80,11 +80,6 @@ defmodule BusterClaw.Dispatch do
     from(item in Item, where: item.status in @open_statuses) |> Repo.aggregate(:count)
   end
 
-  @doc "How many items are queued and unclaimed."
-  def count_queued do
-    from(item in Item, where: item.status == "queued") |> Repo.aggregate(:count)
-  end
-
   @doc """
   True if ANY open item (queued/claimed/running) is not explicitly trusted.
 

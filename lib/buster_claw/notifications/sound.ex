@@ -348,6 +348,30 @@ defmodule BusterClaw.Notifications.Sound do
     end
   end
 
+  @doc """
+  Rename an audio file on disk to `<stem><ext>`, keeping its extension.
+
+  The one body behind `Music.rename/2` and `SoundStudio.rename/2`, which were
+  byte-identical copies until 10-16 (CODE_QUALITY_SWEEP Phase 4). Each caller
+  resolves `path` through its own allowlist (`path_for/1`), so a name that is
+  not a real library entry arrives here as `nil` and is refused before any
+  filesystem call; `taken?` is the caller's own listing, so a rename can never
+  overwrite a sibling.
+  """
+  def rename_file(nil, _dir, _name, _stem, _taken?), do: {:error, :not_found}
+
+  def rename_file(path, dir, name, stem, taken?)
+      when is_binary(path) and is_binary(name) and is_binary(stem) do
+    with {:ok, new_name} <- renamed_to(name, stem),
+         false <- taken?.(new_name),
+         :ok <- File.rename(path, Path.join(dir, new_name)) do
+      {:ok, new_name}
+    else
+      true -> {:error, :name_taken}
+      {:error, _reason} = error -> error
+    end
+  end
+
   defp renamed(name, stem), do: renamed_to(name, stem)
 
   # Collisions refuse rather than auto-suffix: a rename is the user naming a

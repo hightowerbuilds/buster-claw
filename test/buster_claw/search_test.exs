@@ -38,8 +38,8 @@ defmodule BusterClaw.SearchTest do
     assert {:ok, results} =
              Search.search("elixir", req_options: [plug: {Req.Test, BusterClaw.SearchHTTP}])
 
-    assert Search.format_results(results) =~ "1. Example"
-    assert Search.format_results(results) =~ "https://example.com"
+    assert [%{title: "Example", url: "https://example.com"} | _] =
+             Enum.map(results, &Map.take(&1, [:title, :url]))
   end
 
   test "an unrecognized zero-result page is a scrape failure, not empty results" do
