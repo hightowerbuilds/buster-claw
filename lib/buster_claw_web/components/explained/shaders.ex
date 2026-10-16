@@ -110,7 +110,7 @@ defmodule BusterClawWeb.Explained.Shaders do
           each previewing what it is actually running. There are three: the
           homepage, the terminal, and the
           <span class="font-semibold text-base-content">Time & Place card</span>
-          in the corner of the home header, which joined on 08-15. Every catalog
+          on the Clock panel. Every catalog
           row has one button per surface, so pointing something at one is
           a single click, and the same option can back all three at once —
           which is exactly why it is one catalog and not three pickers.
@@ -233,11 +233,9 @@ defmodule BusterClawWeb.Explained.Shaders do
               where it can appear.</span>
             A name with <code>face</code>
             as a dash-separated word — <code>viking-face</code>, <code>face-luke</code>
-            — is a contact <span class="font-semibold text-base-content">shaderface</span>
-            for the Phone tab's face picker, and is never offered or honored as a
-            background. Anything else is a background, and a background
-            <span class="italic">may</span>
-            also be picked as a face. The flow runs one way.
+            — is <span class="font-semibold text-base-content">reserved</span>
+            for contact faces and is never offered or honored as a background, in
+            the picker or on read. Anything else is a background.
           </li>
           <li>
             <span class="font-mono font-bold text-base-content">

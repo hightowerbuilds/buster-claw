@@ -9,10 +9,12 @@ defmodule BusterClawWeb.Explained.Pockets do
   are worth less than five good ones*, so a ninth tile needs an argument. This
   one has the argument the five parked candidates lacked: the word is **already
   load-bearing in three other surfaces**. Appearance's background pool is
-  `pockets/backgrounds/` (`BusterClaw.Appearance`), the dock icons and the
-  homepage banner are six Pockets (`BusterClaw.Pockets.Brand`), and every contact
-  shaderface lives in one (`BusterClaw.Pockets.Faces`). A reader meets the word
-  three times with no page to send them to.
+  `pockets/backgrounds/` (`BusterClaw.Appearance`), and the sidebar icons and
+  the homepage banner are six Pockets (`BusterClaw.Pockets.Brand`). A reader
+  meets the word twice with no page to send them to. (`BusterClaw.Pockets.Faces`
+  is still in the code, but nothing has rendered a contact's face since the
+  Phone tab left on 10-15, so this page stopped teaching it — EXPLAINED_REWRITE
+  D2.)
 
   ## The spine of this page
 
@@ -100,7 +102,7 @@ defmodule BusterClawWeb.Explained.Pockets do
 
       <section class="flex flex-col gap-3" id="explained-pockets-already">
         <h3 class="font-display text-base font-black uppercase tracking-wide">
-          You have already met three of them
+          You have already met two of them
         </h3>
         <p class="text-sm leading-relaxed text-base-content/80">
           This is why the word turns up before you have gone looking for it.
@@ -118,15 +120,9 @@ defmodule BusterClawWeb.Explained.Pockets do
           <li>
             <span class="font-mono font-bold text-base-content">pockets/nav-home/</span>
             and its five siblings — <code>nav-workspace</code>, <code>nav-browser</code>, <code>nav-terminal</code>, <code>nav-settings</code>, <code>home-banner</code>. One image each, and that
-            image replaces the app's own dock icon or the homepage banner. The shipped
+            image replaces the app's own sidebar icon or the homepage banner. The shipped
             art stays read-only where it is and renders whenever you have not supplied
             your own.
-          </li>
-          <li>
-            <span class="font-mono font-bold text-base-content">pockets/contact-faces/</span>
-            — every WGSL shaderface a contact can wear, in one Pocket rather than one per
-            person. A face resolves from the Pocket first and from <code>shaders/</code>
-            second, which is why no contact lost its face when this arrived.
           </li>
         </ul>
       </section>
@@ -188,11 +184,11 @@ defmodule BusterClawWeb.Explained.Pockets do
           A discovered binding would mean any folder claiming a role could catch them.
         </p>
         <p class="text-sm leading-relaxed text-base-content/80">
-          The dock icons made the same call, and the contact faces show what it is worth:
-          faces come from <code>pockets/contact-faces/</code>
-          by fixed name, because a role-bound face Pocket would let an agent redirect
-          <span class="italic">every</span>
-          contact's face at once by writing a manifest into a directory it can already
+          The sidebar icons made the same call: each slot names its Pocket by fixed
+          name — <code>nav-home</code>
+          for the home icon — because a role-bound icon
+          Pocket would let an agent repaint <span class="italic">every</span>
+          icon at once by writing a manifest into a directory it can already
           write to. A role is a label on a folder. The binding is a constant in the
           code.
         </p>
@@ -264,7 +260,7 @@ defmodule BusterClawWeb.Explained.Pockets do
             </span>
             The agent may read a mounted Pocket and may never mount one — held in place
             by the shape of the code rather than by a policy check that has to be right.
-            You do it yourself: <span class="font-mono font-bold text-base-content">Home → Pockets → Mount…</span>, absolute path, and the
+            You do it yourself: open the <span class="font-mono font-bold text-base-content">Pockets panel</span>, press <span class="font-mono font-bold text-base-content">Mount…</span>, give it an absolute path, and leave the
             <span class="font-mono font-bold text-base-content">Writable</span>
             box left alone unless you mean it.
           </li>
@@ -322,7 +318,7 @@ defmodule BusterClawWeb.Explained.Pockets do
           </li>
           <li>
             <span class="font-semibold text-base-content">Two images in a brand Pocket</span>
-            — the dock shows the <span class="italic">text label</span>, not the shipped default and not the
+            — the sidebar shows the <span class="italic">text label</span>, not the shipped default and not the
             first file. Picking one would choose for you when the whole reason there is
             an error is that the app cannot know which you meant; falling back to the
             shipped art would look correct and hide a stray file forever. The art
@@ -346,7 +342,7 @@ defmodule BusterClawWeb.Explained.Pockets do
         phx-value-tab="pockets"
         class="inline-flex w-fit items-center gap-2 rounded-xs bg-primary px-4 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-primary-content transition hover:opacity-85"
       >
-        <.icon name="hero-arrow-right" class="size-3.5" /> Open the Pockets tab
+        <.icon name="hero-arrow-right" class="size-3.5" /> Open the Pockets panel
       </button>
     </div>
     """

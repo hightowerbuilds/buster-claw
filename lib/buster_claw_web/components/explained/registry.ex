@@ -18,49 +18,12 @@ defmodule BusterClawWeb.Explained.Registry do
 
   @site_url "https://busterclaw.lol"
   @ntf_url "https://notesthatfloat.com"
-  # Kept literal to avoid making a presentation component depend on the command
-  # dispatch layer (which creates a compile cycle). The contract test derives
-  # the same values from Commands.list_commands/0 and fails on drift — it is
-  # `status_live_test.exs`, "the Command List tab is the atlas". Named here
-  # because it took a search to find, and someone once concluded it did not
-  # exist and wrote a second, weaker copy of it.
-  # Synced 08-09 for the Studio's five capture verbs (STUDIO_ROADMAP Part V):
-  # sound_gaps / sound_devices / sound_input_level are :safe reads,
-  # sound_input_level_set is :restricted, and sound_record is :restricted + gated.
-  # Recomputed twice on 08-15: `background_list` / `background_set`, then
-  # `phone_call`. A drift test compares these against the live catalog and caught
-  # both within the hour they landed — which is the only reason this block is
-  # trustworthy at all.
-  # Recomputed 08-16 for the contribution surface (STUDIO_ROADMAP V.0 and V.6-V.8):
-  # `sound_record_save` (:restricted + gated, the recorder's write half) and the
-  # four `voice_bank_*` verbs — `list` is a :safe read, `create` and `select` are
-  # :restricted, `delete` is :restricted + gated.
-  #
-  # Recomputed 08-18 — the first time this block has gone DOWN. BusterPhone
-  # became intake-only (PHONE_INTAKE_ROADMAP) and `sms_send` and `phone_call`
-  # were deleted; both were :mutate, :restricted and gated, which is why exactly
-  # three of these numbers move and `read`/`trigger`/`safe` do not. Ten `phone_*`
-  # verbs remain, all intake. Measured from `Catalog.entries/0`, not derived by
-  # hand.
-  #
-  # Recomputed 09-05: the Sketch Pad was deleted whole, taking its six verbs.
-  # `sketch_list` and `sketch_get` were `:safe` reads; `sketch_create`, `_add`,
-  # `_update` and `_delete` were `:mutate` + `:restricted` and none was gated —
-  # which is why `gated` and `trigger` are the two numbers that do not move.
-  # Measured from `Catalog.entries/0`, not derived by hand.
-  # Recomputed 09-05 again: Settings → Cmd List was removed with both
-  # `terminal_command_*` verbs — `_list` was a `:safe` read, `_set` a `:mutate`
-  # `:restricted`, neither gated. Which is why `trigger` and `gated` do not move.
-  #
-  # Recomputed 09-19: the cut-up engine was deleted with its eighteen verbs
-  # (`CUTUP_DELETION_ROADMAP`) — eight `:safe` reads, ten `:mutate` +
-  # `:restricted`, two of those gated. `trigger` does not move. Measured.
-  # Recomputed from Catalog.entries/0 after removing voice generation; the three
-  # app-tab layout commands remain included.
-  # 10-14: `gmail_attachment_download` — one `:safe` `:read`.
-  # 10-15: the phone left — ten `phone_*` verbs: five `:safe` `:read`s and five
-  # `:restricted` `:mutate`s, four of them gated. Measured from
-  # `Catalog.entries/0`, not derived by hand.
+  # Kept literal so a presentation component never depends on the command
+  # dispatch layer (a compile cycle). MEASURED from `Catalog.entries/0`, never
+  # derived by hand, and re-measured whenever a verb lands or leaves — the
+  # contract test in `status_live_test.exs` ("the Command List tab is the atlas")
+  # compares these against the live catalog and is the only reason the numbers
+  # are trustworthy. Last measured 10-15, after the phone's ten verbs left.
   @command_stats %{
     total: 183,
     read: 74,
@@ -132,19 +95,20 @@ defmodule BusterClawWeb.Explained.Registry do
     },
     # Sits next to Shaders because that is where a reader first meets the word:
     # the background pool is `pockets/backgrounds/`. Its `path` is the home
-    # screen rather than the tab it describes, because the Pockets tab is a home
-    # SUB-tab with no URL of its own — the built tutorial's own button fires
+    # screen rather than the panel it describes, because the Pockets panel has
+    # no URL of its own — the built tutorial's own button fires
     # `select_home_tab` instead, which is exact where a deep link would be a
     # near-miss. This `body` is the honest fallback if the panel ever goes away.
     %{
       key: "pockets",
       label: "Pockets",
       eyebrow: "Your own material",
-      blurb: "Named folders of your own media — backgrounds, dock icons and faces live in them.",
+      blurb:
+        "Named folders of your own media — the background pool and the sidebar's icons live in them.",
       body:
         "A Pocket is one directory under pockets/ with a POCKET.md manifest " <>
-          "saying what it holds. The background pool, the dock icons and the " <>
-          "contact shaderfaces are each one. The manifest describes; it never " <>
+          "saying what it holds. The background pool and the sidebar's icons " <>
+          "are each one. The manifest describes; it never " <>
           "grants — so a role names a Pocket and never selects it, and a Pocket " <>
           "can be pointed at a folder elsewhere on the machine only by you.",
       path: "/",

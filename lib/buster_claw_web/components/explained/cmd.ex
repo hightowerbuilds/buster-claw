@@ -231,7 +231,7 @@ defmodule BusterClawWeb.Explained.Cmd do
         needs="Nothing. These are the commands that work on a fresh install with nothing connected."
         touches="Writes three local things: a markdown file in your Library, a line on today's journal, and one pending reminder. Nothing leaves the machine."
         confirm="None of the three is gated. They are restricted, audited mutations — cheap, local, and visible where they land."
-        result="The document in your Library, the line on the Activity sub-tab, and the timer counting down in the corner widget. All three are files or rows you can go look at."
+        result="The document in your Library, the line on the Activity panel, and the timer counting down on the Clock panel's Notify tab. All three are files or rows you can go look at."
       >
         <.prompt text="Save that plan as a document called weekend-projects, note in my journal that the deck order shipped, and remind me in 45 minutes to check the oven." />
         <ol class="ic-unfold">
@@ -241,11 +241,11 @@ defmodule BusterClawWeb.Explained.Cmd do
           </li>
           <li>
             <code>journal_append</code> adds a line to today's record (the Activity
-            sub-tab, live and read-only).
+            panel, live and read-only).
           </li>
           <li>
-            <code>notify_create</code> sets a 45-minute timer — it chimes from the
-            corner widget, snooze and dismiss included.
+            <code>notify_create</code> sets a 45-minute timer — it chimes when due,
+            and the Clock panel's Notify tab holds it, snooze and dismiss included.
           </li>
         </ol>
       </.example>
@@ -334,8 +334,18 @@ defmodule BusterClawWeb.Explained.Cmd do
         <.prompt text="Add 'renew the domain before Friday' to the queue — and didn't we already deal with a DNS thing last month? What did we do?" />
         <ol class="ic-unfold">
           <li>
-            <code>dispatch_enqueue</code> files the item durably — it survives a
-            restart, an agent swap, anything short of you deleting it.
+            <code>dispatch_enqueue</code>
+            files the item durably — it survives a
+            restart, an agent swap, anything short of you deleting it. The queue is
+            projected to <code>Dispatch.md</code>
+            in your workspace, and the
+            <.link
+              navigate="/duty"
+              class="font-semibold text-primary hover:opacity-80"
+            >
+              Duty page
+            </.link>
+            shows it live with the shift that is working it.
           </li>
           <li>
             <code>memory_search</code> answers the second half from past run

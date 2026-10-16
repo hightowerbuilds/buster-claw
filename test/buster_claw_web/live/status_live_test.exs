@@ -1075,11 +1075,13 @@ defmodule BusterClawWeb.StatusLiveTest do
       {:ok, view, _html} = live(conn, ~p"/")
       render_click(view, "select_home_tab", %{"tab" => "explained"})
 
-      # busterclaw.lol: planned asset model, without claiming vending is live.
+      # busterclaw.lol: the download, the docs and the source — nothing sold,
+      # nothing planned (EXPLAINED_REWRITE D4; the phone left 10-15).
       html = render_click(view, "select_explained_tab", %{"tab" => "site"})
-      assert html =~ "planned"
-      assert html =~ "Until number vending opens"
-      refute html =~ "The number is the one thing you buy"
+      assert html =~ "free"
+      assert html =~ "source-available"
+      refute html =~ "phone number"
+      refute html =~ "vending"
       assert html =~ "/browse?url=https%3A%2F%2Fbusterclaw.lol"
 
       html = render_click(view, "select_explained_tab", %{"tab" => "ntf"})
@@ -1179,7 +1181,9 @@ defmodule BusterClawWeb.StatusLiveTest do
       # The file contract, each part of it load-bearing.
       assert html =~ "fs_main"
       assert html =~ "64 KB"
-      assert html =~ "shaderface"
+      # The `face` name is reserved — Shaders.face?/1 still refuses it as a
+      # background — but it is not taught as a picker any more (D2).
+      assert html =~ "reserved"
       assert html =~ "never offered or honored"
 
       # Corrected 08-08 against the implementation: the catalog is click, and

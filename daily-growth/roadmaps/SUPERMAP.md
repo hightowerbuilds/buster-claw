@@ -311,7 +311,7 @@ and zero issues in the verdict. Budget hours per release, not minutes
 | Pockets | `PocketsPanel` | SHIPPED | archived 08-17 — the Dock walk is [`QA_BACKLOG`](platform/QA_BACKLOG.md)'s |
 | Calendar | `CalendarComponent` — a work-area panel since 10-15 (one); `/calendar` stays | SHIPPED | — |
 | Phone | `PhoneComponent`, `Phone.CallAction` | SHIPPED — **the keypad dials as of 08-15**, gated and confirmed once before the first ring | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) |
-| Explained | `ExplainedPanel` | SHIPPED | [`LEFTOVERS_SURFACES`](surfaces/LEFTOVERS_SURFACES.md) — two errands, five tiles |
+| Explained | `ExplainedPanel` | SHIPPED · **REWRITTEN 10-16** against the post-phone, post-dock app; Studio keys derived; stale-phrase guard grew and caught five drifts outside the panel | [`EXPLAINED_REWRITE`](surfaces/EXPLAINED_REWRITE_ROADMAP.md) · [`LEFTOVERS_SURFACES`](surfaces/LEFTOVERS_SURFACES.md) |
 | Activity | `ActivityComponent` | SHIPPED | — |
 | Widget → Time & Place | `status/weather.ex` | SHIPPED | — |
 | Widget → Contacts | `BusterClaw.Contacts` | SHIPPED | — |

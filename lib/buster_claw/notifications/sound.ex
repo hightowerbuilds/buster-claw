@@ -9,7 +9,7 @@ defmodule BusterClaw.Notifications.Sound do
   Resolution for a fired notification, first match wins: source → kind →
   default → the legacy fallback (`notify.<ext>`, else the first audio file
   alphabetically). Source outranks kind so "an email's timer" sounds like
-  voicemail. No sounds at all → the fired modal still shows, silently.
+  email. No sounds at all → the fired modal still shows, silently.
 
   Served by `NotifySoundController` at `/notify/sound` (resolved default) and
   `/notify/sound/:name` (a specific library file — the name is validated
@@ -381,7 +381,7 @@ defmodule BusterClaw.Notifications.Sound do
   # ---------------------------------------------------------------------------
 
   @doc """
-  The event→sound map (`%{"voicemail" => "wilhelm.wav", ...}`). Entries whose
+  The event→sound map (`%{"email" => "wilhelm.wav", ...}`). Entries whose
   sound file no longer exists are dropped on read.
   """
   def sound_map do

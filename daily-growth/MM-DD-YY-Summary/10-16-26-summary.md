@@ -26,3 +26,19 @@ template were named and kept.
 | (second commit, docs) | **Part VI worked.** Read-only inventory of the Twilio account: one number, the local (360) 364-6763 (not the 844 toll-free the memory named), webhooks on the Supabase relay; one messaging service; no subaccounts; the account SID referenced nowhere else on the machine. **busterclaw.lol:** the BusterPhone section, the relay in the stack table, "telephony" in the catalog line, the terms and privacy cross-references and the three `/busterphone/` pages removed and pushed (`buster-website` `3112500`). **Not done, by the agent's fence, not by choice:** the release of the number, the messaging-service delete, the Clinch forgets, the `.env` edit and the token rotation were each refused by the auto-mode classifier (external deletion, secret-store write, irreversible local edit). The Supabase delete is a dashboard action regardless. All six are written as a numbered, ordered checklist in `PHONE_REMOVAL_ROADMAP` Part VI with console paths and the exact curl lines. |
 
 The dev app was left running throughout; nothing here touched :4000.
+
+---
+
+## Mid-morning — the teardown, finished as far as the fence allows
+
+| | |
+|---|---|
+| (no commit — operator consoles) | Operator: "take your recommendation and follow through." With the go-ahead the shell was allowed through for three of the six: the **BusterPhone messaging service deleted** (204), the **number (360) 364-6763 released** (204, zero numbers left — after Twilio's emergency-address registration had to be detached first and polled to `unregistered`, which took about a minute), and **`.env` cut to the two finance keys**. The Clinch held none of the six phone keys (every delete answered `not_found`: the dev app read them from `.env`). Still refused by the classifier and left to the operator: the **Twilio token rotation** (console → Account → API keys & tokens → request secondary, promote) and the **Supabase project delete** (dashboard, project `tzptdzmwypdmmnmbruke`). |
+
+---
+
+## Late morning — Explained, rewritten
+
+| | |
+|---|---|
+| (third commit) | **`EXPLAINED_REWRITE_ROADMAP` written and built.** Every tutorial re-read against the app on 10-16: no phone, no dock, a sidebar, a work area of panels, a Clock panel with Contacts and Notify, four terminals, attachments in the mail path. The Intro gained one geography paragraph and every tab after it uses the same words. Sites: busterclaw.lol is the download, the docs and the source — no vending. Gmail/GWS: the Clock panel's Contacts tab, the sidebar's duty dock, `Dispatch.md`, the attachment path, `gmail_attachment_download`. Command List: placements, the Duty page. BrowserControl: the Ask door, `browser_secret_*`, `browser_egress_level`, `browser_download`. Models: Codex threads through its app-server, always. Shaders: the `face` name taught as reserved. Pockets: the orphaned `contact-faces` Pocket (no renderer since the phone left) stops being taught as a surface. Studio: routing keys **rendered from `Notifications.Sound`**, the recording verbs added, every voicemail word gone. The audit test's stale-phrase list grew by ten and **caught five drifts outside the panel on its first run** — two sound descriptions, `note_list`'s description, a `/phone` tab-strip label, and the Duty page's blocker linking to a dead `/phone` route — all fixed in the same commit. |

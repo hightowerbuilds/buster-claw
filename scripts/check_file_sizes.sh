@@ -181,10 +181,14 @@ check lib/buster_claw_web/components/explained/cmd.ex          430 HELD
 # (WIDGET_BACKGROUND Phase 4). Named rather than counted — a page that says
 # "two" while the picker shows three is the drift this feature spent a day on.
 check lib/buster_claw_web/components/explained/shaders.ex      350 HELD
-check lib/buster_claw_web/components/explained/browser.ex      310 HELD
+# 10-16 EXPLAINED_REWRITE: 310 -> 340 for the Ask door and the three fences
+# (secrets, egress level, download) — doors that shipped after the tutorial.
+check lib/buster_claw_web/components/explained/browser.ex      340 HELD
 check lib/buster_claw_web/components/explained/models.ex       305 HELD
-check lib/buster_claw_web/components/explained/gws.ex          278 HELD
-check lib/buster_claw_web/components/explained/cmd_table.ex    203 HELD
+# 10-16 EXPLAINED_REWRITE: 278 -> 296 for the attachment path and the duty dock.
+check lib/buster_claw_web/components/explained/gws.ex          296 HELD
+# 10-16: 203 -> 206, the moduledoc stopped quoting counts that rot.
+check lib/buster_claw_web/components/explained/cmd_table.ex    206 HELD
 check lib/buster_claw_web/components/explained/shared.ex       182 HELD
 # 245 -> 252 on 08-16: the `@command_stats` block gained a comment naming the
 # five verbs that moved every number in it (the contribution surface). The stats
@@ -195,7 +199,8 @@ check lib/buster_claw_web/components/explained/shared.ex       182 HELD
 # 10-11: retired the Vox feature entry and recalculated the live command stats.
 # Its tutorial, component panels and recorder decoder no longer have caps:
 # those files left with the synthesis integration, rather than moving uncapped.
-check lib/buster_claw_web/components/explained/registry.ex     290 HELD
+# 10-16: banked 290 -> 241; the @command_stats recompute diary became one rule.
+check lib/buster_claw_web/components/explained/registry.ex     241 HELD
 # The ninth tutorial (08-15). Pockets earns a tile where five parked candidates
 # did not, and the argument is worth keeping: it is already load-bearing in three
 # other surfaces — backgrounds, brand art and contact faces all live in Pockets —

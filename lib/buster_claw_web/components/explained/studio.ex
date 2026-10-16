@@ -37,7 +37,12 @@ defmodule BusterClawWeb.Explained.Studio do
   use BusterClawWeb, :html
   import BusterClawWeb.Explained.Shared
 
+  # The routing keys render FROM `Notifications.Sound` (EXPLAINED_REWRITE D1):
+  # a typed list is how `voicemail` and `sms` stayed on this page for a day
+  # after the phone left.
   def studio_panel(assigns) do
+    assigns = assign(assigns, :route_keys, BusterClaw.Notifications.Sound.route_keys())
+
     ~H"""
     <div class="mx-auto flex max-w-2xl flex-col gap-8 px-6 py-8">
       <div>
@@ -71,7 +76,7 @@ defmodule BusterClawWeb.Explained.Studio do
         </p>
         <p>
           Buster Claw makes
-          noise on purpose — a voicemail arrives, a shift ends, an alarm fires — and
+          noise on purpose — mail arrives, a shift ends, an alarm fires — and
           which chime rings is a table you own. The Studio is where you cut the
           audio; the sound board is where you decide what it is for.
         </p>
@@ -116,7 +121,7 @@ defmodule BusterClawWeb.Explained.Studio do
         confirm="None, and none is needed: reading the routing table cannot change it."
         result="Every routing key with its label, what is explicitly assigned, and what actually plays after inheritance — including keys that are deliberately silent."
       >
-        <.prompt text="What sound plays when a voicemail arrives, and where does that file come from?" />
+        <.prompt text="What sound plays when an email arrives, and where does that file come from?" />
         <ol class="ic-unfold">
           <li>
             <.copy_command command="sound_routes" />
@@ -133,7 +138,8 @@ defmodule BusterClawWeb.Explained.Studio do
             which layer it lives in.
           </li>
           <li>
-            The keys are fixed and named: <code>default</code>, <code>timer</code>, <code>alarm</code>, <code>reminder</code>, <code>chat</code>, <code>terminal</code>, <code>email</code>, <code>voicemail</code>, <code>manual</code>, <code>confirm</code>, <code>shift</code>, <code>blocked</code>, <code>web</code>, <code>order</code>, <code>sms</code>, <code>security</code>, <code>boot</code>.
+            The keys are fixed and named, read here from the routing table itself:
+            <span :for={key <- @route_keys}><code>{key}</code>{" "}</span>
           </li>
         </ol>
       </.example>
@@ -225,7 +231,7 @@ defmodule BusterClawWeb.Explained.Studio do
         confirm="GATED — the only verb on this page that is. An unknown route is refused BEFORE the file is written, so a typo can never surface later as a chime that never plays."
         result="Reports what the key played before, so the change can be undone. name_taken and shadows_bundled refuse unless overwrite is true."
       >
-        <.prompt text="Install harbor-trim.wav as my voicemail chime, and tell me what it was before so I can put it back." />
+        <.prompt text="Install harbor-trim.wav as my email chime, and tell me what it was before so I can put it back." />
         <ol class="ic-unfold">
           <li>
             <.copy_command command="sound_apply" />
@@ -276,8 +282,8 @@ defmodule BusterClawWeb.Explained.Studio do
             <span class="font-mono font-bold text-base-content">sound_delete</span>
             — the irreversible one, and the only verb here that destroys anything. It
             removes working material only; the library and the routing table are
-            untouched, and it cannot remove a chime something is currently using. An
-            imported voicemail can be imported again; an edit rendered from it
+            untouched, and it cannot remove a chime something is currently using. A
+            recording can be imported again; an edit rendered from it
             cannot.
           </li>
         </ul>
@@ -293,8 +299,7 @@ defmodule BusterClawWeb.Explained.Studio do
         <p>
           <span class="font-semibold text-base-content">Where the audio can come from.</span>
           <code>sound_import</code>
-          is the door, and its reach is deliberately narrow: a phone event whose
-          recording the app itself stored, or a path <span class="italic">relative to the Library root</span>. Absolute paths and
+          is the door, and its reach is deliberately narrow: a path <span class="italic">relative to the Library root</span>. Absolute paths and
           <code>..</code>
           are refused, so the verb can address your recordings and nothing else on the
           disk. Everything is converted to the studio's internal format on the way in
@@ -306,6 +311,18 @@ defmodule BusterClawWeb.Explained.Studio do
           the Library root, and import it with <code>sound_import</code>.
           Use <code>sound_apply</code>
           when you are ready to install it as a chime.
+        </p>
+        <p>
+          <span class="font-semibold text-base-content">Or record it here.</span>
+          <code>sound_devices</code>
+          lists the inputs; <code>sound_record</code>
+          captures up to five minutes from one into <code>sounds/studio/</code>
+          as a new source. It is gated, because it opens the microphone — an
+          unattended run acting on content it did not choose cannot switch your
+          mic on. <code>sound_input_level</code>
+          reads the input gain, and <code>sound_sources</code>
+          lists what the studio holds, along with whether the system decoder is
+          present for non-WAV imports.
         </p>
       </div>
 

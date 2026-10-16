@@ -10,7 +10,7 @@ defmodule BusterClawWeb.MessagesProbe do
       <h2 class="ic-eyebrow">iMessage connection</h2>
       <p class="text-sm text-base-content/70">
         Check whether this app can access Messages on your Mac. Text reception and replies
-        are still being built. Twilio continues to handle voicemail.
+        are still being built.
       </p>
       <button
         id="messages-probe-button"

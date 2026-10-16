@@ -28,11 +28,28 @@ defmodule BusterClawWeb.Explained.Intro do
       </div>
 
       <p id="explained-intro-summary" class="text-sm leading-relaxed text-base-content/80">
-        Buster Claw is a lot of surfaces — a browser the agent can drive, a phone
-        line, Google Workspace, an audio editor, a live shader on this
-        very page. Each square below
-        opens a short tour of one of them: what it does, how to drive it yourself,
-        and how to hand it to the agent. The grid grows as tutorials are written.
+        Buster Claw is a lot of surfaces — a browser the agent can drive, Google
+        Workspace, a durable work queue you can email, an audio workshop, a live
+        shader behind this very page. Each square below opens a short tour of one
+        of them: what it does, how to drive it yourself, and how to hand it to the
+        agent.
+      </p>
+
+      <%!-- The one paragraph that fixes the app's geography for every tutorial
+            after it (EXPLAINED_REWRITE D3): sidebar, work area, panel, the Clock
+            panel's three tabs, the duty dock. The tutorials use these words and
+            no others — no "dock", no "sub-tab", no "corner widget". --%>
+      <p id="explained-intro-geography" class="text-sm leading-relaxed text-base-content/80">
+        <span class="font-semibold text-base-content">Where things are.</span>
+        The sidebar on the left lists the work-area panels — Chat, Workspace,
+        Notes, Calendar, up to four Terminals, Pockets, this Explained panel,
+        Activity and Clock — and two destinations that open as tabs of their own,
+        Browser and Settings. Panels sit side by side in the work area; ⌘1, ⌘2
+        and ⌘3 jump to the work area, Settings and the Browser. The
+        <span class="font-semibold text-base-content">Clock panel</span>
+        carries three tabs: Time &amp; Place, Contacts, and Notify. The
+        <span class="font-semibold text-base-content">duty dock</span>
+        at the foot of the sidebar is where you go on duty and stand down.
       </p>
 
       <%!-- The 3-step onboarding, moved here from the Settings Get Started tab
@@ -80,9 +97,9 @@ defmodule BusterClawWeb.Explained.Intro do
             <div class="min-w-0">
               <h3 class="font-semibold">Chat with Buster Claw</h3>
               <p class="mt-0.5 text-sm text-base-content/65">
-                Use the Chat sub-tab — first in this same row. Ask it to triage your
-                inbox, draft a reply, or look something up — it runs your selected
-                agent CLI headlessly, no terminal needed.
+                Open the Chat panel from the sidebar — it is the first one listed.
+                Ask it to triage your inbox, draft a reply, or look something up — it
+                runs your selected agent CLI headlessly, no terminal needed.
               </p>
             </div>
           </li>

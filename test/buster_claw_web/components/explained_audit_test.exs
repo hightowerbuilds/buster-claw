@@ -54,7 +54,13 @@ defmodule BusterClawWeb.ExplainedAuditTest do
     end
   end
 
-  test "rendered tutorials do not promise retired voice, cut-up, sketch, or broker features" do
+  # Every removal so far — trading, the Sketch Pad, the cut-up, VoxCPM, the
+  # phone — took its own tab or verbs and left the OTHER tabs' sentences
+  # standing; and the app's geography (dock → sidebar, sub-tabs → panels, the
+  # corner widget → the Clock panel) changed under prose nothing re-read. The
+  # command and route guards above cannot see a sentence. This list can
+  # (EXPLAINED_REWRITE D7): add the phrase the next removal leaves behind.
+  test "rendered tutorials do not promise retired features or name places that moved" do
     for tab <- ExplainedPanel.tab_keys() do
       text = tab |> document() |> LazyHTML.text() |> String.replace(~r/\s+/, " ")
 
@@ -64,7 +70,17 @@ defmodule BusterClawWeb.ExplainedAuditTest do
             "voice cloned from yours",
             "Voice Library",
             "Sketch Pad",
-            "a broker"
+            "a broker",
+            "Phone tab",
+            "phone line",
+            "phone number",
+            "voicemail",
+            "shaderface",
+            "contact-faces",
+            "the dock",
+            "sub-tab",
+            "corner widget",
+            "Workspace page's"
           ] do
         refute text =~ stale, "#{tab} still describes retired functionality: #{stale}"
       end

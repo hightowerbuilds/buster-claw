@@ -27,9 +27,6 @@ defmodule BusterClawWeb.Layouts do
                   "/calendar" => "Calendar",
                   "/terminal" => "Terminal",
                   "/duty" => "On duty",
-                  # Left the dock 08-08 (now a Home sub-tab); still reachable by
-                  # deep link and in a split pane, so it still needs a label.
-                  "/phone" => "Phone",
                   "/integrations" => "Integrations",
                   "/security" => "Security",
                   "/settings" => "Settings",

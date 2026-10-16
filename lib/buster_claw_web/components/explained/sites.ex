@@ -10,8 +10,9 @@ defmodule BusterClawWeb.Explained.Sites do
 
   alias BusterClawWeb.Explained.Registry
 
-  # busterclaw.lol — headquarters and the future counter for the agent's phone
-  # number. Keep vending in future tense until the store is actually live.
+  # busterclaw.lol — the download, the docs, the source and the terms. Nothing
+  # is sold there (EXPLAINED_REWRITE D4; the site's own copy was cut to match
+  # on 10-16).
   def site_panel(assigns) do
     assigns = assign(assigns, :site_url, Registry.site_url())
 
@@ -27,13 +28,15 @@ defmodule BusterClawWeb.Explained.Sites do
       <div class="flex flex-col gap-3 text-sm leading-relaxed text-base-content/80">
         <p>
           <span class="font-semibold text-base-content">busterclaw.lol</span>
-          is where the app lives on the web — releases, docs, and the planned
-          counter where your agent will be able to get its own phone number.
+          is where the app lives on the web: the macOS download, the
+          documentation, and the terms and privacy policy. The app is a free
+          download — no account to create, no license to buy.
         </p>
         <p>
-          The plan is deliberately simple: one purchasable asset, a real line
-          issued to you on one bill. Until number vending opens, use the Phone tab
-          to understand the answering-machine and relay workflow that line enables.
+          The source is readable so the runtime can be audited rather than
+          trusted on faith — source-available, not open source. Releases are
+          announced there and nowhere else, so it is also where to look when you
+          want to know whether the build you are running is the latest.
         </p>
       </div>
 

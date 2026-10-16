@@ -89,12 +89,17 @@ defmodule BusterClawWeb.ExplainedPanelTest do
       assert html =~ "The manifest holds description. It never holds permission."
     end
 
-    test "it names the three surfaces that already use a Pocket" do
+    test "it names the two surfaces that already use a Pocket, and not the orphaned third" do
       html = render_tab("pockets")
 
-      for pocket <- ~w(pockets/backgrounds/ pockets/nav-home/ pockets/contact-faces/) do
+      for pocket <- ~w(pockets/backgrounds/ pockets/nav-home/) do
         assert html =~ pocket, "the tab claims Pockets are load-bearing but never names #{pocket}"
       end
+
+      # Contact faces have had no renderer since the Phone tab left (10-15);
+      # the Pocket is real but teaching it as a surface is a promise
+      # (EXPLAINED_REWRITE D2).
+      refute html =~ "contact-faces"
     end
 
     test "the read fence is taught as re-asked, not cached" do

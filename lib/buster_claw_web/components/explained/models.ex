@@ -252,9 +252,10 @@ defmodule BusterClawWeb.Explained.Models do
           There is no per-conversation model picker — the choice is per surface, so
           every chat runs on the chat surface's model. Every harness does report
           what a run cost — Claude and OpenCode in dollars, Codex in tokens —
-          but there is no per-surface or per-day total anywhere yet. Codex keeps
-          a conversation thread when live steering is enabled; the fallback
-          one-shot adapter starts a fresh session each turn.
+          but there is no per-surface or per-day total anywhere yet. A
+          conversation keeps its thread between turns on every harness — Codex
+          and OpenCode each run through one long-lived server connection the app
+          opens on first use.
         </p>
       </div>
 

@@ -48,8 +48,12 @@ defmodule BusterClaw.Duty do
       [
         {agent_cli?, %{key: :agent, label: "Install an agent CLI", href: "/settings"}},
         {email_ready?(), %{key: :email, label: "Connect Google", href: "/settings?tab=google"}},
-        {TrustedSenders.list_entries() != [],
-         %{key: :senders, label: "Add a trusted sender", href: "/phone"}}
+        {
+          TrustedSenders.list_entries() != [],
+          # The Clock panel's Contacts tab is where a sender is added and trusted
+          # in one step (the Phone tab that used to own it left 10-15).
+          %{key: :senders, label: "Add a trusted sender", href: "/?panel=clock"}
+        }
       ]
       |> Enum.reject(fn {ok?, _} -> ok? end)
       |> Enum.map(fn {_, blocker} -> blocker end)

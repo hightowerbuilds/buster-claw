@@ -24,7 +24,8 @@ defmodule BusterClawWeb.Explained.CmdTable do
 
   ## Grouped by prefix, which is derived and therefore self-filing
 
-  33 groups, from `sound_` at 29 commands down to several with one. Hand-curated
+  Nearly forty groups, from `browser_` at two dozen commands down to several
+  with one. Hand-curated
   families would read better and would drift the first time someone added a verb
   whose home was ambiguous; a prefix is mechanical, so a new command files itself.
   Groups are alphabetical rather than by size — a reader looking for `sound_` is
@@ -32,8 +33,8 @@ defmodule BusterClawWeb.Explained.CmdTable do
 
   ## Collapsed by default
 
-  203 descriptions, the longest 2,562 characters, is not a page anyone reads top
-  to bottom. Each command is a `<details>`: the summary line carries the name and
+  A hundred and eighty-odd descriptions, the longest over two thousand
+  characters, is not a page anyone reads top to bottom. Each command is a `<details>`: the summary line carries the name and
   its three pieces of metadata, and the body carries the full description and the
   arguments. Native `<details>` rather than LiveView state, for the reason
   `Explained.Intro`'s Get Started block gives — the panel renders behind an `:if`,

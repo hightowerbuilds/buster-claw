@@ -157,7 +157,7 @@ defmodule BusterClaw.Commands.Catalog.Sound do
         type: :mutate,
         tier: :restricted,
         description:
-          "Delete one studio source from sounds/studio/. Only the studio's working material — the sound library and the routing table are untouched, and this cannot remove a chime that is currently playing for something. Irreversible: an imported voicemail can be imported again, but an edit rendered from it cannot.",
+          "Delete one studio source from sounds/studio/. Only the studio's working material — the sound library and the routing table are untouched, and this cannot remove a chime that is currently playing for something. Irreversible: an imported recording can be imported again, but an edit rendered from it cannot.",
         args: %{
           "name" => %{type: :string, required: true}
         }
@@ -168,7 +168,7 @@ defmodule BusterClaw.Commands.Catalog.Sound do
         tier: :restricted,
         gated: true,
         description:
-          "Install a studio source into the sound library and route a notification key to it — the last step, and the only one that changes what the machine does when nobody is watching. route must be a key from sound_routes (default, timer, alarm, reminder, chat, terminal, email, voicemail, manual, confirm, shift, blocked, web, order, sms, security, boot); anything else is refused as unknown_route BEFORE the file is written, so a typo can never be discovered later as a chime that does not play. name is the library basename (default the source's own, always .wav). Refuses name_taken if that name is already in the library, and shadows_bundled if it matches a bundled default — that second case would replace the built-in chime for EVERY key falling back to it, not just this one — unless overwrite is true. Reports what the key played before, so the change can be undone. Tell the operator what you are about to route before routing it.",
+          "Install a studio source into the sound library and route a notification key to it — the last step, and the only one that changes what the machine does when nobody is watching. route must be a key from sound_routes (default, timer, alarm, reminder, chat, terminal, email, manual, confirm, shift, blocked, web, order, security, boot); anything else is refused as unknown_route BEFORE the file is written, so a typo can never be discovered later as a chime that does not play. name is the library basename (default the source's own, always .wav). Refuses name_taken if that name is already in the library, and shadows_bundled if it matches a bundled default — that second case would replace the built-in chime for EVERY key falling back to it, not just this one — unless overwrite is true. Reports what the key played before, so the change can be undone. Tell the operator what you are about to route before routing it.",
         args: %{
           "source" => %{type: :string, required: true},
           "route" => %{type: :string, required: true},

@@ -4,7 +4,7 @@ defmodule BusterClawWeb.NotifySettingsLive do
 
   Manages the workspace sound library (`<workspace>/sounds/`) and the per-event
   routing map — which sound plays for each notification source (chat, terminal,
-  email, voicemail, manual) and kind (timer, alarm, reminder), with a default
+  email, manual) and kind (timer, alarm, reminder), with a default
   underneath. Precedence when a notification fires: source → kind → default →
   `notify.<ext>`/first file (see `Notifications.Sound`).
 

@@ -30,7 +30,9 @@ defmodule BusterClawWeb.Explained.Gws do
             Configuration → Google Workspace
           </.link>
           — with the bundled button when this build provides it, or Advanced setup
-          with your own OAuth client. Everything below happens in the home <span class="font-semibold text-base-content">Chat</span>. You type plain
+          with your own OAuth client. Everything below happens in the
+          <span class="font-semibold text-base-content">Chat</span>
+          panel. You type plain
           English; the agent picks the commands. You never memorize a command name,
           but they are shown here so you can see exactly what your words turn into.
           Mutations, triggers, and policy decisions land on the <.link
@@ -49,15 +51,20 @@ defmodule BusterClawWeb.Explained.Gws do
         needs="Google connected in Configuration. Nothing else — no trusted senders required to read your own mail."
         touches="Pulls mail and today's events into the local Library and Calendar. Reads Google; writes nothing back to it."
         confirm="None. The two syncs are safe-tier triggers and the searches are safe-tier reads; no path here sends mail or edits Google data."
-        result="The brief in chat, mail in the Library, events on the Workspace page's Calendar tab. Not connected and the commands say so rather than returning an empty inbox that looks like a quiet day."
+        result="The brief in chat, mail in the Library, events on the Calendar panel. Not connected and the commands say so rather than returning an empty inbox that looks like a quiet day."
       >
         <.prompt text="Good morning — sync my mail and calendar, then brief me: what's on today, which emails actually need a reply from me, and anything that smells urgent." />
         <ol class="ic-unfold">
           <li>
-            The agent runs <code>gmail_sync</code> — your latest mail lands in the app.
+            The agent runs <code>gmail_sync</code>
+            — your latest mail lands in the app.
             Mail from a sender on your trusted list is also auto-filed into the
             Dispatch queue as work. Other mail is still synced and archived in the
-            Library, but it is not enqueued for an agent.
+            Library, but it is not enqueued for an agent. A trusted sender's
+            attachments come along too — saved under
+            <code>attachments/gmail/&lt;message id&gt;/</code>
+            in your workspace,
+            and named on the Library document and the queue item.
           </li>
           <li>
             Then <code>google_calendar_sync</code> — today's events sync one-way into
@@ -115,7 +122,7 @@ defmodule BusterClawWeb.Explained.Gws do
         needs="Google connected, and events actually on today's calendar."
         touches="Syncs the calendar one way into the app, then creates local reminders. Nothing is written back to Google, and nothing leaves this machine."
         confirm="None — a local reminder is cheap and undoable. Dismiss or snooze is right there on each one."
-        result="Reminders queued in the corner widget's Notify tab, each chiming when due. An empty calendar produces no reminders and says so."
+        result="Reminders queued on the Clock panel's Notify tab, each chiming when due. An empty calendar produces no reminders and says so."
       >
         <.prompt text="Sync my calendar, then set reminders 30 minutes before each meeting today — make it an hour for anything off-site." />
         <ol class="ic-unfold">
@@ -124,7 +131,7 @@ defmodule BusterClawWeb.Explained.Gws do
             One <code>notify_create</code> per meeting, timed per your rule.
           </li>
           <li>
-            The reminders line up in the corner widget's
+            The reminders line up on the Clock panel's
             <span class="font-semibold text-base-content">Notify</span>
             tab; each one
             chimes when due, and snooze/dismiss are right there.
@@ -142,9 +149,14 @@ defmodule BusterClawWeb.Explained.Gws do
         result="A reply in your phone's inbox and the item marked done, with the run's receipts on the Security feed. Off-duty, queued work waits. Mail from untrusted senders is archived without being enqueued."
       >
         <p class="text-sm leading-relaxed text-base-content/80">
-          One-time setup: add your own phone's email address as a contact on the Phone tab and
-          mark it <span class="font-semibold text-base-content">trusted</span>, then go on duty
-          from the dock (or run <code>./buster-claw on-duty</code> in the terminal).
+          One-time setup: add your own phone's email address as a contact on the Clock
+          panel's Contacts tab — a contact is saved and
+          <span class="font-semibold text-base-content">trusted</span>
+          in one step — then
+          press <span class="font-semibold text-base-content">Go on duty</span>
+          in the
+          sidebar's duty dock (or run <code>./buster-claw on-duty</code>
+          in a terminal).
         </p>
         <%!-- No "Try in Chat" here: this prompt is an *email*, and the whole
               point of the cycle is that the trigger is mail from a trusted
@@ -156,8 +168,10 @@ defmodule BusterClawWeb.Explained.Gws do
         />
         <ol class="ic-unfold">
           <li>
-            On-duty polls your trusted mail; your email auto-enqueues as a Dispatch
-            item — durable work, not a fleeting chat message.
+            On duty, the app polls your mail itself — no terminal loop to keep
+            alive — and a trusted sender's email auto-enqueues as a Dispatch item:
+            durable work, not a fleeting chat message. The queue is also projected
+            to <code>Dispatch.md</code> in your workspace, readable as a file.
           </li>
           <li>
             The Dispatcher engages the agent on the item: it syncs the calendar,
@@ -166,15 +180,17 @@ defmodule BusterClawWeb.Explained.Gws do
           <li>
             <code>dispatch_reply</code>
             sends a threaded Gmail reply back to your
-            phone and marks the item done — the full loop, unattended. It is a
+            phone — with a workspace file attached, if the work produced one — and
+            marks the item done. The full loop, unattended. It is a
             restricted, audited mutation, but it has no separate <code>confirm_send</code>
             argument and is not policy-gated; trusting the
             sender and starting an on-duty shift are the controls for this path.
           </li>
           <li>
             <span class="font-semibold text-base-content">Stand down</span>
-            from the dock — while a shift is running, the button sits in the bar at
-            the bottom of every screen. It stops new work at once; a run already in
+            — while a shift is running, the duty dock at the foot of the sidebar
+            reads On duty with the queue count and a Stand down button: one click,
+            no confirm. It stops new work at once; a run already in
             progress finishes on its own. <code>./buster-claw off-duty</code>
             does the
             same thing from a terminal, and either way a <code>STOP</code>
@@ -241,7 +257,12 @@ defmodule BusterClawWeb.Explained.Gws do
             <code>gmail_draft_create</code>
             with the file on its <code>attachments</code>
             — any workspace file rides along: exports,
-            downloads, things the agent wrote itself.
+            downloads, things the agent wrote itself. The reverse path exists too:
+            <code>gmail_attachment_download</code>
+            saves a message's attachments
+            under <code>attachments/gmail/</code>
+            so the agent can work on a file
+            someone sent you.
           </li>
           <li>
             You read the draft, you say go — <code>gmail_send</code>

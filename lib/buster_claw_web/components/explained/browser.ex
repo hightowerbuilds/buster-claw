@@ -138,6 +138,12 @@ defmodule BusterClawWeb.Explained.Browser do
             this step clicks nothing. Ordinary reads are omitted from the
             Security feed.
           </li>
+          <li>
+            The one-click version: the <span class="font-semibold text-base-content">Ask</span>
+            button on the browser's own toolbar opens Chat with the page already on
+            the composer — prefilled, never sent — so "what am I looking at" is a
+            click and a question.
+          </li>
         </ol>
       </.example>
 
@@ -276,6 +282,33 @@ defmodule BusterClawWeb.Explained.Browser do
           </li>
         </ol>
       </.example>
+
+      <section class="flex flex-col gap-3" id="explained-browser-fences">
+        <h3 class="font-display text-base font-black uppercase tracking-wide">
+          Three fences you set once
+        </h3>
+        <ul class="ic-unfold" style="list-style: none; padding-left: 0;">
+          <li>
+            <span class="font-mono font-bold text-base-content">browser_secret_put</span>
+            stores a value an Agent Mode run can type as <code>$secret.name</code>
+            during a fill — a password, a membership number — without any model
+            ever reading it. Encrypted at rest; no command reads one back, and
+            putting or deleting one is gated.
+          </li>
+          <li>
+            <span class="font-mono font-bold text-base-content">browser_egress_level</span>
+            decides how much of a host's page content may leave the machine during
+            an Agent Mode run — full, structure only, or never — for that host and
+            its subdomains. With no arguments it lists what is in force.
+          </li>
+          <li>
+            <span class="font-mono font-bold text-base-content">browser_download</span>
+            saves a URL's bytes into your workspace downloads folder through the
+            same SSRF guard as the fetch; chain it into <code>drive_upload</code>
+            to push the file on.
+          </li>
+        </ul>
+      </section>
 
       <p id="explained-browser-activity" class="text-sm leading-relaxed text-base-content/70">
         In the Browser tab, <span class="font-semibold text-base-content">Activity graph</span>
