@@ -105,10 +105,10 @@ defmodule BusterClaw.Commands.Dispatch do
         is_nil(blank_to_nil(item.sender)) ->
           {:error, :no_reply_recipient}
 
-        # `dispatch reply` is a *Gmail* send, and a phone item has no reply
-        # channel at all now that BusterPhone is intake-only. Without this guard
-        # an agent carrying over its mail-triage habit would hand Gmail
-        # "+1555..." as a To: address.
+        # `dispatch reply` is a *Gmail* send; an item whose sender is not an
+        # address (a manual enqueue, or a phone row from before 10-15) has no
+        # reply channel, and this guard keeps Gmail from being handed "+1555..."
+        # as a To: address.
         is_nil(TrustedSenders.extract_address(item.sender)) ->
           {:error, :no_reply_channel}
 

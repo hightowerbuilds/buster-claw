@@ -118,13 +118,13 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
 
       {view, html} = open_studio(conn)
       assert html =~ "Restore built-in sounds"
-      assert html =~ "15 missing"
+      assert html =~ "13 missing"
 
       html = view |> element("button[phx-click='install_bundled']") |> render_click()
 
       # The operator's own confirm.wav is theirs — a restore must not clobber it.
       assert File.read!(mine) == SoundGen.render("boot")
-      assert html =~ "Copied 15 into sounds/"
+      assert html =~ "Copied 13 into sounds/"
       # Nothing left to copy, so the affordance retires itself.
       refute html =~ "Restore built-in sounds"
       assert File.regular?(Path.join([root, "sounds", "alarm.wav"]))

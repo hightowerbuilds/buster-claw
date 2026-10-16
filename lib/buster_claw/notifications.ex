@@ -3,7 +3,7 @@ defmodule BusterClaw.Notifications do
   Notify — the agent's scheduled-moment store: timers, alarms, and reminders.
 
   A notification is created through the `notify_*` command surface, which every
-  entry point (chat, terminal, dispatched email/voicemail) already shares, so
+  entry point (chat, terminal, dispatched email) already shares, so
   BusterClaw can arm one from anywhere without per-channel wiring.
 
   `fire_at` is the absolute moment (a timer resolves now + duration at create

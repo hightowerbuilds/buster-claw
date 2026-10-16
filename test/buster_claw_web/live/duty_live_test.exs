@@ -30,7 +30,6 @@ defmodule BusterClawWeb.DutyLiveTest do
 
     {:ok, duty, _} = live(conn, ~p"/duty")
     assert has_element?(duty, "#duty-page")
-    assert has_element?(duty, "#duty-phone")
     assert has_element?(duty, "#duty-email")
     assert has_element?(duty, "#duty-mode", "Working on its own")
     assert has_element?(duty, "#duty-stop-limit", "a run in progress finishes")
@@ -41,7 +40,6 @@ defmodule BusterClawWeb.DutyLiveTest do
     {:ok, duty, _} = live(conn, ~p"/duty")
     assert has_element?(duty, "#duty-idle", "Buster Claw is not watching")
     refute has_element?(duty, "#duty-page")
-    assert has_element?(duty, "#duty-phone")
     assert has_element?(duty, "#duty-email")
     # Nothing is connected here, so the button gives way to the blockers.
     assert has_element?(duty, "#duty-blockers", "Before going on duty")
@@ -80,23 +78,6 @@ defmodule BusterClawWeb.DutyLiveTest do
     assert has_element?(duty, "#activity-audit-#{event.id}", "Duty test activity")
     assert Enum.any?(Sentinel.list_events(), &(&1.id == event.id))
     assert has_element?(duty, "#duty-journal #home-activity")
-  end
-
-  test "phone intake appears live and remains in the phone archive", %{conn: conn} do
-    {:ok, _} = Orchestration.start_shift()
-    {:ok, duty, _} = live(conn, ~p"/duty")
-
-    {:ok, event} =
-      BusterClaw.Telephony.record_event(%{
-        direction: "inbound",
-        kind: "sms",
-        from_number: "+15555550101",
-        to_number: "+15555550102",
-        occurred_at: DateTime.utc_now() |> DateTime.truncate(:second)
-      })
-
-    assert has_element?(duty, "#activity-phone-#{event.id}", "Incoming sms")
-    assert BusterClaw.Telephony.get_event(event.id)
   end
 
   test "queue status changes replace the existing row", %{conn: conn} do

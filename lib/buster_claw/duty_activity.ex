@@ -5,7 +5,6 @@ defmodule BusterClaw.DutyActivity do
   alias BusterClaw.Dispatch.Item
   alias BusterClaw.Repo
   alias BusterClaw.Sentinel.Event
-  alias BusterClaw.Telephony.Event, as: PhoneEvent
 
   @limit 100
 
@@ -15,20 +14,6 @@ defmodule BusterClaw.DutyActivity do
       |> since(shift.started_at, :inserted_at)
       |> Repo.all()
       |> Enum.map(&entry("audit", &1.id, &1.inserted_at, &1.category, &1.message))
-
-    phone =
-      PhoneEvent
-      |> since(shift.started_at, :inserted_at)
-      |> Repo.all()
-      |> Enum.map(
-        &entry(
-          "phone",
-          &1.id,
-          &1.inserted_at,
-          &1.kind,
-          "Incoming #{&1.kind} from #{&1.from_number}"
-        )
-      )
 
     work =
       Item
@@ -44,7 +29,7 @@ defmodule BusterClaw.DutyActivity do
         )
       )
 
-    (audit ++ phone ++ work)
+    (audit ++ work)
     |> Enum.sort_by(&{DateTime.to_unix(&1.at), &1.id}, :desc)
     |> Enum.take(@limit)
   end

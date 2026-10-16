@@ -3,7 +3,7 @@ defmodule BusterClaw.Pockets.Faces do
   Contact shaderfaces, backed by **one Pocket holding every face**.
 
   A contact's `face_shader` column names a face; this module is the only thing
-  that turns that name into bytes the `ShaderFace` hook can fetch. A contact with
+  that turns that name into bytes a face renderer can fetch. A contact with
   no `face_shader` is untouched by any of it — the built-in generative face
   keyed on `face_seed` still renders, and always will.
 
@@ -131,7 +131,7 @@ defmodule BusterClaw.Pockets.Faces do
   end
 
   @doc """
-  The URL the `ShaderFace` hook fetches raw WGSL from for `name`, or `nil`.
+  The URL a face renderer fetches raw WGSL from for `name`, or `nil`.
 
   `nil` means "render the generative face" — see the moduledoc.
   """

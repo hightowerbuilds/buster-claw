@@ -99,16 +99,12 @@ defmodule BusterClawWeb.Explained.Intro do
                   class="font-semibold text-primary hover:opacity-80"
                 >
                   Configuration
-                </.link>, then add the senders you trust as contacts on the Phone tab and
-                mark them trusted. Use the bundled Connect button when this build offers
-                it; otherwise Advanced setup accepts your own OAuth client. Mail from
-                other senders is still synced and archived in the Library, but only
-                trusted senders become Dispatch work. When you're ready, give your
-                agent its own phone line on the
-                <.link navigate="/phone" class="font-semibold text-primary hover:opacity-80">
-                  Phone
-                </.link>
-                tab.
+                </.link>, then add the senders you trust as contacts in the Clock
+                panel's Contacts tab — a contact is saved and trusted in one step.
+                Use the bundled Connect button when this build offers it; otherwise
+                Advanced setup accepts your own OAuth client. Mail from other
+                senders is still synced and archived in the Library, but only
+                trusted senders become Dispatch work.
               </p>
             </div>
           </li>

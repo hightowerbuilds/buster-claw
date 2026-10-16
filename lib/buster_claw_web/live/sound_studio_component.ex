@@ -19,7 +19,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
 
   ## Preview is served from a route, never a blob
 
-  The `<audio>` element points at `/notify/sound/:name`, `/phone/recording`, or
+  The `<audio>` element points at `/notify/sound/:name`, or
   `/music/track/:name`. CSP declares no `media-src`, so media falls back to
   `default-src 'self'` — which excludes `blob:`. A blob-based preview would work
   in dev (CSP is Report-Only there) and fail only in the packaged app.
@@ -628,7 +628,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
 
   # What the menu may touch: files that are YOURS. A built-in chime has no
   # workspace file (deleting the override of one is how you get the built-in
-  # back), and a voicemail recording belongs to the Phone surface — deleting
+  # back), and a Library recording is the Library's, not the Studio's — deleting
   # its file here would orphan the telephony record that points at it.
 
   # `Sound.delete/1` only ever removes the workspace layer, so a "built-in"

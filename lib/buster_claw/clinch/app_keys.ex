@@ -1,6 +1,6 @@
 defmodule BusterClaw.Clinch.AppKeys do
   @moduledoc """
-  The app's own service credentials — Twilio, the Supabase relay, Finnhub — and
+  The app's own service credentials — Finnhub today — and
   the one place that answers "what is this value right now?".
 
   ## Why this exists
@@ -10,7 +10,7 @@ defmodule BusterClaw.Clinch.AppKeys do
 
   1. **A double-clicked `.app` inherits launchd's environment, not your shell's.**
      Credentials exported in `.zshrc` are simply invisible to the shipped product,
-     which is why BusterPhone has never been configurable outside a dev terminal.
+     which is why a service credential was never configurable outside a dev terminal.
   2. **An environment variable cannot be rotated or revoked** from inside the app.
      There is no "replace this key" and no "this key is compromised, stop using
      it" — only "edit a file and restart".
@@ -61,56 +61,6 @@ defmodule BusterClaw.Clinch.AppKeys do
   # from today, so "it works in my terminal but not in the app" becomes visible
   # rather than mysterious.
   @keys [
-    %{
-      name: "twilio_account_sid",
-      label: "Twilio Account SID",
-      env: "TWILIO_ACCOUNT_SID",
-      group: "BusterPhone",
-      secret?: false,
-      note:
-        "Identifies the Twilio account. Not secret, but required for the inbound " <>
-          "relay and the voicemail cost back-fill."
-    },
-    %{
-      name: "twilio_auth_token",
-      label: "Twilio Auth Token",
-      env: "TWILIO_AUTH_TOKEN",
-      group: "BusterPhone",
-      secret?: true,
-      note: "Full control of the Twilio account. Rotate from the Twilio console."
-    },
-    # Two keys used to sit here and no longer do. `twilio_messaging_service_sid`
-    # addressed outbound SMS and `operator_phone_number` was the phone the
-    # outbound bridge rang first; both capabilities were deleted 08-18
-    # (`PHONE_INTAKE_ROADMAP`), leaving nothing that reads either value. They are
-    # removed rather than left settable, because a settings field that changes
-    # nothing is a lie the operator can type into.
-    %{
-      name: "twilio_phone_number",
-      label: "Twilio Phone Number",
-      env: "TWILIO_PHONE_NUMBER",
-      group: "BusterPhone",
-      secret?: false,
-      note:
-        "E.164, e.g. +13603646763. The BusterPhone number itself — the one you " <>
-          "give out, and the one whose voicemails this app files."
-    },
-    %{
-      name: "supabase_url",
-      label: "Supabase URL",
-      env: "SUPABASE_URL",
-      group: "BusterPhone",
-      secret?: false,
-      note: "The relay project. Stored beside its key so the pair is configured together."
-    },
-    %{
-      name: "supabase_service_role_key",
-      label: "Supabase service-role key",
-      env: "SUPABASE_SERVICE_ROLE_KEY",
-      group: "BusterPhone",
-      secret?: true,
-      note: "Bypasses RLS entirely — the most powerful credential in the relay project."
-    },
     %{
       name: "finnhub_api_key",
       label: "Finnhub API key",
@@ -168,20 +118,8 @@ defmodule BusterClaw.Clinch.AppKeys do
   # The environment fallback reads the same `Application` values `runtime.exs`
   # populated, rather than `System.get_env/1` — so a release configured the old
   # way keeps working, and tests that set app env keep controlling these.
-  defp from_env("twilio_account_sid"), do: twilio(:account_sid)
-  defp from_env("twilio_auth_token"), do: twilio(:auth_token)
-  defp from_env("twilio_phone_number"), do: twilio(:phone_number)
-  defp from_env("supabase_url"), do: app_env(:telephony_relay_url)
-  defp from_env("supabase_service_role_key"), do: app_env(:telephony_relay_key)
   defp from_env("finnhub_api_key"), do: app_env(:finnhub_api_key)
   defp from_env(_unknown), do: nil
-
-  defp twilio(field) do
-    :buster_claw
-    |> Application.get_env(:twilio, %{})
-    |> get_in([field])
-    |> presence()
-  end
 
   defp app_env(key), do: :buster_claw |> Application.get_env(key) |> presence()
 

@@ -445,7 +445,7 @@ defmodule BusterClawWeb.SettingsLiveTest do
         assert html =~ key.label, "#{key.name} is in the registry but not on the screen"
       end
 
-      assert html =~ "BusterPhone"
+      assert html =~ "Finance"
       assert html =~ "Service credentials"
     end
 
@@ -497,7 +497,7 @@ defmodule BusterClawWeb.SettingsLiveTest do
 
     test "values are never rendered, not even a stored one", %{conn: conn} do
       assert {:ok, _} =
-               BusterClaw.Clinch.put({:app_key, "twilio_auth_token"}, "super-secret-token")
+               BusterClaw.Clinch.put({:app_key, "finnhub_api_key"}, "super-secret-token")
 
       {:ok, _view, html} = live(conn, ~p"/settings?tab=credentials")
 

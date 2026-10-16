@@ -15,10 +15,8 @@ When the app first opens, the setup wizard walks you through five steps:
    under **Settings → Configuration**).
 5. **Live** — you're set up; the app hands you off to the Home screen.
 
-On first launch Buster Claw seeds starter jobs in `jobs/` (`mail-triage.md`,
-`voicemail-triage.md`, `sms-triage.md`), a roster `README.md`, and the
-`memory/trusted-email-senders.md` and `memory/trusted-phone-numbers.md`
-templates.
+On first launch Buster Claw seeds a starter job in `jobs/` (`mail-triage.md`),
+a roster `README.md`, and the `memory/trusted-email-senders.md` template.
 
 ## The one thing you MUST configure
 

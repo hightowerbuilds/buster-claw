@@ -160,7 +160,7 @@ defmodule BusterClawWeb.Explained.Cmd do
           <g class="font-mono" fill="currentColor" font-size="9" text-anchor="middle">
             <text x="492" y="32">MAIL · CALENDAR</text>
             <text x="492" y="80">BROWSER</text>
-            <text x="492" y="128">PHONE</text>
+            <text x="492" y="128">NOTES</text>
             <text x="492" y="176">FILES · DRIVE</text>
             <text x="492" y="224">THE QUEUE</text>
           </g>
@@ -298,41 +298,6 @@ defmodule BusterClawWeb.Explained.Cmd do
 
       <.example
         n={3}
-        title="The phone desk"
-        want="Voicemail triage from the same chat as everything else."
-        needs="Messages in the archive. Nothing else — these are local reads plus one small write."
-        touches="Reads the phone log and one message's transcript, then clears that message's unheard flag. Sends nothing: the phone line only receives."
-        confirm="None. The reads are safe-tier, and `phone_mark_heard` is ungated on purpose — what protects the blinking light is that it is a separate verb you have to ask for, not a side effect of reading."
-        result="Transcripts in chat and the light cleared on the one message you named. Everything else keeps blinking."
-      >
-        <.prompt text="Any voicemails since yesterday? Read me the one from Dana, then mark just that one heard." />
-        <ol class="ic-unfold">
-          <li>
-            <code>phone_list</code>
-            pulls recent messages — transcripts included — and <code>phone_get</code>
-            opens Dana's with its body and the path to the recording.
-          </li>
-          <li>
-            <code>phone_mark_heard</code>
-            clears that one, and only because you asked. Reading deliberately does
-            not clear it: the blinking light is yours, and an agent skimming the
-            log must not switch it off behind your back.
-          </li>
-          <li>
-            There is no verb here that texts her back. BusterPhone is an intake —
-            it answers, records and archives, and replying is you, on your own
-            phone. The phone tutorial in this rail says why that is the design
-            rather than a gap.
-          </li>
-        </ol>
-        <p class="text-sm leading-relaxed text-base-content/70">
-          The phone line has its own tutorial in this rail — the trust rules are
-          where the real content is.
-        </p>
-      </.example>
-
-      <.example
-        n={4}
         title="Web errands, hands off the wheel"
         want="Fetch, search, file — without touching the browser tab."
         needs="Network access. No browser tab, no desktop app, no login."
@@ -358,7 +323,7 @@ defmodule BusterClawWeb.Explained.Cmd do
       </.example>
 
       <.example
-        n={5}
+        n={4}
         title="The queue is the desk"
         want="Durable work items, not chat scrollback."
         needs="Nothing to enqueue. The recall half only has something to find once you have run work worth remembering."
@@ -385,7 +350,7 @@ defmodule BusterClawWeb.Explained.Cmd do
       </.example>
 
       <.example
-        n={6}
+        n={5}
         title="It learns your routines"
         want="Repeated sequences become skills — with your sign-off."
         needs="Enough command history to have a repeated sequence in it. On a fresh install there is nothing to find yet."

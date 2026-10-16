@@ -94,54 +94,6 @@ case System.get_env("BUSTER_CLAW_BROWSER_BINARY") do
     :ok
 end
 
-if config_env() != :test do
-  telephony_relay_url = System.get_env("SUPABASE_URL")
-  telephony_relay_key = System.get_env("SUPABASE_SERVICE_ROLE_KEY")
-
-  # The drain runs unless explicitly switched off. It was gated on the credentials
-  # being present at boot, which made a key added later invisible until restart —
-  # and Clinch-stored credentials arrive after boot by definition (Phase 3).
-  # `drain/1` checks `Relay.configured?()` on every tick, so an unconfigured drain
-  # is a no-op, not a problem.
-  telephony_drain_enabled =
-    case System.get_env("BUSTER_CLAW_TELEPHONY_DRAIN") do
-      nil -> true
-      value -> value in ["1", "true", "TRUE", "yes", "YES"]
-    end
-
-  config :buster_claw,
-    telephony_relay_url: telephony_relay_url,
-    telephony_relay_key: telephony_relay_key,
-    telephony_drain_enabled: telephony_drain_enabled
-
-  # Twilio REST creds on the Mac, read only. BusterPhone is intake-only
-  # (`PHONE_INTAKE_ROADMAP.md`): the two kill switches that used to live here —
-  # BUSTER_CLAW_SMS_ENABLED and BUSTER_CLAW_VOICE_ENABLED — guarded outbound SMS
-  # and outbound calling, and both capabilities were deleted 08-18. A deleted
-  # capability needs no switch, and the Messaging Service SID they gated with it
-  # has nothing left to address. All that remains is the credential pair the cost
-  # back-fill authenticates its GETs with.
-  #
-  # NOT gated on TWILIO_ACCOUNT_SID being set, which it was until 08-15. The
-  # credentials themselves are read through the Clinch with env as fallback, so an
-  # operator who stored them in the Clinch has no TWILIO_ACCOUNT_SID in env — and
-  # this whole map went unset.
-  config :buster_claw, :twilio, %{
-    account_sid: System.get_env("TWILIO_ACCOUNT_SID"),
-    auth_token: System.get_env("TWILIO_AUTH_TOKEN"),
-    # `phone_number` is NOT new here and is not part of the intake-only cut — it
-    # is a pre-existing bug this cut made visible. `AppKeys.from_env/1` has read
-    # `twilio(:phone_number)` all along, and this map has never set it, so the
-    # `TWILIO_PHONE_NUMBER` fallback that `app_keys.ex` advertises to the
-    # operator (`env:` on the settings row) has never once resolved. It went
-    # unnoticed because the only reader was the dialler's caller-ID line, on a
-    # surface that was off by default. The Phone tab now names the number for
-    # everyone, so the dead fallback would have read "No number configured" to
-    # an operator who had configured it exactly as the UI told them to.
-    phone_number: System.get_env("TWILIO_PHONE_NUMBER")
-  }
-end
-
 # Finnhub API key for the finance_quote / finance_news commands. Optional — when
 # unset, those commands return {:error, :not_configured} and the rest of the
 # finance surface (EDGAR filings/fundamentals) is unaffected. Set FINNHUB_API_KEY

@@ -136,7 +136,7 @@ defmodule BusterClawWeb.ClinchPanels do
   The app's own service credentials — Twilio, the Supabase relay, Finnhub.
 
   Registry-driven rather than a free-text form, because unlike a `$secret` these
-  have **known names**: the app looks up `twilio_auth_token` by that exact string,
+  have **known names**: the app looks up `finnhub_api_key` by that exact string,
   so letting an operator invent the name would produce a credential that stores
   fine and is never read. One row per `Clinch.AppKeys` entry, and adding a
   credential is a row in that registry rather than markup here.

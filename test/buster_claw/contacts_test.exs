@@ -6,7 +6,7 @@ defmodule BusterClaw.ContactsTest do
   """
   use BusterClaw.DataCase, async: false
 
-  alias BusterClaw.{Contacts, TrustedNumbers, TrustedSenders}
+  alias BusterClaw.{Contacts, TrustedSenders}
 
   setup do
     # Each test gets a private workspace so the policy files it writes can't leak
@@ -66,50 +66,44 @@ defmodule BusterClaw.ContactsTest do
       refute Contacts.trusted?(contact)
     end
 
-    test "set_trusted writes the gate that Drain and GmailSync actually read" do
+    test "set_trusted writes the gate that GmailSync actually reads" do
       {:ok, contact} =
         Contacts.create_contact(%{name: "Luke", phone: "+15033412655", email: "l@example.com"})
 
       {:ok, _} = Contacts.set_trusted(contact, true)
 
-      # Not "the struct says trusted" — the policy files themselves.
-      assert TrustedNumbers.trusted?("+15033412655")
+      # Not "the struct says trusted" — the policy file itself.
       assert TrustedSenders.trusted?("l@example.com")
       assert Contacts.trusted?(contact)
     end
 
-    test "revoking removes both entries" do
+    test "revoking removes the entry" do
       {:ok, contact} =
         Contacts.create_contact(%{name: "Luke", phone: "+15033412655", email: "l@example.com"})
 
       {:ok, _} = Contacts.set_trusted(contact, true)
       {:ok, _} = Contacts.set_trusted(contact, false)
 
-      refute TrustedNumbers.trusted?("+15033412655")
       refute TrustedSenders.trusted?("l@example.com")
       refute Contacts.trusted?(contact)
     end
 
     test "trust granted outside the UI still shows on the contact" do
-      # The agent adds a number over the CLI; the contact must reflect it. This is
-      # the whole reason trust is read from the file instead of cached on the row.
-      {:ok, contact} = Contacts.create_contact(%{name: "Dana", phone: "+15033412655"})
+      # The agent adds an address over the CLI; the contact must reflect it. This
+      # is the whole reason trust is read from the file instead of cached on the row.
+      {:ok, contact} = Contacts.create_contact(%{name: "Dana", email: "d@example.com"})
       refute Contacts.trusted?(contact)
-
-      {:ok, _} = TrustedNumbers.add_entry("(503) 341-2655")
-
-      assert Contacts.trusted?(contact)
-    end
-
-    test "either channel being trusted trusts the person" do
-      {:ok, contact} =
-        Contacts.create_contact(%{name: "Dana", phone: "+15033412655", email: "d@example.com"})
 
       {:ok, _} = TrustedSenders.add_entry("d@example.com")
 
       assert Contacts.trusted?(contact)
-      assert Contacts.email_trusted?(contact)
-      refute Contacts.phone_trusted?(contact)
+    end
+
+    test "a phone-only contact has nothing to trust, and trusting them is a no-op" do
+      # The phone column is a fact about a person since 10-15, not a channel.
+      {:ok, contact} = Contacts.create_contact(%{name: "Dana", phone: "+15033412655"})
+      assert {:ok, _} = Contacts.set_trusted(contact, true)
+      refute Contacts.trusted?(contact)
     end
 
     test "a domain wildcard trusts a contact nobody listed individually" do
@@ -122,13 +116,13 @@ defmodule BusterClaw.ContactsTest do
     test "deleting a contact does not silently revoke trust" do
       # Tidying the address book must not edit the security policy. The entry
       # survives as an orphan, visibly, until someone means to remove it.
-      {:ok, contact} = Contacts.create_contact(%{name: "Luke", phone: "+15033412655"})
+      {:ok, contact} = Contacts.create_contact(%{name: "Luke", email: "l@example.com"})
       {:ok, _} = Contacts.set_trusted(contact, true)
 
       {:ok, _} = Contacts.delete_contact(contact)
 
-      assert TrustedNumbers.trusted?("+15033412655")
-      assert "+15033412655" in Contacts.orphan_entries().numbers
+      assert TrustedSenders.trusted?("l@example.com")
+      assert Enum.any?(Contacts.orphan_entries().emails, &(&1.value == "l@example.com"))
     end
   end
 

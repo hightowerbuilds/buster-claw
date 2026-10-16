@@ -42,7 +42,7 @@ defmodule BusterClaw.Commands.Sound do
   `sound_trim`, `sound_fade`, `sound_normalize` and `sound_concat` each wrap one
   pure function in `SoundStudio` and write the result as a **new** source; an
   existing name is refused as `:name_taken` unless `overwrite: true`. Editing in
-  place would destroy a voicemail that cannot be re-recorded, and a render to a
+  place would destroy a recording that cannot be re-recorded, and a render to a
   new file is reviewable in a way an in-place mutation is not.
 
   Each returns the new name together with `duration_ms` and `peak`, beside the
@@ -53,13 +53,12 @@ defmodule BusterClaw.Commands.Sound do
 
   Every other verb here takes a **basename** and resolves it against a directory
   listing, so nothing outside `sounds/` is even expressible. `sound_import` has
-  to reach further — a voicemail lives under the Library root, in none of the
+  to reach further — a recording lives under the Library root, in none of the
   three sound stores — and `sound_probe` follows it there so the workflow is
   *probe it, then import it* rather than *import blind, then probe*.
 
-  That reach is deliberately the narrowest thing that works: an `event_id`,
-  whose `recording_path` the app stored itself, or a path **relative to the
-  Library root**. `under_library/1` is the whole boundary — absolute paths, `..`
+  That reach is deliberately the narrowest thing that works: a path
+  **relative to the Library root**. `under_library/1` is the whole boundary — absolute paths, `..`
   and null bytes are refused before the filesystem is touched, and the expanded
   result is re-checked against the root. There is no second line of defence
   behind it: a verb that accepted an absolute path would let an agent read
@@ -79,7 +78,7 @@ defmodule BusterClaw.Commands.Sound do
   edit needs the system decoder at all.
 
   Peak is the fact that needs *samples*, and an mp3 has none until something
-  decodes it — so the default probe of a voicemail is blind on exactly the file
+  decodes it — so the default probe of an mp3 is blind on exactly the file
   the acceptance walk starts from. `decode: true` fixes that by running the file
   through `import_source/1` and measuring the clip that comes back. It is opt-in
   because it is a subprocess and a full decode; the header-only path stays the
@@ -94,7 +93,6 @@ defmodule BusterClaw.Commands.Sound do
   alias BusterClaw.AudioName
   alias BusterClaw.Notifications.Sound
   alias BusterClaw.Notifications.SoundStudio
-  alias BusterClaw.Telephony
 
   @workspace "workspace"
   @bundled "bundled"
@@ -262,11 +260,11 @@ defmodule BusterClaw.Commands.Sound do
 
   # Three ways to name one file, in precedence order. `event_id` and `path`
   # reach the Library root through the same funnel `sound_import` uses — the
-  # point being that a voicemail can be *looked at* before it is brought in,
-  # rather than imported blind and probed afterwards.
+  # point being that a file can be *looked at* before it is brought in, rather
+  # than imported blind and probed afterwards.
   defp probe_target(args) do
     cond do
-      present?(args, "event_id") or present?(args, "path") ->
+      present?(args, "path") ->
         with {:ok, origin} <- import_origin(args) do
           {:ok,
            %{
@@ -352,7 +350,7 @@ defmodule BusterClaw.Commands.Sound do
   end
 
   # Decode-on-demand — the gap Phase 0 flagged and this phase owns. Three of
-  # probe's four facts need a *parsed* clip, and an mp3 voicemail cannot be
+  # probe's four facts need a *parsed* clip, and an mp3 recording cannot be
   # parsed without decoding, so the agent's only substitute for ears was blind
   # on exactly the input the acceptance walk starts from.
   #
@@ -490,18 +488,9 @@ defmodule BusterClaw.Commands.Sound do
 
   def sound_import(_args), do: {:error, :missing_source}
 
-  # Where the file being imported comes from. `event_id` wins when both are
-  # given: it is the acceptance path, and it names a recording the app stored
-  # itself rather than a path a caller typed.
-  defp import_origin(%{"event_id" => id}) when not is_nil(id) and id != "" do
-    with {:ok, event_id} <- event_id(id),
-         {:ok, event} <- fetch_event(event_id),
-         {:ok, relative} <- recording_of(event),
-         {:ok, path} <- under_library(relative) do
-      {:ok, %{event_id: event.id, relative: relative, path: path, name: Path.basename(relative)}}
-    end
-  end
-
+  # Where the file being imported comes from: a path relative to the Library
+  # root. (An `event_id` naming a phone recording was the other way until the
+  # phone left on 10-15.)
   defp import_origin(%{"path" => relative}) when is_binary(relative) do
     with {:ok, path} <- under_library(relative) do
       {:ok,
@@ -513,31 +502,6 @@ defmodule BusterClaw.Commands.Sound do
   defp import_origin(%{"path" => path}) when not is_nil(path), do: {:error, :invalid_path}
 
   defp import_origin(_args), do: {:error, :missing_source}
-
-  # A wire caller may hand over "12" rather than 12, and `Repo.get/2` raises on
-  # anything that is not castable — so the cast happens here, as a named error.
-  defp event_id(id) when is_integer(id) and id > 0, do: {:ok, id}
-
-  defp event_id(id) when is_binary(id) do
-    case Integer.parse(String.trim(id)) do
-      {parsed, ""} when parsed > 0 -> {:ok, parsed}
-      _other -> {:error, :invalid_event_id}
-    end
-  end
-
-  defp event_id(_id), do: {:error, :invalid_event_id}
-
-  defp fetch_event(id) do
-    case Telephony.get_event(id) do
-      nil -> {:error, :event_not_found}
-      event -> {:ok, event}
-    end
-  end
-
-  defp recording_of(%Telephony.Event{recording_path: path}) when is_binary(path) and path != "",
-    do: {:ok, path}
-
-  defp recording_of(%Telephony.Event{}), do: {:error, :no_recording}
 
   # **The security boundary of this module.** Everywhere else a caller supplies
   # a basename that is allowlisted against a directory listing; here a caller
@@ -1074,7 +1038,7 @@ defmodule BusterClaw.Commands.Sound do
     end
   end
 
-  # An edit that clobbers the voicemail it was cut from is unrecoverable, so an
+  # An edit that clobbers the recording it was cut from is unrecoverable, so an
   # existing name is refused unless the caller says overwrite. `File.exists?/1`
   # rather than the audio listing, so a non-audio file squatting the name is
   # still protected.

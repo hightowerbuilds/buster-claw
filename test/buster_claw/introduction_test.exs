@@ -184,69 +184,23 @@ defmodule BusterClaw.IntroductionTest do
   #   - verb absent, briefing promises it → the model offers a capability it does
   #     not have, and only finds out mid-task, having already told the operator
   #     it would ring somebody back. That one is worse, and it is the live case.
-  test "the briefing agrees with the catalog about outbound, in whichever direction" do
+  test "the briefing promises no phone, in either direction" do
     md = Introduction.markdown()
     [prose, _generated] = String.split(md, "These are the commands you can run", parts: 2)
-
-    # This prose is hard-wrapped, so a sentence the model reads as one line is
-    # not one line in the source.
     flat = String.replace(prose, ~r/\s+/, " ")
 
-    if Commands.command_type("phone_call") do
-      assert prose =~ "can make phone calls"
-
-      refute prose =~ "There is no outbound calling",
-             "phone_call exists; the briefing must not tell the model otherwise"
-
-      # The shape is the surprising part and the model will offer this wrongly
-      # without it: the OPERATOR's phone rings first, so a success means a call
-      # was created, never that anyone spoke.
-      assert prose =~ "rings *the operator's own phone*"
-      assert prose =~ "never\n*somebody spoke*" or prose =~ "never *somebody spoke*"
-
-      # The refusal it would otherwise promise and then fail to deliver.
-      assert prose =~ "emergency number is not dialable"
-    else
-      # No dialler in the catalog, so the briefing may not describe one — in any
-      # of the shapes the 08-15 version used, since a partial edit that leaves
-      # one sentence behind is the likely failure, not a wholesale relapse.
-      refute flat =~ "can make phone calls"
-      refute flat =~ "phone_call"
-      refute flat =~ "rings *the operator's own phone*"
-      refute flat =~ "emergency number is not dialable"
-
-      # And it must not promise the OTHER direction of a positive claim: that it
-      # will ring anyone back.
-      refute flat =~ "call them back"
-      refute flat =~ "ring them back"
-    end
-
-    if Commands.command_type("sms_send") do
-      assert flat =~ "sms_send"
-    else
-      refute flat =~ "sms_send"
-      refute flat =~ "text them back"
-      refute flat =~ "reply by text"
-    end
-
-    # The absence is not enough on its own. A briefing that simply stops
-    # mentioning outbound leaves the model to assume — and it will assume a
-    # phone can be answered by phone, because every other phone can. So when
-    # neither verb exists the prose has to say so OUT LOUD, and this asserts the
-    # positive statement rather than only the absence of the wrong ones.
-    intake_only? =
-      is_nil(Commands.command_type("phone_call")) and is_nil(Commands.command_type("sms_send"))
-
-    if intake_only? do
-      assert flat =~ "It only receives",
-             "the briefing must state the absence, not merely omit the capability"
-
-      assert flat =~ "There is no verb that sends a text or places a call"
-
-      # ...and tell it what to do instead, or "you cannot reply" is a dead end
-      # rather than an instruction.
-      assert flat =~ "you do the work and write it down"
-    end
+    # The phone left whole on 10-15 (PHONE_REMOVAL). The catalog carries no
+    # phone verb, so the briefing may name none — and may not describe the
+    # dialler, the answering machine, or a text back in any of the shapes the
+    # 08-15 and 08-18 versions used. A partial edit that leaves one sentence
+    # behind is the likely failure, not a wholesale relapse.
+    refute Enum.any?(Commands.list_commands(), &String.starts_with?(&1.name, "phone_"))
+    refute flat =~ ~r/phone_\w+/
+    refute flat =~ "BusterPhone"
+    refute flat =~ "can make phone calls"
+    refute flat =~ "rings *the operator's own phone*"
+    refute flat =~ "It only receives"
+    refute flat =~ "voicemail"
   end
 
   # The Sketch Pad was deleted on 09-05 — its route, its Studio tab, and six

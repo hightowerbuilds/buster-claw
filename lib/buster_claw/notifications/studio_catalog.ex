@@ -23,9 +23,9 @@ defmodule BusterClaw.Notifications.StudioCatalog do
 
   ## `groups/0` is expensive and is not cached
 
-  It performs **four directory listings and one database query**:
+  It performs **four directory listings**:
   `StudioMix.list/0`, `SoundStudio.list/0`, `Sound.list/0` + `Sound.bundled_list/0`,
-  `Music.tracks/0`, and `Telephony.list_events/1`. That cost is stated here
+  and `Music.tracks/0`. That cost is stated here
   because it is easy to reach for `groups/0` in a loop without noticing —
   `resolve_source/1` did exactly that, once per clip, on every mixdown.
 
@@ -40,20 +40,18 @@ defmodule BusterClaw.Notifications.StudioCatalog do
   two lists agree, which is what stops the cheap answer drifting from the real
   one.
   """
-  alias BusterClaw.Library.Artifact
   alias BusterClaw.Music
   alias BusterClaw.Notifications.Sound
   alias BusterClaw.Notifications.SoundStudio
   alias BusterClaw.Notifications.StudioMix
   alias BusterClaw.Settings
-  alias BusterClaw.Telephony
 
   @collapsed_key "studio_collapsed_groups"
 
   @doc """
   Every source the studio can open, grouped for the sidebar.
 
-  Reads four directories and the telephony table — see the moduledoc before
+  Reads four directories — see the moduledoc before
   calling this anywhere that repeats.
   """
   def groups do
@@ -63,17 +61,16 @@ defmodule BusterClaw.Notifications.StudioCatalog do
       # the operator fills themselves.
       %{key: "imports", label: "Imports", items: import_items()},
       %{key: "sounds", label: "Sounds", items: sound_items()},
-      %{key: "recordings", label: "Recordings", items: recording_items()},
       %{key: "music", label: "Music", items: music_items()}
     ]
   end
 
   @doc """
   Every sidebar group key. Cheap on purpose — `groups/0` reads four directories
-  and the telephony table, which is far too much work to answer "is this a real
+  which is far too much work to answer "is this a real
   group?". A test asserts the two lists agree.
   """
-  def group_keys, do: ~w(mix imports sounds recordings music)
+  def group_keys, do: ~w(mix imports sounds music)
 
   @doc "Find one source by id across the groups you already have, or `nil`."
   def find_source(_groups, nil), do: nil
@@ -176,26 +173,6 @@ defmodule BusterClaw.Notifications.StudioCatalog do
     end)
   end
 
-  defp recording_items do
-    Telephony.list_events(kind: "voicemail", limit: 50)
-    |> Enum.filter(& &1.recording_path)
-    |> Enum.map(fn event ->
-      %{
-        id: "recording:#{event.id}",
-        kind: :recording,
-        name: Path.basename(event.recording_path),
-        label: event.from_number || "Unknown caller",
-        sub: occurred(event.occurred_at),
-        # The relative path is kept alongside the absolute one: the web layer
-        # needs it to build the phone route's query string, and re-deriving it
-        # by stripping the root would be a second opinion about where the
-        # workspace is.
-        recording_path: event.recording_path,
-        path: Path.join(Artifact.root(), event.recording_path)
-      }
-    end)
-  end
-
   # Tracks only. A `:library` row used to ride at the top of this group and open
   # the music library manager (upload / delete / queue / play-all); both went on
   # 08-16, because the Studio is for making things and administering a collection
@@ -216,7 +193,4 @@ defmodule BusterClaw.Notifications.StudioCatalog do
       }
     end)
   end
-
-  defp occurred(nil), do: nil
-  defp occurred(at), do: Calendar.strftime(at, "%b %-d, %-I:%M %p")
 end

@@ -20,7 +20,7 @@ defmodule BusterClawWeb.ExplainedPanel do
   | `Explained.Intro` | the launcher grid and Get Started |
   | `Explained.Sites` | busterclaw.lol, Notes That Float |
   | `Explained.Stub` | any feature tab whose tutorial is unwritten (none today) |
-  | `Explained.Models`, `.Shaders`, `.Pockets`, `.Phone`, `.Browser`, `.Cmd`, `.Gws`, `.Studio` | the eight tutorials |
+  | `Explained.Models`, `.Shaders`, `.Pockets`, `.Browser`, `.Cmd`, `.Gws`, `.Studio` | the seven tutorials |
   | `Explained.Shared` | the leaf components tutorials are built from |
 
   The rail, the Intro grid, the parent's event whitelist (via `tab_keys/0`) and
@@ -34,7 +34,6 @@ defmodule BusterClawWeb.ExplainedPanel do
   import BusterClawWeb.Explained.Gws
   import BusterClawWeb.Explained.Intro
   import BusterClawWeb.Explained.Models
-  import BusterClawWeb.Explained.Phone
   import BusterClawWeb.Explained.Pockets
   import BusterClawWeb.Explained.Shaders
   import BusterClawWeb.Explained.Sites
@@ -100,7 +99,6 @@ defmodule BusterClawWeb.ExplainedPanel do
         <.models_panel :if={@tab == "models"} />
         <.shaders_panel :if={@tab == "shaders"} />
         <.pockets_panel :if={@tab == "pockets"} />
-        <.phone_panel :if={@tab == "phone"} />
         <.gws_panel :if={@tab == "gws"} />
         <.cmd_panel :if={@tab == "cmd"} />
         <.browser_panel :if={@tab == "browser"} />

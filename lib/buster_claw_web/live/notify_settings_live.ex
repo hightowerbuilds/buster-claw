@@ -32,12 +32,6 @@ defmodule BusterClawWeb.NotifySettingsLive do
     %{key: "chat", group: :source, kind: "reminder", source: "chat"},
     %{key: "terminal", group: :source, kind: "reminder", source: "terminal"},
     %{key: "email", group: :source, kind: "reminder", source: "email"},
-    %{
-      key: "voicemail",
-      group: :source,
-      kind: "reminder",
-      source: "voicemail"
-    },
     %{key: "manual", group: :source, kind: "reminder", source: "manual"},
     # SOUND_ROADMAP Part II — SoundBoard keys. Their Test goes through
     # SoundBoard.ring/1, not a fabricated notification: these keys never fire
@@ -49,7 +43,6 @@ defmodule BusterClawWeb.NotifySettingsLive do
     %{key: "blocked", group: :agent, test: :ring},
     %{key: "web", group: :agent, test: :ring},
     %{key: "order", group: :agent, test: :ring},
-    %{key: "sms", group: :comms, test: :ring},
     %{key: "security", group: :security, test: :ring},
     %{key: "boot", group: :playful, test: :ring}
   ]

@@ -43,10 +43,9 @@ defmodule BusterClaw.Commands.Catalog.Sound do
   superlative and passed against `HEAD` while failing against the merged tree.
 
   `sound_import` is the one entry that names a file **outside** the sound
-  stores, and its two inputs are the whole of that reach: an `event_id`, whose
-  recording path the app itself stored, or a path **relative to the Library
-  root**. Absolute paths and `..` are refused, so the verb can address the
-  operator's recordings and nothing else on the disk.
+  stores, and its one input is the whole of that reach: a path **relative to
+  the Library root**. Absolute paths and `..` are refused, so the verb can
+  address the operator's own files and nothing else on the disk.
   """
 
   @doc "Sound catalog entries."
@@ -65,7 +64,7 @@ defmodule BusterClaw.Commands.Catalog.Sound do
         type: :read,
         tier: :safe,
         description:
-          "The event-to-sound routing table: every routing key (sources like voicemail, kinds like timer, and default), its human label, what is explicitly assigned, and what actually plays after inheritance — including keys that are silent or play nothing. The map to read before suggesting a routing change.",
+          "The event-to-sound routing table: every routing key (sources like email, kinds like timer, and default), its human label, what is explicitly assigned, and what actually plays after inheritance — including keys that are silent or play nothing. The map to read before suggesting a routing change.",
         args: %{}
       },
       %{
@@ -81,10 +80,9 @@ defmodule BusterClaw.Commands.Catalog.Sound do
         type: :read,
         tier: :safe,
         description:
-          "Inspect one sound: sample rate, channels, bits, duration_ms, peak level, and whether it is already in the Studio's internal PCM16 mono 22.05 kHz format. The only way to learn what a sound actually is without listening to it. Name it three ways: name (a workspace library file, then a bundled default, then a studio source), event_id (a phone event's recording), or path (relative to the Library root — absolute paths and .. are refused). Peak needs decoded samples, so an mp3 or m4a reports none by default; decode true measures it by running the file through the decoder, which is exact and costs a full decode.",
+          "Inspect one sound: sample rate, channels, bits, duration_ms, peak level, and whether it is already in the Studio's internal PCM16 mono 22.05 kHz format. The only way to learn what a sound actually is without listening to it. Name it two ways: name (a workspace library file, then a bundled default, then a studio source), or path (relative to the Library root — absolute paths and .. are refused). Peak needs decoded samples, so an mp3 or m4a reports none by default; decode true measures it by running the file through the decoder, which is exact and costs a full decode.",
         args: %{
           "name" => %{type: :string, required: false},
-          "event_id" => %{type: :integer, required: false},
           "path" => %{type: :string, required: false},
           "decode" => %{type: :boolean, required: false, default: false}
         }
@@ -94,9 +92,8 @@ defmodule BusterClaw.Commands.Catalog.Sound do
         type: :mutate,
         tier: :restricted,
         description:
-          "Bring an audio file into sounds/studio/ as a WAV in the Studio's internal format — the door a voicemail comes through before anything can cut it up. Name the file with event_id (a phone event, whose recording is imported) or path (relative to the Library root; absolute paths and .. are refused). name is the stored basename and is always forced to .wav; omit it to derive one from the source. Refuses an existing source unless overwrite is true. Reports duration, peak, format and whether the system decoder had to run — non-WAV audio on a machine without /usr/bin/afconvert is refused as no_decoder rather than failing later.",
+          "Bring an audio file into sounds/studio/ as a WAV in the Studio's internal format. Name the file with path (relative to the Library root; absolute paths and .. are refused). name is the stored basename and is always forced to .wav; omit it to derive one from the source. Refuses an existing source unless overwrite is true. Reports duration, peak, format and whether the system decoder had to run — non-WAV audio on a machine without /usr/bin/afconvert is refused as no_decoder rather than failing later.",
         args: %{
-          "event_id" => %{type: :integer, required: false},
           "path" => %{type: :string, required: false},
           "name" => %{type: :string, required: false},
           "overwrite" => %{type: :boolean, required: false, default: false}

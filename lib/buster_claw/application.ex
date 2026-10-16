@@ -39,7 +39,6 @@ defmodule BusterClaw.Application do
         uptime_child(),
         dispatcher_child(),
         analyzer_child(),
-        telephony_drain_child(),
         mailman_child(),
         notifications_scheduler_child(),
         # Per-conversation chat: a Registry for {:via} lookup by conv_id and a
@@ -176,27 +175,8 @@ defmodule BusterClaw.Application do
     end
   end
 
-  # The BusterPhone relay drain: pulls telephony events from the Supabase queue
-  # into local SQLite.
-  #
-  # **Runs by default, and decides for itself whether there is work.** It used to
-  # be key-gated here, which meant credentials arriving after boot did nothing
-  # until the app restarted — the exact failure Phase 3 set out to remove. Making
-  # the child conditional was always redundant: `drain/1` opens with
-  # `Relay.configured?()`, so an unconfigured drain has only ever cost one no-op
-  # every 30 seconds. Gating the WORK is the real gate; gating the child was a
-  # second answer to the same question, and the one that could go stale.
-  #
-  # The flag survives as an explicit override — `false` in tests, where the Drain
-  # suite drives `drain/1` directly and a live ticker would race it.
-  defp telephony_drain_child do
-    if Application.get_env(:buster_claw, :telephony_drain_enabled, true) do
-      BusterClaw.Telephony.Drain
-    end
-  end
-
-  # The in-app Gmail poller (THREE_DOORS Phase 2). Same posture as the drain:
-  # runs by default and decides per tick whether an unattended shift is active,
+  # The in-app Gmail poller (THREE_DOORS Phase 2). Runs by default and decides
+  # per tick whether an unattended shift is active,
   # so a shift started from the dock receives mail without a terminal loop.
   # Off in tests, which drive `tick/1` directly.
   defp mailman_child do

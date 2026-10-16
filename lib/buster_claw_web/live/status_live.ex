@@ -16,7 +16,6 @@ defmodule BusterClawWeb.StatusLive do
   alias BusterClaw.Notifications.Schedule
   alias BusterClaw.Runtime.Status
   alias BusterClaw.Setup
-  alias BusterClaw.Telephony
   alias BusterClaw.TrustedSenders
   alias BusterClaw.Weather
   alias BusterClawWeb.Status.ChatAttachments
@@ -31,8 +30,6 @@ defmodule BusterClawWeb.StatusLive do
   @sky_refresh_ms :timer.minutes(10)
 
   # The Phone sub-tab's component id. Named here because this LiveView is the
-  # host half of `PhoneComponent`'s contract and relays broadcasts to it.
-  @phone_component_id "home-phone"
 
   # One registry drives both the menu and its event whitelist.
   @home_tabs Enum.map(BusterClawWeb.WorkbenchState.panels(), &{&1.key, &1.label})
@@ -59,10 +56,7 @@ defmodule BusterClawWeb.StatusLive do
       if split_panes, do: Phoenix.PubSub.subscribe(BusterClaw.PubSub, Appearance.topic(:terminal))
       subscribe_chat_look()
       Notifications.subscribe()
-      # Keep the corner-widget's "Recent activity" live as calls/texts land.
-      Telephony.subscribe()
-      # The Phone sub-tab's component cannot subscribe for itself — it has no
-      # process. This host subscribes and relays; see `PhoneComponent`.
+      # The corner widget's Contacts tab follows the contact list.
       BusterClaw.Contacts.subscribe()
       # Keep the Activity tab's BC Minutes live as the agent appends entries.
       BusterClaw.Journal.subscribe()
@@ -87,7 +81,9 @@ defmodule BusterClawWeb.StatusLive do
      # a silent void was the review's worst day-one failure.
      |> assign(:agent_cli_missing, match?({:error, _}, BusterClaw.AgentRunner.detect()))
      |> load_trust()
-     |> load_comms()
+     |> load_contacts()
+     |> assign(:adding_contact, false)
+     |> assign(:contact_error, nil)
      # Home main view: "chat" (default) or "calendar". The sub-tab toggle swaps
      # the whole panel — the chat is hidden while the calendar is showing.
      |> assign(:home_tab, "chat")
@@ -214,11 +210,35 @@ defmodule BusterClawWeb.StatusLive do
 
   defp page_ask(_params), do: :error
 
+  # Adding a contact lived on the Phone tab from 09-13 until the phone was
+  # removed (10-15, PHONE_REMOVAL D10). It is back here, the one place contacts
+  # are shown: a name and an email, created and trusted in one step — the only
+  # reason an operator adds someone is so their mail becomes work.
+  @impl true
+  def handle_event("toggle_add_contact", _params, socket) do
+    {:noreply,
+     assign(socket, adding_contact: not socket.assigns.adding_contact, contact_error: nil)}
+  end
+
+  def handle_event("add_contact", params, socket) do
+    with {:ok, contact} <- Contacts.create_contact(Map.take(params, ["name", "email"])),
+         {:ok, _} <- Contacts.set_trusted(contact, true) do
+      {:noreply,
+       socket
+       |> assign(adding_contact: false, contact_error: nil)
+       |> load_trust()
+       |> load_contacts()}
+    else
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, assign(socket, :contact_error, first_contact_error(changeset))}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :contact_error, "could not update trust: #{inspect(reason)}")}
+    end
+  end
+
   # Removing an *orphan* entry — an address or wildcard with no contact behind it.
   # There is nothing else to clean up, so the policy line is simply dropped.
-  # (Nothing here ADDS one: since 09-13 contacts are added, and trusted, on the
-  # Phone tab only.)
-  @impl true
   def handle_event("remove_contact", %{"entry" => entry}, socket) do
     TrustedSenders.remove_entry(entry)
     {:noreply, load_trust(socket)}
@@ -291,7 +311,7 @@ defmodule BusterClawWeb.StatusLive do
     case tab do
       "place" -> {:noreply, load_weather(socket)}
       "notify" -> {:noreply, load_notifications(socket)}
-      "contacts" -> {:noreply, load_comms(socket)}
+      "contacts" -> {:noreply, load_contacts(socket)}
       _ -> {:noreply, socket}
     end
   end
@@ -559,24 +579,8 @@ defmodule BusterClawWeb.StatusLive do
   def handle_info({:notification_fired, _notification}, socket),
     do: {:noreply, load_notifications(socket)}
 
-  # A call/text landed — refresh the corner-widget "Recent activity" feed.
-  # Two consumers of the same broadcast: the corner widget's activity list, and
-  # the Phone sub-tab's component. The component decides what each message means
-  # (`PhoneComponent.handle_notify/2`); this only relays.
-  def handle_info({:telephony_event, _event} = message, socket) do
-    BusterClawWeb.PhoneComponent.notify(@phone_component_id, message)
-    {:noreply, load_comms(socket)}
-  end
-
-  def handle_info(:telephony_costs_updated = message, socket) do
-    BusterClawWeb.PhoneComponent.notify(@phone_component_id, message)
-    {:noreply, socket}
-  end
-
-  def handle_info(message, socket)
-      when message in [:telephony_contacts_changed, :contacts_changed] do
-    BusterClawWeb.PhoneComponent.notify(@phone_component_id, message)
-    {:noreply, load_comms(socket)}
+  def handle_info(:contacts_changed, socket) do
+    {:noreply, socket |> load_trust() |> load_contacts()}
   end
 
   # A note changed under us — an agent command, or another window. The component
@@ -589,11 +593,6 @@ defmodule BusterClawWeb.StatusLive do
       refresh: System.unique_integer()
     )
 
-    {:noreply, socket}
-  end
-
-  def handle_info({BusterClawWeb.PhoneComponent, :reload, id}, socket) do
-    BusterClawWeb.PhoneComponent.notify(id, :reload)
     {:noreply, socket}
   end
 
@@ -630,6 +629,14 @@ defmodule BusterClawWeb.StatusLive do
 
   def handle_async(:weather, {:exit, reason}, socket) do
     {:noreply, assign(socket, :weather, {:error, {:exit, reason}})}
+  end
+
+  defp first_contact_error(changeset) do
+    changeset
+    |> Ecto.Changeset.traverse_errors(fn {msg, _opts} -> msg end)
+    |> Enum.flat_map(fn {field, msgs} -> Enum.map(msgs, &"#{field} #{&1}") end)
+    |> List.first()
+    |> Kernel.||("could not save the contact")
   end
 
   defp switch_home_tab(socket, tab) do
@@ -735,9 +742,6 @@ defmodule BusterClawWeb.StatusLive do
           <:panel key="pockets">
             <.live_component module={BusterClawWeb.PocketsPanel} id="home-pockets" />
           </:panel>
-          <:panel key="phone">
-            <.live_component module={BusterClawWeb.PhoneComponent} id="home-phone" />
-          </:panel>
           <:panel key="explained">
             <BusterClawWeb.ExplainedPanel.explained_panel tab={@explained_tab} />
           </:panel>
@@ -749,7 +753,8 @@ defmodule BusterClawWeb.StatusLive do
               widget_bg={@widget_bg}
               tab={@widget_tab}
               contacts={@comms_contacts}
-              activity={@phone_activity}
+              adding_contact={@adding_contact}
+              contact_error={@contact_error}
               trusted={@trusted_people}
               entries={@trusted_entries}
               weather={@weather}

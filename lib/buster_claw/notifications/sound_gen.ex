@@ -26,7 +26,7 @@ defmodule BusterClaw.Notifications.SoundGen do
   a soft 5 ms attack and exponential decay. Meaning is carried by contour —
   rising = something arrived or wants you (confirm, boot), falling = something
   stopped (shift), low = something is stuck (blocked), doubles = messages
-  (voicemail, sms, timer), a chord = money (order), and `security`/`alarm` are
+  (email, timer), a chord = money (order), and `security`/`alarm` are
   the only two that repeat, because repetition is the audio spelling of "act".
   """
 
@@ -67,7 +67,6 @@ defmodule BusterClaw.Notifications.SoundGen do
       "chat" => [tone(1174.7, 0, 320, 0.65)],
       "terminal" => [tone(880.0, 0, 140, 0.6, 0.4)],
       "email" => [tone(784.0, 0, 300, 0.55)],
-      "voicemail" => [tone(800.0, 0, 130, 0.7, 0.0), tone(800.0, 220, 130, 0.7, 0.0)],
       "manual" => [tone(1046.5, 0, 260, 0.6)],
 
       # -- group A: agent attention
@@ -82,7 +81,6 @@ defmodule BusterClaw.Notifications.SoundGen do
       "web" => [tone(987.8, 0, 180, 0.6)],
 
       # -- group B
-      "sms" => [tone(1568.0, 0, 80, 0.65, 0.0), tone(1568.0, 130, 80, 0.65, 0.0)],
 
       # -- group C: the klaxon. Alternating two-tone, the only harsh thing in the
       # set, because it is the only event where startling the operator is the job.

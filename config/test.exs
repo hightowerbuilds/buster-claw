@@ -73,7 +73,6 @@ config :buster_claw, boot_chime_enabled: false
 config :buster_claw, :analyzer_enabled, false
 # The BusterPhone relay drain is off in tests; the Drain suite starts its own
 # instance with Req.Test stubs and drives it via drain/1 directly.
-config :buster_claw, :telephony_drain_enabled, false
 # The mailman suite drives `tick/1` directly; a live ticker would race it.
 config :buster_claw, :mailman_enabled, false
 # The Notify scheduler is off in tests; the Scheduler suite starts its own
@@ -83,8 +82,6 @@ config :buster_claw, :notifications_scheduler_enabled, false
 # REAL stage-1 agent run on boot. The Recorder suite starts its own with a
 # stubbed fetcher and drives it via tick_now/1.
 config :buster_claw, :portfolio_recorder_enabled, false
-config :buster_claw, :telephony_relay_url, "http://relay.test"
-config :buster_claw, :telephony_relay_key, "test-service-role-key"
 # Call-rate limiting is off in tests so command-heavy suites aren't throttled; the
 # RateLimiter suite flips it on with a low limit to exercise enforcement.
 config :buster_claw, :rate_limit_enabled, false

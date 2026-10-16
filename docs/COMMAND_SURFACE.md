@@ -22,7 +22,7 @@ result shape into their transport-specific response format.
 
 ## Active Domains
 
-193 commands (`gmail_attachment_download` joined on 10-14). The three app-tab
+183 commands (`gmail_attachment_download` joined on 10-14; the ten `phone_*` verbs left on 10-15). The three app-tab
 layout commands remain included. `./buster-claw commands` is authoritative; the Explained tab's
 Command List renders the same counts from a contract test:
 
@@ -38,8 +38,6 @@ Command List renders the same counts from a contract test:
   Tasks, and Contacts
 - Web search, guarded browser fetch, co-presence `browser_*`, Agent Mode
   (`agent_run_*`), flows and saved site checks, bookmarks and history
-- BusterPhone intake: voicemail, inbound SMS, trusted callers and PINs (nothing
-  outbound — the phone sends no texts and places no calls)
 - Notifications (timers, alarms, reminders)
 - Sound (`sound_*`): the clip editor and arranger, recording and input levels,
   chime routing
@@ -141,7 +139,6 @@ These older command-surface areas were removed or retired:
   been `BusterClaw.SvgViewer`, the chat's SVG channel, which shares nothing with
   the Pad. It reads a fenced ```` ```svg ```` block out of a reply, sanitizes it,
   and renders it as a real SVG.
-- Outbound telephony — `sms_send` and `phone_call`, deleted 08-18. BusterPhone is
-  intake only; the ten surviving `phone_*` commands read the message archive or
-  edit the trusted-caller and PIN lists. See
-  `daily-growth/roadmaps/integrations/PHONE_INTAKE_ROADMAP.md`.
+- Telephony — BusterPhone was removed whole on 10-15 (outbound had gone 08-18;
+  the ten intake `phone_*` verbs followed). See
+  `daily-growth/roadmaps/integrations/PHONE_REMOVAL_ROADMAP.md`.

@@ -3,7 +3,7 @@ defmodule BusterClawWeb.TrustedContactsPanel do
   Home corner-widget "Contacts" tab: the trust gate, seen from the mail side.
 
   This is one of **two views onto the same contact list**. The other is the
-  Message Machine's shaderface card (`PhoneLive`), which is the phone-side view.
+  Contacts column beside it, where a person is added and trusted.
   Same rows, same policy files, different affordances: this panel is a dense chip
   grid built for a corner widget; that one is a full-height face card built to be
   looked at. Neither owns the data — `BusterClaw.Contacts` does.
@@ -12,8 +12,8 @@ defmodule BusterClawWeb.TrustedContactsPanel do
   reply to); everything else is still archived to the Library but never queued.
 
   Presentation only — `remove_contact` / `untrust_contact` are handled by the
-  parent LiveView (`StatusLive`). Nobody is added here: since 09-13 the Phone
-  tab's Contacts is the one place a contact is created and marked trusted.
+  parent LiveView (`StatusLive`). Nobody is added here: the Contacts column
+  beside this one is where a person is created and marked trusted.
 
   ## Three chip kinds, and why the third exists
 
@@ -41,7 +41,7 @@ defmodule BusterClawWeb.TrustedContactsPanel do
       id="trusted-contacts-list"
       class="flex flex-wrap content-start gap-1.5"
     >
-      <%!-- Named people first: a contact you can also see, and face, on /phone. --%>
+      <%!-- Named people first: the contacts behind the gate. --%>
       <span
         :for={contact <- @contacts}
         id={"trusted-contact-#{contact.id}"}
@@ -90,7 +90,7 @@ defmodule BusterClawWeb.TrustedContactsPanel do
       :if={@empty?}
       class="font-mono text-[0.6875rem] text-base-content/55"
     >
-      No trusted senders yet — add a contact on the Phone tab and mark them trusted.
+      No trusted senders yet — press + under Contacts to add one.
     </p>
     """
   end

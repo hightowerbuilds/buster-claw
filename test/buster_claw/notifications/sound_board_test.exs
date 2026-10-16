@@ -37,29 +37,12 @@ defmodule BusterClaw.Notifications.SoundBoardTest do
       assert SoundBoard.event_key({:agent_mode, "r", :run_started}) == nil
     end
 
-    test "group B: inbound comms ring, our own sends never do" do
-      assert SoundBoard.event_key({:telephony_event, %{direction: "inbound", kind: "voicemail"}}) ==
-               "voicemail"
-
-      assert SoundBoard.event_key({:telephony_event, %{direction: "inbound", kind: "sms"}}) ==
-               "sms"
-
-      assert SoundBoard.event_key({:telephony_event, %{direction: "outbound", kind: "sms"}}) ==
-               nil
-
-      assert SoundBoard.event_key(:telephony_costs_updated) == nil
-    end
-
     test "group B: only mail-sourced queue items ring email" do
       assert SoundBoard.event_key({:dispatch, :dispatch_item_queued, %{source: "gmail"}}) ==
                "email"
 
-      # Voicemail/SMS items already rang from their Telephony broadcast —
-      # ringing the queued item too would double-ring one arrival.
-      assert SoundBoard.event_key({:dispatch, :dispatch_item_queued, %{source: "voicemail"}}) ==
-               nil
-
-      assert SoundBoard.event_key({:dispatch, :dispatch_item_queued, %{source: "sms"}}) == nil
+      # A manual enqueue is the operator talking to themselves.
+      assert SoundBoard.event_key({:dispatch, :dispatch_item_queued, %{source: "manual"}}) == nil
       # A manual enqueue is the operator talking to themselves.
       assert SoundBoard.event_key({:dispatch, :dispatch_item_queued, %{source: nil}}) == nil
     end
@@ -108,8 +91,8 @@ defmodule BusterClaw.Notifications.SoundBoardTest do
     test "keys cool down independently" do
       {:ring, rung} = SoundBoard.allow(%{}, "chat", 1_000)
 
-      # A chat chime must not eat a voicemail arriving a second later.
-      assert {:ring, _} = SoundBoard.allow(rung, "voicemail", 1_001)
+      # A chat chime must not eat an email arriving a second later.
+      assert {:ring, _} = SoundBoard.allow(rung, "email", 1_001)
     end
 
     test "the act-now keys re-arm faster than the rest" do

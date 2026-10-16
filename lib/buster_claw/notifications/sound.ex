@@ -5,10 +5,10 @@ defmodule BusterClaw.Notifications.Sound do
 
   Which file plays is routed per event via a map stored in `Settings`
   (`notify_sound_map`, JSON): keys are notification *sources* (chat, terminal,
-  email, voicemail, manual), *kinds* (timer, alarm, reminder), or `"default"`.
+  email, manual), *kinds* (timer, alarm, reminder), or `"default"`.
   Resolution for a fired notification, first match wins: source → kind →
   default → the legacy fallback (`notify.<ext>`, else the first audio file
-  alphabetically). Source outranks kind so "a voicemail's timer" sounds like
+  alphabetically). Source outranks kind so "an email's timer" sounds like
   voicemail. No sounds at all → the fired modal still shows, silently.
 
   Served by `NotifySoundController` at `/notify/sound` (resolved default) and
@@ -41,12 +41,12 @@ defmodule BusterClaw.Notifications.Sound do
   @silent "silent"
   # Routing keys the map accepts: sources outrank kinds; "default" is the floor.
   # The second row is SOUND_ROADMAP Part II — group A agent-attention (confirm/
-  # order/shift/blocked/web), group B arrivals (sms; email/voicemail predate it),
+  # order/shift/blocked/web), group B arrivals (email),
   # group C (security), group D (boot). Every key except "default" has a bundled
   # synthesized fallback (SoundGen), so bundled-defaults-ON works with an empty
   # workspace library.
-  @route_keys ~w(chat terminal email voicemail manual timer alarm reminder default) ++
-                ~w(confirm order shift blocked web sms security boot)
+  @route_keys ~w(chat terminal email manual timer alarm reminder default) ++
+                ~w(confirm order shift blocked web security boot)
 
   # Human labels for the routing keys, in the order a person should meet them:
   # the catch-all, then the kinds you set alarms with, then where a thing came
@@ -61,14 +61,12 @@ defmodule BusterClaw.Notifications.Sound do
     {"chat", "Chat"},
     {"terminal", "Terminal"},
     {"email", "Email"},
-    {"voicemail", "Voicemail"},
     {"manual", "Manual"},
     {"confirm", "Confirm"},
     {"shift", "Shift end"},
     {"blocked", "Blocked"},
     {"web", "Browser"},
     {"order", "Order"},
-    {"sms", "SMS"},
     {"security", "Security"},
     {"boot", "Boot"}
   ]

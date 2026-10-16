@@ -51,9 +51,6 @@ defmodule BusterClawWeb.SoundStudio.Catalog do
   defp with_url(%{kind: :sound, name: name} = item),
     do: Map.put(item, :url, ~p"/notify/sound/#{name}")
 
-  defp with_url(%{kind: :recording, recording_path: path} = item),
-    do: Map.put(item, :url, ~p"/phone/recording?path=#{path}")
-
   defp with_url(%{kind: :music, name: name} = item),
     do: Map.put(item, :url, ~p"/music/track/#{name}")
 

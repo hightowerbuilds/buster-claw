@@ -13,19 +13,6 @@ defmodule BusterClaw.Clinch.AppKeysTest do
 
   alias BusterClaw.Clinch
   alias BusterClaw.Clinch.AppKeys
-  alias BusterClaw.Telephony.Relay
-
-  setup do
-    prev_url = Application.get_env(:buster_claw, :telephony_relay_url)
-    prev_key = Application.get_env(:buster_claw, :telephony_relay_key)
-
-    on_exit(fn ->
-      Application.put_env(:buster_claw, :telephony_relay_url, prev_url)
-      Application.put_env(:buster_claw, :telephony_relay_key, prev_key)
-    end)
-
-    :ok
-  end
 
   describe "resolution order" do
     test "the Clinch wins over the environment" do
@@ -74,30 +61,18 @@ defmodule BusterClaw.Clinch.AppKeysTest do
   end
 
   describe "reads are live, which is the whole point" do
-    test "storing the relay pair configures it with no restart" do
-      Application.put_env(:buster_claw, :telephony_relay_url, nil)
-      Application.put_env(:buster_claw, :telephony_relay_key, nil)
+    test "storing a key configures it with no restart, and deleting it un-configures it" do
+      Application.put_env(:buster_claw, :finnhub_api_key, nil)
+      assert AppKeys.get("finnhub_api_key") == nil
 
-      refute Relay.configured?(), "precondition: the relay must start unconfigured"
+      assert {:ok, _} = Clinch.put({:app_key, "finnhub_api_key"}, "stored-key")
+      assert AppKeys.get("finnhub_api_key") == "stored-key"
+      assert AppKeys.source("finnhub_api_key") == :clinch
 
-      assert {:ok, _} = Clinch.put({:app_key, "supabase_url"}, "https://x.supabase.co")
-      assert {:ok, _} = Clinch.put({:app_key, "supabase_service_role_key"}, "service-role")
+      assert {:ok, _} = Clinch.delete({:app_key, "finnhub_api_key"})
 
-      # No restart, no re-read of config, no supervisor change.
-      assert Relay.configured?()
-    end
-
-    test "deleting a credential un-configures it on the next call" do
-      Application.put_env(:buster_claw, :telephony_relay_url, nil)
-      Application.put_env(:buster_claw, :telephony_relay_key, nil)
-
-      assert {:ok, _} = Clinch.put({:app_key, "supabase_url"}, "https://x.supabase.co")
-      assert {:ok, _} = Clinch.put({:app_key, "supabase_service_role_key"}, "service-role")
-      assert Relay.configured?()
-
-      assert {:ok, _} = Clinch.delete({:app_key, "supabase_service_role_key"})
-
-      refute Relay.configured?(), "revocation must take effect without a restart"
+      assert AppKeys.get("finnhub_api_key") == nil,
+             "revocation must take effect without a restart"
     end
   end
 

@@ -76,16 +76,6 @@ defmodule BusterClaw.DialyzerBaselineTest do
                """
       end
     end
-
-    test "at least one telephony file is gated", %{accepted: accepted} do
-      telephony = Path.wildcard("lib/buster_claw/telephony/**/*.ex")
-
-      assert telephony != [], "lib/buster_claw/telephony/ has no modules — the prefix is stale"
-
-      refute Enum.any?(telephony, &MapSet.member?(accepted, &1)),
-             "a telephony module is accepting unmatched returns. That path is " <>
-               "persist-then-ack: a dropped return is a message acknowledged and lost."
-    end
   end
 
   describe "the rule is not vacuous" do

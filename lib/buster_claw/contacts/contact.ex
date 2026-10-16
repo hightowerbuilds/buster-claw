@@ -10,8 +10,8 @@ defmodule BusterClaw.Contacts.Contact do
   ## There is no `trusted` field, on purpose
 
   Trust is **derived, never stored** — `BusterClaw.Contacts.trusted?/1` asks the
-  markdown policy files, which are the actual gates read by `Google.GmailSync`
-  and `Telephony.Drain`. The old `telephony_contacts.trusted` column was read by
+  markdown policy file, which is the actual gate read by `Google.GmailSync`.
+  The old `telephony_contacts.trusted` column was read by
   nothing while defaulting to `true`; storing trust here again would recreate a
   switch that can silently disagree with the gate it appears to control. If you
   find yourself wanting to `add :trusted` to this schema, you want
@@ -20,8 +20,6 @@ defmodule BusterClaw.Contacts.Contact do
 
   use Ecto.Schema
   import Ecto.Changeset
-
-  alias BusterClaw.TrustedNumbers
 
   schema "contacts" do
     field :name, :string
@@ -65,24 +63,37 @@ defmodule BusterClaw.Contacts.Contact do
     end)
   end
 
-  # Store E.164 so a contact's phone compares byte-for-byte against both the
-  # inbound event's from_number and the trusted-numbers policy, which normalize
-  # the same way. TrustedNumbers.normalize/1 is the single definition of that
-  # rule — don't re-implement it here, or the two will drift and a contact will
-  # look untrusted while its policy entry says otherwise.
+  # Store E.164: ten US digits get +1, a leading + keeps its country code. This
+  # was `TrustedNumbers.normalize/1` until the phone left on 10-15; it lives here
+  # now because a contact's number is still worth storing in one shape.
   defp normalize_phone(changeset) do
     case get_change(changeset, :phone) do
       nil ->
         changeset
 
       raw ->
-        case TrustedNumbers.normalize(raw) do
+        case normalize(raw) do
           {:ok, e164} ->
             put_change(changeset, :phone, e164)
 
           :error ->
             add_error(changeset, :phone, "must be a phone number (10 digits, or full +E.164)")
         end
+    end
+  end
+
+  @doc "E.164 for a typed number: `{:ok, \"+1...\"}` or `:error`."
+  def normalize(raw) do
+    str = to_string(raw) |> String.trim()
+    plus? = String.starts_with?(str, "+")
+    digits = String.replace(str, ~r/\D/, "")
+    len = String.length(digits)
+
+    cond do
+      plus? and len in 8..15 -> {:ok, "+" <> digits}
+      not plus? and len == 10 -> {:ok, "+1" <> digits}
+      not plus? and len == 11 and String.starts_with?(digits, "1") -> {:ok, "+" <> digits}
+      true -> :error
     end
   end
 

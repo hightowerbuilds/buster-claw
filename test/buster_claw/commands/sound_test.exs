@@ -7,7 +7,6 @@ defmodule BusterClaw.Commands.SoundTest do
   alias BusterClaw.Notifications.Sound
   alias BusterClaw.Notifications.SoundGen
   alias BusterClaw.Notifications.SoundStudio
-  alias BusterClaw.Telephony
 
   # afconvert is a macOS system binary, but the suite should not fail on a
   # machine without it — the decode-dependent cases are skipped instead, the
@@ -17,8 +16,7 @@ defmodule BusterClaw.Commands.SoundTest do
   setup do
     root = Path.join(System.tmp_dir!(), "bc_cmd_sound_#{System.unique_integer([:positive])}")
     File.mkdir_p!(Path.join([root, "sounds", "studio"]))
-    # The Library root is where a telephony recording_path resolves from, which
-    # is what decides whether a transcript hit is cuttable.
+    # The Library root is where a Library-relative path resolves from.
     File.mkdir_p!(Path.join(root, "library"))
 
     prev = Application.get_env(:buster_claw, :workspace_root)
@@ -90,36 +88,6 @@ defmodule BusterClaw.Commands.SoundTest do
 
   defp entry(%{sounds: sounds}, name), do: Enum.find(sounds, &(&1.name == name))
   defp route(%{routes: routes}, key), do: Enum.find(routes, &(&1.key == key))
-
-  # A voicemail row. `recording_path` is relative to the Library root; pass
-  # `on_disk: false` for the row whose audio is missing, which is the shape a dev
-  # workspace is full of.
-  defp voicemail(root, transcript, opts \\ []) do
-    n = System.unique_integer([:positive])
-    name = "voicemail-#{n}.wav"
-
-    if Keyword.get(opts, :on_disk, true) do
-      File.write!(Path.join([root, "library", name]), Keyword.get(opts, :audio) || wav())
-    end
-
-    {:ok, event} =
-      Telephony.record_event(
-        %{
-          direction: "inbound",
-          kind: "voicemail",
-          from_number: "+15035551234",
-          to_number: "+18446878016",
-          twilio_sid: "RE#{n}",
-          duration_seconds: 10,
-          transcript: transcript,
-          recording_path: name,
-          occurred_at: DateTime.utc_now() |> DateTime.truncate(:second)
-        },
-        observe: false
-      )
-
-    event
-  end
 
   # A file under the Library root, at a path relative to it — the shape
   # `recording_path` has, and the only shape `sound_import` accepts.
@@ -204,7 +172,7 @@ defmodule BusterClaw.Commands.SoundTest do
 
       # Display order leads with the catch-all, as Settings does.
       assert hd(keys) == "default"
-      assert route(table, "voicemail").label == "Voicemail"
+      assert route(table, "email").label == "Email"
 
       # Nothing assigned: the bundled default is the floor, and the answer is
       # marked as a fallback rather than an operator choice.
@@ -216,7 +184,7 @@ defmodule BusterClaw.Commands.SoundTest do
     end
 
     test "explicit, inherited, and silent routes are distinguished" do
-      assert :ok = Sound.assign("voicemail", "boot.wav")
+      assert :ok = Sound.assign("email", "boot.wav")
       assert :ok = Sound.assign("chat", Sound.silent())
       assert :ok = Sound.assign("default", "alarm.wav")
 
@@ -228,7 +196,7 @@ defmodule BusterClaw.Commands.SoundTest do
                plays_layer: "bundled",
                origin: "explicit"
              } =
-               route(table, "voicemail")
+               route(table, "email")
 
       # Silent is a definitive answer, not an inherit — it plays nothing.
       assert %{assigned: "silent", plays: nil, origin: "silent"} = route(table, "chat")
@@ -332,23 +300,6 @@ defmodule BusterClaw.Commands.SoundTest do
   end
 
   describe "sound_probe reaching the Library" do
-    test "probes the recording an event names", %{root: root} do
-      event = voicemail(root, "meet me at the harbor")
-
-      assert {:ok, probe} = Commands.Sound.sound_probe(%{"event_id" => event.id})
-
-      assert probe.layer == "library"
-      assert probe.event_id == event.id
-      assert probe.library_path == event.recording_path
-      assert probe.name == Path.basename(event.recording_path)
-      assert probe.path == Path.join([root, "library", event.recording_path])
-      # This fixture is already a WAV in the internal format, so the cheap path
-      # answers everything and no decode is needed.
-      assert probe.internal
-      assert probe.peak > 0.0
-      refute probe.decoded
-    end
-
     test "probes a Library-relative path", %{root: root} do
       recording(root, "calls/take-1.wav")
 
@@ -424,42 +375,6 @@ defmodule BusterClaw.Commands.SoundTest do
   end
 
   describe "sound_import" do
-    test "brings the recording an event names into the studio", %{root: root} do
-      event = voicemail(root, "meet me at the harbor")
-
-      assert {:ok, result} = Commands.Sound.sound_import(%{"event_id" => event.id})
-
-      assert result.event_id == event.id
-      assert result.library_path == event.recording_path
-      assert result.name == Path.basename(event.recording_path)
-      assert result.path == Path.join([root, "sounds", "studio", result.name])
-      assert File.regular?(result.path)
-      refute result.replaced
-
-      # It is stored in the internal format, which is what makes it cuttable.
-      assert result.internal
-      assert result.sample_rate == 22_050
-      assert result.channels == 1
-      assert result.bits == 16
-      assert result.peak > 0.0
-      assert result.duration_ms > 0
-      assert result.bytes > 0
-      # A WAV already in the internal format never reaches the decoder.
-      refute result.decoded
-
-      # And the whole point: it is now a source the rest of the surface can see.
-      assert {:ok, %{sources: sources}} = Commands.Sound.sound_sources()
-      assert Enum.any?(sources, &(&1.name == result.name))
-
-      assert {:ok, %{layer: "studio", internal: true}} =
-               Commands.Sound.sound_probe(%{"name" => result.name})
-
-      # A source, not a chime: nothing entered the routed library.
-      assert {:ok, %{sounds: sounds}} = Commands.Sound.sound_list()
-      refute Enum.any?(sounds, &(&1.name == result.name))
-      assert Enum.any?(result.notes, &(&1 =~ "SOURCE"))
-    end
-
     test "brings in a Library-relative path, under a name of your choosing", %{root: root} do
       recording(root, "calls/take-1.wav")
 
@@ -516,38 +431,6 @@ defmodule BusterClaw.Commands.SoundTest do
 
       # Not one of them wrote anything.
       assert studio_entries(root) == before
-    end
-
-    test "a missing event, a missing recording, and a missing file are each named", %{
-      root: root
-    } do
-      assert {:error, :event_not_found} = Commands.Sound.sound_import(%{"event_id" => 987_654})
-      assert {:error, :invalid_event_id} = Commands.Sound.sound_import(%{"event_id" => "soon"})
-      assert {:error, :invalid_event_id} = Commands.Sound.sound_import(%{"event_id" => -1})
-
-      # A row whose audio was pruned, moved, or never fetched.
-      gone = voicemail(root, "nothing on disk", on_disk: false)
-      assert {:error, :not_found} = Commands.Sound.sound_import(%{"event_id" => gone.id})
-
-      # An SMS names no recording at all.
-      {:ok, sms} =
-        Telephony.record_event(
-          %{
-            direction: "inbound",
-            kind: "sms",
-            from_number: "+15035551234",
-            to_number: "+18446878016",
-            twilio_sid: "SM#{System.unique_integer([:positive])}",
-            body: "no audio here",
-            occurred_at: DateTime.utc_now() |> DateTime.truncate(:second)
-          },
-          observe: false
-        )
-
-      assert {:error, :no_recording} = Commands.Sound.sound_import(%{"event_id" => sms.id})
-
-      assert {:error, :not_found} = Commands.Sound.sound_import(%{"path" => "nope.wav"})
-      assert {:error, :missing_source} = Commands.Sound.sound_import(%{})
     end
 
     test "it never clobbers an existing source silently", %{root: root} do
@@ -931,13 +814,13 @@ defmodule BusterClaw.Commands.SoundTest do
       assert {:ok, result} =
                Commands.Sound.sound_apply(%{
                  "source" => "sentence.wav",
-                 "route" => "voicemail",
+                 "route" => "email",
                  "name" => "ramshackle"
                })
 
       assert result.name == "ramshackle.wav"
-      assert result.route == "voicemail"
-      assert result.route_label == "Voicemail"
+      assert result.route == "email"
+      assert result.route_label == "Email"
       assert result.duration_ms > 0
       assert result.peak > 0.0
       refute result.shadowing
@@ -949,13 +832,13 @@ defmodule BusterClaw.Commands.SoundTest do
 
       # And the routing table actually resolves to it — for the key, and for a
       # notification that would fire against that key.
-      assert Sound.resolved("voicemail") == "ramshackle.wav"
-      assert Sound.for_notification(%{source: "voicemail", kind: "timer"}) == "ramshackle.wav"
+      assert Sound.resolved("email") == "ramshackle.wav"
+      assert Sound.for_notification(%{source: "email", kind: "timer"}) == "ramshackle.wav"
 
       assert {:ok, routes} = Commands.Sound.sound_routes()
 
       assert %{assigned: "ramshackle.wav", plays: "ramshackle.wav", origin: "explicit"} =
-               route(routes, "voicemail")
+               route(routes, "email")
 
       # The studio source is untouched: the library holds a copy.
       assert File.regular?(Path.join([root, "sounds", "studio", "sentence.wav"]))
@@ -963,12 +846,12 @@ defmodule BusterClaw.Commands.SoundTest do
 
     test "the way back is in the result", %{root: root} do
       library(root, "old.wav")
-      assert :ok = Sound.assign("voicemail", "old.wav")
+      assert :ok = Sound.assign("email", "old.wav")
 
       assert {:ok, result} =
                Commands.Sound.sound_apply(%{
                  "source" => "sentence.wav",
-                 "route" => "voicemail",
+                 "route" => "email",
                  "name" => "new"
                })
 
@@ -991,10 +874,10 @@ defmodule BusterClaw.Commands.SoundTest do
       assert Sound.sound_map() == %{}
 
       assert {:error, :missing_route} = Commands.Sound.sound_apply(%{"source" => "sentence.wav"})
-      assert {:error, :missing_source} = Commands.Sound.sound_apply(%{"route" => "voicemail"})
+      assert {:error, :missing_source} = Commands.Sound.sound_apply(%{"route" => "email"})
 
       assert {:error, {:not_imported, "nope.wav"}} =
-               Commands.Sound.sound_apply(%{"source" => "nope.wav", "route" => "voicemail"})
+               Commands.Sound.sound_apply(%{"source" => "nope.wav", "route" => "email"})
     end
 
     test "an existing library name, and a bundled one, are both refused", %{root: root} do
@@ -1003,7 +886,7 @@ defmodule BusterClaw.Commands.SoundTest do
       assert {:error, :name_taken} =
                Commands.Sound.sound_apply(%{
                  "source" => "sentence.wav",
-                 "route" => "voicemail",
+                 "route" => "email",
                  "name" => "taken"
                })
 
@@ -1016,14 +899,14 @@ defmodule BusterClaw.Commands.SoundTest do
       assert {:error, :shadows_bundled} =
                Commands.Sound.sound_apply(%{
                  "source" => "sentence.wav",
-                 "route" => "voicemail",
+                 "route" => "email",
                  "name" => "alarm"
                })
 
       assert {:ok, shadow} =
                Commands.Sound.sound_apply(%{
                  "source" => "sentence.wav",
-                 "route" => "voicemail",
+                 "route" => "email",
                  "name" => "alarm",
                  "overwrite" => true
                })
@@ -1071,22 +954,22 @@ defmodule BusterClaw.Commands.SoundTest do
       assert {:ok, _applied} =
                Commands.Sound.sound_apply(%{
                  "source" => "sentence.wav",
-                 "route" => "voicemail",
+                 "route" => "email",
                  "name" => "ramshackle"
                })
 
-      assert Sound.resolved("voicemail") == "ramshackle.wav"
+      assert Sound.resolved("email") == "ramshackle.wav"
 
       assert {:ok, result} =
                Commands.Sound.sound_restore_defaults(%{"sounds" => false, "routes" => true})
 
-      assert result.cleared_routes == ["voicemail"]
+      assert result.cleared_routes == ["email"]
       assert result.counts.copied == 0
 
       # The key inherits again and falls back to its bundled chime. The applied
       # file is still on disk — nothing is deleted, only unrouted.
       assert Sound.sound_map() == %{}
-      assert Sound.resolved("voicemail") in ["voicemail.wav", "ramshackle.wav"]
+      assert Sound.resolved("email") in ["voicemail.wav", "ramshackle.wav"]
       assert File.regular?(Path.join([root, "sounds", "ramshackle.wav"]))
     end
   end
@@ -1096,25 +979,26 @@ defmodule BusterClaw.Commands.SoundTest do
   # ---------------------------------------------------------------------------
 
   describe "the acceptance walk" do
-    # STUDIO_ROADMAP Part I: "a voicemail becomes a routed sound effect end to
-    # end, from the CLI alone, with no UI involved."
+    # STUDIO_ROADMAP Part I: "a recording becomes a routed sound effect end to
+    # end, from the CLI alone, with no UI involved." (It was a voicemail until
+    # the phone left on 10-15; a Library-relative recording walks the same path.)
     #
     # Every step goes through `Commands.call/3` BY NAME. That is the assertion —
     # a handler nothing can reach through the dispatcher is not a command
     # surface, and this walk fails on a missing catalog entry, a missing
     # registration and a missing delegate exactly as loudly as on a broken edit.
-    test "a voicemail becomes a routed sound effect, from the CLI alone", %{root: root} do
-      event = voicemail(root, "meet me at the harbor", audio: speech())
+    test "a recording becomes a routed sound effect, from the CLI alone", %{root: root} do
+      relative = recording(root, "calls/harbor.wav", speech())
 
       # 1. Look before importing — the agent's only substitute for ears.
       assert {:ok, %{layer: "library", duration_ms: heard}} =
-               Commands.call("sound_probe", %{"event_id" => event.id})
+               Commands.call("sound_probe", %{"path" => relative})
 
       assert heard > 0
 
       # 2. Through the studio door.
       assert {:ok, %{name: imported, internal: true}} =
-               Commands.call("sound_import", %{"event_id" => event.id})
+               Commands.call("sound_import", %{"path" => relative})
 
       # 3. Edit it: trim the tail, then level it. (Until 09-19 the walk also
       #    aligned the transcript, searched the word index and assembled a
@@ -1134,7 +1018,7 @@ defmodule BusterClaw.Commands.SoundTest do
       assert {:ok, applied} =
                Commands.call("sound_apply", %{
                  "source" => levelled,
-                 "route" => "voicemail",
+                 "route" => "email",
                  "name" => "ramshackle-chime"
                })
 
@@ -1144,32 +1028,32 @@ defmodule BusterClaw.Commands.SoundTest do
 
       # ...and the route resolves to it, both as the routing table reports it
       # and as a fired notification would resolve it.
-      assert Sound.resolved("voicemail") == "ramshackle-chime.wav"
+      assert Sound.resolved("email") == "ramshackle-chime.wav"
 
-      assert Sound.for_notification(%{source: "voicemail", kind: "alarm"}) ==
+      assert Sound.for_notification(%{source: "email", kind: "alarm"}) ==
                "ramshackle-chime.wav"
 
       assert {:ok, routes} = Commands.call("sound_routes", %{})
-      assert %{plays: "ramshackle-chime.wav", origin: "explicit"} = route(routes, "voicemail")
+      assert %{plays: "ramshackle-chime.wav", origin: "explicit"} = route(routes, "email")
 
       assert {:ok, listing} = Commands.call("sound_list", %{})
       assert %{layer: "workspace"} = entry(listing, "ramshackle-chime.wav")
 
       # And the way back is reachable by name too.
-      assert {:ok, %{cleared_routes: ["voicemail"]}} =
+      assert {:ok, %{cleared_routes: ["email"]}} =
                Commands.call("sound_restore_defaults", %{"sounds" => false, "routes" => true})
 
       assert Sound.sound_map() == %{}
       assert {:ok, cleared} = Commands.call("sound_routes", %{})
-      assert route(cleared, "voicemail").assigned == nil
-      refute route(cleared, "voicemail").origin == "explicit"
+      assert route(cleared, "email").assigned == nil
+      refute route(cleared, "email").origin == "explicit"
 
       # Worth knowing, and not a bug: the clip still PLAYS for voicemail here,
       # because the legacy fallback picks the first audio file in the workspace
       # library alphabetically and this workspace has exactly one. Clearing a
       # route removes the assignment, not the file — sound_list is where you see
       # that, and deleting the file is the other half of an undo.
-      assert route(cleared, "voicemail").origin == "fallback"
+      assert route(cleared, "email").origin == "fallback"
     end
 
     test "the gate is real: an untrusted run cannot route a key", %{root: root} do
@@ -1186,7 +1070,7 @@ defmodule BusterClaw.Commands.SoundTest do
       assert {:error, :requires_confirmation} =
                Commands.call(
                  "sound_apply",
-                 %{"source" => "sentence.wav", "route" => "voicemail"},
+                 %{"source" => "sentence.wav", "route" => "email"},
                  caller: :agent_untrusted
                )
 
@@ -1262,7 +1146,7 @@ defmodule BusterClaw.Commands.SoundTest do
       assert {:ok, applied} =
                Commands.call("sound_apply", %{
                  "source" => "spoken.wav",
-                 "route" => "voicemail",
+                 "route" => "email",
                  "name" => "spoken-chime"
                })
 
@@ -1271,8 +1155,8 @@ defmodule BusterClaw.Commands.SoundTest do
       assert File.regular?(Path.join([root, "sounds", "spoken-chime.wav"]))
 
       # 5. And it resolves the way a fired notification would resolve it.
-      assert Sound.resolved("voicemail") == "spoken-chime.wav"
-      assert Sound.for_notification(%{source: "voicemail", kind: "alarm"}) == "spoken-chime.wav"
+      assert Sound.resolved("email") == "spoken-chime.wav"
+      assert Sound.for_notification(%{source: "email", kind: "alarm"}) == "spoken-chime.wav"
     end
 
     if @decoder_available do
@@ -1285,14 +1169,14 @@ defmodule BusterClaw.Commands.SoundTest do
         assert {:ok, %{name: "hifi.wav", internal: true, decoded: true}} =
                  Commands.call("sound_import", %{"path" => "hifi.wav"})
 
-        assert {:ok, %{route: "voicemail"}} =
+        assert {:ok, %{route: "email"}} =
                  Commands.call("sound_apply", %{
                    "source" => "hifi.wav",
-                   "route" => "voicemail",
+                   "route" => "email",
                    "name" => "hifi-chime"
                  })
 
-        assert Sound.resolved("voicemail") == "hifi-chime.wav"
+        assert Sound.resolved("email") == "hifi-chime.wav"
       end
     end
   end
@@ -1318,21 +1202,13 @@ defmodule BusterClaw.Commands.SoundTest do
     end
 
     test "the import verbs are reachable through Commands.call/3", %{root: root} do
-      event = voicemail(root, "meet me at the harbor")
       recording(root, "calls/take-1.wav")
 
-      assert {:ok, %{layer: "library", event_id: id}} =
-               Commands.call("sound_probe", %{"event_id" => event.id})
-
-      assert id == event.id
-
-      assert {:ok, %{layer: "library"}} =
+      assert {:ok, %{layer: "library", event_id: nil}} =
                Commands.call("sound_probe", %{"path" => "calls/take-1.wav"})
 
-      assert {:ok, %{name: name, replaced: false}} =
-               Commands.call("sound_import", %{"event_id" => event.id})
-
-      assert name == Path.basename(event.recording_path)
+      assert {:ok, %{name: "take-1.wav", replaced: false}} =
+               Commands.call("sound_import", %{"path" => "calls/take-1.wav"})
 
       assert {:ok, %{name: "harbor.wav"}} =
                Commands.call("sound_import", %{
@@ -1406,13 +1282,12 @@ defmodule BusterClaw.Commands.SoundTest do
       # its own — the handler names the missing one instead.
       probe = Map.fetch!(catalog, "sound_probe")
       refute probe.args["name"].required
-      assert Map.has_key?(probe.args, "event_id")
       assert Map.has_key?(probe.args, "path")
+      refute Map.has_key?(probe.args, "event_id")
       refute probe.args["decode"].default
 
-      # Same for the import verb, whose two inputs are alternatives.
+      # Same for the import verb.
       import_args = Map.fetch!(catalog, "sound_import").args
-      refute import_args["event_id"].required
       refute import_args["path"].required
       refute import_args["overwrite"].default
 

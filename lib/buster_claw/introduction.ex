@@ -50,7 +50,7 @@ defmodule BusterClaw.Introduction do
   @sections [
     "01-orientation.md",
     "02-activity-record.md",
-    "03-jobs-and-phone.md",
+    "03-jobs.md",
     "04-startup.md",
     "05-browsing.md",
     "06-documents-and-services.md",
@@ -90,7 +90,9 @@ defmodule BusterClaw.Introduction do
   # `introduction/00-brief.md`, APPEND its new digest here**; never replace or
   # reorder. `BusterClaw.SeedTest` fails with the digest to add if you forget.
   @brief_versions [
-    "da2e2de14553cbca833643041b27cddcc97cbc3d626625e17877a2ffe0234d9f"
+    "da2e2de14553cbca833643041b27cddcc97cbc3d626625e17877a2ffe0234d9f",
+    # 10-15: the phone left the brief.
+    "879c7e0f3c26c6dba6129eda38299bdb90241082da7f3735fb4cb88f1aeaf6ae"
   ]
 
   @doc "Absolute path of the installed introduction in the current workspace."

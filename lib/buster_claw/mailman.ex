@@ -9,7 +9,7 @@ defmodule BusterClaw.Mailman do
   inside the BEAM, gated the same way the Dispatcher is: it does nothing unless
   an **unattended shift is active and the kill switch is clear**.
 
-  Shaped like `BusterClaw.Telephony.Drain`: a supervised ticker that decides for
+  A supervised ticker (the shape the phone's drain had, before 10-15) that decides for
   itself whether there is work, so it costs one cheap check per tick when idle
   and needs no restart when a shift starts. Off in tests (`:mailman_enabled`),
   which drive `tick/1` directly.

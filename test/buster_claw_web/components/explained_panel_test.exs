@@ -38,7 +38,7 @@ defmodule BusterClawWeb.ExplainedPanelTest do
       # this line fail and be updated on purpose.
       # `ramshackle` merged into `studio` on 08-16 and its module was deleted.
       assert ExplainedPanel.tab_keys() ==
-               ~w(intro models gws browser phone shaders pockets cmd studio site ntf)
+               ~w(intro models gws browser shaders pockets cmd studio site ntf)
     end
 
     test "every registry tab renders a body, and every dispatch has a registry tab" do

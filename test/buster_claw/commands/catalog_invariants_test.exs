@@ -245,9 +245,6 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
       memory_search
       notify_get
       notify_list
-      phone_get
-      phone_list
-      phone_stats
       pocket_describe
       pocket_list
       pocket_read

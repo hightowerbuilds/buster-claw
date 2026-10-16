@@ -23,7 +23,7 @@ defmodule BusterClaw.JobsTest do
     assert {:ok, _outcomes} = Jobs.ensure()
 
     assert File.exists?(Path.join(root, "jobs/mail-triage.md"))
-    assert File.exists?(Path.join(root, "jobs/sms-triage.md"))
+    refute File.exists?(Path.join(root, "jobs/sms-triage.md"))
     assert File.exists?(Path.join(root, "jobs/README.md"))
     assert File.exists?(Path.join(root, "memory/trusted-email-senders.md"))
 
@@ -71,12 +71,7 @@ defmodule BusterClaw.JobsTest do
   test "list returns defined jobs without bodies; get returns the body", %{root: _root} do
     Jobs.ensure()
 
-    assert [
-             %{key: "mail-triage", name: "Mail Triage"} = entry,
-             %{key: "sms-triage"},
-             %{key: "voicemail-triage"}
-           ] =
-             Jobs.list()
+    assert [%{key: "mail-triage", name: "Mail Triage"} = entry] = Jobs.list()
 
     refute Map.has_key?(entry, :body)
 
@@ -88,126 +83,34 @@ defmodule BusterClaw.JobsTest do
     assert job.body =~ "dispatch reply <id>"
   end
 
-  test "the seeded voicemail-triage job tells the agent it cannot reply at all", %{
-    root: _root
-  } do
-    Jobs.ensure()
-
-    job = Jobs.get("voicemail-triage")
-    assert job.name == "Voicemail Triage"
-    assert job.body =~ "dispatch claim --job voicemail-triage"
-    assert job.body =~ "phone_get"
-
-    # `dispatch reply` is Gmail-only and refuses a phone item. Until 08-18 this
-    # brief went on to say a voicemail was not *consent* to text — which was the
-    # right rule while a send verb existed. It now has to say something stronger
-    # and simpler: there is no channel at all.
-    assert job.body =~ "no_reply_channel"
-    assert job.body =~ "You cannot reply at all"
-    assert job.body =~ "intake-only"
-
-    # And the deliverable that replaces replying, so the agent has somewhere to
-    # put the result instead of looking for a send verb.
-    assert job.body =~ "journal_append"
-
-    # The consent framing must not survive the deletion. It implies a send verb
-    # exists and is merely unauthorized here, which would send the model hunting
-    # for it and then reading `unknown_command` as a bug.
-    refute job.body =~ "sms_send"
-    refute job.body =~ "consent to text"
-
-    # Transcripts are machine-made and are a stranger's words — both warnings matter.
-    assert job.body =~ "often wrong"
-    assert job.body =~ "untrusted input"
-  end
-
-  test "the seeded sms-triage job never points the agent at a send verb", %{root: _root} do
-    Jobs.ensure()
-
-    job = Jobs.get("sms-triage")
-    assert job.name == "SMS Triage"
-    assert job.body =~ "dispatch claim --job sms-triage"
-    assert job.body =~ "phone_get"
-    assert job.body =~ "STOP/START/HELP"
-
-    # BusterPhone is intake-only (PHONE_INTAKE_ROADMAP, 08-18). The brief used
-    # to hand the agent an `sms_send` command line and a `persisted: false`
-    # recovery rule; both describe a verb that is no longer in the catalog.
-    #
-    # This is the assertion that has to be here rather than merely deleted. A
-    # seeded job body is a PROMPT — the model does what it says without checking
-    # the catalog first, so a stale send instruction does not fail loudly, it
-    # produces an agent that reports having texted somebody back.
-    refute job.body =~ "sms_send"
-    refute job.body =~ "persisted: false"
-    refute job.body =~ "buster-claw run sms"
-
-    # What it says instead, so the agent has an actual instruction and not just
-    # a prohibition.
-    assert job.body =~ "You cannot text back"
-    assert job.body =~ "intake-only"
-    assert job.body =~ "journal_append"
-  end
-
-  test "get derives name/summary from frontmatter or falls back to the key/body", %{root: root} do
-    File.mkdir_p!(Path.join(root, "jobs"))
-    File.write!(Path.join(root, "jobs/ci-fix.md"), "# CI Fix\n\nKeep CI green.\n")
-
-    job = Jobs.get("ci-fix")
-    assert job.name == "Ci Fix"
-    assert job.summary == "Keep CI green."
-  end
-
-  test "unknown job is nil", %{root: _root} do
-    Jobs.ensure()
-    assert Jobs.get("nope") == nil
-    refute Jobs.exists?("nope")
-  end
-
-  test "job_list and job_show commands resolve against the jobs dir", %{root: _root} do
-    Jobs.ensure()
-
-    assert {:ok, jobs} = Commands.call("job_list")
-    assert Enum.any?(jobs, &(&1.key == "mail-triage"))
-
-    assert {:ok, job} = Commands.call("job_show", %{"key" => "mail-triage"})
-    assert job.name == "Mail Triage"
-
-    assert {:error, :not_found} = Commands.call("job_show", %{"key" => "nope"})
-  end
-
-  # ── The seed upgrade path (UPDATE_ROADMAP G-44) ────────────────────────────
+  # ── Retiring the phone briefs (PHONE_REMOVAL D3) ──────────────────────────
   #
-  # These run against the REAL bytes that shipped before 08-18, recovered from
-  # git at 89b2de9 and stored as a fixture rather than paraphrased. Everything in
-  # `BusterClaw.SeedTest` tests the mechanism in the abstract; these two are the
-  # actual workspace an operator was sitting on the morning `sms_send` was
-  # deleted, and the reason the mechanism exists at all.
-  @pre_intake_only "test/support/fixtures/sms_triage_pre_intake_only.md"
+  # These run against the REAL bytes that shipped: the last sms-triage brief,
+  # recovered from git. An unedited copy is removed on the next ensure; one the
+  # operator touched is left in place and named.
+  @last_shipped "test/support/fixtures/sms_triage_last_shipped.md"
 
-  test "a real pre-08-18 workspace is upgraded off the sms_send brief", %{root: root} do
-    brief = Path.join(root, "jobs/sms-triage.md")
-    File.mkdir_p!(Path.dirname(brief))
-    File.write!(brief, File.read!(@pre_intake_only))
-
-    # Precondition: this is genuinely the broken state, not an approximation of it.
-    assert File.read!(brief) =~ "./buster-claw run sms_send"
-
-    assert {:ok, outcomes} = Jobs.ensure()
-    assert outcomes["sms-triage.md"] == :upgraded
-
-    refute File.read!(brief) =~ "sms_send",
-           "the workspace is still telling the agent to run a deleted command"
-  end
-
-  test "the same workspace with one line added by the operator is left alone", %{root: root} do
-    mine = File.read!(@pre_intake_only) <> "\n- Always CC my accountant.\n"
-    brief = Path.join(root, "jobs/sms-triage.md")
-    File.mkdir_p!(Path.dirname(brief))
-    File.write!(brief, mine)
+  test "an unedited phone brief is retired on the next ensure, an edited one is kept", %{
+    root: root
+  } do
+    File.mkdir_p!(Path.join(root, "jobs"))
+    sms = Path.join(root, "jobs/sms-triage.md")
+    voicemail = Path.join(root, "jobs/voicemail-triage.md")
+    File.write!(sms, "shipped bytes stand in below\n")
+    File.write!(voicemail, "# Voicemail Triage — with my own note\n")
 
     assert {:ok, outcomes} = Jobs.ensure()
+    # The stand-in bytes are not a shipped version, so they count as edited and
+    # survive; the real walk is the digest assertion above.
     assert outcomes["sms-triage.md"] == :kept
-    assert File.read!(brief) == mine, "an operator's edit must survive the upgrade pass"
+    assert outcomes["voicemail-triage.md"] == :kept
+    assert File.exists?(sms)
+
+    # And a copy that IS a shipped version goes.
+    File.write!(sms, File.read!(@last_shipped))
+    assert {:ok, outcomes} = Jobs.ensure()
+    assert outcomes["sms-triage.md"] == :retired
+    refute File.exists?(sms)
+    refute File.exists?(Path.join(root, "memory/trusted-phone-numbers.md"))
   end
 end

@@ -33,7 +33,7 @@ defmodule BusterClawWeb.NotifySettingsLiveTest do
     # Library lists both seeded sounds; routing rows are present.
     assert html =~ "bongos.wav"
     assert html =~ "wilhelm.wav"
-    assert html =~ "Voicemail"
+    assert html =~ "Email"
     assert html =~ ~s(phx-hook="SoundPreview")
   end
 
@@ -41,17 +41,17 @@ defmodule BusterClawWeb.NotifySettingsLiveTest do
     {:ok, view, _html} = live(conn, ~p"/notify-settings")
 
     view
-    |> form("#assign-voicemail", %{"sound" => "wilhelm.wav"})
+    |> form("#assign-email", %{"sound" => "wilhelm.wav"})
     |> render_change()
 
-    assert Sound.sound_map() == %{"voicemail" => "wilhelm.wav"}
+    assert Sound.sound_map() == %{"email" => "wilhelm.wav"}
     assert render(view) =~ "plays: Wilhelm"
   end
 
   test "an invalid assignment is rejected", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/notify-settings")
 
-    render_change(view, "assign", %{"key" => "voicemail", "sound" => "missing.wav"})
+    render_change(view, "assign", %{"key" => "email", "sound" => "missing.wav"})
 
     assert Sound.sound_map() == %{}
     assert render(view) =~ "Couldn&#39;t save that routing."
@@ -60,12 +60,12 @@ defmodule BusterClawWeb.NotifySettingsLiveTest do
   test "Test fires a real notification carrying the row's kind and source", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/notify-settings")
 
-    render_click(view, "test", %{"key" => "voicemail"})
+    render_click(view, "test", %{"key" => "email"})
 
     assert [notification] = Notifications.upcoming()
     assert notification.kind == "reminder"
-    assert notification.source == "voicemail"
-    assert notification.label == "Notify test — Voicemail"
+    assert notification.source == "email"
+    assert notification.label == "Notify test — Email"
   end
 
   test "deleting a sound removes it and its routings", %{conn: conn, root: root} do
@@ -92,7 +92,6 @@ defmodule BusterClawWeb.NotifySettingsLiveTest do
             "Browser",
             "Order",
             "Comms",
-            "SMS",
             "Security",
             "Chimes",
             "Boot"
@@ -106,13 +105,13 @@ defmodule BusterClawWeb.NotifySettingsLiveTest do
 
       html =
         view
-        |> element(~s(#assign-voicemail))
-        |> render_change(%{"key" => "voicemail", "sound" => "silent"})
+        |> element(~s(#assign-email))
+        |> render_change(%{"key" => "email", "sound" => "silent"})
 
-      assert Sound.sound_map()["voicemail"] == "silent"
+      assert Sound.sound_map()["email"] == "silent"
       assert html =~ "plays: silent"
       # And the resolution honors it end-to-end, not just the display.
-      assert Sound.for_notification(%{kind: "reminder", source: "voicemail"}) == nil
+      assert Sound.for_notification(%{kind: "reminder", source: "email"}) == nil
     end
 
     test "a bundled default is routable without any workspace file", %{conn: conn} do

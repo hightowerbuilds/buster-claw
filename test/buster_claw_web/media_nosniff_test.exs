@@ -24,7 +24,6 @@ defmodule BusterClawWeb.MediaNoSniffTest do
   # the header is asserted on whatever status comes back.
   @media_routes [
     {"/appearance/image/home", "uploaded appearance asset"},
-    {"/phone/recording?path=nope.mp3", "voicemail audio"},
     {"/music/track/nope.mp3", "music library audio"},
     {"/studio/file/nope.wav", "studio working file"},
     {"/notify/sound", "fallback notification chime"},

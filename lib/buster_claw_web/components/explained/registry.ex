@@ -58,14 +58,17 @@ defmodule BusterClawWeb.Explained.Registry do
   # Recomputed from Catalog.entries/0 after removing voice generation; the three
   # app-tab layout commands remain included.
   # 10-14: `gmail_attachment_download` — one `:safe` `:read`.
+  # 10-15: the phone left — ten `phone_*` verbs: five `:safe` `:read`s and five
+  # `:restricted` `:mutate`s, four of them gated. Measured from
+  # `Catalog.entries/0`, not derived by hand.
   @command_stats %{
-    total: 193,
-    read: 79,
+    total: 183,
+    read: 74,
     trigger: 19,
-    mutate: 95,
-    safe: 84,
-    restricted: 109,
-    gated: 21
+    mutate: 90,
+    safe: 81,
+    restricted: 102,
+    gated: 17
   }
 
   # Feature sub-tabs: rail + tile metadata for every non-site tab. A key in
@@ -114,19 +117,6 @@ defmodule BusterClawWeb.Explained.Registry do
           "before money moves.",
       path: "/browse",
       path_label: "Open the browser"
-    },
-    %{
-      key: "phone",
-      label: "BusterPhone",
-      eyebrow: "The phone line",
-      blurb: "An answering machine and SMS relay your agent works for you.",
-      body:
-        "Your agent gets its own number. Voice greets callers, records, " <>
-          "transcribes, and archives messages. Trusted SMS can become Dispatch " <>
-          "work; voicemail requires both a trusted number and a valid PIN before " <>
-          "it is enqueued. The Phone tab is the switchboard and local archive.",
-      path: "/phone",
-      path_label: "Open the Phone tab"
     },
     %{
       key: "shaders",
@@ -213,7 +203,7 @@ defmodule BusterClawWeb.Explained.Registry do
   # returns [] and the `:for` that renders them is vacuous. Left in place rather
   # than deleted — the stub is what makes adding a tab a one-line edit here, and
   # a `@features` entry with no panel must still render something true.
-  @built ~w(models shaders pockets phone browser cmd gws studio)
+  @built ~w(models shaders pockets browser cmd gws studio)
 
   # The two outbound tabs. They are not features — neither teaches this app, and
   # both send you to a website — which is why they sit last rather than second

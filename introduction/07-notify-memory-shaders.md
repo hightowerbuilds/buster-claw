@@ -47,8 +47,8 @@ shared `bg_post` tonemap pass) and are coloured through the user's palette, so
 a pattern inherits their theme instead of fighting it. The fifth, **veil**, is
 the image-reactive one: it is what goes on the right of a `+` in
 `image:<slot>+<shader>` below. Shaders are used
-elsewhere in the app too (the animated face, the phone keypad, the
-seven-segment clock, the day-cycle sky); the background catalog is the one
+elsewhere in the app too (the animated face, the seven-segment clock, the
+day-cycle sky); the background catalog is the one
 place you can extend from the workspace.
 
 **You can add new patterns at runtime.** Write one WGSL file at

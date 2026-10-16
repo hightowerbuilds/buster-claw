@@ -8,7 +8,6 @@ defmodule BusterClawWeb.WorkbenchState do
     %{key: "calendar", label: "Calendar", icon: "hero-calendar-days"},
     %{key: "terminal", label: "Terminal", icon: "hero-command-line"},
     %{key: "pockets", label: "Pockets", icon: "hero-squares-2x2"},
-    %{key: "phone", label: "Phone", icon: "hero-phone"},
     %{key: "explained", label: "Explained", icon: "hero-book-open"},
     %{key: "activity", label: "Activity", icon: "hero-bolt"},
     %{key: "clock", label: "Clock", icon: "hero-clock"}
@@ -157,8 +156,13 @@ defmodule BusterClawWeb.WorkbenchState do
 
   def resize(state, _path, _ratio), do: state
 
+  # Panels that no longer exist but may sit in a saved layout. Pruned before
+  # validation so the rest of the arrangement survives (PHONE_REMOVAL D2) —
+  # `validate/2` would otherwise reject the whole tree and reset to a lone Chat.
+  @retired_keys ["phone"]
+
   def restore(%{"tree" => tree} = saved) do
-    with {:ok, tree} <- validate(tree, 0),
+    with {:ok, tree} <- tree |> prune_retired() |> validate(0),
          keys = leaves(tree),
          true <- length(keys) == length(Enum.uniq(keys)) do
       active = if saved["active"] in keys, do: saved["active"], else: List.first(keys)
@@ -240,6 +244,19 @@ defmodule BusterClawWeb.WorkbenchState do
       "second" => evenly(second, axis)
     }
   end
+
+  defp prune_retired(key) when key in @retired_keys, do: nil
+
+  defp prune_retired(%{"first" => a, "second" => b} = node) do
+    case {prune_retired(a), prune_retired(b)} do
+      {nil, nil} -> nil
+      {nil, second} -> second
+      {first, nil} -> first
+      {first, second} -> %{node | "first" => first, "second" => second}
+    end
+  end
+
+  defp prune_retired(node), do: node
 
   defp relabel(tree, order) do
     {tree, []} = relabel_walk(tree, order)

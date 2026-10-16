@@ -176,7 +176,6 @@ check lib/buster_claw_web/components/explained/studio.ex       358 HELD
 #
 # The ratchet did not force this (83% passes). Lowered anyway: 117 lines of
 # headroom on a file that just shrank is how a cap stops meaning anything.
-check lib/buster_claw_web/components/explained/phone.ex        653 HELD
 check lib/buster_claw_web/components/explained/cmd.ex          430 HELD
 # 340 -> 350: the tab taught two surfaces and there are three
 # (WIDGET_BACKGROUND Phase 4). Named rather than counted — a page that says
@@ -210,26 +209,21 @@ check lib/buster_claw_web/components/explained/intro.ex        151 HELD
 # them a sub-tab shows. `registry.ex` is capped on arrival: it is data-only by
 # construction (a `when` guard reads it at compile time), so growth here means a
 # third sub-tab, which is exactly the change that should cost a decision.
-check lib/buster_claw_web/components/phone/contact_list.ex   330 HELD
 # 314 -> 215 on 08-18. Lost 116 lines to the intake-only cut: the number display,
 # clear/backspace, the `CallAction` render, the dial-match jump, the whole
 # `#phone-keypad-controls` grid, and `#phone-contact-actions` (which held BOTH
 # outbound buttons and was a separate region from the keypad — a reader deleting
 # only "the keypad" would have left a live Call button on screen). 311 -> 195, or
 # 62% of the old cap, so the ratchet forced it.
-check lib/buster_claw_web/components/phone/playback.ex       215 HELD
-check lib/buster_claw_web/components/phone/log.ex            256 HELD
 # 176 -> 200 on 08-15, for the second thing this app prices. The cost breakdown
 # renderer had the three voicemail components inlined as a literal; an outbound
 # call has two legs and different labels, so the parts became an ordered list and
 # gained `priced_kind?/1` — which is here rather than in `Playback` so the panel
 # that shows a Cost line and the query that fills it in cannot disagree.
-check lib/buster_claw_web/components/phone/shared.ex         200 HELD
 # phone/registry.ex — 62 -> 78 on 09-06: the rail gained a `badge` key (the
 # unheard count) plus the paragraph saying why it lives in the registry rather
 # than as a tab-key literal in the template. This file is almost entirely the
 # reasons its literals are here; that is what it is for.
-check lib/buster_claw_web/components/phone/registry.ex        78 HELD
 
 # The Google Workspace console: a rail, and one module per pane.
 check lib/buster_claw_web/components/gws_panels.ex           135 HELD
@@ -409,7 +403,7 @@ check lib/buster_claw_web/components/chat_panel.ex          1040 HELD
 # the buttons out of the row instead of ellipsing — invisible with two surfaces,
 # reachable with three. The EXTRACTION OWED above is unchanged and now overdue.
 check lib/buster_claw_web/live/appearance_live.ex            1075 HELD
-check lib/buster_claw_web/live/status/comms.ex               125 HELD
+check lib/buster_claw_web/live/status/comms.ex                36 HELD
 # Raised 08-09, 114 -> 150, for the Studio's Mix|Voice sub-tab (STUDIO_ROADMAP
 # VI.0b). This module moved instead of `status_live.ex` — which is at its cap and
 # is the point of these two numbers sitting next to each other: it took the mount
@@ -494,7 +488,6 @@ check lib/buster_claw_web/components/notes/switcher.ex         134 HELD
 # 10-11: deleted VoxComponent and its synthesis panels. Native speech moved
 # into Configuration; the surviving phone greeting owns only status and reset.
 check lib/buster_claw_web/components/settings/speech.ex       88 HELD
-check lib/buster_claw_web/live/phone/greeting_component.ex    121 HELD
 
 # Phase 3. 20% markup, so ~987 lines of logic in a live_component. The source
 # catalog comes out to core, where the missing sound_* CLI will need it.
@@ -681,7 +674,7 @@ check lib/buster_claw_web/components/home_widget.ex           130 HELD
 check lib/buster_claw_web/components/widget/place_panel.ex    205 HELD
 # Lowered 175 -> 151 on 09-13: the Contacts header's "+ Add" button and its form
 # were removed — contacts are added on the Phone tab only.
-check lib/buster_claw_web/components/widget/comms_panel.ex    151 HELD
+check lib/buster_claw_web/components/widget/comms_panel.ex   130 HELD
 check lib/buster_claw_web/components/widget/notify_panel.ex   275 HELD
 
 # These were the two largest surviving mixed files, frozen so the next roadmap
@@ -726,7 +719,6 @@ check lib/buster_claw/calendar/grid.ex                        221 HELD
 # is exactly the "drifting into meaninglessness" this script's header names. A
 # cap that only ever ratchets when forced is a cap that records the largest the
 # file has ever been.
-check lib/buster_claw_web/live/phone_component.ex             553 HELD
 
 # `live/phone/call_flow.ex` (105) and `components/phone/call_action.ex` (190)
 # stood here until 08-18, capped on arrival as outbound calling's two halves
@@ -940,7 +932,7 @@ check lib/buster_claw/integrations/github.ex                  500 HELD
 # whole discipline is that an item carries a PATH and never a URL — that is what
 # lets it live in core at all, and what the unbuilt `sound_*` CLI will need. If
 # it grows, ask whether a web concern crept back in.
-check lib/buster_claw/notifications/studio_catalog.ex        255 HELD
+check lib/buster_claw/notifications/studio_catalog.ex        216 HELD
 # 10-11: Capture.Take left with its final caller, the Vox reference recorder.
 
 # The web command surface (`1eee2f8`), 894 -> 848 by collapsing the six
@@ -1158,7 +1150,6 @@ check lib/buster_claw/commands/catalog/sound.ex               257 HELD
 #
 # Read that as the ratchet working. The alarm above was written for regrowth and
 # fired on a cut instead, which is the direction nobody sets a cap expecting.
-check lib/buster_claw/telephony.ex                            360 HELD
 
 # ── The audio family. ────────────────────────────────────────────────────────
 #

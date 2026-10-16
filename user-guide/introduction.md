@@ -34,14 +34,14 @@ stops the polling you can see; it does not end the shift.
 
 The dock at the bottom switches between five surfaces:
 
-- **Home** — the main screen, with its own row of sub-tabs: **Chat** (talk to
-  your agent), **Pockets** (your own folders of media — the
-  background pool, the dock icon), **Phone** (BusterPhone's message machine),
-  **Explained** (guided tours of each feature), and **Activity** (the one log of
-  what your agent did).
-- **Workspace** — three tabs: **Directory**, the file browser for everything
-  Buster Claw keeps (your trusted-senders list, the jobs roster, the Library
-  archive); **Notes**, your Markdown notebook; and **Calendar**.
+- **Work area** — the main screen: panels you open from the sidebar and
+  arrange as you like. **Chat** (talk to your agent), **Workspace** (the file
+  browser), **Notes**, **Calendar**, **Terminal** (up to four), **Pockets**
+  (your own folders of media — the background pool, the dock icon),
+  **Explained** (guided tours of each feature), and **Activity** (the one log
+  of what your agent did).
+- **Workspace** — the file browser for everything Buster Claw keeps (your
+  trusted-senders list, the jobs roster, the Library archive).
 - **Browser** — a real browser your agent can drive, not just a reader. It works
   the tab you are looking at, and Agent Mode runs longer errands in their own
   window with a payment gate that stops before money moves.

@@ -73,3 +73,16 @@ so the window reads "Terminal 4 · Buster Claw" once the last slot mounts.
 | (second commit) | **Workspace deconstructed:** the page is the Directory alone; Notes and Calendar are work-area panels, one each, listed after Workspace in the sidebar. The note relay moved into `StatusLive`; eighteen tests moved hosts with three substitutions; `/calendar` untouched. **The file-tree rail:** its hover-only row actions reserved a third of the width while invisible — now overlays — and the rail resizes (192–720 px, remembered). **A focus guard** in the terminal hook: xterm no longer grabs the keyboard on attach while the operator is typing elsewhere — a guess at "the terminal pops open over the chat while I type", **not reproduced** in Chrome; awaiting the operator's detail. **`PHONE_REMOVAL_ROADMAP`** scoped (map only, nothing deleted): ~−7,000 lines across six phases; the paid tier stood on this leg, open question. |
 
 `mix precommit` green at 3,424 tests.
+
+---
+
+## Late — the phone comes out
+
+| | |
+|---|---|
+| (third commit) | **BusterPhone removed whole**, the same night the map was written: `Telephony` and its five modules, `TrustedNumbers`, the ten `phone_*` commands (193 → 183), the Phone page and panel, Explained's phone line and the atlas's phone desk, the recording route, the Supabase relay, the drain, the Twilio and Supabase Clinch keys, Sentinel's PIN fragment, the voicemail and SMS notification routes and chimes, and the two triage briefs — retired by digest through `Seed.retire/2`, so an unedited copy leaves on the next launch and an operator's edit is named and kept. One drop migration for `telephony_events`. One rule added: a saved layout naming the retired `phone` panel loses that pane, not the layout. One thing restored: adding a contact, which the Phone tab had owned since 09-13, is back on the corner widget's Contacts tab, created and trusted in one step. Five seams the map had not listed (the sound probe's `event_id`, the sound board, the Studio's Recordings group, the sound board page, the Explained atlas) were found by the compiler and the tests and taken too. 144 phone tests gone, 11 added. |
+
+`mix precommit` green at 3,280 tests. Still the operator's: release the
+toll-free number, delete the Supabase project, rotate the Twilio token, clear
+the stored secrets from the Clinch, drop the six `.env` keys — and the question
+of what the paid tier is now.

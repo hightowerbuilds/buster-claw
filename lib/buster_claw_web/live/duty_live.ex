@@ -12,8 +12,6 @@ defmodule BusterClawWeb.DutyLive do
   use BusterClawWeb, :live_view
 
   alias BusterClaw.{Dispatch, Duty, DutyActivity, Google, Journal, Orchestration, Sentinel}
-  alias BusterClaw.Telephony
-  alias BusterClaw.Telephony.Relay
 
   @impl true
   def mount(_params, _session, socket) do
@@ -21,7 +19,6 @@ defmodule BusterClawWeb.DutyLive do
       Orchestration.subscribe()
       Dispatch.subscribe()
       Sentinel.subscribe()
-      Telephony.subscribe()
       Google.subscribe()
       Journal.subscribe()
     end
@@ -69,7 +66,6 @@ defmodule BusterClawWeb.DutyLive do
 
     socket =
       socket
-      |> assign(:phone_ready, Relay.configured?())
       |> assign(:email_ready, Enum.any?(accounts, &Duty.account_ready?/1))
       |> assign(
         :email_label,

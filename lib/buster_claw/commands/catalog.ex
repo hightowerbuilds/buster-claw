@@ -26,7 +26,6 @@ defmodule BusterClaw.Commands.Catalog do
     Orchestration,
     Pocket,
     Sound,
-    Telephony,
     TerminalTheme,
     Web
   }
@@ -42,7 +41,6 @@ defmodule BusterClaw.Commands.Catalog do
         GoogleContacts.entries() ++
         Web.entries() ++
         Finance.entries() ++
-        Telephony.entries() ++
         Notify.entries() ++
         Sound.entries() ++
         Pocket.entries() ++

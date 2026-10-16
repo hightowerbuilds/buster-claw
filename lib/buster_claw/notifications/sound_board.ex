@@ -16,10 +16,8 @@ defmodule BusterClaw.Notifications.SoundBoard do
 
   - A security event **below `:critical` never rings** — `outbound_send` fires
     on routine deliveries, and an alarm that is always ringing is not an alarm.
-  - A queued dispatch item rings `email` **only for source "gmail"**: voicemail
-    and SMS items ring from their own Telephony broadcasts, and a manual
+  - A queued dispatch item rings `email` **only for source "gmail"**: a manual
     enqueue is the operator talking to themselves.
-  - Telephony rings on **inbound** only; the box's own sends are not news.
 
   ## The direct lane
 
@@ -61,10 +59,7 @@ defmodule BusterClaw.Notifications.SoundBoard do
       when mode in [:halted, :awaiting_human],
       do: "web"
 
-  # Group B — comms arrivals (inbound only; our own sends are not news)
-  def event_key({:telephony_event, %{direction: "inbound", kind: "voicemail"}}), do: "voicemail"
-  def event_key({:telephony_event, %{direction: "inbound", kind: "sms"}}), do: "sms"
-
+  # Group B — comms arrivals
   def event_key({:dispatch, :dispatch_item_queued, %{source: "gmail"}}), do: "email"
 
   # Group C — security, :critical ONLY. The clause order is the rubric: match

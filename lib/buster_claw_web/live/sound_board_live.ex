@@ -26,17 +26,15 @@ defmodule BusterClawWeb.SoundBoardLive do
   alias BusterClaw.Notifications.SoundBoard
   alias BusterClaw.Orchestration
   alias BusterClaw.Sentinel
-  alias BusterClaw.Telephony
 
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
-      # One subscriber, six families. Sentinel's topic carries both
+      # One subscriber, five families. Sentinel's topic carries both
       # {:security_event, _} and {:pending_action, _}.
       Sentinel.subscribe()
       Dispatch.subscribe()
       Orchestration.subscribe()
-      Telephony.subscribe()
       AgentMode.subscribe_runs()
       SoundBoard.subscribe()
       maybe_boot_chime()

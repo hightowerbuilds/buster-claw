@@ -32,10 +32,10 @@ defmodule BusterClaw.Clinch do
     value, not even one just written. Phase 2 moves the write path behind the
     desktop shell so a remote session cannot reach it.
 
-  A remote session may *use* credentials — agent runs, integration polls and
-  Twilio sends should all keep working when you are away from the Mac — and may
-  never *manage* them. A stolen key then buys a working Buster Claw, not the
-  operator's Twilio account.
+  A remote session may *use* credentials — agent runs and integration polls
+  should all keep working when you are away from the Mac — and may never
+  *manage* them. A stolen key then buys a working Buster Claw, not the
+  operator's accounts.
 
   ## What is behind the door today
 

@@ -6,7 +6,7 @@ defmodule BusterClawWeb.HomeWidget do
   cited for. Each tab is its own module under `BusterClawWeb.Widget`:
 
     * `Widget.PlacePanel` — Time & Place (the clock over the daycycle shader)
-    * `Widget.CommsPanel` — Contacts (people, phone activity, trusted senders)
+    * `Widget.CommsPanel` — Contacts (people and trusted senders)
     * `Widget.NotifyPanel` — Notify (timers, alarms, reminders) and the fired
       modal that `NotifyLive` also renders
 
@@ -47,7 +47,8 @@ defmodule BusterClawWeb.HomeWidget do
 
   attr :tab, :string, required: true
   attr :contacts, :list, required: true
-  attr :activity, :list, required: true
+  attr :adding_contact, :boolean, required: true
+  attr :contact_error, :any, required: true
   attr :trusted, :list, required: true
   attr :entries, :list, required: true
   attr :weather, :any, required: true
@@ -95,7 +96,8 @@ defmodule BusterClawWeb.HomeWidget do
           <div class={["h-full", @tab != "contacts" && "hidden"]}>
             <CommsPanel.comms_panel
               contacts={@contacts}
-              activity={@activity}
+              adding_contact={@adding_contact}
+              contact_error={@contact_error}
               trusted={@trusted}
               entries={@entries}
             />

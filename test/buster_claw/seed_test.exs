@@ -154,7 +154,7 @@ defmodule BusterClaw.SeedTest do
     test "the manifest is not empty, and covers every seeded job file" do
       names = Jobs.seed_manifest() |> Enum.map(& &1.name) |> Enum.sort()
 
-      assert names == ["README.md", "mail-triage.md", "sms-triage.md", "voicemail-triage.md"]
+      assert names == ["README.md", "mail-triage.md"]
     end
   end
 
@@ -233,29 +233,9 @@ defmodule BusterClaw.SeedTest do
 
   describe "the case that forced this to exist" do
     # The pre-08-18 sms-triage brief told the agent to run `sms_send`, a command
-    # deleted that day. Every workspace created before then holds it. Under the
-    # old create-only seeding it would have held it forever, and the agent would
-    # have kept reaching for a verb the catalog no longer has.
-    @sms_triage_before_intake_only "d3aa96c6afe7839c8cf4b03a031febdcd8980cafc7e2ac95bf82bc29c2e78088"
-
-    test "the pre-intake-only sms-triage brief is still recognised as ours" do
-      %{versions: versions} =
-        Jobs.seed_manifest() |> Enum.find(&(&1.name == "sms-triage.md"))
-
-      assert @sms_triage_before_intake_only in versions, """
-      The digest of the sms-triage brief that named `sms_send` has been dropped
-      from @sms_triage_versions. Every workspace created before 08-18 holds that
-      file, and without this entry none of them will ever be upgraded off it.
-      """
-    end
-
-    test "the current sms-triage brief does not name a command that no longer exists" do
-      %{content: content} = Jobs.seed_manifest() |> Enum.find(&(&1.name == "sms-triage.md"))
-
-      refute content =~ "sms_send"
-      refute content =~ "phone_call"
-    end
-
+    # deleted that day; the mechanism was built to upgrade workspaces off it. On
+    # 10-15 the phone left whole, and the same digests now RETIRE that brief —
+    # see `JobsTest` for the retirement walk.
     test "no seeded job brief names a command the catalog does not carry" do
       # The runtime twin of scripts/check_docs_drift.sh, over the text actually
       # written into an operator's workspace. `check_docs_drift.sh` scans

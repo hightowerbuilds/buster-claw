@@ -12,7 +12,6 @@ defmodule BusterClawWeb.StatusLiveTest do
   alias BusterClaw.Contacts
   alias BusterClaw.ModelPolicy
   alias BusterClaw.Settings
-  alias BusterClaw.Telephony
 
   setup do
     root = Path.join(System.tmp_dir!(), "bc_status_#{System.unique_integer([:positive])}")
@@ -74,8 +73,7 @@ defmodule BusterClawWeb.StatusLiveTest do
     # The Contacts widget tab is now a comms hub (recent phone activity + contacts
     # with Text/Call/Email); its panel keeps the id and shows empty states here.
     assert response =~ ~s(id="home-contacts-panel")
-    assert response =~ "No contacts yet."
-    assert response =~ "No recent phone activity."
+    assert response =~ "No contacts yet"
     # Right column: agent chat panel.
     assert response =~ ~s(id="home-agent-chat")
     assert response =~ ~s(phx-hook="AgentChat")
@@ -104,46 +102,6 @@ defmodule BusterClawWeb.StatusLiveTest do
     refute response =~ "No trusted senders"
   end
 
-  # These two widget buttons are inert. They carried a `title` only — a hover
-  # tooltip, which leaves the accessible name empty (the icons are decorative)
-  # and the unavailable state unreachable without a mouse, so the disclosure has
-  # to hold up in place. See LAUNCH_ROADMAP G-37.
-  #
-  # 08-18: outbound is now DELETED rather than unwired (`PHONE_INTAKE_ROADMAP`),
-  # so the old copy — "not available yet" — became a false promise on a button
-  # that is never coming. `widget/comms_panel.ex` now says what is true: these
-  # two are the last outbound-shaped controls in the app, and they name a
-  # permanent absence rather than a pending feature.
-  #
-  # The `refute ... "yet"` below is the load-bearing line. "Yet" is how this
-  # claim will soften if it ever softens, and it is one word — easy to
-  # reintroduce while editing around it, and invisible in review.
-  test "inert Text/Call contact actions announce a permanent absence, not a pending one",
-       %{conn: conn} do
-    {:ok, _contact} = Contacts.create_contact(%{name: "Dana Printshop", phone: "+15035550142"})
-
-    {:ok, view, html} = live(conn, ~p"/")
-    render_click(view, "select_widget_tab", %{"tab" => "contacts"})
-
-    assert has_element?(
-             view,
-             ~s(button[aria-label="Text Dana Printshop — this phone only receives"])
-           )
-
-    assert has_element?(
-             view,
-             ~s(button[aria-label="Call Dana Printshop — this phone only answers"])
-           )
-
-    # The accessible name carries the reason, because the icons are decorative
-    # and a `title` alone is unreachable without a mouse (G-37).
-    refute html =~ "not available yet"
-
-    # Disabled in fact, not only in styling.
-    assert has_element?(view, ~s(button[aria-label^="Text Dana"][disabled]))
-    assert has_element?(view, ~s(button[aria-label^="Call Dana"][disabled]))
-  end
-
   # 09-13-26: the widget's Contacts tab no longer adds anyone. The operator wanted
   # one place to add a contact — the Phone tab, where a person is created and
   # marked trusted. Removing a trust entry from the widget still works.
@@ -164,14 +122,41 @@ defmodule BusterClawWeb.StatusLiveTest do
     refute html =~ contact
   end
 
-  test "the home widget has no add control, and says where contacts are added", %{conn: conn} do
-    {:ok, view, html} = live(conn, ~p"/")
+  # 10-15: adding a contact came back here when the Phone tab (its only home
+  # since 09-13) was removed. Created and trusted in one step.
+  test "the home widget adds a contact and trusts them in one step", %{conn: conn, root: root} do
+    File.write!(Path.join(root, "memory/trusted-email-senders.md"), "# Trusted\n")
+    {:ok, view, _html} = live(conn, ~p"/")
+    render_click(view, "select_widget_tab", %{"tab" => "contacts"})
 
-    # The panel is on the page, so the two refutes below cannot pass vacuously.
-    assert has_element?(view, "#home-comms-panel")
-    refute has_element?(view, ~s(#home-comms-panel [phx-click="toggle_add_contact"]))
-    refute has_element?(view, ~s(#home-comms-panel form))
-    assert html =~ "add a contact on the Phone tab"
+    refute has_element?(view, "#home-add-contact-form")
+    view |> element("#home-add-contact-toggle") |> render_click()
+    assert has_element?(view, "#home-add-contact-form")
+
+    html =
+      view
+      |> form("#home-add-contact-form", %{
+        "name" => "Dana Printshop",
+        "email" => "dana@example.org"
+      })
+      |> render_submit()
+
+    assert html =~ "Dana Printshop"
+    refute has_element?(view, "#home-add-contact-form")
+    assert BusterClaw.TrustedSenders.trusted?("dana@example.org")
+    [contact] = Contacts.list_contacts()
+    assert Contacts.trusted?(contact)
+
+    # A bad entry stays on the form with its reason, and trusts nobody.
+    view |> element("#home-add-contact-toggle") |> render_click()
+
+    html =
+      view
+      |> form("#home-add-contact-form", %{"name" => "Dup", "email" => "dana@example.org"})
+      |> render_submit()
+
+    assert html =~ "email"
+    assert has_element?(view, "#home-add-contact-form")
   end
 
   describe "agent chat panel" do
@@ -671,24 +656,6 @@ defmodule BusterClawWeb.StatusLiveTest do
       refute has_element?(view, "#calendar-grid")
       assert has_element?(view, "#workbench-pane-chat[data-active='true']")
     end
-
-    test "recent phone activity surfaces in the Contacts widget", %{conn: conn} do
-      {:ok, _event} =
-        Telephony.record_event(
-          %{
-            direction: "inbound",
-            kind: "sms",
-            from_number: "+15035551234",
-            to_number: "+13603646763",
-            body: "on my way",
-            occurred_at: DateTime.utc_now() |> DateTime.truncate(:second)
-          },
-          observe: false
-        )
-
-      {:ok, _view, html} = live(conn, ~p"/")
-      assert html =~ "on my way"
-    end
   end
 
   describe "corner widget Time & Place tab" do
@@ -1000,37 +967,6 @@ defmodule BusterClawWeb.StatusLiveTest do
       refute has_element?(view, "#workbench-pane-calendar[data-active='true']")
     end
 
-    # Phone left the dock on 08-08 and became a Home sub-tab. These assert the
-    # move itself — the Message Machine's own behavior stays covered by
-    # `PhoneLiveTest` against `/phone`, since both surfaces render one component.
-    test "the Phone panel opens beside Chat and stays mounted when focus changes", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/")
-
-      render_click(view, "select_home_tab", %{"tab" => "phone"})
-
-      assert has_element?(view, "#home-phone-root")
-      assert has_element?(view, "#phone-keypad-stage")
-      assert has_element?(view, "#workbench-pane-phone[data-active='true']")
-
-      render_click(view, "select_home_tab", %{"tab" => "chat"})
-      assert has_element?(view, "#home-phone-root")
-      assert has_element?(view, "#workbench-pane-chat:not([hidden])")
-    end
-
-    test "Phone is gone from the dock but still reachable directly", %{conn: conn} do
-      {:ok, _view, home} = live(conn, ~p"/")
-
-      # Assert on the rendered dock rather than the item list: the dock is what a
-      # user sees, and it survives however the list is built.
-      refute home =~ ~s(<a href="/phone")
-
-      # The route survives for deep links and split panes, exactly as /calendar
-      # did when it moved — and the tab strip can still name it.
-      {:ok, _view, html} = live(conn, ~p"/phone")
-      assert html =~ "phone-keypad-stage"
-      assert html =~ ~s(&quot;/phone&quot;:&quot;Phone&quot;)
-    end
-
     test "the rail and the select_home_tab guard cannot disagree", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
@@ -1041,29 +977,6 @@ defmodule BusterClawWeb.StatusLiveTest do
         render_click(view, "select_home_tab", %{"tab" => key})
         assert has_element?(view, "#workbench-pane-#{key}[data-active='true']")
       end
-    end
-
-    # The host half of the component contract: a LiveComponent has no process, so
-    # if StatusLive stops relaying, the sub-tab silently goes stale while /phone
-    # stays live. This is the assertion that catches that.
-    test "a telephony broadcast reaches the sub-tab, not just the widget", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/")
-      render_click(view, "select_home_tab", %{"tab" => "phone"})
-
-      refute render(view) =~ "(503) 555-0142"
-
-      {:ok, _event} =
-        BusterClaw.Telephony.record_event(%{
-          direction: "inbound",
-          kind: "voicemail",
-          from_number: "+15035550142",
-          to_number: "+18445550100",
-          occurred_at: DateTime.utc_now(:second)
-        })
-
-      # The component debounces its reload by 250ms and asks the host to ping it
-      # back; both hops have to work for this to land.
-      assert eventually(fn -> render(view) =~ "(503) 555-0142" end)
     end
 
     test "the Activity sub-tab shows BC Minutes without an editing surface", %{conn: conn} do
@@ -1101,7 +1014,6 @@ defmodule BusterClawWeb.StatusLiveTest do
         {"calendar", "Calendar"},
         {"terminal", "Terminal"},
         {"pockets", "Pockets"},
-        {"phone", "Phone"},
         {"explained", "Explained"},
         {"activity", "Activity"},
         {"clock", "Clock"}
@@ -1176,259 +1088,6 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert html =~ "spatial, 3D view"
       assert html =~ "not Buster Claw&#39;s operator notebook"
       assert html =~ "/browse?url=https%3A%2F%2Fnotesthatfloat.com"
-    end
-
-    test "the BusterPhone tab separates recording a message from enqueueing it",
-         %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/")
-      render_click(view, "select_home_tab", %{"tab" => "explained"})
-
-      html = render_click(view, "select_explained_tab", %{"tab" => "phone"})
-
-      assert html =~ "BusterPhone — an answering machine that can act"
-      assert html =~ ~s(href="/phone")
-
-      # The spine of the tutorial: the archive comes before the trust decision,
-      # so a stranger is always recorded and never work.
-      assert html =~ "ARCHIVED + PLAYABLE"
-      assert html =~ "THEN THE TRUST DECISION"
-
-      # The two rules are DIFFERENT, and the roadmap's 08-04 audit exists because
-      # the copy once collapsed them. Each rule is anchored so this asserts the
-      # right cell rather than the word "PIN" appearing anywhere on the page.
-      sms_rule = view |> element("[data-phone-sms-rule]") |> render()
-      assert sms_rule =~ "trusted list"
-      assert sms_rule =~ "No PIN involved"
-
-      voicemail_rule = view |> element("[data-phone-voicemail-rule]") |> render()
-      assert voicemail_rule =~ "trusted"
-      assert voicemail_rule =~ "PIN-verified"
-      assert voicemail_rule =~ "Two factors"
-
-      # The five cycles. There were six until 08-18: "Texting back" taught
-      # `sms_send` and "Ask it to make a call" taught `phone_call`, and both verbs
-      # were deleted. The calling cycle went with its verb; the texting one was
-      # rewritten as "A text that becomes work", which is about INBOUND texts and
-      # the one-factor trust rule — so this asserts the two old titles are GONE
-      # rather than only that the new one is present. A cycle whose subject was
-      # deleted is the exact shape of copy that survives by nobody looking.
-      assert html =~ "Check the machine"
-      assert html =~ "Reading is not hearing"
-      assert html =~ "Decide who can give orders"
-      assert html =~ "The message that answers itself"
-      assert html =~ "A text that becomes work"
-
-      refute html =~ "Texting back"
-      refute html =~ "Ask it to make a call"
-
-      # Setup is described honestly: the operator's own Twilio and relay, and no
-      # store to buy a number from yet (the busterclaw.lol tab says the same).
-      #
-      # This used to assert the string SUPABASE_SERVICE_ROLE_KEY, as a proxy for
-      # "the setup section tells you what you need". Phase 3 moved those
-      # credentials into the Clinch, so naming an environment variable is no
-      # longer the honest instruction — a packaged app cannot see one. The
-      # assertion follows the same intent to where the answer now lives.
-      assert html =~ "Service credentials"
-      assert html =~ ~s(href="/settings")
-      assert html =~ "cannot see variables"
-      assert html =~ "There is no one-click"
-      assert html =~ "planned work, not a store you can visit"
-
-      # A contract with catalog metadata, not just frozen prose. Reads that an
-      # untrusted voicemail-triage run may make are safe; the two POLICY reads are
-      # not; every write that decides who may drive the queue is gated.
-      catalog = Map.new(Commands.list_commands(), &{&1.name, &1})
-
-      for name <- ~w(phone_list phone_get phone_stats) do
-        entry = Map.fetch!(catalog, name)
-        assert entry.type == :read
-        assert entry.tier == :safe, "#{name} must stay safe — a triage run reads it"
-      end
-
-      for name <- ~w(phone_trusted_list phone_pin_list) do
-        entry = Map.fetch!(catalog, name)
-        assert entry.type == :read
-
-        assert entry.tier == :restricted,
-               "#{name} is policy data, not operational data — caller ID is spoofable"
-      end
-
-      for name <- ~w(phone_trusted_add phone_trusted_remove phone_pin_set
-                     phone_pin_remove) do
-        entry = Map.fetch!(catalog, name)
-        assert entry.type == :mutate
-        assert entry.tier == :restricted
-        assert Map.get(entry, :gated, false), "#{name} must stay gated"
-      end
-
-      # `sms_send` and `phone_call` were in that loop until 08-18. Dropping a name
-      # from an expected list is invisible — the loop just runs one fewer time and
-      # stays green — so their absence is asserted, not merely un-asserted. This is
-      # the claim the whole tab now rests on: the verbs do not exist, which is a
-      # different and stronger thing than being gated or switched off.
-      for gone <- ~w(sms_send phone_call) do
-        refute Map.has_key?(catalog, gone),
-               "#{gone} is back in the catalog — BusterPhone is intake-only"
-
-        refute html =~ "<code>#{gone}</code>",
-               "the phone tutorial names #{gone}, which no longer exists"
-      end
-
-      # phone_mark_heard is the one mutation that is deliberately NOT gated: it is
-      # cheap and local. What protects the blinking light is that reading does not
-      # clear it — so `phone_get` must stay a separate verb.
-      mark_heard = Map.fetch!(catalog, "phone_mark_heard")
-      assert mark_heard.type == :mutate
-      refute Map.get(mark_heard, :gated, false)
-      assert html =~ "It deliberately does not"
-
-      # Same contract as the other tutorials: every command named must exist.
-      # The ten surviving verbs, and the tab now claims the number out loud — so
-      # the list and the sentence have to agree, or the page is counting something
-      # it is not showing.
-      surviving = ~w(phone_stats phone_list phone_get phone_mark_heard
-                     phone_trusted_add phone_trusted_remove phone_trusted_list
-                     phone_pin_set phone_pin_remove phone_pin_list)
-
-      for cmd <- surviving do
-        assert html =~ "<code>#{cmd}</code>"
-
-        assert Commands.command_type(cmd) != nil,
-               "tutorial names #{cmd}, which is not in the command catalog"
-      end
-
-      # The tab now counts them out loud — "what is left is ten commands" — so the
-      # sentence and the catalog have to agree in both directions. An eleventh
-      # `phone_*` verb, or a re-added outbound one, falsifies that sentence without
-      # anyone touching it.
-      assert html =~ "ten commands"
-
-      phone_verbs =
-        Commands.list_commands()
-        |> Enum.map(& &1.name)
-        |> Enum.filter(&String.starts_with?(&1, "phone_"))
-        |> Enum.sort()
-
-      assert phone_verbs == Enum.sort(surviving),
-             "the tab teaches ten phone verbs; the catalog has #{inspect(phone_verbs)}"
-
-      refute html =~ "Tutorial in the works"
-    end
-
-    # 08-15 → 08-18. This test used to hold the SMS blocker apart from the VOICE
-    # blocker: outbound texting was stopped by paperwork at Twilio, outbound
-    # calling was stopped by a local switch, and the copy kept collapsing two
-    # different problems with two different owners into one sentence.
-    #
-    # Both blockers are gone, because both capabilities were DELETED rather than
-    # switched off (`PHONE_INTAKE_ROADMAP`). There is no `[data-phone-sms-blocker]`
-    # and no `[data-phone-voice-blocker]` left to compare, so this asserts the
-    # INVERSE of what it used to: a page that once had to name a blocker now has
-    # to make a positive claim about sending nothing, and has to keep the single
-    # sentence that survived the compliance section it lost. Deleting the old
-    # assertions and putting nothing in their place is how the page quietly
-    # regrows an outbound claim.
-    test "the BusterPhone tab claims intake-only, and keeps the A2P point",
-         %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/")
-      render_click(view, "select_home_tab", %{"tab" => "explained"})
-
-      html = render_click(view, "select_explained_tab", %{"tab" => "phone"})
-
-      # The positive claim, anchored so this asserts the right paragraph rather
-      # than the word "sends" appearing somewhere on a long page.
-      no_outbound = view |> element("[data-phone-no-outbound]") |> render()
-      assert no_outbound =~ "Nothing on this tab sends a"
-      assert no_outbound =~ "removed on 08-18"
-      assert no_outbound =~ "gone from the command catalog"
-      assert no_outbound =~ "no such command"
-
-      # And it must not hedge. Every softening of this claim reads the same way —
-      # the capability is coming, it is merely off — and every one of them needs
-      # the word. Scoped to this paragraph, so ordinary uses of "yet" elsewhere on
-      # the tab do not trip it.
-      refute no_outbound =~ "yet",
-             "the intake claim is hedging; deleted is not the same as not-yet"
-
-      assert html =~ "The line only receives"
-      assert html =~ "ten commands"
-
-      # Deletion over disabling is the argument, not a detail — the page has to
-      # carry the reason, because the reason is what stops someone re-adding a
-      # kill switch and calling it the same thing.
-      assert html =~ "Deleted rather than"
-      assert html =~ "the difference matters"
-      assert html =~ "A kill switch defends none of that"
-
-      # THE ONE CLAIM CARRIED ACROSS. Everything else in the compliance section
-      # went away with its subject; this did not, because the false belief that
-      # replaces it — "A2P does not apply to us" — is worse than the false belief
-      # it replaced. The paragraph has to state the misreading AND correct it, so
-      # an edit cannot keep the quotable half and drop the correction.
-      a2p = view |> element("[data-phone-a2p]") |> render()
-      assert a2p =~ "A2P-classified"
-      assert a2p =~ "receiving does not exempt you"
-      assert a2p =~ "A2P registration governs outbound messaging"
-      assert a2p =~ "does not apply to us"
-      assert a2p =~ "wrong in the direction that costs"
-      assert a2p =~ "The regime always applied"
-
-      # The anchors this test was built on until today.
-      refute has_element?(view, "[data-phone-sms-blocker]")
-      refute has_element?(view, "[data-phone-voice-blocker]")
-
-      # The compliance stack the deletion retired. Each of these was a true
-      # sentence on this page on 08-17 and is a false one now — the exact drift
-      # shape this repo keeps finding, where a deleted feature's prose outlives
-      # it. Read off the 08-17 version of this test, not invented.
-      stale = [
-        "A2P 10DLC",
-        "Sole Proprietor",
-        "identity tier, not a loophole",
-        "Campaign is deleted first",
-        "two legs, both billed",
-        "No audio touches this",
-        "outbound calling isn&#39;t built",
-        "keypad has a Call button now",
-        "local refusal always names a local limit"
-      ]
-
-      for phrase <- stale do
-        refute html =~ phrase, "#{phrase} describes a capability that no longer exists"
-      end
-
-      # The two questions a reader actually arrives with SURVIVE — as questions
-      # the tab answers, in a table, in prose. What must not survive is either one
-      # offered as a chat prefill: a composer loaded with a request that has no
-      # verb behind it teaches the opposite of the paragraph above it. Both were
-      # `Try in Chat` cycles until 08-18, and the calling one was a live prefill.
-      assert html =~ "Text her back for me"
-      assert html =~ "Call the print shop"
-
-      refute has_element?(
-               view,
-               ~s([data-demo-try-in-chat][phx-value-text^="Call the print shop"])
-             )
-
-      refute has_element?(
-               view,
-               ~s([data-demo-try-in-chat][phx-value-text^="Text her back"])
-             )
-
-      # This tripwire has now fired three times and been rewritten three times,
-      # which is the argument for keeping it. It first asserted no outbound-call
-      # verb existed; `phone_call` shipped and it went red. It then asserted the
-      # keypad had no Call button; the button shipped hours later and it went red
-      # again. Both verbs are now deleted, so the two REAL names join the three
-      # invented ones — and the test is stronger for it, because `sms_send` and
-      # `phone_call` are the names a future reader is most likely to reach for.
-      for gone <- ~w(sms_send phone_call phone_dial voice_call call_place) do
-        refute html =~ gone, "the tab must not teach #{gone} — there is no such verb"
-
-        assert Commands.command_type(gone) == nil,
-               "#{gone} exists again; BusterPhone is supposed to be intake-only"
-      end
     end
 
     test "the Shaders tab teaches the file contract and that unseen GPU code needs your click",
@@ -1716,7 +1375,8 @@ defmodule BusterClawWeb.StatusLiveTest do
       stubs = Enum.map(BusterClawWeb.Explained.Registry.stubs(), & &1.key)
       tabs = BusterClawWeb.ExplainedPanel.tab_keys() -- (~w(intro site ntf) ++ stubs)
 
-      assert length(tabs) >= 8, "the demo-contract sweep lost tabs instead of gaining them"
+      # Seven since 10-15: the phone tutorial left with the phone.
+      assert length(tabs) >= 7, "the demo-contract sweep lost tabs instead of gaining them"
 
       for tab <- tabs do
         html = render_click(view, "select_explained_tab", %{"tab" => tab})
@@ -1951,14 +1611,14 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert html =~ "MUTATES + TRIGGERS"
       assert html =~ ~s(role="img")
 
-      # The six examples. Cycle 2 was "The market at a glance" until 08-08, when
+      # The five examples (the phone desk left with the phone, 10-15).
+      # Cycle 2 was "The market at a glance" until 08-08, when
       # the operator took trading out of what Explained teaches. The finance_*
       # commands still exist and are still on /cmd-list — the atlas simply stopped
       # leading a first-time user there, so this asserts the market cycle is GONE
       # rather than merely that the notebook one is present.
       assert html =~ "Capture the day"
       assert html =~ "The notebook and the vault"
-      assert html =~ "The phone desk"
       assert html =~ "Web errands, hands off the wheel"
       assert html =~ "The queue is the desk"
       assert html =~ "It learns your routines"
@@ -1973,7 +1633,6 @@ defmodule BusterClawWeb.StatusLiveTest do
       # Same contract as the GWS tutorial: every named command must exist.
       for cmd <- ~w(document_save journal_append notify_create
                     note_search note_read note_save note_create note_list
-                    phone_list phone_get phone_mark_heard
                     web_search browser_fetch bookmark_add
                     dispatch_enqueue dispatch_list dispatch_claim dispatch_done
                     memory_search
@@ -1984,13 +1643,11 @@ defmodule BusterClawWeb.StatusLiveTest do
                "tutorial names #{cmd}, which is not in the command catalog"
       end
 
-      # "The phone desk" cycle taught `sms_send` until 08-18. Dropping the name
-      # from the list above would leave nothing behind, so the cycle's replacement
-      # claim is asserted instead: the desk is a reading desk, and the atlas says
-      # so rather than leaving a reader to notice a verb went missing.
+      # "The phone desk" cycle left with the phone (10-15); nothing in the atlas
+      # may still teach a phone verb or promise a text back.
       refute html =~ "sms_send"
-      assert html =~ "no verb here that texts her back"
-      assert html =~ "BusterPhone is an intake"
+      refute html =~ "phone_"
+      refute html =~ "BusterPhone"
 
       # The replacement cycle's own claim is a contract too: the note verbs are
       # restricted precisely because note titles are the operator's private

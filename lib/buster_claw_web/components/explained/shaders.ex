@@ -37,7 +37,7 @@ defmodule BusterClawWeb.Explained.Shaders do
     the surface reads as solid — which is what the Appearance page itself says.
 
   The `shaders/` naming rule is load-bearing and easy to get wrong: `face` as a
-  dash-separated word makes the file a contact **shaderface** for `/phone`, and
+  dash-separated word makes the file a contact **shaderface**, and
   such a file is refused as a background — in the picker *and* on read, so an
   older stored selection degrades rather than rendering a face behind the
   homepage.

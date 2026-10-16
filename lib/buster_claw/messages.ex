@@ -1,9 +1,9 @@
 defmodule BusterClaw.Messages do
   @moduledoc """
-  Apple Messages text integration, independent of Twilio voicemail.
+  Apple Messages text integration.
 
   First increment: an explicit, read-only readiness probe. No ingestion, sending,
-  application-boot side effects, or changes to existing SMS/voicemail routing.
+  application-boot side effects, or changes to existing routing.
   """
 
   alias BusterClaw.Messages.Connection

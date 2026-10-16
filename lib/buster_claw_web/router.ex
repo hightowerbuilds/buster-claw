@@ -88,7 +88,6 @@ defmodule BusterClawWeb.Router do
       live "/settings", SettingsLive, :index
       live "/appearance", AppearanceLive, :index
       live "/notify-settings", NotifySettingsLive, :index
-      live "/phone", PhoneLive, :index
       # NO DOCK TAB as of 09-02-26 — the Studio is being spun out into its own
       # project, and the tab it used to own went to the Sketch Pad. **That Pad was
       # deleted on 09-05 and the dock slot went with it**, so nothing in the app
@@ -117,15 +116,6 @@ defmodule BusterClawWeb.Router do
     pipe_through :media
 
     get "/image/:slot", AppearanceController, :image
-  end
-
-  # Voicemail audio for the Message Machine panel's <audio> player. Only `:media`
-  # (media element requests, not HTML, so no `accepts`); path-guarded to the Library root and
-  # audio extensions only; loopback-only.
-  scope "/phone", BusterClawWeb do
-    pipe_through :media
-
-    get "/recording", TelephonyRecordingController, :show
   end
 
   # Music library audio for the dock player. Only `:media` (media element

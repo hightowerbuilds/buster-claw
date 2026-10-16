@@ -44,11 +44,10 @@ there is no fixed window.
 When the operator asks in Chat to go on duty, use `./buster-claw on-duty`.
 It starts an unattended shift and runs the Gmail polling loop; keep that
 long-running command alive using your background-process facility. Starting a
-shift alone does not start email polling. Phone intake uses the app's existing
-relay drain, which needs its connection configured.
+shift alone does not start email polling.
 
 An **On duty** tab appears automatically while the shift is active, without
-switching away from Chat. It shows phone and email connection readiness, live
+switching away from Chat. It shows email connection readiness, live
 activity, and BC Minutes. The operator can **Stand down** there to stop new
 work; a run already in progress finishes. Existing Activity and Security views
 keep their records. Do not claim a service is connected just because a shift

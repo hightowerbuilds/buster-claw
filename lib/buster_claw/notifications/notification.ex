@@ -9,9 +9,8 @@ defmodule BusterClaw.Notifications.Notification do
   @kinds ~w(timer alarm reminder)
   # pending — armed; snoozed — re-armed after a fire; fired/dismissed — terminal
   @statuses ~w(pending snoozed fired dismissed)
-  # Where the agent was when it scheduled this. `voicemail` is inbound-only for
-  # now; `sms` will join when outbound telephony lands (both are command callers).
-  @sources ~w(chat terminal email voicemail manual)
+  # Where the agent was when it scheduled this.
+  @sources ~w(chat terminal email manual)
 
   schema "notifications" do
     field :kind, :string

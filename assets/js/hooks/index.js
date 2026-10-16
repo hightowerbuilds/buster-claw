@@ -22,7 +22,6 @@ import {StudioKeys} from "./studio_keys.js"
 import {StudioAudition} from "./studio_audition.js"
 import {VoiceAudition} from "./voice_audition.js"
 import {StudioContextMenu} from "./studio_context_menu.js"
-import {ShaderFace} from "./shader_face.js"
 import {ShaderPreview} from "./shader_preview.js"
 import {ShaderTimer} from "./shader_timer.js"
 import {FileTreeDnd} from "./file_tree_dnd.js"
@@ -69,7 +68,6 @@ export const Hooks = {
   StudioKeys,
   StudioAudition,
   StudioContextMenu,
-  ShaderFace,
   ShaderPreview,
   ShaderTimer,
   FileTreeDnd,

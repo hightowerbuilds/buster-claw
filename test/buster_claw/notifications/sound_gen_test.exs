@@ -7,7 +7,7 @@ defmodule BusterClaw.Notifications.SoundGenTest do
   # chime. If a key is added there without a spec here, this list is the test
   # that says so.
   @expected ~w(alarm blocked boot chat confirm email manual order reminder
-               security shift sms terminal timer voicemail web)
+               security shift terminal timer web)
 
   test "the set covers every routing key that needs a bundled default" do
     assert SoundGen.keys() == @expected

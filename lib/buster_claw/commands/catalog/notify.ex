@@ -22,7 +22,7 @@ defmodule BusterClaw.Commands.Catalog.Notify do
           "source" => %{
             type: :string,
             required: false,
-            enum: ["chat", "terminal", "email", "voicemail", "manual"]
+            enum: ["chat", "terminal", "email", "manual"]
           },
           "metadata" => %{type: :map, required: false}
         }

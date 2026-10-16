@@ -75,7 +75,7 @@ defmodule BusterClaw.Notifications.SoundTest do
     test "delete removes the file and any routings to it", %{root: root} do
       File.write!(sound(root, "bongos.wav"), "x")
       File.write!(sound(root, "wilhelm.wav"), "x")
-      assert Sound.assign("voicemail", "wilhelm.wav") == :ok
+      assert Sound.assign("email", "wilhelm.wav") == :ok
 
       assert Sound.delete("wilhelm.wav") == :ok
       refute File.exists?(sound(root, "wilhelm.wav"))
@@ -95,10 +95,10 @@ defmodule BusterClaw.Notifications.SoundTest do
     defp fired(kind, source), do: %{kind: kind, source: source}
 
     test "assign validates key and sound" do
-      assert Sound.assign("voicemail", "wilhelm.wav") == :ok
-      assert Sound.assign("voicemail", "missing.wav") == {:error, :unknown_sound}
+      assert Sound.assign("email", "wilhelm.wav") == :ok
+      assert Sound.assign("email", "missing.wav") == {:error, :unknown_sound}
       assert Sound.assign("not-a-key", "wilhelm.wav") == {:error, :unknown_key}
-      assert Sound.sound_map() == %{"voicemail" => "wilhelm.wav"}
+      assert Sound.sound_map() == %{"email" => "wilhelm.wav"}
     end
 
     test "assigning nil or empty clears the entry" do
@@ -123,11 +123,11 @@ defmodule BusterClaw.Notifications.SoundTest do
     end
 
     test "routings to a vanished file are ignored on read", %{root: root} do
-      assert Sound.assign("voicemail", "wilhelm.wav") == :ok
+      assert Sound.assign("email", "wilhelm.wav") == :ok
       File.rm!(sound(root, "wilhelm.wav"))
 
       assert Sound.sound_map() == %{}
-      assert Sound.for_notification(fired("reminder", "voicemail")) == "notify.wav"
+      assert Sound.for_notification(fired("reminder", "email")) == "notify.wav"
     end
   end
 
@@ -190,7 +190,7 @@ defmodule BusterClaw.Notifications.SoundTest do
     test "the new routing keys are assignable like the old ones", %{root: root} do
       File.write!(sound(root, "wilhelm.wav"), "x")
 
-      for key <- ~w(confirm order shift blocked web sms security boot) do
+      for key <- ~w(confirm order shift blocked web security boot) do
         assert Sound.assign(key, "wilhelm.wav") == :ok, "#{key} not assignable"
       end
     end
@@ -203,9 +203,9 @@ defmodule BusterClaw.Notifications.SoundTest do
       # Even with a workspace file AND a bundled default available, silent wins.
       File.write!(sound(root, "notify.wav"), "x")
 
-      assert Sound.assign("voicemail", "silent") == :ok
-      assert Sound.sound_map()["voicemail"] == "silent"
-      assert Sound.for_notification(fired3("reminder", "voicemail")) == nil
+      assert Sound.assign("email", "silent") == :ok
+      assert Sound.sound_map()["email"] == "silent"
+      assert Sound.for_notification(fired3("reminder", "email")) == nil
     end
 
     test "silent on a SOURCE does not fall through to the kind's sound", %{root: root} do
@@ -213,9 +213,9 @@ defmodule BusterClaw.Notifications.SoundTest do
       # definitive answer, not an inherit.
       File.write!(sound(root, "bongos.wav"), "x")
       assert Sound.assign("timer", "bongos.wav") == :ok
-      assert Sound.assign("voicemail", "silent") == :ok
+      assert Sound.assign("email", "silent") == :ok
 
-      assert Sound.for_notification(fired3("timer", "voicemail")) == nil
+      assert Sound.for_notification(fired3("timer", "email")) == nil
       # The kind's own routing still works for other sources.
       assert Sound.for_notification(fired3("timer", "manual")) == "bongos.wav"
     end

@@ -1,9 +1,30 @@
 # BusterPhone removal — the phone comes out
 
-**Scoped 2026-10-15 · Status: SCOPED, no code.** Operator decision, same day:
-*"get ready to remove the phone feature. We are going to adopt a simpler, more
-customized route for remote comms."* The route is not named here; this map is
-the subtraction, and it does not add a replacement.
+**Scoped 2026-10-15 · BUILT the same night, Phases 0–4 in one commit.**
+Operator decision, same day: *"get ready to remove the phone feature. We are
+going to adopt a simpler, more customized route for remote comms."* — then,
+hours later, *"let's follow through with the removal."* The route is not named
+here (`IMESSAGE_ROADMAP` sits beside this map and is the obvious candidate);
+this map is the subtraction, and it adds no replacement.
+
+> ### What shipped (10-15, late)
+>
+> Everything in Parts I–V, as one commit rather than four, because the seams
+> only hold together as a set: `mix precommit` green at 3,280 tests (3,424
+> before; 144 phone tests gone, 11 added). Beyond the inventory, the cut found
+> five more seams the map had not listed and took them too: the sound probe's
+> `event_id` (a voicemail recording was the only thing it named), the sound
+> board's telephony keys and the `voicemail`/`sms` bundled chimes, the Studio
+> catalog's Recordings group, the sound board page's subscription, and the
+> Explained atlas's "phone desk" cycle and `PHONE` surface box. Q1–Q4 took
+> their defaults. **D10, not in the original map:** the Phone tab had been the
+> only place to add a contact since 09-13, so adding one came back to the
+> corner widget's Contacts tab, created and trusted in one step.
+>
+> **Phase 5 and Part VI are the operator's and are open:** the desktop walk,
+> and the console teardown — release the toll-free number, delete the Supabase
+> project, rotate the Twilio token, clear the stored `twilio_*` and
+> `supabase_*` secrets from the Clinch, drop the six `.env` keys.
 
 > ### The one-sentence version
 >

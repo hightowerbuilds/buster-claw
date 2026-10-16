@@ -1,46 +1,82 @@
 defmodule BusterClawWeb.Widget.CommsPanel do
   @moduledoc """
-  The corner widget's **Contacts** tab: a comms hub in three inline columns —
-  contacts with per-person actions, recent phone activity, and the trusted-sender
-  list.
+  The corner widget's **Contacts** tab, in two inline columns: the people (with
+  an Email action, and the place to add one) and the trusted-sender list.
 
-  Markup only. Every event (`remove_contact`, `email_contact`) is handled by
-  `StatusLive`, and the rows are pre-shaped there, so this stays presentational.
+  Markup only. Every event (`toggle_add_contact`, `add_contact`,
+  `remove_contact`, `email_contact`) is handled by `StatusLive`, and the rows
+  are pre-shaped there, so this stays presentational.
 
-  It adds no one. Until 09-13 the Contacts header carried a "+ Add" that trusted
-  an email address; the operator wanted one place to add a contact, and that is
-  the Phone tab's Contacts, where a person is created and marked trusted.
+  Adding a contact lived on the Phone tab from 09-13 until the phone was removed
+  (10-15, `PHONE_REMOVAL` D10). It is back here because this is the one place
+  contacts are shown; a person is created and trusted in one step. The recent
+  phone activity column, and the inert Text/Call buttons, left with the phone.
 
-  Split out of `HomeWidget` on 08-15 (`WIDGET_BACKGROUND_ROADMAP` Phase 0). That
-  file was 699 lines and FROZEN — capped with no headroom — and three tabs
-  sharing one file because they share a card is not a reason to keep them there.
+  Split out of `HomeWidget` on 08-15 (`WIDGET_BACKGROUND_ROADMAP` Phase 0).
   """
   use BusterClawWeb, :html
 
   attr :contacts, :list, required: true
-  attr :activity, :list, required: true
+  attr :adding_contact, :boolean, required: true
+  attr :contact_error, :any, required: true
   attr :trusted, :list, required: true
   attr :entries, :list, required: true
 
-  # The Contacts tab as a comms hub — three inline columns: contacts (with
-  # per-person Text / Call / Email), recent phone activity, and the trusted-sender
-  # list. Text and Call are inert, and not as a stopgap: BusterPhone is
-  # intake-only (PHONE_INTAKE_ROADMAP, 08-18), so outbound SMS and calling were
-  # deleted along with the /phone dialler — there is no path left to wire these
-  # two buttons to. They stay because the rows are the same shape either way and
-  # a disabled control names a capability the machine deliberately doesn't have;
-  # see the `title`/`aria-label` pair below for how that reads to a user. Email
-  # drops a templated request into the home chat, handled by StatusLive's
-  # `email_contact`. Rows/people are pre-shaped by StatusLive, so this stays
-  # presentational.
   def comms_panel(assigns) do
     ~H"""
-    <section id="home-comms-panel" class="ic-panel grid h-full grid-cols-3 overflow-hidden">
-      <%!-- Left: contacts with per-person Text / Call / Email actions. --%>
+    <section id="home-comms-panel" class="ic-panel grid h-full grid-cols-2 overflow-hidden">
+      <%!-- Left: contacts with an Email action; the + opens the add form. --%>
       <div class="flex min-h-0 flex-col border-r-2 border-base-content/20">
         <div class="flex shrink-0 items-center justify-between gap-2 border-b border-base-content/15 px-3 pb-2 pt-3">
           <p class="ic-eyebrow">Contacts</p>
+          <button
+            id="home-add-contact-toggle"
+            type="button"
+            phx-click="toggle_add_contact"
+            title={if @adding_contact, do: "Cancel", else: "Add a contact"}
+            aria-label={if @adding_contact, do: "Cancel adding a contact", else: "Add a contact"}
+            aria-expanded={to_string(@adding_contact)}
+            class="grid size-6 place-items-center rounded-xs text-base-content/50 transition hover:text-primary"
+          >
+            <.icon name={if @adding_contact, do: "hero-x-mark", else: "hero-plus"} class="size-3.5" />
+          </button>
         </div>
+
+        <form
+          :if={@adding_contact}
+          id="home-add-contact-form"
+          phx-submit="add_contact"
+          class="flex shrink-0 flex-col gap-1.5 border-b border-base-content/15 p-3"
+        >
+          <input
+            type="text"
+            name="name"
+            placeholder="Name"
+            required
+            autocomplete="off"
+            class="border-2 border-base-content/25 bg-base-100 px-2 py-1 font-mono text-sm"
+          />
+          <input
+            type="email"
+            name="email"
+            placeholder="name@example.com"
+            required
+            autocomplete="off"
+            class="border-2 border-base-content/25 bg-base-100 px-2 py-1 font-mono text-sm"
+          />
+          <p class="font-mono text-[10px] leading-relaxed text-base-content/40">
+            Saved and trusted in one step: their mail becomes queue work.
+          </p>
+          <p :if={@contact_error} class="font-mono text-[10px] uppercase text-error">
+            {@contact_error}
+          </p>
+          <button
+            type="submit"
+            class="border-2 border-base-content px-2 py-1 font-mono text-xs font-bold uppercase tracking-wider transition hover:bg-base-content hover:text-base-100"
+          >
+            Save contact
+          </button>
+        </form>
 
         <ul :if={@contacts != []} class="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
           <li :for={c <- @contacts} class="flex items-center gap-2">
@@ -56,34 +92,6 @@ defmodule BusterClawWeb.Widget.CommsPanel do
               <span class="truncate font-display text-xs font-bold text-base-content">{c.name}</span>
             </span>
             <div class="flex shrink-0 items-center gap-1">
-              <%!-- Inert by design, not pending: outbound telephony is deleted.
-                    `title` is a hover tooltip only, so these carry an aria-label
-                    too — otherwise the accessible name is empty (the icons are
-                    decorative) and the reason is reachable by mouse alone. No
-                    "yet": these strings must not promise a roadmap that was
-                    cancelled (PHONE_INTAKE_ROADMAP, 08-18). --%>
-              <button
-                :if={c.phone}
-                type="button"
-                disabled
-                aria-disabled="true"
-                title="This phone doesn't send texts — it only receives"
-                aria-label={"Text #{c.name} — this phone only receives"}
-                class="cursor-not-allowed rounded-xs border border-base-content/20 p-1 text-base-content/35"
-              >
-                <.icon name="hero-chat-bubble-left-ellipsis" class="size-3.5" />
-              </button>
-              <button
-                :if={c.phone}
-                type="button"
-                disabled
-                aria-disabled="true"
-                title="This phone doesn't place calls — it only answers"
-                aria-label={"Call #{c.name} — this phone only answers"}
-                class="cursor-not-allowed rounded-xs border border-base-content/20 p-1 text-base-content/35"
-              >
-                <.icon name="hero-phone" class="size-3.5" />
-              </button>
               <button
                 :if={c.email}
                 type="button"
@@ -98,31 +106,15 @@ defmodule BusterClawWeb.Widget.CommsPanel do
             </div>
           </li>
         </ul>
-        <p :if={@contacts == []} class="p-3 font-mono text-[0.6875rem] text-base-content/55">
-          No contacts yet.
+        <p
+          :if={@contacts == [] and not @adding_contact}
+          class="p-3 font-mono text-[0.6875rem] text-base-content/55"
+        >
+          No contacts yet — press + to add one.
         </p>
       </div>
 
-      <%!-- Middle: recent phone activity (voicemails, texts, calls). --%>
-      <div class="flex min-h-0 flex-col border-r-2 border-base-content/20">
-        <p class="ic-eyebrow shrink-0 border-b border-base-content/15 px-3 pb-2 pt-3">
-          Recent activity
-        </p>
-        <ul :if={@activity != []} class="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-3">
-          <li :for={row <- @activity} class="flex items-baseline gap-2 font-mono text-[0.6875rem]">
-            <span class="shrink-0 text-base-content/45" title={row.title}>{row.mark}</span>
-            <span class="shrink-0 truncate font-bold text-base-content">{row.label}</span>
-            <span class="min-w-0 flex-1 truncate text-base-content/60">{row.snippet}</span>
-            <span class="shrink-0 text-base-content/45">{row.when}</span>
-          </li>
-        </ul>
-        <p :if={@activity == []} class="p-3 font-mono text-[0.6875rem] text-base-content/50">
-          No recent phone activity.
-        </p>
-      </div>
-
-      <%!-- Right: trusted-sender allowlist (the chips render via TrustedContactsPanel;
-            people are added, and trusted, on the Phone tab's Contacts). --%>
+      <%!-- Right: trusted-sender allowlist (the chips render via TrustedContactsPanel). --%>
       <div id="home-contacts-panel" class="flex min-h-0 flex-col">
         <p class="ic-eyebrow shrink-0 border-b border-base-content/15 px-3 pb-2 pt-3">
           Trusted senders

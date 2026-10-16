@@ -38,13 +38,6 @@ defmodule BusterClawWeb.SoundBoardLiveTest do
       assert_push_event(view, "notify:play-sound", %{name: "confirm.wav"})
     end
 
-    test "an inbound voicemail rings; the empty workspace resolves to bundled",
-         %{view: view} do
-      deliver(view, {:telephony_event, %{direction: "inbound", kind: "voicemail"}})
-
-      assert_push_event(view, "notify:play-sound", %{name: "voicemail.wav"})
-    end
-
     test "a workspace routing decides the file, the board only picks the key",
          %{view: view, root: root} do
       File.write!(Path.join([root, "sounds", "wilhelm.wav"]), "x")
@@ -82,7 +75,7 @@ defmodule BusterClawWeb.SoundBoardLiveTest do
     test "unmapped app traffic is silence, not a crash", %{view: view} do
       deliver(view, {:music_state, %{}})
       deliver(view, {:dispatch, :dispatch_item_claimed, %{status: "claimed"}})
-      deliver(view, :telephony_costs_updated)
+      deliver(view, {:dispatch, :dispatch_item_queued, %{source: "manual"}})
 
       refute_push_event(view, "notify:play-sound", %{})
     end
@@ -118,10 +111,10 @@ defmodule BusterClawWeb.SoundBoardLiveTest do
 
     test "independent keys ring independently inside one window", %{view: view} do
       deliver(view, {:pending_action, %{id: 1}})
-      deliver(view, {:telephony_event, %{direction: "inbound", kind: "sms"}})
+      deliver(view, {:dispatch, :dispatch_item_queued, %{source: "gmail"}})
 
       assert_push_event(view, "notify:play-sound", %{name: "confirm.wav"})
-      assert_push_event(view, "notify:play-sound", %{name: "sms.wav"})
+      assert_push_event(view, "notify:play-sound", %{name: "email.wav"})
     end
   end
 
