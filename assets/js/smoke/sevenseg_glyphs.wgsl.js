@@ -1,6 +1,5 @@
-// Shared seven-segment glyph primitives. Both the Notify countdown and the
-// BusterPhone keypad compile this exact WGSL, so a digit has one geometry and
-// one mask table everywhere it appears.
+// Shared seven-segment glyph primitives, kept apart from the countdown shader
+// so a digit has one geometry and one mask table wherever it appears.
 export const SEVENSEG_GLYPHS_WGSL = /* wgsl */ `
 // Segment bitmask per digit (bit0=a top, 1=b, 2=c, 3=d, 4=e, 5=f, 6=g middle).
 fn seg_mask(d: i32) -> u32 {

@@ -781,7 +781,6 @@ check lib/buster_claw/commands/catalog/pocket.ex               75 HELD
 # of it is the moduledoc, and deliberately: it records the per-contact-Pocket
 # design that was built up to and reversed, so the next reader does not re-derive
 # it. The code is a name, a list, a merge and a two-step resolve.
-check lib/buster_claw/pockets/faces.ex                        164 HELD
 
 # Terminal paint (TERMINAL_PAINT_ROADMAP, 08-09) — the agent recolours the
 # terminal it is running in. Capped on arrival, no headroom.
@@ -937,7 +936,7 @@ check lib/buster_claw/integrations/github.ex                  500 HELD
 # whole discipline is that an item carries a PATH and never a URL — that is what
 # lets it live in core at all, and what the unbuilt `sound_*` CLI will need. If
 # it grows, ask whether a web concern crept back in.
-check lib/buster_claw/notifications/studio_catalog.ex        216 HELD
+check lib/buster_claw/notifications/studio_catalog.ex        184 HELD
 # 10-11: Capture.Take left with its final caller, the Vox reference recorder.
 
 # The web command surface (`1eee2f8`), 894 -> 848 by collapsing the six

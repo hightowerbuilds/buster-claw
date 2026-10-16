@@ -54,16 +54,9 @@ defmodule BusterClaw.AppearanceTest do
       assert Enum.count(keys, &String.starts_with?(&1, "image:")) == Appearance.max_images()
     end
 
-    test "includes workspace shaders but never shaderfaces", %{root: root} do
+    test "includes workspace shaders", %{root: root} do
       write_custom_shader(root, "aurora")
-      write_custom_shader(root, "face-luke")
-      write_custom_shader(root, "viking-face")
-
-      keys = Enum.map(Appearance.options(), & &1.key)
-
-      assert "aurora" in keys
-      refute "face-luke" in keys
-      refute "viking-face" in keys
+      assert "aurora" in Enum.map(Appearance.options(), & &1.key)
     end
 
     test "a custom shader named like a built-in is shadowed by the built-in", %{root: root} do
@@ -212,15 +205,6 @@ defmodule BusterClaw.AppearanceTest do
       assert {:error, :invalid_mode} = Appearance.set_background(:nowhere, "smoke")
     end
 
-    test "a shaderface is refused even though the file exists", %{root: root} do
-      write_custom_shader(root, "face-luke")
-      assert BusterClaw.Shaders.exists?("face-luke")
-
-      for surface <- Appearance.surfaces() do
-        assert {:error, :invalid_mode} = Appearance.set_background(surface, "face-luke")
-      end
-    end
-
     test "option_key/1 is the inverse — every resolved background names its tile" do
       {:ok, 1} = Appearance.put_image(fake_image(), "a.png")
 
@@ -243,17 +227,6 @@ defmodule BusterClaw.AppearanceTest do
 
       assert Appearance.background(:home).mode == "smoke"
       assert Appearance.background(:terminal).kind == :none
-    end
-
-    test "a shaderface stored as the mode degrades", %{root: root} do
-      write_custom_shader(root, "face-luke")
-
-      # Bypass the setter, as a value written before faces were fenced off would be.
-      Settings.put("home_background_mode", "face-luke")
-
-      state = Appearance.background(:home)
-      assert state.mode == "smoke"
-      refute state.custom_shader
     end
 
     test "nothing configured at all: smoke for home, off for the terminal" do

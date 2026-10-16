@@ -88,8 +88,6 @@
 .ic-workbench-open-dot { margin-left: auto; width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
 .ic-workbench-destinations { margin-top: 18px; border-top: 1px solid var(--workbench-line); padding-top: 15px; }
 .ic-workbench-destinations > .ic-eyebrow { display: block; padding: 0 10px 7px; font-size: 9px; letter-spacing: .1em; }
-.ic-workbench-tools { margin-top: auto; padding-top: 20px; }
-.ic-workbench-hint { padding: 0 10px; font-size: 11px; line-height: 1.6; color: color-mix(in oklab, var(--color-base-content) 35%, transparent); }
 .ic-workbench-main { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
 .ic-workbench-start { display: inline-flex; align-items: center; gap: 5px; padding: 4px 7px; border: 1px solid var(--workbench-line); border-radius: 3px; font-size: 10px; color: color-mix(in oklab, var(--color-base-content) 55%, transparent); cursor: pointer; transition: color .15s, background .15s; }
 .ic-workbench-start:hover { color: var(--color-base-content); background: color-mix(in oklab, var(--color-base-content) 9%, transparent); }
@@ -170,7 +168,7 @@
   .ic-workbench { flex-direction: column; }
   .ic-workbench-menu { flex: 0 0 auto; padding: 5px; flex-direction: column; gap: 5px; overflow: visible; }
   .ic-workbench-menu-content { flex-direction: row; gap: 8px; overflow-x: auto; }
-  .ic-workbench-brand, .ic-workbench-tools, .ic-workbench-destinations > .ic-eyebrow { display: none; }
+  .ic-workbench-brand, .ic-workbench-destinations > .ic-eyebrow { display: none; }
   .ic-workbench-launcher, .ic-workbench-destinations { flex-direction: row; display: flex; flex: 0 0 auto; gap: 3px; }
   .ic-workbench-destinations { margin: 0; padding: 0 0 0 8px; border-top: 0; border-left: 1px solid var(--workbench-line); }
   .ic-workbench-menu-button { width: auto; min-height: 32px; padding: 6px 9px; white-space: nowrap; font-size: 11px; gap: 6px; }

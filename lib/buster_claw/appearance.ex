@@ -253,12 +253,10 @@ defmodule BusterClaw.Appearance do
 
   @doc """
   Names of valid workspace shader patterns (`shaders/*.wgsl`), excluding any that
-  collide with a built-in name (the built-in wins) and excluding contact
-  shaderfaces (`face` / `face-*`) — a contact's face is never offered as a
-  background, though the reverse (a background as a face) is fine.
+  collide with a built-in name (the built-in wins).
   """
   def custom_shaders do
-    Enum.reject(Shaders.list(), &(&1 in @bundled_shaders or Shaders.face?(&1)))
+    Enum.reject(Shaders.list(), &(&1 in @bundled_shaders))
   end
 
   @doc """
@@ -567,10 +565,9 @@ defmodule BusterClaw.Appearance do
   end
 
   # A name that may be rendered as a shader: a built-in, or a workspace file that
-  # exists. Shaderfaces are refused here and not just in the picker — a face
-  # stored as a mode (set before faces were fenced off) degrades.
+  # exists.
   defp shader_selectable?(name),
-    do: name in @builtin_shaders or (not Shaders.face?(name) and Shaders.exists?(name))
+    do: name in @builtin_shaders or Shaders.exists?(name)
 
   # --- writing a surface ---------------------------------------------------
 

@@ -68,18 +68,6 @@ defmodule BusterClaw.Shaders do
   def exists?(_), do: false
 
   @doc """
-  True when `name` is a contact **shaderface** rather than a background pattern:
-  `face` appears as a dash-separated word in the name — `face`, `face-luke`,
-  `viking-face`. (A word rule, not a prefix rule: real faces get named noun-first,
-  and `viking-face` must not land in the background picker.) Faces and
-  backgrounds share one `shaders/` pool but flow one way: a background may be
-  picked as a face, a face is never offered (or honored) as the homepage
-  background.
-  """
-  def face?(name) when is_binary(name), do: "face" in String.split(name, "-")
-  def face?(_name), do: false
-
-  @doc """
   True when custom shader `name` is **image-reactive** — its source calls the
   prelude's image API (`img/1`, `img_lum/1`, `has_img/0`), so it composites the
   user's selected background image rather than ignoring it.

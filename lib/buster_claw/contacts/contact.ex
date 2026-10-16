@@ -1,11 +1,10 @@
 defmodule BusterClaw.Contacts.Contact do
   @moduledoc """
-  A person, across both channels: a name, an optional phone, an optional email,
-  and a shaderface.
+  A person: a name, an optional phone, an optional email.
 
-  `face_seed` drives the built-in generative face; `face_shader` (optional) names
-  a custom WGSL face in `<workspace>/shaders/`, authored via the shader-designer
-  skill and picked by the operator.
+  The two face columns (`face_seed`, `face_shader`) left on 10-16: nothing had
+  rendered a contact's face since the Phone tab was removed on 10-15
+  (CODE_QUALITY_SWEEP_10-16-26 D2).
 
   ## There is no `trusted` field, on purpose
 
@@ -25,15 +24,13 @@ defmodule BusterClaw.Contacts.Contact do
     field :name, :string
     field :phone, :string
     field :email, :string
-    field :face_shader, :string
-    field :face_seed, :integer, default: 0
 
     timestamps(type: :utc_datetime)
   end
 
   def changeset(contact, attrs) do
     contact
-    |> cast(attrs, [:name, :phone, :email, :face_shader, :face_seed])
+    |> cast(attrs, [:name, :phone, :email])
     |> update_change(:name, &String.trim/1)
     |> blank_to_nil(:phone)
     |> blank_to_nil(:email)
@@ -45,7 +42,6 @@ defmodule BusterClaw.Contacts.Contact do
     |> validate_format(:email, ~r/^[^\s@]+@[^\s@]+\.[^\s@]+$/,
       message: "must be an email address"
     )
-    |> put_default_seed()
     |> unique_constraint(:phone)
     |> unique_constraint(:email)
   end
@@ -114,25 +110,6 @@ defmodule BusterClaw.Contacts.Contact do
       add_error(changeset, :phone, "a contact needs a phone number or an email address")
     else
       changeset
-    end
-  end
-
-  # A stable per-contact seed so the generative face is deterministic — the same
-  # contact always condenses out of the smoke with the same face. Seeded from
-  # whichever identifier exists, phone first.
-  defp put_default_seed(changeset) do
-    case get_field(changeset, :face_seed) do
-      seed when seed in [0, nil] ->
-        identifier = get_field(changeset, :phone) || get_field(changeset, :email)
-
-        if is_binary(identifier) do
-          put_change(changeset, :face_seed, :erlang.phash2(identifier, 10_000))
-        else
-          changeset
-        end
-
-      _ ->
-        changeset
     end
   end
 end

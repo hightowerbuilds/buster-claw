@@ -150,14 +150,6 @@ defmodule BusterClaw.Appearance.ShaderApprovalTest do
       refute ShaderApproval.approved?("nebula")
     end
 
-    test "a shaderface is never approved — it is not a background", %{root: root} do
-      write_shader(root, "hightowerbuilds-face")
-      write_shader(root, "nebula")
-
-      assert ShaderApproval.approved?("nebula")
-      refute Map.has_key?(ShaderApproval.approvals(), "hightowerbuilds-face")
-    end
-
     test "a corrupt store fails closed rather than crashing", %{root: root} do
       skip_backfill()
       write_shader(root, "nebula")

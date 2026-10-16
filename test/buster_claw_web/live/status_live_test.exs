@@ -1181,10 +1181,6 @@ defmodule BusterClawWeb.StatusLiveTest do
       # The file contract, each part of it load-bearing.
       assert html =~ "fs_main"
       assert html =~ "64 KB"
-      # The `face` name is reserved — Shaders.face?/1 still refuses it as a
-      # background — but it is not taught as a picker any more (D2).
-      assert html =~ "reserved"
-      assert html =~ "never offered or honored"
 
       # Corrected 08-08 against the implementation: the catalog is click, and
       # there is no palette-coloured fallback — the layer simply does not paint.

@@ -5,10 +5,8 @@ import {SMOKE_WGSL} from "./smoke.wgsl.js"
 import {WAVES_WGSL} from "./waves.wgsl.js"
 import {MANDEL_WGSL} from "./mandel.wgsl.js"
 import {WEATHER_WGSL} from "./weather.wgsl.js"
-import {FACE_WGSL} from "./face.wgsl.js"
 import {DAYCYCLE_WGSL} from "./daycycle.wgsl.js"
 import {SEVENSEG_WGSL} from "./sevenseg.wgsl.js"
-import {KEYPAD_WGSL} from "./keypad.wgsl.js"
 import {VEIL_WGSL} from "./veil.wgsl.js"
 
 export const SHADERS = {
@@ -16,15 +14,14 @@ export const SHADERS = {
   waves: WAVES_WGSL,
   mandel: MANDEL_WGSL,
   weather: WEATHER_WGSL,
-  face: FACE_WGSL,
   daycycle: DAYCYCLE_WGSL,
   sevenseg: SEVENSEG_WGSL,
-  keypad: KEYPAD_WGSL,
   // Image-reactive; bundled and testable from here, but deliberately NOT yet in
   // Appearance's `@builtin_shaders`, so it cannot be picked until the surfaces
   // can actually feed it an image (IMAGE_SHADER_ROADMAP Phase 3). Being in this
-  // registry is not the same as being offered — `face`/`sevenseg`/`keypad` are
-  // here for other surfaces and have never been background options either.
+  // registry is not the same as being offered — `sevenseg` is here for the
+  // Notify countdown and has never been a background option either. (`face`
+  // and `keypad` left with the phone, 10-16.)
   veil: VEIL_WGSL,
 }
 

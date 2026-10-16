@@ -51,13 +51,6 @@ defmodule BusterClaw.ContactsTest do
       assert is_nil(a.email)
       assert is_nil(b.email)
     end
-
-    test "the same face falls out of the smoke for the same person" do
-      {:ok, a} = Contacts.create_contact(%{name: "Dana", phone: "+15033412655"})
-      Contacts.delete_contact(a)
-      {:ok, b} = Contacts.create_contact(%{name: "Dana Again", phone: "+15033412655"})
-      assert a.face_seed == b.face_seed
-    end
   end
 
   describe "trust is derived from the policy file, never stored" do

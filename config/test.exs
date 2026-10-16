@@ -78,10 +78,6 @@ config :buster_claw, :mailman_enabled, false
 # The Notify scheduler is off in tests; the Scheduler suite starts its own
 # instance and drives it via tick_now/1, and the context suite calls fire_due/1.
 config :buster_claw, :notifications_scheduler_enabled, false
-# The portfolio recorder is off in tests: an autostarting instance would fire a
-# REAL stage-1 agent run on boot. The Recorder suite starts its own with a
-# stubbed fetcher and drives it via tick_now/1.
-config :buster_claw, :portfolio_recorder_enabled, false
 # Call-rate limiting is off in tests so command-heavy suites aren't throttled; the
 # RateLimiter suite flips it on with a low limit to exercise enforcement.
 config :buster_claw, :rate_limit_enabled, false

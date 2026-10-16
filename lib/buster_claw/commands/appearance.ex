@@ -22,8 +22,8 @@ defmodule BusterClaw.Commands.Appearance do
 
   The mode grammar is `off` / a shader name / `image:<slot>` /
   `image:<slot>+<shader>`, and the interesting half of it is what it *refuses*:
-  an empty slot, a shader that would not react to the image it was laid over, a
-  contact shaderface, an unknown name. None of that is re-derived here. Writing
+  an empty slot, a shader that would not react to the image it was laid over,
+  an unknown name. None of that is re-derived here. Writing
   the `Settings` key directly, or deciding locally what a valid mode looks like,
   creates a **second definition of a valid background** — and there is a live
   example of what that costs: the tile-badge bug fixed in `089494e` came from a
@@ -189,9 +189,9 @@ defmodule BusterClaw.Commands.Appearance do
   # operator's own long-standing patterns.
   #
   # Narrow on purpose, and the narrowness is the interesting part: this fires
-  # ONLY for a shader that Appearance would otherwise have accepted. A
-  # shaderface, a deleted file or a typo is not an authored-shader problem — it
-  # is an invalid mode, and `Appearance` already has a better sentence for each.
+  # ONLY for a shader that Appearance would otherwise have accepted. A deleted
+  # file or a typo is not an authored-shader problem — it is an invalid mode,
+  # and `Appearance` already has a better sentence for each.
   # Answering those here would replace a precise refusal with a vaguer one, which
   # a test caught within a minute of this check being written.
   # `default` is an instruction, not an option — it clears the surface's stored
@@ -349,8 +349,8 @@ defmodule BusterClaw.Commands.Appearance do
   defp refusal(:invalid_mode, mode) do
     "\"#{mode}\" is not a background this app can show. A mode is one of: off; a shader " <>
       "name; image:<slot>; or image:<slot>+<shader> for an image with an image-reactive " <>
-      "shader over it. A contact shaderface (face, face-*) is never a background, and a " <>
-      "shader file that has been deleted stops being one. " <> available_keys_sentence()
+      "shader over it. A shader file that has been deleted stops being one. " <>
+      available_keys_sentence()
   end
 
   # No fallback clause, and that is checked rather than assumed.

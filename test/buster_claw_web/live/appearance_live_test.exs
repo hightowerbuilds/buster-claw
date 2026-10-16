@@ -130,16 +130,12 @@ defmodule BusterClawWeb.AppearanceLiveTest do
     assert has_element?(view, "[data-bg-option='image:#{slot}'] .aspect-video")
   end
 
-  test "the catalog offers workspace shaders but never shaderfaces", %{conn: conn, root: root} do
+  test "the catalog offers workspace shaders", %{conn: conn, root: root} do
     write_custom_shader(root, "aurora")
-    write_custom_shader(root, "face-luke")
-    write_custom_shader(root, "viking-face")
 
     {:ok, view, _html} = live(conn, "/appearance")
 
     assert has_element?(view, "[data-bg-option='aurora']")
-    refute has_element?(view, "[data-bg-option='face-luke']")
-    refute has_element?(view, "[data-bg-option='viking-face']")
   end
 
   # --- assigning ------------------------------------------------------------
@@ -209,18 +205,6 @@ defmodule BusterClawWeb.AppearanceLiveTest do
   end
 
   # --- refusals ------------------------------------------------------------
-
-  test "a crafted event carrying a shaderface leaves the surface unchanged", %{
-    conn: conn,
-    root: root
-  } do
-    write_custom_shader(root, "face-luke")
-    {:ok, view, _html} = live(conn, "/appearance")
-
-    render_click(view, "assign_background", %{"surface" => "home", "option" => "face-luke"})
-
-    assert Appearance.home_background_state().mode == "smoke"
-  end
 
   test "a crafted event naming an unknown surface is ignored", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/appearance")

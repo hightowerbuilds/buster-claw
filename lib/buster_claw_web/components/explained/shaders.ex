@@ -229,15 +229,6 @@ defmodule BusterClawWeb.Explained.Shaders do
         </p>
         <ul class="ic-unfold" style="list-style: none; padding-left: 0;">
           <li>
-            <span class="font-mono font-bold text-base-content">The name decides
-              where it can appear.</span>
-            A name with <code>face</code>
-            as a dash-separated word — <code>viking-face</code>, <code>face-luke</code>
-            — is <span class="font-semibold text-base-content">reserved</span>
-            for contact faces and is never offered or honored as a background, in
-            the picker or on read. Anything else is a background.
-          </li>
-          <li>
             <span class="font-mono font-bold text-base-content">
               Names are <code>[a-z0-9-]</code>.
             </span>

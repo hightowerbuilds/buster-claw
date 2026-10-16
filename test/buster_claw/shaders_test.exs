@@ -59,19 +59,6 @@ defmodule BusterClaw.ShadersTest do
     assert {:error, :not_found} = Shaders.read("nope")
   end
 
-  test "face?/1 classifies by 'face' as a dash-separated word, anywhere in the name" do
-    assert Shaders.face?("face")
-    assert Shaders.face?("face-luke")
-    # Real faces get named noun-first — the rule is a word, not a prefix.
-    assert Shaders.face?("viking-face")
-    assert Shaders.face?("old-face-two")
-    refute Shaders.face?("aurora")
-    # Only the whole word: "faces"/"facade" are backgrounds.
-    refute Shaders.face?("faces")
-    refute Shaders.face?("facade-lights")
-    refute Shaders.face?(nil)
-  end
-
   test "ensure seeds a README without clobbering an operator file", %{root: root} do
     assert :ok = Shaders.ensure()
     readme = Path.join([root, "shaders", "README.md"])

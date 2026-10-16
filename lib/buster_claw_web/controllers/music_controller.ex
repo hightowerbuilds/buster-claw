@@ -1,6 +1,8 @@
 defmodule BusterClawWeb.MusicController do
   @moduledoc """
-  Streams a track from the music library to the dock player's `<audio>` element.
+  Streams a track from the music library to the Studio's `<audio>` element —
+  the Music group of the Mix catalog. (The dock player it was written for left
+  the dock on 09-13.)
 
   Same posture as the other media routes — no pipeline (a media element request
   is not an HTML page), loopback-only, content-type from the extension — with

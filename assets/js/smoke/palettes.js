@@ -7,7 +7,6 @@ export const SHADER_PALETTES = {
   mandel: ["#04060d", "#3b6ea5", "#ffd089"],
   weather: ["#1a2838", "#6b7a89", "#eef4f8"],
   daycycle: ["#0a0f1e", "#ff8c42", "#9fc3dc"],
-  keypad: ["#160d09", "#ff4d1c", "#ffc9b3"],
   // Veil is image-reactive: colA doubles as the ground it falls back to when no
   // image is bound, so it is a near-black rather than a tint that would look
   // arbitrary on its own.

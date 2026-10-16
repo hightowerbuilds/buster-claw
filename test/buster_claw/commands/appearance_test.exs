@@ -298,16 +298,6 @@ defmodule BusterClaw.Commands.AppearanceTest do
     assert background_mode(:terminal) == "off"
   end
 
-  test "a contact shaderface is not a background, and the refusal says so", %{root: root} do
-    write_custom_shader(root, "face-ada")
-
-    assert {:error, message} =
-             Commands.call("background_set", %{"surface" => "terminal", "mode" => "face-ada"})
-
-    assert message =~ "shaderface"
-    assert background_mode(:terminal) == "off"
-  end
-
   # The D1 property, as an attack rather than an assertion.
   #
   # Authoring a shader needs NO COMMAND: the workspace is writable, so anything

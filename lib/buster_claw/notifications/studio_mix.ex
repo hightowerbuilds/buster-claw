@@ -323,10 +323,6 @@ defmodule BusterClaw.Notifications.StudioMix do
 
   def put_effect_param(%__MODULE__{} = mix, _clip_id, _position, _key, _value), do: mix
 
-  @doc "Drop every effect from a clip — the way back to the raw source."
-  def clear_effects(%__MODULE__{} = mix, clip_id),
-    do: update_clip(mix, clip_id, &%{&1 | effects: []})
-
   @doc """
   A clip's effect chain, tolerant of a clip that predates the field.
 

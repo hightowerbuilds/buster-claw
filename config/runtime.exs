@@ -70,12 +70,6 @@ config :buster_claw,
       if(workspace_root_env, do: Path.join(workspace_root_env, "library")) ||
       Application.get_env(:buster_claw, :library_root)
 
-# BusterPhone relay drain (Supabase → local SQLite). Key-gated exactly like
-# Finnhub: with no URL + service-role key the Drain child never starts and the
-# /phone tab simply shows what's already local. The service-role key bypasses
-# RLS project-wide — never commit it, never ship it in a build. Guarded out of
-# :test entirely so a developer's shell env can't overwrite the test stubs
-# (runtime.exs runs AFTER config/test.exs and would clobber them with nil).
 # The Chromium-family binary BrowserControl drives. `Detect` finds it from
 # standard macOS install paths; this override is how a machine with the browser
 # somewhere else — notably CI on Linux, where none of those paths exist — points

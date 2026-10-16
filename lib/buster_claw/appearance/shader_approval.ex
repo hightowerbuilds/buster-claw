@@ -127,7 +127,6 @@ defmodule BusterClaw.Appearance.ShaderApproval do
     if is_nil(Settings.get(@backfilled_key)) do
       approved =
         Shaders.list()
-        |> Enum.reject(&Shaders.face?/1)
         |> Enum.reduce(%{}, fn name, acc ->
           case hash(name) do
             {:ok, hash} -> Map.put(acc, name, hash)
