@@ -50,3 +50,15 @@ The dev app was left running throughout; nothing here touched :4000.
 | | |
 |---|---|
 | (fourth commit, docs) | **`CODE_QUALITY_SWEEP_10-16-26.md`** — tooling-first inventory of the whole tree: a reference scan (modules and publics with no caller; 82 test-only publics, down from 125 at 09-05), a leftover-word sweep for every removed feature, a suppression census (nothing to remove — 9 credo disables, no skips, no TODOs), a clause-length scan, asset/CSS/script/static/config reference checks, Rust, tests. Findings: the contact-faces stack is orphaned (no renderer since the phone left), two dead shaders, a dead trading config key, 14 digested fonts tracked in git, 16 web-layer `File.*` sites (up from 9), the four frozen files unchanged, two duplicate bodies, `Olympus` arrived 10-12 with no map. Ten phases, deletions first, renames last; five operator questions with defaults. |
+
+---
+
+## Afternoon into evening — the sweep, Phases 1–6 built
+
+| | |
+|---|---|
+| (five commits) | **Phase 1** the leftovers: the contact-faces stack whole (forward migration dropping two columns, `Pockets.Faces`, `Shaders.face?`, the approval reject, `face.wgsl.js`, `keypad.wgsl.js`, the keypad palette), `StudioMix.clear_effects`, the dead `portfolio_recorder_enabled`, four `ic-` classes nothing used, fourteen digested fonts that were tracked in git plus the ignore rule that let them in, `lib/buster_claw.ex` as a real map of the contexts. **Phase 2** five functions with zero callers anywhere, and `scripts/refs_scan.py` so the number is re-checkable. **Phases 3–4** `BusterClaw.CLI.Format` — ten formatters that were `@doc false` publics so a test could reach them are now a module with an interface; four test-only publics deleted with their tests; the two remaining duplicate bodies unified (`Sound.rename_file/5`, `BusterClaw.FTS.match/1`). **Phase 5** five web-layer disk writes moved into their contexts and a lockstep test that fails on any `File` write or `System.cmd` under `lib/buster_claw_web`, broken once on purpose. **Phase 6** two partitions, both mechanical from a helper-ownership map: `Commands.Sound` into Library / Edit / Shared behind a facade, and `Commands.Web` into Tab / Checks / Bookmarks / Secrets / Fetch behind a facade — the first FROZEN file lifted by extraction rather than by raising a cap. Two things the scan got wrong and the build caught: `day_cell` is used as `<.day_cell>` in its own file (a dot-blind count), and the "268-line `normalize_args`" was the CRUD macro's indentation. |
+
+Every phase ended with `mix precommit` green and the dev app booted. Still
+open: `Agent.Chat`'s split, render decomposition (Phase 7), the JS and Rust
+frozen files (8), test hygiene (9), the `Notifications → Studio` rename (10).

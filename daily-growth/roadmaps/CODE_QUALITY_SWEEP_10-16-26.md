@@ -1,6 +1,6 @@
 # Code quality sweep — 2026-10-16
 
-**Scoped 10-16-26.** Operator's ask: *"run an entire sweep of the entire app for
+**Scoped 10-16-26; Phases 1–6 BUILT the same day** (five commits, `c01c713` → Phase 6). Operator's ask: *"run an entire sweep of the entire app for
 code quality — pick out sections we can modularize to be stronger, more
 structurally integral code, and remove all the dead, orphan and suppressed code
 or anything related to features that no longer exist. Write a map, then follow
@@ -17,6 +17,34 @@ sweep for every feature ever removed, a suppression census, a clause-length
 scan, a hook↔markup, CSS↔markup, script↔reference and static↔reference check,
 config-key↔reader check, the Rust tree, and the test suite's hygiene numbers.
 Scan output: `scratchpad/refs.txt` (session), reproduced in the Appendix.
+
+> ### What shipped, and what the build corrected in this map
+>
+> **Phase 1** (`c01c713`): the contact-faces stack whole (migration, modules,
+> two shaders, palette), `clear_effects`, the dead trading config key, four CSS
+> classes, fourteen tracked digests + the ignore gap, the placeholder module,
+> two comments. **Phase 2** (`6f91b04`): five zero-caller functions;
+> `scripts/refs_scan.py` checked in. **Phases 3–4** (`6fbbc01`): `CLI.Format`
+> extracted (cli.ex 960 → 705); four test-only publics deleted with their
+> tests; `Sound.rename_file/5` and `BusterClaw.FTS.match/1` replace the two
+> duplicate bodies. **Phase 5** (`5789e92`): five web-layer writes moved into
+> `Sound`, `Workspace`, `Browser`, `SoundStudio`, `Attachments`; the purity
+> lockstep test, broken once on purpose. **Phase 6**: `Commands.Sound` →
+> `Sound.{Library,Edit,Shared}` behind a facade (1,086 → 114 + 557 + 323 + 163);
+> `Commands.Web` → `Web.{Tab,Checks,Bookmarks,Secrets,Fetch}` behind a facade
+> (848 FROZEN → 50 + 521 + 145 + 82 + 80 + 52) — the first freeze lifted by
+> extraction. The cycle gate still reads 2.
+>
+> **Corrections the build made to this map:** `ModelPolicy.unfloored_money_
+> surfaces/0` stays — it is a deliberately non-vacuous guard with its reasoning
+> in code and test (08-09), not trading residue. `Contacts.delete_contact/1`
+> stays — its test pins that deleting never revokes trust. `Mounts.valid_name?`
+> and `Capture.recorder_available?` stay as a lockstep contract and a test gate.
+> The "268-line `normalize_args`" was a scan artifact of the CRUD macro's
+> indentation; the function is eight lines, so no `Commands.Args`.
+> `AgentBackend.plausible_model?/2` has no production caller — wire it into the
+> model picker or delete it (added to Q6). **Still open:** `Agent.Chat`'s split
+> (Phase 6, measure first), Phases 7–10.
 
 > ### The one-sentence version
 >
@@ -338,6 +366,13 @@ signed DMG**, recorded in `LAUNCH_ROADMAP`.
 The column, `normalize/1` and the Contacts tab's field. **Default: keep** — the
 phone removal map's Q3 said so (a fact about a person), and the Google Contacts
 sync writes it.
+
+### Q6 — `AgentBackend.plausible_model?/2`
+
+Tested, pure, and called by nothing in production: the model picker does not
+validate plausibility. **Default: wire it** into `ModelPolicy.put_model` so a
+model name the harness cannot recognise is refused at the setting rather than
+on the next run.
 
 ### Q5 — Olympus
 
