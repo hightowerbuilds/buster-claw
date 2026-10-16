@@ -99,18 +99,20 @@ defmodule BusterClawWeb.WorkbenchStateTest do
   test "four panels become two columns of two, five become three columns with two stacked" do
     open = fn n -> Enum.reduce(Enum.take(State.keys(), n), State.new(), &State.open(&2, &1)) end
 
+    [k1, k2, k3, k4, k5] = Enum.take(State.keys(), 5)
+
     four = open.(4)
     assert four.preset == "pairs"
     assert four.tree["axis"] == "horizontal"
     assert four.tree["first"]["axis"] == "vertical"
-    assert State.leaves(four.tree["first"]) == ["chat", "workspace"]
-    assert State.leaves(four.tree["second"]) == ["terminal", "pockets"]
+    assert State.leaves(four.tree["first"]) == [k1, k2]
+    assert State.leaves(four.tree["second"]) == [k3, k4]
 
     five = open.(5)
-    assert State.leaves(five.tree["first"]) == ["chat", "workspace"]
+    assert State.leaves(five.tree["first"]) == [k1, k2]
     assert five.tree["second"]["axis"] == "horizontal"
-    assert State.leaves(five.tree["second"]["first"]) == ["terminal", "pockets"]
-    assert five.tree["second"]["second"] == "phone"
+    assert State.leaves(five.tree["second"]["first"]) == [k3, k4]
+    assert five.tree["second"]["second"] == k5
 
     # Stacked holds three; the fourth panel moves the work area to pairs on its
     # own, the picker refuses a row of four, and closing back to three returns

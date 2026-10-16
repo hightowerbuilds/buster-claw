@@ -61,7 +61,7 @@ defmodule BusterClawWeb.Explained.Gws do
           </li>
           <li>
             Then <code>google_calendar_sync</code> — today's events sync one-way into
-            the app calendar (glance at Workspace → Calendar any time).
+            the app calendar (glance at the Calendar panel any time).
           </li>
           <li>
             Then <code>gmail_search</code>

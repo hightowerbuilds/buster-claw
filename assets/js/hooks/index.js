@@ -27,6 +27,7 @@ import {ShaderPreview} from "./shader_preview.js"
 import {ShaderTimer} from "./shader_timer.js"
 import {FileTreeDnd} from "./file_tree_dnd.js"
 import {WorkspaceDropzone} from "./workspace_dropzone.js"
+import {WorkspaceRail} from "./workspace_rail.js"
 import {ChatDropzone} from "./chat_dropzone.js"
 import {NotifySound, SoundPreview} from "./notify_sound.js"
 import {Composer} from "./composer.js"
@@ -73,6 +74,7 @@ export const Hooks = {
   ShaderTimer,
   FileTreeDnd,
   WorkspaceDropzone,
+  WorkspaceRail,
   ChatDropzone,
   NotifySound,
   SoundPreview,

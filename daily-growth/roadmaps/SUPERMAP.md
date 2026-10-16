@@ -86,7 +86,7 @@ roadmaps/
 ├── shell/ ·················· Part I    TERMINAL_PAINT · TERMINAL_PANELS
 ├── surfaces/ ··············· Parts II–III  STUDIO · VOX_TAB · IMAGE_SHADER · LEFTOVERS_SURFACES
 ├── agent-core/ ············· Part V    LEFTOVERS_AGENT_CORE
-├── integrations/ ··········· Part VI   CLINCH · BUSTERPHONE (+NUMBER_VENDING) · PHONE_INTAKE · PHONE_ACCESS · GOOGLE_VERIFICATION
+├── integrations/ ··········· Part VI   CLINCH · PHONE_REMOVAL (supersedes BUSTERPHONE · PHONE_INTAKE · PHONE_ACCESS) · GOOGLE_VERIFICATION
 ├── platform/ ··············· Part VII  APPLE · UPDATE · RELEASE_GATE · TRUST_AND_SUPPORT · QA_BACKLOG (+FRESH_MACHINE_WALK) · LEFTOVERS_PLATFORM
 ├── distribution/ ··········· Part VIII DISTRIBUTION · FRONT_DOOR
 └── website/ ················ Part IX   WEBSITE
@@ -307,9 +307,9 @@ and zero issues in the verdict. Budget hours per release, not minutes
 |---|---|---|---|
 | Chat | `ChatPanel`, `status/chat.ex` | SHIPPED | [`LEFTOVERS_SURFACES`](surfaces/LEFTOVERS_SURFACES.md) — the live-CLI attachment walk |
 | Vox2B | Removed; `/voice` redirects to Speech | **REMOVED 10-11**, automated checks pass | [`VOX_REMOVAL`](surfaces/VOX_REMOVAL_ROADMAP.md) |
-| Notes | `NotesComponent` | SHIPPED | [`LEFTOVERS_SURFACES`](surfaces/LEFTOVERS_SURFACES.md) — renaming orphans `[[wiki links]]` |
+| Notes | `NotesComponent` — a work-area panel since 10-15 (one) | SHIPPED | [`LEFTOVERS_SURFACES`](surfaces/LEFTOVERS_SURFACES.md) — renaming orphans `[[wiki links]]` |
 | Pockets | `PocketsPanel` | SHIPPED | archived 08-17 — the Dock walk is [`QA_BACKLOG`](platform/QA_BACKLOG.md)'s |
-| Calendar | `CalendarComponent` | SHIPPED | — |
+| Calendar | `CalendarComponent` — a work-area panel since 10-15 (one); `/calendar` stays | SHIPPED | — |
 | Phone | `PhoneComponent`, `Phone.CallAction` | SHIPPED — **the keypad dials as of 08-15**, gated and confirmed once before the first ring | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) |
 | Explained | `ExplainedPanel` | SHIPPED | [`LEFTOVERS_SURFACES`](surfaces/LEFTOVERS_SURFACES.md) — two errands, five tiles |
 | Activity | `ActivityComponent` | SHIPPED | — |
@@ -351,7 +351,7 @@ coming, which is the honest end for a surface nobody reached for. Its map is
 
 | Section | Where | State | Map |
 |---|---|---|---|
-| Workspace | `WorkspaceLive` `/workspace` | SHIPPED | — |
+| Workspace | `WorkspaceLive` `/workspace` — Directory only since 10-15; resizable file rail | SHIPPED | — |
 | Browser | `BrowseLive` `/browse`, `BrowserControl` | SHIPPED | [`LEFTOVERS_SURFACES`](surfaces/LEFTOVERS_SURFACES.md) · gate `G-34` — the payment gate is unwalked |
 | Split view | `SplitLive` `/split` | SHIPPED | — |
 | Terminal | `TerminalLive` `/terminal`, work-area panels ×4 | SHIPPED · four slots BUILT 10-15, desktop walk open | [`TERMINAL_PANELS`](shell/TERMINAL_PANELS_ROADMAP.md) |
@@ -402,7 +402,8 @@ Not surfaces. The machinery every surface sits on.
 | **iMessage replaces Twilio text; Twilio keeps voicemail** | Bundled `Messages` probe, Settings About check; proposed Phone Texts adapter; existing `Telephony` voicemail | **ACTIVE 09-19 — Phase 0 partial.** Local app/DMG built and boot-tested. Adapter runs from bundle; desktop permission/send gate open. No channel cutover | [`IMESSAGE`](integrations/IMESSAGE_ROADMAP.md) |
 | **The Clinch — credentials** | `Clinch`, `ClinchPanels`, Tauri `clinch_*` | **ACTIVE — Phases 0–4 COMPLETE 08-10; Phase 5 guarded 08-13, now waiting on the operator's tunnel spike** | [`CLINCH`](integrations/CLINCH_ROADMAP.md) |
 | **Reaching it from a phone** | the relay, as a control channel | **PARKED 08-13 — research done, starts after the desktop app ships** | [`PHONE_ACCESS`](integrations/PHONE_ACCESS_ROADMAP.md) |
-| **Twilio / BusterPhone** | `Telephony` | **ACTIVE — the money leg. Inbound LIVE (verified in the app 08-14).** As of 08-18 the phone is **deliberately intake-only**: it answers, records, transcribes, files, and archives inbound text, and sends nothing. That is now the design rather than a limitation — see the row below. What remains is vending a number to somebody else | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) · [`PHONE_INTAKE`](integrations/PHONE_INTAKE_ROADMAP.md) |
+| **BusterPhone removal** | `Telephony`, `PhoneComponent`, ten `phone_*` commands, the Supabase relay | **SCOPED 10-15 — operator decision: the phone comes out, a simpler remote-comms route replaces it (unnamed). ~−7,000 lines, one drop migration, one restore rule. The paid tier stood on this leg: open question** | [`PHONE_REMOVAL`](integrations/PHONE_REMOVAL_ROADMAP.md) |
+| **Twilio / BusterPhone** | `Telephony` | **SUPERSEDED 10-15 by the removal.** ~~ACTIVE — the money leg. Inbound LIVE (verified in the app 08-14).** As of 08-18 the phone is **deliberately intake-only**: it answers, records, transcribes, files, and archives inbound text, and sends nothing. That is now the design rather than a limitation — see the row below. What remains is vending a number to somebody else | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) · [`PHONE_INTAKE`](integrations/PHONE_INTAKE_ROADMAP.md) |
 | **BusterPhone becomes intake-only** | `Telephony`, `Explained.Phone` | **SHIPPED 08-18 (`e08d1cd`) — Phases 1, 2, 4, 5 the same day; Phase 0 and 3 are the operator's. Supersedes the three rows below.** Twilio rejected the toll-free verification 08-17 (`30484`, business name); rather than resubmit, **every outbound capability is deleted** — SMS *and* calling. Deletes the whole compliance stack with it: the verification, the consent disclosure, the public opt-in page, `SMS_DISCLOSURE` unbuilt. **47 files, +1,161/−2,752**, six deleted whole, 217 → 215 commands, 4,187 tests green. The paid tier is unaffected — 07-12 already ruled voice/voicemail shippable with no A2P | [`PHONE_INTAKE`](integrations/PHONE_INTAKE_ROADMAP.md) |
 | Outgoing texts | `sms_send`, kill-switched | **TO BE DELETED — superseded 08-18.** ~~Built, blocked on paperwork; 10DLC abandoned 08-15 for toll-free verification, `HH0fb442c8…` IN_REVIEW.~~ That verification was **REJECTED 08-17** (`30484` — *Business Name Must Match Official Records*; filed as `hightowerbuilds`, which is on no government record). Not resubmitting | [`PHONE_INTAKE`](integrations/PHONE_INTAKE_ROADMAP.md) Phase 1 |
 | **The SMS consent story** | `Explained.Phone` | **CANCELLED UNBUILT + ARCHIVED 08-18.** Its subject stopped existing with outbound SMS. Its Part II inventory of false claims was **consumed, not orphaned** — it is the map that rewrote `Explained.Phone` (701 → 591), and the one claim it said to preserve, that inbound traffic is still A2P-*classified*, is still on the page under `[data-phone-a2p]` | archived 08-18 |

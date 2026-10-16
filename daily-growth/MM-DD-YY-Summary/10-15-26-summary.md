@@ -63,3 +63,13 @@ so the window reads "Terminal 4 · Buster Claw" once the last slot mounts.
 - Side by side was capped at three along with Stacked, on the reading that a
   fourth column is the same complaint turned sideways. One line in
   `available?/2` if four across should stay available.
+
+---
+
+## Later the same evening — four more
+
+| | |
+|---|---|
+| (second commit) | **Workspace deconstructed:** the page is the Directory alone; Notes and Calendar are work-area panels, one each, listed after Workspace in the sidebar. The note relay moved into `StatusLive`; eighteen tests moved hosts with three substitutions; `/calendar` untouched. **The file-tree rail:** its hover-only row actions reserved a third of the width while invisible — now overlays — and the rail resizes (192–720 px, remembered). **A focus guard** in the terminal hook: xterm no longer grabs the keyboard on attach while the operator is typing elsewhere — a guess at "the terminal pops open over the chat while I type", **not reproduced** in Chrome; awaiting the operator's detail. **`PHONE_REMOVAL_ROADMAP`** scoped (map only, nothing deleted): ~−7,000 lines across six phases; the paid tier stood on this leg, open question. |
+
+`mix precommit` green at 3,424 tests.

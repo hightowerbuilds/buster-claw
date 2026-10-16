@@ -66,6 +66,10 @@ defmodule BusterClawWeb.StatusLive do
       BusterClaw.Contacts.subscribe()
       # Keep the Activity tab's BC Minutes live as the agent appends entries.
       BusterClaw.Journal.subscribe()
+      # The Notes panel's component has no process of its own, so this host
+      # subscribes and relays (see the `{:notes, _}` clause) — the contract the
+      # Workspace page held while Notes lived there (09-05 → 10-15).
+      BusterClaw.Notes.subscribe()
       Process.send_after(self(), :sky_refresh, @sky_refresh_ms)
     end
 
@@ -575,6 +579,19 @@ defmodule BusterClawWeb.StatusLive do
     {:noreply, load_comms(socket)}
   end
 
+  # A note changed under us — an agent command, or another window. The component
+  # re-reads the vault and reconciles the open note; a draft in flight becomes
+  # the conflict banner rather than a silent replacement. `send_update` to a
+  # component that is not mounted is a no-op, so this is unconditional.
+  def handle_info({:notes, _event}, socket) do
+    send_update(BusterClawWeb.NotesComponent,
+      id: "workbench-notes",
+      refresh: System.unique_integer()
+    )
+
+    {:noreply, socket}
+  end
+
   def handle_info({BusterClawWeb.PhoneComponent, :reload, id}, socket) do
     BusterClawWeb.PhoneComponent.notify(id, :reload)
     {:noreply, socket}
@@ -687,6 +704,22 @@ defmodule BusterClawWeb.StatusLive do
               id: "workbench-workspace",
               session: %{"embedded" => true, "workbench" => true}
             )}
+          </:panel>
+          <%!-- Notes and Calendar: the same components the Workspace page hosted
+                (09-05 → 10-15) and `/calendar` still hosts. One of each. --%>
+          <:panel key="notes">
+            <div class="flex h-full min-h-0 flex-col">
+              <.live_component module={BusterClawWeb.NotesComponent} id="workbench-notes" />
+            </div>
+          </:panel>
+          <:panel key="calendar">
+            <div class="flex h-full min-h-0 flex-col overflow-y-auto">
+              <.live_component
+                module={BusterClawWeb.CalendarComponent}
+                id="workbench-calendar"
+                today={BusterClaw.LocalTime.today()}
+              />
+            </div>
           </:panel>
           <:panel :for={slot <- BusterClawWeb.WorkbenchState.terminal_slots()} key={slot}>
             {live_render(@socket, BusterClawWeb.TerminalLive,

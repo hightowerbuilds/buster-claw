@@ -41,7 +41,7 @@ are different objects with different jobs.
 
 ### The Notes commands — the operator's notebook, on request
 
-`notes/` is the operator's Markdown, shown on the Workspace page's Notes tab —
+`notes/` is the operator's Markdown, shown on the Notes panel —
 it was a Home sub-tab until 09-05. Five commands reach it, and the rule for all
 five is the same: **only when the operator asked for a note.** A finding you
 decided to write down is a Library document; what you did is an Activity entry;

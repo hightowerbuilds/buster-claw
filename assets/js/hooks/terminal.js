@@ -6,6 +6,7 @@ import {liveTerminals, currentTermTheme, termThemeWithBackground} from "../lib/t
 import {stripTransparentBackgroundPaint, flushTransparentBackgroundPaint} from "../lib/ansi.js"
 import {registerTerminal, unregisterTerminal} from "../lib/tabs.js"
 import {escapeHtml} from "../lib/html.js"
+import {isTypingContext} from "../lib/keys.js"
 
 // PTY-backed terminal (desktop only). xterm.js renders here; the PTY lives in
 // the Tauri Rust backend, reached over IPC. In a plain browser (no Tauri) we
@@ -140,7 +141,12 @@ export const TerminalView = {
       this.resizeObserver.observe(this.el)
       // Sync the PTY to the current viewport (important after a reattach).
       if (this.id) invoke("terminal_resize", {id: this.id, cols: term.cols, rows: term.rows})
-      term.focus()
+      // Take the keyboard only if nobody is typing somewhere else. Attaching
+      // is async (fonts, then the PTY round trip), so by the time we get here
+      // the operator may be mid-sentence in the chat composer — and a terminal
+      // that grabs focus then swallows the rest of the sentence. (10-15)
+      const typingElsewhere = isTypingContext(document.activeElement) && !this.el.contains(document.activeElement)
+      if (!typingElsewhere) term.focus()
       if (openedNewSession) await this.runStartupCommand(invoke)
     } catch (e) {
       this.setStatus("Error")

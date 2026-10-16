@@ -61,7 +61,7 @@ Everything you create lives under the workspace folder (`{{WORKSPACE_ROOT}}`):
   single self-contained `.html` file (inline CSS/JS, real `<title>`) here —
   the in-app browser's **Pages** button lists this folder, so this is how the
   user finds your pages again.
-- `notes/` — the operator's notebook: user-authored Markdown surfaced on the Workspace page's Notes tab, reachable with `note_*`. Never the activity log; edit it only when the operator asks.
+- `notes/` — the operator's notebook: user-authored Markdown surfaced on the Notes panel, reachable with `note_*`. Never the activity log; edit it only when the operator asks.
 - `journal/` — **the Activity record**: the one activity log, one `YYYY-MM-DD.md` per day, shown on the far-right homepage Activity tab (see below).
 - `sounds/` — audio: `sounds/music/` for the library, `sounds/studio/` for cuts in progress.
 - `pockets/` — the operator's typed folders of media, one per Pocket, each with a `POCKET.md` manifest (see **Pockets** below). Their background images live in `pockets/backgrounds/`.

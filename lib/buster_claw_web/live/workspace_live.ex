@@ -1,66 +1,34 @@
 defmodule BusterClawWeb.WorkspaceLive do
   @moduledoc """
-  The Workspace page, behind three sub-tabs: **Directory**, **Notes**, **Calendar**.
+  The Workspace page: the reusable `FileTree` with a preview pane and free
+  directory navigation (an "Up" button, a clickable breadcrumb, and Home), so you
+  can browse anywhere (e.g. up to the Desktop). Any folder you navigate to can be
+  made the workspace via "Set as workspace", which applies immediately (no
+  restart) and is persisted for the next launch.
 
-  **Directory** is what this page has always been — the reusable `FileTree` with a
-  preview pane and free directory navigation (an "Up" button, a clickable
-  breadcrumb, and Home), so you can browse anywhere (e.g. up to the Desktop). Any
-  folder you navigate to can be made the workspace via "Set as workspace", which
-  applies immediately (no restart) and is persisted for the next launch.
-
-  **Notes and Calendar moved here from the homepage on 09-05** (operator). Both
-  are the same `LiveComponent` the homepage hosted and the `/calendar` route still
-  hosts — nothing about either was rewritten, because both were built embeddable
-  from the start. What changed is which page provides the chrome, and that they
-  now sit beside the files they are about rather than beside the chat.
-
-  ## The host contract this page took on with them
-
-  `NotesComponent` has no process of its own, so **this LiveView subscribes and
-  relays**: a `note_*` command run in the terminal has to reach an open rail
-  without a tab switch. `CalendarComponent` needs no relay — it takes `today` and
-  owns everything else — but it does need `today` passed, which is why this mount
-  computes one.
+  Notes and Calendar were this page's sub-tabs from 09-05 to 10-15; they are
+  work-area panels of their own now (`StatusLive`), opened from the sidebar, one
+  of each. The agent's `note_*` and calendar commands are unchanged.
   """
   use BusterClawWeb, :live_view
 
   alias BusterClaw.FileManager
   alias BusterClaw.Library.Artifact
-  alias BusterClaw.LocalTime
   alias BusterClaw.Setup
-
-  # The Workspace sub-tabs, in display order — ONE list, feeding both the rail
-  # and the `select_workspace_tab` guard. Two lists is how Home once shipped a
-  # button the server refused; see `StatusLive`.
-  @workspace_tabs [
-    {"directory", "Directory"},
-    {"notes", "Notes"},
-    {"calendar", "Calendar"}
-  ]
-  @workspace_tab_keys Enum.map(@workspace_tabs, &elem(&1, 0))
-
-  @doc "The Workspace sub-tabs, in display order. The rail and the guard share this."
-  def workspace_tabs, do: @workspace_tabs
 
   @impl true
   def mount(_params, _session, socket) do
     workspace = Artifact.workspace_root()
 
-    # The Notes rail must show an agent's `note_*` write without a tab switch.
-    # A `LiveComponent` cannot subscribe for itself, so the host does it and
-    # relays — the same contract `StatusLive` held until Notes moved here.
-    if connected?(socket), do: BusterClaw.Notes.subscribe()
-
     {:ok,
      socket
      |> assign(:page_title, "Workspace")
-     |> assign(:workspace_tab, "directory")
-     |> assign(:today, LocalTime.today())
      |> assign(:workspace_root, workspace)
      |> assign(:tree_root, workspace)
      |> assign(:tree_base, workspace)
      |> assign(:preview, nil)
      |> assign(:sidebar_open, true)
+     |> assign(:rail_width, BusterClawWeb.WorkspaceRail.default_width())
      |> assign(:note, nil)
      |> assign(:tree_version, 0)
      |> allow_upload(:import,
@@ -103,13 +71,13 @@ defmodule BusterClawWeb.WorkspaceLive do
   end
 
   @impl true
-  def handle_event("select_workspace_tab", %{"tab" => tab}, socket)
-      when tab in @workspace_tab_keys do
-    {:noreply, assign(socket, :workspace_tab, tab)}
-  end
-
   def handle_event("toggle_sidebar", _params, socket) do
     {:noreply, update(socket, :sidebar_open, &(not &1))}
+  end
+
+  def handle_event("rail_resize", %{"width" => width}, socket) do
+    clamped = BusterClawWeb.WorkspaceRail.clamp_width(width, socket.assigns.rail_width)
+    {:noreply, assign(socket, :rail_width, clamped)}
   end
 
   @impl true
@@ -177,20 +145,6 @@ defmodule BusterClawWeb.WorkspaceLive do
     {:noreply, assign(socket, :preview, preview_for(path, socket.assigns.tree_base))}
   end
 
-  # A note changed under us — an agent command, or another window. The component
-  # re-reads the vault and reconciles the open note; a draft in flight turns this
-  # into the conflict banner rather than a silent replacement. Relayed
-  # unconditionally: `send_update` to a component that is not currently rendered
-  # is a no-op, so this stays correct while the Directory tab is showing.
-  def handle_info({:notes, _event}, socket) do
-    send_update(BusterClawWeb.NotesComponent,
-      id: "workspace-notes",
-      refresh: System.unique_integer()
-    )
-
-    {:noreply, socket}
-  end
-
   # Navigate the tree to a directory (always allowed); ops stay scoped to it.
   defp navigate(socket, dir) do
     dir = Path.expand(dir)
@@ -234,36 +188,7 @@ defmodule BusterClawWeb.WorkspaceLive do
           </p>
         </div>
 
-        <%!-- The Workspace sub-tabs. ONE list feeds both the rail and the
-              `select_workspace_tab` guard, which is the shape `StatusLive`
-              arrived at the hard way: Home once offered a button the server had
-              never heard of, and the click raised. --%>
-        <div
-          class="flex gap-0.5 border-2 border-base-content/20 p-0.5"
-          role="tablist"
-          aria-label="Workspace view"
-        >
-          <button
-            :for={{key, label} <- workspace_tabs()}
-            type="button"
-            role="tab"
-            aria-selected={@workspace_tab == key}
-            phx-click="select_workspace_tab"
-            phx-value-tab={key}
-            class={[
-              "px-3 py-1.5 font-display text-xs font-bold uppercase tracking-wide transition",
-              if(@workspace_tab == key,
-                do: "bg-primary text-primary-content",
-                else: "text-base-content/60 hover:text-base-content"
-              )
-            ]}
-          >
-            {label}
-          </button>
-        </div>
-
-        <%!-- Directory: everything this page was before 09-05. --%>
-        <div :if={@workspace_tab == "directory"} class="flex min-h-0 flex-1 flex-col space-y-4">
+        <div class="flex min-h-0 flex-1 flex-col space-y-4">
           <div class="flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -348,11 +273,20 @@ defmodule BusterClawWeb.WorkspaceLive do
               {upload_error_to_string(err)}
             </p>
 
-            <div class="flex min-h-0 shrink-0">
-              <section class={[
-                "ic-panel min-h-0 w-[20rem] overflow-hidden p-3",
-                not @sidebar_open && "hidden"
-              ]}>
+            <div
+              id="workspace-rail"
+              phx-hook="WorkspaceRail"
+              data-width={@rail_width}
+              class="flex min-h-0 shrink-0"
+            >
+              <section
+                id="workspace-tree-rail"
+                style={"width: #{@rail_width}px"}
+                class={[
+                  "ic-panel min-h-0 overflow-hidden p-3 pr-2",
+                  not @sidebar_open && "hidden"
+                ]}
+              >
                 <.live_component
                   module={BusterClawWeb.FileTree}
                   id="workspace-tree"
@@ -362,6 +296,7 @@ defmodule BusterClawWeb.WorkspaceLive do
                   version={@tree_version}
                 />
               </section>
+              <BusterClawWeb.WorkspaceRail.handle open={@sidebar_open} />
 
               <button
                 type="button"
@@ -382,23 +317,6 @@ defmodule BusterClawWeb.WorkspaceLive do
               <.preview preview={@preview} />
             </section>
           </div>
-        </div>
-
-        <%!-- The same components the homepage used to host, moved here whole
-              (`WORKSPACE_TABS_ROADMAP`). Both were already embeddable and both
-              already had two hosts; this is the third, and it is why neither
-              needed a line changed. Notes needs a relay because it has no
-              process of its own; Calendar takes `today` and owns the rest. --%>
-        <div :if={@workspace_tab == "notes"} class="flex min-h-0 flex-1 flex-col">
-          <.live_component module={BusterClawWeb.NotesComponent} id="workspace-notes" />
-        </div>
-
-        <div :if={@workspace_tab == "calendar"} class="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          <.live_component
-            module={BusterClawWeb.CalendarComponent}
-            id="workspace-calendar"
-            today={@today}
-          />
         </div>
       </section>
     </Layouts.app>

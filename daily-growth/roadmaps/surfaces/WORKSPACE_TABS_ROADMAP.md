@@ -2,6 +2,8 @@
 
 **Scoped and SHIPPED 2026-09-05.**
 
+> **REVERSED 10-15-26 (operator).** Notes and Calendar left the Workspace page again and became work-area panels of their own, opened from the sidebar, one of each (`WorkbenchState` keys `notes` and `calendar`; hosts in `StatusLive`, the note relay with them). The Workspace page is the Directory alone. The move cost what this map said a move costs: the hosts, the relay, and three substitutions in eighteen tests.
+
 > ### The one-sentence version
 >
 > **Notes and Calendar move off the homepage and onto the Workspace page, beside

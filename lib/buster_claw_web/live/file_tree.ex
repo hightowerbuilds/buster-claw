@@ -257,6 +257,13 @@ defmodule BusterClawWeb.FileTree do
     """
   end
 
+  # Hidden until the row is hovered, and overlaid on its right end over the
+  # row's own hover colour, so the filename keeps the full width. No pointer
+  # events while invisible, so a click on the tail of a long name still selects.
+  defp row_actions_class do
+    "pointer-events-none absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-1 rounded-sm bg-base-200 pl-2 opacity-0 transition group-hover:pointer-events-auto group-hover:opacity-100"
+  end
+
   # Recursive tree renderer.
   attr :entries, :list, required: true
   attr :depth, :integer, required: true
@@ -268,7 +275,7 @@ defmodule BusterClawWeb.FileTree do
       <li :for={e <- @entries}>
         <div
           class={[
-            "group flex items-center gap-1 rounded-sm px-1 py-0.5 hover:bg-base-200",
+            "group relative flex items-center gap-1 rounded-sm px-1 py-0.5 hover:bg-base-200",
             @tree.selected == e.path && "bg-base-200"
           ]}
           style={"padding-left: #{@depth * 0.85 + 0.25}rem"}
@@ -312,7 +319,7 @@ defmodule BusterClawWeb.FileTree do
             <span class="truncate">{e.name}</span>
           </button>
 
-          <div :if={@tree.mode == :select and e.type == :dir} class="shrink-0">
+          <div :if={@tree.mode == :select and e.type == :dir} class={row_actions_class()}>
             <button
               type="button"
               phx-click="use_workspace"
@@ -324,10 +331,10 @@ defmodule BusterClawWeb.FileTree do
             </button>
           </div>
 
-          <div
-            :if={@tree.mode == :manage}
-            class="flex shrink-0 items-center gap-1 opacity-0 transition group-hover:opacity-100"
-          >
+          <%!-- The actions float over the row's tail on hover. Reserved inline, they
+                took a third of a 20rem rail from every filename even while
+                invisible (10-15). --%>
+          <div :if={@tree.mode == :manage} class={row_actions_class()}>
             <button
               :if={match?({:move, _}, @tree.action) and e.type == :dir}
               type="button"

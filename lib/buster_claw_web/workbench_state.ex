@@ -4,6 +4,8 @@ defmodule BusterClawWeb.WorkbenchState do
   @panels [
     %{key: "chat", label: "Chat", icon: "hero-chat-bubble-left-right"},
     %{key: "workspace", label: "Workspace", icon: "hero-folder"},
+    %{key: "notes", label: "Notes", icon: "hero-pencil-square"},
+    %{key: "calendar", label: "Calendar", icon: "hero-calendar-days"},
     %{key: "terminal", label: "Terminal", icon: "hero-command-line"},
     %{key: "pockets", label: "Pockets", icon: "hero-squares-2x2"},
     %{key: "phone", label: "Phone", icon: "hero-phone"},
