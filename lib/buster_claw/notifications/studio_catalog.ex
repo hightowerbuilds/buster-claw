@@ -44,9 +44,6 @@ defmodule BusterClaw.Notifications.StudioCatalog do
   alias BusterClaw.Notifications.Sound
   alias BusterClaw.Notifications.SoundStudio
   alias BusterClaw.Notifications.StudioMix
-  alias BusterClaw.Settings
-
-  @collapsed_key "studio_collapsed_groups"
 
   @doc """
   Every source the studio can open, grouped for the sidebar.
@@ -88,32 +85,6 @@ defmodule BusterClaw.Notifications.StudioCatalog do
   which is what `Studio.Render` is passed.
   """
   def resolve_source(id), do: find_source(groups(), id)
-
-  @doc """
-  Sidebar groups the operator has folded shut, by key.
-
-  Persisted, because a fold that survives a tab switch and not a restart is a
-  preference the app keeps forgetting. **Filtered against `group_keys/0` on
-  read** — the same posture as `Sound.sound_map/0` dropping entries whose file
-  is gone: a group the app stops shipping must not leave a key behind forever,
-  and a hand-edited settings row cannot introduce one.
-  """
-  def collapsed_groups do
-    case Jason.decode(Settings.get(@collapsed_key) || "[]") do
-      {:ok, keys} when is_list(keys) -> Enum.filter(keys, &(&1 in group_keys()))
-      _ -> []
-    end
-  end
-
-  @doc "Store the folded set, dropping the row entirely when nothing is folded."
-  def put_collapsed(keys) when is_list(keys) do
-    case Enum.filter(keys, &(&1 in group_keys())) do
-      [] -> Settings.delete(@collapsed_key)
-      kept -> Settings.put(@collapsed_key, Jason.encode!(kept))
-    end
-
-    :ok
-  end
 
   defp mix_items do
     Enum.map(StudioMix.list(), fn name ->

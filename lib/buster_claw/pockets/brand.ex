@@ -155,10 +155,6 @@ defmodule BusterClaw.Pockets.Brand do
   def slot(role) when is_binary(role), do: Enum.find(@slots, &(&1.role == role))
   def slot(_role), do: nil
 
-  @doc "Whether `name` is a Pocket this module owns."
-  def brand_pocket?(name) when is_binary(name), do: Enum.any?(@slots, &(&1.pocket == name))
-  def brand_pocket?(_name), do: false
-
   @doc """
   The state of one slot: `:default`, `:custom`, or `{:error, :too_many, count}`.
 

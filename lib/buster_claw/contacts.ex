@@ -56,13 +56,6 @@ defmodule BusterClaw.Contacts do
     |> tap_broadcast()
   end
 
-  def update_contact(%Contact{} = contact, attrs) do
-    contact
-    |> Contact.changeset(attrs)
-    |> Repo.update()
-    |> tap_broadcast()
-  end
-
   @doc """
   Delete a contact.
 

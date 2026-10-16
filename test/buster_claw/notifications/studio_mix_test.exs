@@ -437,7 +437,7 @@ defmodule BusterClaw.Notifications.StudioMixTest do
       assert got.start_ms == clip.start_ms
     end
 
-    test "a clip written before the field still answers", %{mix: mix, clip: clip} do
+    test "a clip written before the field still answers", %{mix: _mix, clip: clip} do
       # Every mix from before 08-16 has clips with no `offset_ms` key at all and
       # must keep opening — the same tolerance `chain/1` gives `effects`. Zero
       # is also the right answer: those clips start at the beginning.

@@ -8,7 +8,6 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
   alias BusterClaw.Notifications.SoundStudio
   alias BusterClaw.Notifications.StudioMix
   alias BusterClawWeb.SoundStudio.Catalog
-  alias BusterClawWeb.SoundStudioComponent
 
   setup do
     root = Path.join(System.tmp_dir!(), "bc_studio_#{System.unique_integer([:positive])}")
