@@ -1,6 +1,6 @@
 // Aggregates every LiveView hook into one object for the LiveSocket. Each hook
 // lives in its own domain module; add new ones here.
-import {CornerWidget} from "./corner_widget.js"
+import {Workbench, WorkbenchMenu} from "./workbench.js"
 import {BrowserActivity} from "./browser_activity.js"
 import {Olympus} from "./olympus.js"
 import {Clock, DockClock} from "./clock.js"
@@ -14,7 +14,6 @@ import {TabStrip} from "./tab_strip.js"
 import {DutyTab} from "./duty_tab.js"
 import {SplitResizer} from "./split.js"
 import {TerminalView, TermThemePicker} from "./terminal.js"
-import {DockNewTerminal} from "./dock_terminal.js"
 import {SmokeBackground} from "./smoke_background.js"
 import {AudioClip} from "./audio_clip.js"
 import {WaveTrim} from "./wave_trim.js"
@@ -38,10 +37,11 @@ import {NoteContextMenu, NoteTitle} from "./note_context.js"
 import {ClinchManager, ClinchAppKeys, RecoveryKey} from "./clinch.js"
 
 export const Hooks = {
+  Workbench,
+  WorkbenchMenu,
   BrowserActivity,
   Olympus,
   VoiceAudition,
-  CornerWidget,
   Clock,
   DockClock,
   ScreenshotBridge,
@@ -61,7 +61,6 @@ export const Hooks = {
   SplitResizer,
   TerminalView,
   TermThemePicker,
-  DockNewTerminal,
   SmokeBackground,
   AudioClip,
   WaveTrim,

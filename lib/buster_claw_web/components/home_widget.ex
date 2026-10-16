@@ -1,7 +1,6 @@
 defmodule BusterClawWeb.HomeWidget do
   @moduledoc """
-  Home header corner widget: the card that fills the header gap to the right of
-  the banner, and the rail that picks which of its three tabs is showing.
+  The Clock panel and the rail that picks which of its three tabs is showing.
 
   **A rail and a dispatch, and nothing else** — the shape `explained_panel.ex` is
   cited for. Each tab is its own module under `BusterClawWeb.Widget`:
@@ -58,34 +57,15 @@ defmodule BusterClawWeb.HomeWidget do
   attr :notify_kind, :string, required: true
   attr :widget_bg, :map, required: true
 
-  # Calendar + Contacts as a rectangle filling the header gap to the right of the
-  # banner. The card is absolutely positioned to fill the widget box, so its
-  # content scrolls instead of growing the header. When the CornerWidget hook
-  # finds the header too narrow to fit the widget beside the banner it collapses
-  # the widget to a right-edge bumper that pops the card back out on click.
-  def corner_widget(assigns) do
+  def clock_panel(assigns) do
     assigns = assign(assigns, :widget_tabs, @widget_tabs)
 
     ~H"""
     <div
       id="home-corner-widget"
-      phx-hook="CornerWidget"
-      data-banner="#bc-heading"
-      class="ic-corner-widget relative min-w-0"
+      class="ic-clock-panel relative min-w-0"
     >
-      <button
-        type="button"
-        data-corner-bumper
-        aria-label="Show Calendar and Contacts"
-        class="ic-corner-bumper"
-      >
-        <.icon name="hero-chevron-left" class="size-4" />
-      </button>
-
-      <div
-        data-corner-card
-        class="ic-corner-card ic-panel ic-scanlines flex flex-col overflow-hidden"
-      >
+      <div class="ic-clock-card ic-panel ic-scanlines flex flex-col overflow-hidden">
         <div
           role="tablist"
           aria-label="Widget"

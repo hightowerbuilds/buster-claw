@@ -44,7 +44,8 @@ defmodule BusterClawWeb.StatusLiveTest do
     # Browser-style shell: top tab strip + bottom dock (former sidebar).
     assert response =~ ~s(id="tab-strip")
     assert response =~ ~s(phx-hook="TabStrip")
-    assert response =~ ~s(id="app-dock")
+    assert response =~ ~s(id="app-sidebar")
+    refute response =~ ~s(id="app-dock")
     # Get Started moved to a Settings sub-tab — the home page no longer carries it.
     refute response =~ ~s(id="home-get-started")
     refute response =~ "Install Claude Code"
@@ -58,7 +59,7 @@ defmodule BusterClawWeb.StatusLiveTest do
     # Corner widget: Contacts / Time & Place / Notify (Calendar moved out of the
     # widget and onto the Home sub-tab row).
     assert response =~ ~s(id="home-corner-widget")
-    assert response =~ ~s(phx-hook="CornerWidget")
+    assert response =~ ~s(id="home-clock")
     assert response =~ "Contacts"
     # Home sub-tabs. Notes and Calendar LEFT on 09-05 for the Workspace page's
     # own rail; asserted as absences here because "the tab row still offers it"
@@ -668,7 +669,7 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert text =~ "Please email Dana Ops (dana@example.com) with the following message:"
       # Chat is now the active sub-tab (calendar/notes hidden).
       refute has_element?(view, "#calendar-grid")
-      assert has_element?(view, "button[phx-value-tab='chat'].bg-primary")
+      assert has_element?(view, "#workbench-pane-chat[data-active='true']")
     end
 
     test "recent phone activity surfaces in the Contacts widget", %{conn: conn} do
@@ -995,24 +996,25 @@ defmodule BusterClawWeb.StatusLiveTest do
 
       refute has_element?(view, "#calendar-grid")
       # The active sub-tab carries the primary wash; Chat is active on load.
-      assert has_element?(view, "button[phx-value-tab='chat'].bg-primary")
-      refute has_element?(view, "button[phx-value-tab='calendar'].bg-primary")
+      assert has_element?(view, "#workbench-pane-chat[data-active='true']")
+      refute has_element?(view, "#workbench-pane-calendar[data-active='true']")
     end
 
     # Phone left the dock on 08-08 and became a Home sub-tab. These assert the
     # move itself — the Message Machine's own behavior stays covered by
     # `PhoneLiveTest` against `/phone`, since both surfaces render one component.
-    test "the Phone sub-tab shows the Message Machine and hides the chat", %{conn: conn} do
+    test "the Phone panel opens beside Chat and stays mounted when focus changes", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
       render_click(view, "select_home_tab", %{"tab" => "phone"})
 
       assert has_element?(view, "#home-phone-root")
       assert has_element?(view, "#phone-keypad-stage")
-      assert has_element?(view, "button[phx-value-tab='phone'].bg-primary")
+      assert has_element?(view, "#workbench-pane-phone[data-active='true']")
 
       render_click(view, "select_home_tab", %{"tab" => "chat"})
-      refute has_element?(view, "#home-phone-root")
+      assert has_element?(view, "#home-phone-root")
+      assert has_element?(view, "#workbench-pane-chat:not([hidden])")
     end
 
     test "Phone is gone from the dock but still reachable directly", %{conn: conn} do
@@ -1035,9 +1037,9 @@ defmodule BusterClawWeb.StatusLiveTest do
       # Every tab the rail offers must be one the server accepts. This is the
       # test for the bug the single list exists to prevent.
       for {key, _label} <- BusterClawWeb.StatusLive.home_tabs() do
-        assert has_element?(view, "button[phx-value-tab='#{key}']")
+        assert has_element?(view, "#home-tab-#{key}")
         render_click(view, "select_home_tab", %{"tab" => key})
-        assert has_element?(view, "button[phx-value-tab='#{key}'].bg-primary")
+        assert has_element?(view, "#workbench-pane-#{key}[data-active='true']")
       end
     end
 
@@ -1073,7 +1075,7 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert has_element?(view, "#home-activity")
       assert has_element?(view, "#activity-summary")
       assert has_element?(view, "#activity-reading")
-      assert has_element?(view, "button[phx-value-tab='activity'].bg-primary")
+      assert has_element?(view, "#workbench-pane-activity[data-active='true']")
       refute has_element?(view, "#journal-composer-form")
       refute has_element?(view, "#note-editor-form")
       assert render(view) =~ "Handled dispatch #7."
@@ -1091,18 +1093,16 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert render(view) =~ "Saved launch review."
     end
 
-    test "Activity is the far-right Home tab" do
+    test "the work area menu includes every panel, including Clock" do
       expected = [
         {"chat", "Chat"},
-        # Notes and Calendar LEFT the same day, for the Workspace page's rail.
-        # This snapshot failing in the REMOVING direction is the same service it
-        # does when a tab is added: somebody has to look.
+        {"workspace", "Workspace"},
+        {"terminal", "Terminal"},
         {"pockets", "Pockets"},
         {"phone", "Phone"},
-        # Studio left Home for `/studio` on 08-16. A review-forcing snapshot:
-        # a tab added to or removed from Home must fail here so somebody looks.
         {"explained", "Explained"},
-        {"activity", "Activity"}
+        {"activity", "Activity"},
+        {"clock", "Clock"}
       ]
 
       assert BusterClawWeb.StatusLive.home_tabs() == expected
@@ -1114,7 +1114,7 @@ defmodule BusterClawWeb.StatusLiveTest do
 
       html = render_click(view, "select_home_tab", %{"tab" => "explained"})
 
-      assert has_element?(view, "button[phx-value-tab='explained'].bg-primary")
+      assert has_element?(view, "#workbench-pane-explained[data-active='true']")
       assert has_element?(view, "#home-explained")
       # Intro is the default sub-tab and carries the what-this-is copy.
       assert has_element?(
@@ -1754,7 +1754,7 @@ defmodule BusterClawWeb.StatusLiveTest do
 
       assert_push_event(view, "bc:chat_prefill", %{text: text})
       assert text =~ "Save that plan as a document"
-      assert has_element?(view, "button[phx-value-tab='chat'].bg-primary")
+      assert has_element?(view, "#workbench-pane-chat[data-active='true']")
 
       # A forged or oversized payload is refused rather than crashing the page —
       # same posture as the sub-tab whitelist beside it.
@@ -2077,7 +2077,7 @@ defmodule BusterClawWeb.StatusLiveTest do
       render_click(view, "select_home_tab", %{"tab" => "explained"})
       render_click(view, "select_explained_tab", %{"tab" => "browser"})
       render_click(view, "select_home_tab", %{"tab" => "chat"})
-      refute has_element?(view, "#home-explained")
+      assert has_element?(view, "#workbench-pane-explained:not([hidden])")
 
       render_click(view, "select_home_tab", %{"tab" => "explained"})
 

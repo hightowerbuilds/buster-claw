@@ -50,9 +50,9 @@ describe("chromeChips", () => {
   ]
   const byPath = (chips) => Object.fromEntries(chips.map((c) => [c.path, c]))
 
-  test("Home comes first, exactly once, and is never closable", () => {
+  test("Work area comes first, exactly once, and is never closable", () => {
     const chips = chromeChips(saved, "/browse?t=a")
-    expect(chips[0]).toMatchObject({path: "/", current: false, closable: false})
+    expect(chips[0]).toMatchObject({path: "/", label: "Work area", current: false, closable: false})
     expect(chips.filter((c) => c.path === "/").length).toBe(1)
   })
 
@@ -126,9 +126,14 @@ describe("canonicalGroupKey", () => {
   })
 
   test("ungrouped routes return null", () => {
-    for (const p of ["/", "/terminal", "/browse", "/calendar", "/workspace"]) {
+    for (const p of ["/terminal", "/browse", "/calendar", "/workspace"]) {
       expect(canonicalGroupKey(p)).toBeNull()
     }
+  })
+
+  test("work-area panel links stay in the Home tab", () => {
+    expect(canonicalGroupKey("/")).toBe("/")
+    expect(tabDestination({path: "/", href: "/?panel=clock"})).toBe("/?panel=clock")
   })
 })
 

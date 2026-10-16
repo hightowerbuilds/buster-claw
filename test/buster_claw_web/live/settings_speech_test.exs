@@ -29,7 +29,7 @@ defmodule BusterClawWeb.SettingsSpeechTest do
     {:ok, home, _html} = live(conn, ~p"/")
     render_click(home, "select_home_tab", %{"tab" => "phone"})
     render_click(home, "select_home_tab", %{"tab" => "vox"})
-    assert has_element?(home, "#home-tab-chat[aria-selected='true']")
+    assert has_element?(home, "#workbench-pane-chat[data-active='true']")
     refute has_element?(home, "#home-tab-vox")
     refute has_element?(home, "#home-vox")
   end

@@ -119,14 +119,13 @@ defmodule BusterClawWeb.TerminalLiveTest do
     assert has_element?(view, "[id^='terminal-root'][data-session-key='bad-key']")
   end
 
-  test "the dock Terminal button opens a fresh shell (hook-driven, not a plain link)", %{
-    conn: conn
-  } do
+  test "Terminal opens in the work area with a persistent session", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/")
-
-    # It's a DockNewTerminal hook button (JS mints a unique session + tab per
-    # click), not a navigate link to the shared /terminal "main" shell.
-    assert has_element?(view, "button#dock-new-terminal[phx-hook='DockNewTerminal']")
+    render_click(view, "select_home_tab", %{"tab" => "terminal"})
+    terminal = find_live_child(view, "workbench-terminal")
+    assert has_element?(view, "#workbench-pane-terminal:not([hidden])")
+    assert has_element?(terminal, "[phx-hook='TerminalView'][data-session-key='workbench']")
+    assert has_element?(terminal, "[data-terminal-bg-active='true']")
     refute has_element?(view, "#app-dock a[href='/terminal']")
   end
 

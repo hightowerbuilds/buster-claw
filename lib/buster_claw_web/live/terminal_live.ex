@@ -51,6 +51,7 @@ defmodule BusterClawWeb.TerminalLive do
        terminal_path(terminal_session_key, terminal_label, startup_profile)
      )
      |> assign(:embedded?, BusterClawWeb.ChromeHook.embedded?())
+     |> assign(:workbench?, session["workbench"] == true)
      |> assign_shared_home()
      |> assign(:cwd, Artifact.workspace_root())
      |> assign(:dom_id, dom_id)
@@ -69,10 +70,10 @@ defmodule BusterClawWeb.TerminalLive do
         id={"#{@dom_id}-session"}
         data-terminal-session-shell
         data-terminal-embedded={to_string(@embedded?)}
-        data-terminal-bg-active={to_string(bg_active?(@terminal_bg) or @shared_home?)}
+        data-terminal-bg-active={to_string(bg_active?(@terminal_bg) or @shared_home? or @workbench?)}
         class={[
           "relative isolate flex min-h-0 flex-col overflow-hidden",
-          if(@embedded? and (bg_active?(@terminal_bg) or @shared_home?),
+          if(@embedded? and (bg_active?(@terminal_bg) or @shared_home? or @workbench?),
             do: "bg-transparent",
             else: "bg-base-100"
           ),
@@ -189,12 +190,17 @@ defmodule BusterClawWeb.TerminalLive do
           data-toolbar-id={@toolbar_id}
           data-status-id={@status_id}
           data-terminal-embedded={to_string(@embedded?)}
-          data-terminal-bg-active={to_string(bg_active?(@terminal_bg) or @shared_home?)}
+          data-terminal-bg-active={
+            to_string(bg_active?(@terminal_bg) or @shared_home? or @workbench?)
+          }
           data-terminal-bg-source={bg_source(@terminal_bg, @embedded?, @shared_home?)}
           data-terminal-bg-image={bg_image(@terminal_bg, @embedded?, @shared_home?)}
           class={[
             "relative z-10 min-h-0 flex-1 overflow-hidden p-3",
-            if(bg_active?(@terminal_bg) or @shared_home?, do: "bg-transparent", else: "bg-base-100"),
+            if(bg_active?(@terminal_bg) or @shared_home? or @workbench?,
+              do: "bg-transparent",
+              else: "bg-base-100"
+            ),
             if(@embedded?, do: "h-full", else: "")
           ]}
         >
@@ -351,7 +357,7 @@ defmodule BusterClawWeb.TerminalLive do
     %{terminal_bg: bg, embedded?: embedded?, shared_home?: shared?} = socket.assigns
 
     push_event(socket, "terminal-background", %{
-      active: bg_active?(bg) or shared?,
+      active: bg_active?(bg) or shared? or socket.assigns.workbench?,
       source: bg_source(bg, embedded?, shared?),
       image: bg_image(bg, embedded?, shared?)
     })

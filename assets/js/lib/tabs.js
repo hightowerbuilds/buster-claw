@@ -29,6 +29,7 @@ const TAB_GROUPS = [
 // Canonical top-tab path for a route: the owning group's key if the route is in
 // a collapsed group, else null.
 export function canonicalGroupKey(path) {
+  if (path === "/") return "/"
   for (const g of TAB_GROUPS) if (g.paths.has(path)) return g.key
   return null
 }
@@ -42,7 +43,7 @@ export function tabDestination(tab) {
   if (group && tab.href) {
     const href = recoverRetiredRoute(tab.href)
     const [path] = splitPathQuery(href.split("#")[0])
-    return canonicalGroupKey(path) === group ? href : "/appearance"
+    return canonicalGroupKey(path) === group ? href : (group === "/" ? "/" : "/appearance")
   }
   return recoverRetiredRoute(tab.href || tab.path)
 }
@@ -60,7 +61,9 @@ function splitPathQuery(fullPath) {
 export function loadTabs() {
   try {
     const saved = JSON.parse(localStorage.getItem(TAB_STORAGE_KEY)) || []
-    const tabs = recoverRetiredTabs(saved)
+    const tabs = recoverRetiredTabs(saved).map(tab =>
+      tab.path === "/" && tab.label === "Home" ? {...tab, label: "Work area"} : tab
+    )
     if (JSON.stringify(tabs) !== JSON.stringify(saved)) {
       try { saveTabs(tabs) } catch (_e) { /* Still recover when storage is full. */ }
     }
@@ -180,18 +183,18 @@ export function browserAppTab(sid) {
   try { return recoverRetiredRoute(localStorage.getItem(BROWSER_APP_TAB_KEY + sid)) } catch (_e) { return null }
 }
 
-// Chips for the chrome's row: Home first (the guaranteed way back), then every
-// saved tab except a persisted "/" (which would be a second Home). `current` is
+// Chips for the chrome's row: Work area first, then every saved tab except a
+// persisted "/" (which would duplicate it). `current` is
 // the recorded app tab when there is one; with none — a surface opened before
 // the recording existed — every browser tab counts as here, as it always did.
-// `closable` mirrors the DOM strip minus two cases: Home is the way back, and a
+// `closable` mirrors the DOM strip minus two cases: Work area is the way back, and a
 // split you are inside is not closed from one pane's chrome, where a busy
 // terminal in the other pane could not be asked about first.
 export function chromeChips(savedTabs, currentPath) {
   const saved = (Array.isArray(savedTabs) ? savedTabs : []).filter(
     (t) => t && typeof t.path === "string" && t.path.startsWith("/") && t.path.split("?")[0] !== "/"
   )
-  return [{path: "/", label: "Home"}].concat(saved).map((t) => {
+  return [{path: "/", label: "Work area"}].concat(saved).map((t) => {
     const base = t.path.split("?")[0]
     const current = currentPath
       ? t.path === currentPath

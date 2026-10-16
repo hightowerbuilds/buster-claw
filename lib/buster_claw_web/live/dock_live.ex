@@ -102,7 +102,8 @@ defmodule BusterClawWeb.DockLive do
             both written client-side by DockClock from data-* attributes. --%>
       <span
         :for={n <- @chips}
-        title={"#{String.capitalize(n.kind)} · #{n.label} — manage on Home → Notify"}
+        data-sidebar-notification
+        title={"#{String.capitalize(n.kind)} · #{n.label} — manage in Clock → Notify"}
         class="flex max-w-40 items-center gap-1.5 rounded-xs border border-base-content/20 px-2 py-1"
       >
         <span aria-hidden="true">{glyph(n.kind)}</span>
@@ -120,19 +121,21 @@ defmodule BusterClawWeb.DockLive do
         >
         </span>
       </span>
-      <span :if={@overflow > 0} class="text-base-content/45" title="More on Home → Notify">
+      <span :if={@overflow > 0} class="text-base-content/45" title="More in Clock → Notify">
         +{@overflow}
       </span>
 
       <span
         :if={@weather}
+        data-sidebar-temperature
         title={"#{@weather.label} in #{@weather.location} · feels #{@weather.feels_like_f}°"}
         class="text-base-content/80"
       >
         {@weather.temp_f}°
       </span>
 
-      <span data-clock class="tabular-nums text-sm font-semibold text-base-content"></span>
+      <span data-clock title="Local time" class="tabular-nums text-sm font-semibold text-base-content">
+      </span>
     </div>
     """
   end

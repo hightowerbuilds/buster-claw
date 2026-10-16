@@ -675,7 +675,7 @@ check lib/buster_claw/skills.ex                               469 HELD
 # Split with NO feature attached, on purpose: the roadmap that needed the room
 # makes the Time & Place shader selectable, and a decomposition in the same
 # commit as a behaviour change loses track of which one broke something.
-check lib/buster_claw_web/components/home_widget.ex           148 HELD
+check lib/buster_claw_web/components/home_widget.ex           130 HELD
 # The three panels, capped at their as-written size — this was a move, not a
 # rewrite, so there is no post-split target to leave headroom against.
 check lib/buster_claw_web/components/widget/place_panel.ex    205 HELD
@@ -871,7 +871,7 @@ check lib/buster_claw_web/components/pockets/brand_slots.ex   175 HELD
 check lib/buster_claw_web/components/brand_art.ex              59 HELD
 # The dock nav, lifted OUT of the layout so it can re-render (an app layout is
 # rendered once at mount and never diffed). Capped at arrival with no headroom.
-check lib/buster_claw_web/live/dock_nav_live.ex                45 HELD
+check lib/buster_claw_web/live/dock_nav_live.ex                29 HELD
 # Duty is now a routed page; its markup lives in duty_live.html.heex and the
 # sticky tab-state bridge is DutyTabLive. Ratchet the controller after that split.
 # Raised 112 -> 140 on 09-13 (THREE_DOORS Phase 2): the page renders idle now

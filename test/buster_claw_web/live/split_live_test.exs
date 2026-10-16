@@ -201,7 +201,7 @@ defmodule BusterClawWeb.SplitLiveTest do
 
     # Only the outer split view draws the shell; panes are chromeless.
     assert occurrences(html, ~s(id="tab-strip")) == 1
-    assert occurrences(html, ~s(id="app-dock")) == 1
+    assert occurrences(html, ~s(id="app-sidebar")) == 1
   end
 
   test "two joined browsers get independent left/right native surfaces", %{conn: conn} do
@@ -317,7 +317,7 @@ defmodule BusterClawWeb.SplitLiveTest do
     assert html =~ "Calendar"
     # Both panes are embedded → only the outer split view draws the shell.
     assert occurrences(html, ~s(id="tab-strip")) == 1
-    assert occurrences(html, ~s(id="app-dock")) == 1
+    assert occurrences(html, ~s(id="app-sidebar")) == 1
   end
 
   test "every workspace tab embeds alongside the terminal without crashing", %{conn: conn} do

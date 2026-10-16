@@ -34,21 +34,8 @@ defmodule BusterClawWeb.StatusLive do
   # host half of `PhoneComponent`'s contract and relays broadcasts to it.
   @phone_component_id "home-phone"
 
-  # The Home sub-tabs, in display order — ONE list, feeding both the rail and the
-  # `select_home_tab` guard. They were two lists until 08-08, which is how Phone
-  # arrived as a button the server then refused: the rail offered it, the guard
-  # had never heard of it, and the click raised.
-  # Notes and Calendar LEFT on 09-05 for the Workspace page's own rail (operator).
-  # They sit beside the files they are about now rather than beside the chat, and
-  # `WorkspaceLive` took the host contract with them — including the Notes relay,
-  # which is why `Notes.subscribe/0` is no longer in this mount.
-  @home_tabs [
-    {"chat", "Chat"},
-    {"pockets", "Pockets"},
-    {"phone", "Phone"},
-    {"explained", "Explained"},
-    {"activity", "Activity"}
-  ]
+  # One registry drives both the menu and its event whitelist.
+  @home_tabs Enum.map(BusterClawWeb.WorkbenchState.panels(), &{&1.key, &1.label})
   @home_tab_keys Enum.map(@home_tabs, &elem(&1, 0))
 
   # The corner widget's sub-tabs, owned by the component that renders the rail.
@@ -84,7 +71,7 @@ defmodule BusterClawWeb.StatusLive do
 
     {:ok,
      socket
-     |> assign(:page_title, "Home")
+     |> assign(:page_title, "Work area")
      |> assign(:home_bg, Appearance.home_background_state())
      |> assign(:terminal_bg, Appearance.terminal_background())
      |> assign(:split_panes, split_panes)
@@ -137,6 +124,7 @@ defmodule BusterClawWeb.StatusLive do
        progress: &handle_attach_progress/3
      )
      |> then(fn s -> if connected?(s), do: mount_weather(s), else: s end)
+     |> BusterClawWeb.WorkbenchHook.mount(params)
      |> stage_page_ask(params)}
   end
 
@@ -627,7 +615,9 @@ defmodule BusterClawWeb.StatusLive do
     {:noreply, assign(socket, :weather, {:error, {:exit, reason}})}
   end
 
-  defp switch_home_tab(socket, tab), do: assign(socket, :home_tab, tab)
+  defp switch_home_tab(socket, tab) do
+    socket |> assign(:home_tab, tab) |> BusterClawWeb.WorkbenchHook.open(tab)
+  end
 
   @impl true
   def render(assigns) do
@@ -644,14 +634,8 @@ defmodule BusterClawWeb.StatusLive do
       )
 
     ~H"""
-    <Layouts.app flash={@flash} socket={@socket} fit_viewport>
+    <Layouts.app flash={@flash} socket={@socket} full_bleed>
       <section class="ic-home relative isolate flex min-h-0 flex-1 flex-col">
-        <%!-- Homepage background (Appearance setting): an uploaded image, or a
-              hook-owned WebGPU shader canvas that LiveView never patches inside.
-              The shader div is keyed by design name, so changing it remounts the
-              hook with the new shader. Skipped when a joined tab paints this same
-              background across the whole split (SplitField) — the panels here
-              are veils over that one. --%>
         <div
           :if={@home_bg.mode == "image" and not @field_shared?}
           class="ic-home-bg"
@@ -665,72 +649,21 @@ defmodule BusterClawWeb.StatusLive do
           class="ic-home-bg"
           render?={not @field_shared?}
         />
-        <div class="relative z-10 flex min-h-0 flex-1 flex-col space-y-8">
-          <div class="flex items-stretch gap-4 border-b-2 border-base-content/20 pb-5">
-            <div class="shrink-0 space-y-4">
-              <BusterClawWeb.BrandArt.banner url={@banner_url} />
-              <div :if={not @setup_status.complete?} class="pt-1">
-                <.link
-                  navigate={~p"/setup"}
-                  class="inline-flex items-center gap-2 rounded bg-primary px-4 py-2 text-sm font-semibold text-primary-content transition hover:opacity-85"
-                >
-                  <.icon name="hero-sparkles" class="size-4" />
-                  <span :if={@setup_status.completed == 0}>Set up Buster Claw</span>
-                  <span :if={@setup_status.completed > 0}>
-                    Finish setup · {@setup_status.completed} of {@setup_status.total} complete
-                  </span>
-                </.link>
-              </div>
-            </div>
-            <BusterClawWeb.HomeWidget.corner_widget
-              widget_bg={@widget_bg}
-              tab={@widget_tab}
-              contacts={@comms_contacts}
-              activity={@phone_activity}
-              trusted={@trusted_people}
-              entries={@trusted_entries}
-              weather={@weather}
-              weather_form={@weather_form}
-              notifications={@notifications}
-              notify_form={@notify_form}
-              notify_kind={@notify_kind}
-            />
-          </div>
-
-          <div class="flex min-h-0 flex-1 flex-col gap-2">
-            <%!-- Home sub-tabs: Chat | Calendar. Switching to Calendar hides the
-                  chat entirely and mounts the full calendar in its place. The
-                  right side of this row was the active tab's action slot; the
-                  Studio was its only claimant and moved to /studio on 08-16, so
-                  nothing claims it today. --%>
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <div
-                class="flex gap-0.5 border-2 border-base-content/20 p-0.5"
-                role="tablist"
-                aria-label="Home view"
+        <BusterClawWeb.Workbench.shell
+          state={@workbench}
+          mounted={@workbench_mounted}
+        >
+          <:panel key="chat">
+            <div class="flex h-full min-h-0 flex-col gap-2">
+              <.link
+                :if={not @setup_status.complete?}
+                id="workbench-setup"
+                navigate={~p"/setup"}
+                class="text-[11px] text-primary hover:underline"
+                title={"#{@setup_status.completed} of #{@setup_status.total} setup steps complete"}
               >
-                <button
-                  :for={{key, label} <- home_tabs()}
-                  id={"home-tab-#{key}"}
-                  type="button"
-                  role="tab"
-                  aria-selected={to_string(@home_tab == key)}
-                  phx-click="select_home_tab"
-                  phx-value-tab={key}
-                  class={[
-                    "rounded-xs px-4 py-1.5 font-mono text-xs font-bold uppercase tracking-wide transition",
-                    if(@home_tab == key,
-                      do: "bg-primary text-primary-content",
-                      else: "text-base-content/60 hover:bg-base-content/10"
-                    )
-                  ]}
-                >
-                  {label}
-                </button>
-              </div>
-            </div>
-
-            <div :if={@home_tab == "chat"} class="flex min-h-0 flex-1 flex-col gap-2">
+                Finish setup
+              </.link>
               <BusterClawWeb.ChatPanel.chat_tabs chats={@chats} active={@active_chat} />
               <BusterClawWeb.ChatPanel.chat_panel
                 messages={@streams.chat_messages}
@@ -748,30 +681,53 @@ defmodule BusterClawWeb.StatusLive do
                 text_size={@chat_text_size}
               />
             </div>
-
-            <%!-- Phone left the dock on 08-08: a normal user has no provisioned
-                  number, so a top-level destination overstated the app. Same
-                  component the `/phone` route renders — see `PhoneComponent`. --%>
-            <div :if={@home_tab == "phone"} class="flex min-h-0 flex-1 flex-col overflow-y-auto">
-              <.live_component module={BusterClawWeb.PhoneComponent} id="home-phone" />
-            </div>
-
-            <div :if={@home_tab == "pockets"} class="flex min-h-0 flex-1 flex-col">
-              <.live_component module={BusterClawWeb.PocketsPanel} id="home-pockets" />
-            </div>
-
-            <div :if={@home_tab == "explained"} class="flex min-h-0 flex-1 flex-col">
-              <BusterClawWeb.ExplainedPanel.explained_panel tab={@explained_tab} />
-            </div>
-
-            <div :if={@home_tab == "activity"} class="flex min-h-0 flex-1 flex-col">
-              <.live_component module={BusterClawWeb.ActivityComponent} id="home-activity" />
-            </div>
-          </div>
-
-          <%!-- Full-screen SVG preview, opened by a message's "View drawing" link. --%>
-          <BusterClawWeb.ChatPanel.svg_modal svgs={@chat_svgs} zoomed={@zoomed_id} />
-        </div>
+          </:panel>
+          <:panel key="workspace">
+            {live_render(@socket, BusterClawWeb.WorkspaceLive,
+              id: "workbench-workspace",
+              session: %{"embedded" => true, "workbench" => true}
+            )}
+          </:panel>
+          <:panel key="terminal">
+            {live_render(@socket, BusterClawWeb.TerminalLive,
+              id: "workbench-terminal",
+              session: %{
+                "embedded" => true,
+                "workbench" => true,
+                "terminal_session_key" => "workbench",
+                "terminal_label" => "Terminal"
+              }
+            )}
+          </:panel>
+          <:panel key="pockets">
+            <.live_component module={BusterClawWeb.PocketsPanel} id="home-pockets" />
+          </:panel>
+          <:panel key="phone">
+            <.live_component module={BusterClawWeb.PhoneComponent} id="home-phone" />
+          </:panel>
+          <:panel key="explained">
+            <BusterClawWeb.ExplainedPanel.explained_panel tab={@explained_tab} />
+          </:panel>
+          <:panel key="activity">
+            <.live_component module={BusterClawWeb.ActivityComponent} id="home-activity" />
+          </:panel>
+          <:panel key="clock">
+            <BusterClawWeb.HomeWidget.clock_panel
+              widget_bg={@widget_bg}
+              tab={@widget_tab}
+              contacts={@comms_contacts}
+              activity={@phone_activity}
+              trusted={@trusted_people}
+              entries={@trusted_entries}
+              weather={@weather}
+              weather_form={@weather_form}
+              notifications={@notifications}
+              notify_form={@notify_form}
+              notify_kind={@notify_kind}
+            />
+          </:panel>
+        </BusterClawWeb.Workbench.shell>
+        <BusterClawWeb.ChatPanel.svg_modal svgs={@chat_svgs} zoomed={@zoomed_id} />
       </section>
     </Layouts.app>
     """

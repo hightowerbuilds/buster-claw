@@ -35,84 +35,83 @@ defmodule BusterClawWeb.BrandUploadTest do
   test "uploading art through the tab actually lands it in the Pocket", %{conn: conn} do
     view = open_pockets(conn)
 
-    assert Brand.status("nav_home") == :default
+    assert Brand.status("nav_browser") == :default
 
     # The picker is closed until the slot is chosen.
-    refute has_element?(view, "#brand-upload-nav_home")
+    refute has_element?(view, "#brand-upload-nav_browser")
 
     view
-    |> element(~s(#brand-slot-nav_home button[phx-click="pick_brand"]))
+    |> element(~s(#brand-slot-nav_browser button[phx-click="pick_brand"]))
     |> render_click()
 
-    assert has_element?(view, "#brand-upload-nav_home")
+    assert has_element?(view, "#brand-upload-nav_browser")
 
     art =
-      file_input(view, "#brand-upload-nav_home", :brand, [
+      file_input(view, "#brand-upload-nav_browser", :brand, [
         %{name: "claw.png", content: "png-bytes", type: "image/png"}
       ])
 
     # auto_upload: choosing the file IS the upload. No submit anywhere below.
     render_upload(art, "claw.png")
 
-    assert Brand.status("nav_home") == :custom
-    assert Brand.image_url("nav_home") =~ "/pockets/nav-home/"
+    assert Brand.status("nav_browser") == :custom
+    assert Brand.image_url("nav_browser") =~ "/pockets/nav-browser/"
   end
 
-  test "the dock renders the operator's icon once it is uploaded", %{conn: conn} do
+  test "the sidebar renders the operator's icon once it is uploaded", %{conn: conn} do
     view = open_pockets(conn)
 
     view
-    |> element(~s(#brand-slot-nav_home button[phx-click="pick_brand"]))
+    |> element(~s(#brand-slot-nav_browser button[phx-click="pick_brand"]))
     |> render_click()
 
     art =
-      file_input(view, "#brand-upload-nav_home", :brand, [
+      file_input(view, "#brand-upload-nav_browser", :brand, [
         %{name: "claw.png", content: "png-bytes", type: "image/png"}
       ])
 
     render_upload(art, "claw.png")
 
-    # A fresh mount, because the dock is rendered by the layout.
-    {:ok, _fresh, html} = live(conn, ~p"/")
-    assert html =~ "/pockets/nav-home/"
+    # A fresh mount, because the sidebar is rendered by the layout.
+    {:ok, fresh, _html} = live(conn, ~p"/")
+    assert has_element?(fresh, ~s(#workbench-browser img[src^="/pockets/nav-browser/"]))
   end
 
-  test "the OPEN page updates its dock and banner without a reload", %{conn: conn} do
+  test "the OPEN page updates its sidebar and banner without a reload", %{conn: conn} do
     view = open_pockets(conn)
 
-    refute render(view) =~ "/pockets/nav-home/"
+    refute has_element?(view, ~s(#workbench-browser img[src^="/pockets/nav-browser/"]))
 
     view
-    |> element(~s(#brand-slot-nav_home button[phx-click="pick_brand"]))
+    |> element(~s(#brand-slot-nav_browser button[phx-click="pick_brand"]))
     |> render_click()
 
     art =
-      file_input(view, "#brand-upload-nav_home", :brand, [
+      file_input(view, "#brand-upload-nav_browser", :brand, [
         %{name: "claw.png", content: "png-bytes", type: "image/png"}
       ])
 
     render_upload(art, "claw.png")
 
-    # The dock lives in the layout and the banner in StatusLive's own render —
+    # The sidebar lives in the layout and the banner in StatusLive's own render —
     # both outside the component that handled the upload.
-    html = render(view)
-    assert html =~ "/pockets/nav-home/", "the dock did not pick up the new icon"
+    assert has_element?(view, ~s(#workbench-browser img[src^="/pockets/nav-browser/"]))
   end
 
   test "another open surface updates too, without being touched", %{conn: conn} do
-    # The dock is in the layout, so the surface that changes is usually NOT the
+    # The sidebar is in the layout, so the surface that changes is usually NOT the
     # one the operator uploaded on — and often not the same LiveView process.
     {:ok, other, _html} = live(conn, ~p"/terminal")
-    refute render(other) =~ "/pockets/nav-home/"
+    refute has_element?(other, ~s(#workbench-browser img[src^="/pockets/nav-browser/"]))
 
     view = open_pockets(conn)
 
     view
-    |> element(~s(#brand-slot-nav_home button[phx-click="pick_brand"]))
+    |> element(~s(#brand-slot-nav_browser button[phx-click="pick_brand"]))
     |> render_click()
 
     art =
-      file_input(view, "#brand-upload-nav_home", :brand, [
+      file_input(view, "#brand-upload-nav_browser", :brand, [
         %{name: "claw.png", content: "png-bytes", type: "image/png"}
       ])
 
@@ -121,28 +120,28 @@ defmodule BusterClawWeb.BrandUploadTest do
     # The broadcast reached the other view and its assigns changed, which is
     # what makes the swap visible to LiveView's diff rather than only to a
     # full re-render.
-    assert render(other) =~ "/pockets/nav-home/"
+    assert has_element?(other, ~s(#workbench-browser img[src^="/pockets/nav-browser/"]))
   end
 
   test "clearing returns the slot to the shipped default", %{conn: conn} do
     view = open_pockets(conn)
 
     view
-    |> element(~s(#brand-slot-nav_home button[phx-click="pick_brand"]))
+    |> element(~s(#brand-slot-nav_browser button[phx-click="pick_brand"]))
     |> render_click()
 
     art =
-      file_input(view, "#brand-upload-nav_home", :brand, [
+      file_input(view, "#brand-upload-nav_browser", :brand, [
         %{name: "claw.png", content: "png-bytes", type: "image/png"}
       ])
 
     render_upload(art, "claw.png")
-    assert Brand.status("nav_home") == :custom
+    assert Brand.status("nav_browser") == :custom
 
     view
-    |> element(~s(#brand-slot-nav_home button[phx-click="clear_brand"]))
+    |> element(~s(#brand-slot-nav_browser button[phx-click="clear_brand"]))
     |> render_click()
 
-    assert Brand.status("nav_home") == :default
+    assert Brand.status("nav_browser") == :default
   end
 end

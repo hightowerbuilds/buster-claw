@@ -8,43 +8,8 @@ defmodule BusterClawWeb.Layouts do
   alias BusterClaw.Pockets.Brand
 
   @navigation_items [
-    %{label: "Home", path: "/", icon: "hero-home", role: "nav_home"},
-    %{
-      label: "Workspace",
-      path: "/workspace",
-      icon: "hero-folder",
-      role: "nav_workspace"
-    },
-    %{
-      label: "Browser",
-      path: "/browse",
-      icon: "hero-globe-alt",
-      role: "nav_browser"
-    },
-    %{
-      label: "Terminal",
-      path: "/terminal",
-      icon: "hero-command-line",
-      role: "nav_terminal",
-      # Opens a NEW shell every click (fresh session key + tab), like Cmd-T —
-      # a plain /terminal navigation would reattach to the shared "main" shell.
-      new_terminal: true
-    },
-    # Calendar is no longer a dock tab — it lives on the Home page as a sub-tab
-    # (see StatusLive). The /calendar route still exists (deep links + SplitLive
-    # split pane), so its tab-strip label is preserved in @tab_labels below.
-    # No brand PNG yet — the dock falls back to the text label (see render below).
-    #
-    # This door said "Studio" until 09-02-26, then "Sketch" until 09-05-26, and
-    # now it says nothing: the Sketch Pad was deleted whole (route, context, six
-    # commands, both hosts) and there is no surface left for it to open. A dock
-    # item pointing at a deleted route is worse than one fewer dock item.
-    %{
-      label: "Settings",
-      path: "/appearance",
-      icon: "hero-cog-6-tooth",
-      role: "nav_settings"
-    }
+    %{label: "Browser", path: "/browse", icon: "hero-globe-alt", role: "nav_browser"},
+    %{label: "Settings", path: "/appearance", icon: "hero-cog-6-tooth", role: "nav_settings"}
   ]
 
   # Path -> tab label for every route a tab can open, including routes reachable
@@ -58,7 +23,9 @@ defmodule BusterClawWeb.Layouts do
                   # Reachable via the Home "Calendar" sub-tab and SplitLive, but
                   # no longer a dock item — label it here so the tab strip still
                   # names it when opened directly.
+                  "/" => "Work area",
                   "/calendar" => "Calendar",
+                  "/terminal" => "Terminal",
                   "/duty" => "On duty",
                   # Left the dock 08-08 (now a Home sub-tab); still reachable by
                   # deep link and in a split pane, so it still needs a label.
@@ -162,44 +129,6 @@ defmodule BusterClawWeb.Layouts do
     end)
   end
 
-  attr :items, :list, required: true
-
-  @doc """
-  The dock's tab nav. A shared component so `BusterClawWeb.DockNavLive` and the
-  socket-less fallback in `shell/1` render the same markup rather than two copies
-  that drift.
-  """
-  def dock_nav(assigns) do
-    ~H"""
-    <nav class="flex items-center gap-1" aria-label="Open a tab">
-      <div :for={item <- @items} class="contents">
-        <%!-- Terminal opens a fresh shell per click via JS (see the marker
-        on @navigation_items); everything else is a normal tab navigation. --%>
-        <button
-          :if={item[:new_terminal]}
-          type="button"
-          id="dock-new-terminal"
-          phx-hook="DockNewTerminal"
-          title={item.label}
-          class="flex shrink-0 items-center gap-2 rounded px-3 py-2 text-sm transition hover:bg-base-200"
-        >
-          <img :if={item[:image]} src={item[:image]} alt={item.label} class="h-6 w-auto shrink-0" />
-          <span :if={!item[:image]} class="font-medium">{item.label}</span>
-        </button>
-        <.link
-          :if={!item[:new_terminal]}
-          navigate={item.path}
-          title={item.label}
-          class="flex shrink-0 items-center gap-2 rounded px-3 py-2 text-sm transition hover:bg-base-200"
-        >
-          <img :if={item[:image]} src={item[:image]} alt={item.label} class="h-6 w-auto shrink-0" />
-          <span :if={!item[:image]} class="font-medium">{item.label}</span>
-        </.link>
-      </div>
-    </nav>
-    """
-  end
-
   defp shell(assigns) do
     assigns =
       assigns
@@ -208,10 +137,7 @@ defmodule BusterClawWeb.Layouts do
     ~H"""
     <div
       id="app-shell"
-      class={[
-        "flex flex-col",
-        if(@full_bleed or @fit_viewport, do: "h-screen overflow-hidden", else: "min-h-screen")
-      ]}
+      class="flex h-dvh flex-col overflow-hidden"
     >
       <header class="sticky top-0 z-30">
         {@socket &&
@@ -237,50 +163,38 @@ defmodule BusterClawWeb.Layouts do
         <div id="app-icon-bridge" phx-hook="AppIconBridge" phx-update="ignore" hidden></div>
       </header>
 
-      <main class={[
-        "flex min-w-0 flex-1 flex-col",
-        (@full_bleed or @fit_viewport) && "min-h-0 overflow-hidden"
-      ]}>
-        <div class={[
-          "flex w-full flex-1 flex-col",
-          cond do
-            @full_bleed -> "min-h-0"
-            @fit_viewport -> "mx-auto min-h-0 max-w-7xl space-y-4 px-4 py-8 sm:px-6 lg:px-8"
-            @wide -> "space-y-4 px-4 py-8 sm:px-6 lg:px-8"
-            true -> "mx-auto max-w-7xl space-y-4 px-4 py-8 sm:px-6 lg:px-8"
-          end
+      <div id="app-body" class="ic-app-body">
+        <aside id="app-sidebar" class="ic-workbench-menu" aria-label="Application sidebar">
+          {(@socket &&
+              live_render(@socket, BusterClawWeb.DockNavLive, id: "bc-dock-nav", sticky: true)) ||
+            BusterClawWeb.Workbench.menu(%{
+              banner_url: Brand.image_url("home_banner"),
+              nav_items: nav_items()
+            })}
+          <div id="sidebar-status" class="ic-sidebar-status">
+            {@socket &&
+              live_render(@socket, BusterClawWeb.DutyDockLive, id: "bc-duty-dock-live", sticky: true)}
+            <BusterClawWeb.Workbench.layout_picker />
+            {@socket && live_render(@socket, BusterClawWeb.DockLive, id: "bc-dock", sticky: true)}
+          </div>
+        </aside>
+        <main class={[
+          "flex min-h-0 min-w-0 flex-1 flex-col",
+          if(@full_bleed or @fit_viewport, do: "overflow-hidden", else: "overflow-y-auto")
         ]}>
-          {render_slot(@inner_block)}
-        </div>
-      </main>
-
-      <%!-- The former sidebar, now a dock across the bottom of the window. --%>
-      <footer
-        id="app-dock"
-        class="sticky bottom-0 z-30 flex items-center gap-2 overflow-x-auto border-t border-base-300 bg-base-100/95 px-3 py-2 backdrop-blur"
-      >
-        <%!-- The dock nav is its own sticky LiveView, for the same reason
-             DockLive is: a Phoenix app layout is rendered ONCE at mount and is
-             never part of a later diff, so an icon swapped from the Pockets tab
-             would sit stale here until the next navigation. A nested view has
-             its own process and its own diff. --%>
-        {(@socket && live_render(@socket, BusterClawWeb.DockNavLive, id: "bc-dock-nav", sticky: true)) ||
-          dock_nav(%{items: nav_items()})}
-
-        <%!-- Right side: the sticky status widget (upcoming alarms/timers/
-              reminders + temperature + clock). A separate LiveView process
-              (sticky), so it survives page navigation — armed notifications
-              stay visible even with the homepage closed. --%>
-        <%!-- The on-duty control sits beside the status widget, in the slot the
-              music player held until 09-13 (THREE_DOORS Phase 2; the player had
-              no way to be driven since its upload surface went on 08-16). Sticky
-              for the same reason as its neighbours. --%>
-        <div class="ml-auto flex shrink-0 items-center gap-3">
-          {@socket &&
-            live_render(@socket, BusterClawWeb.DutyDockLive, id: "bc-duty-dock-live", sticky: true)}
-          {@socket && live_render(@socket, BusterClawWeb.DockLive, id: "bc-dock", sticky: true)}
-        </div>
-      </footer>
+          <div class={[
+            "flex w-full flex-1 flex-col",
+            cond do
+              @full_bleed -> "min-h-0"
+              @fit_viewport -> "mx-auto min-h-0 max-w-7xl space-y-4 px-4 py-8 sm:px-6 lg:px-8"
+              @wide -> "space-y-4 px-4 py-8 sm:px-6 lg:px-8"
+              true -> "mx-auto max-w-7xl space-y-4 px-4 py-8 sm:px-6 lg:px-8"
+            end
+          ]}>
+            {render_slot(@inner_block)}
+          </div>
+        </main>
+      </div>
     </div>
 
     <.flash_group flash={@flash} />
