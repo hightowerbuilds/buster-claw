@@ -408,16 +408,22 @@ last, because rotating it invalidates the credentials the first two use):
    (204 = released).
 2. **Twilio — delete the messaging service.** Console → Messaging → Services →
    BusterPhone → Delete. Or `curl -X DELETE -u "$TWILIO_ACCOUNT_SID:$TWILIO_AUTH_TOKEN" https://messaging.twilio.com/v1/Services/MG2d563001e775c962c8dc4a1cff40f27d`.
-3. **Supabase — delete the project.** Dashboard → project `tzptdzmwypdmmnmbruke`
-   → Settings → General → Delete project (type the name). This also kills the
-   two edge functions the released number's webhooks pointed at.
+3. **Supabase — remove BusterPhone's pieces, NOT the project.** Corrected
+   10-16 by the operator: project `tzptdzmwypdmmnmbruke` is SHARED with other
+   repositories. Never delete it. BusterPhone's part, from the pre-removal
+   commit's `supabase/` dir: edge functions `voice` and `sms`; tables
+   `public.telephony_events` and `public.phone_pins`; the private storage
+   bucket `recordings`; function secrets `GREETING_TEXT`, `PUBLIC_URL_BASE`,
+   `PUBLIC_SMS_URL_BASE`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`. With the
+   CLI logged in (`supabase login`): `supabase functions delete voice|sms
+   --project-ref …`, `supabase secrets unset … --project-ref …`, and
+   `supabase db query` for the two drops and the bucket's rows.
 4. **The Clinch — forget six app keys.** Settings → The Clinch → each of
    `twilio_account_sid`, `twilio_auth_token`, `twilio_phone_number`,
    `twilio_messaging_service_sid`, `supabase_url`, `supabase_service_role_key`
    → Forget. Any that are not listed were never stored; nothing to do.
-5. **Twilio — rotate the auth token.** Console → Account → API keys & tokens →
-   Auth tokens → Request secondary token → Promote to primary. Nothing stores
-   the new one; that is the point.
+5. **Twilio — rotate the auth token.** Dropped 10-16: the operator will close
+   the Twilio account instead; the token is already gone from `.env`.
 6. **`.env` — drop the phone block.** Lines 3–18 (the two comment blocks,
    `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `TWILIO_MESSAGING_SERVICE_SID`,
    `BUSTER_CLAW_SMS_ENABLED`, `BUSTER_CLAW_SMS_DAILY_RECIPIENT_CAP`,
