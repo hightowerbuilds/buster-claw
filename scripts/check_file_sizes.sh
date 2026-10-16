@@ -952,7 +952,14 @@ check lib/buster_claw/notifications/studio_catalog.ex        184 HELD
 # the primitives as LOCAL functions deliberately, never through
 # `Commands.call/3`, to avoid re-audit and double rate-limiting. That comment
 # moves with them or the property is lost.
-check lib/buster_claw/commands/web.ex                         848 FROZEN
+# 10-16 CODE_QUALITY_SWEEP Phase 6: the freeze lifted by extraction — the facade; the
+# families live in web/{bookmarks,fetch,tab,checks,secrets}.ex.
+check lib/buster_claw/commands/web.ex                         55 HELD
+check lib/buster_claw/commands/web/tab.ex                    530 HELD
+check lib/buster_claw/commands/web/checks.ex                 150 HELD
+check lib/buster_claw/commands/web/bookmarks.ex               90 HELD
+check lib/buster_claw/commands/web/secrets.ex                 85 HELD
+check lib/buster_claw/commands/web/fetch.ex                   60 HELD
 
 # Appearance (08-14). Held out of yesterday's core section on purpose — it had
 # uncommitted image-shader work in it and a cap on a moving file is a cap
@@ -1057,7 +1064,11 @@ check desktop/tauri/src/browser/state.rs                      520 HELD
 # is left is the library, the Studio's sources, and the edits. HELD, not frozen.
 # One trap survives for whoever touches it: `under_library/1` is the security
 # boundary of the whole family and must keep exactly one home.
-check lib/buster_claw/commands/sound.ex                      1235 HELD
+# 10-16 CODE_QUALITY_SWEEP Phase 6: the facade; the verbs live in sound/{library,edit,shared}.ex.
+check lib/buster_claw/commands/sound.ex                      126 HELD
+check lib/buster_claw/commands/sound/library.ex              560 HELD
+check lib/buster_claw/commands/sound/edit.ex                 330 HELD
+check lib/buster_claw/commands/sound/shared.ex               170 HELD
 
 # ── Core files the review read and ruled feature-sized. ──────────────────────
 #
