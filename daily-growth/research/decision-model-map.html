@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A research map of SubQ Snap and Jev, their capabilities, and possible roles in BusterClaw. Version 1, October 13, 2026.">
+  <meta name="color-scheme" content="light">
+  <title>Decision Models — BusterClaw Research Map</title>
+  <style>
+    :root { --paper:#f3f0e8; --surface:#fffdf8; --ink:#242720; --muted:#606358; --line:#d4d5c7; --orange:#b83c14; --orange-soft:#fbe6d7; --green:#305b48; --green-soft:#e5eee6; --dark:#202c27; --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+    * { box-sizing:border-box; }
+    html { scroll-behavior:smooth; scroll-padding-top:32px; }
+    body { margin:0; color:var(--ink); background:var(--paper); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif; font-size:16px; line-height:1.65; -webkit-font-smoothing:antialiased; }
+    a { color:var(--green); text-decoration-thickness:1px; text-underline-offset:4px; }
+    a:hover { color:var(--orange); }
+    a:focus-visible,summary:focus-visible { outline:3px solid var(--orange); outline-offset:5px; }
+    p { margin:0 0 1rem; }
+    h1,h2,h3,h4 { line-height:1.15; letter-spacing:-.035em; }
+    h1 { font-size:clamp(3rem,6.2vw,5.8rem); font-weight:650; margin:22px 0 24px; }
+    h2 { font-size:clamp(1.9rem,3vw,2.65rem); font-weight:620; margin:0 0 18px; }
+    h3 { font-size:1.3rem; margin:0 0 12px; }
+    h4 { font-size:1.05rem; margin:24px 0 8px; }
+    code { font-family:var(--mono); font-size:.82em; overflow-wrap:anywhere; }
+    .skip { position:absolute; left:20px; top:-80px; padding:12px; background:var(--surface); z-index:10; }
+    .skip:focus { top:12px; }
+    .shell { max-width:1460px; margin:auto; padding:0 48px; }
+    .masthead { display:flex; justify-content:space-between; align-items:center; gap:20px; padding:23px 0; border-bottom:1px solid var(--line); }
+    .brand { font-weight:750; font-size:1.1rem; letter-spacing:-.04em; text-decoration:none; color:var(--ink); }
+    .brand span { color:var(--orange); }
+    .mono,.eyebrow,.tag,.section-number { font-family:var(--mono); font-size:.68rem; letter-spacing:.09em; text-transform:uppercase; }
+    .masthead .mono { color:var(--muted); }
+    .layout { display:grid; grid-template-columns:185px minmax(0,1fr); gap:65px; }
+    aside { border-right:1px solid var(--line); }
+    .rail { position:sticky; top:28px; padding:50px 22px 30px 0; }
+    .rail .eyebrow { color:var(--muted); margin-bottom:20px; }
+    nav a { display:flex; gap:12px; padding:10px 0; color:var(--muted); text-decoration:none; font-size:.85rem; transition:color .15s,transform .15s; }
+    nav a:hover { color:var(--orange); transform:translateX(3px); }
+    nav a span { font-family:var(--mono); font-size:.65rem; color:var(--orange); padding-top:3px; }
+    .rail-note { border-top:1px solid var(--line); margin-top:38px; padding-top:20px; color:var(--muted); font-size:.76rem; line-height:1.6; }
+    .rail-note strong { color:var(--ink); display:block; margin-bottom:5px; }
+    main { min-width:0; }
+    .hero { padding:62px 0 45px; }
+    .eyebrow { color:var(--orange); font-weight:650; }
+    .status { display:inline-flex; gap:8px; align-items:center; color:var(--green); }
+    .status::before { content:""; width:7px; height:7px; border-radius:50%; background:var(--green); }
+    .hero h1 span { color:var(--orange); }
+    .lead { max-width:720px; font-size:1.2rem; color:var(--muted); line-height:1.6; }
+    .hero-meta { display:flex; gap:24px; flex-wrap:wrap; margin-top:30px; font-family:var(--mono); font-size:.7rem; color:var(--muted); }
+    .thesis { display:grid; grid-template-columns:105px 1fr; gap:22px; padding:25px 0; border-top:2px solid var(--ink); border-bottom:1px solid var(--line); }
+    .thesis p { margin:0; font-size:1.04rem; }
+    .thesis .eyebrow { padding-top:5px; }
+    section { padding:54px 0; border-bottom:1px solid var(--line); }
+    .section-number { color:var(--orange); margin-bottom:12px; display:block; }
+    .section-intro { color:var(--muted); max-width:750px; }
+    .legend { display:flex; gap:24px; flex-wrap:wrap; margin:24px 0 18px; font-size:.76rem; color:var(--muted); }
+    .legend span { display:flex; align-items:center; gap:8px; }
+    .legend i { width:18px; height:12px; border:1px solid var(--green); background:var(--green-soft); }
+    .legend i.proposed { background:var(--orange-soft); border:1px dashed var(--orange); }
+    .system-map { background:var(--dark); color:#f5f3eb; border-radius:3px; padding:30px; }
+    .system-map .map-label { color:#bbcbbf; margin-bottom:20px; }
+    .flow { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:18px; align-items:stretch; }
+    .node { position:relative; padding:20px; border:1px solid #64796b; background:#2b3b32; }
+    .node + .node::before { content:"→"; position:absolute; left:-16px; top:38%; color:#bbcbbf; }
+    .node small { display:block; font: .64rem var(--mono); color:#bdcfc1; margin-bottom:12px; text-transform:uppercase; letter-spacing:.07em; }
+    .node strong { display:block; font-size:1.04rem; line-height:1.3; margin-bottom:8px; }
+    .node p { font-size:.78rem; color:#d3ddd5; line-height:1.55; margin:0; }
+    .decision-bridge { padding:22px 0; text-align:center; color:#bbcbbf; font-size:.76rem; }
+    .decision-bridge span { display:block; font-size:1.25rem; line-height:1; margin-bottom:8px; }
+    .candidate-node { border:1px dashed #eaa778; background:#3c352b; padding:24px; display:grid; grid-template-columns:1fr 1.15fr; gap:28px; }
+    .candidate-node small { color:#f7bc8b; }
+    .candidate-node h3 { margin:8px 0; color:#fff2e4; }
+    .candidate-node p { font-size:.83rem; color:#e1d3c4; margin:0; }
+    .questions { border-left:1px solid #7c6a53; padding-left:24px; align-self:center; }
+    .questions p + p { margin-top:7px; }
+    .map-caption { margin:16px 0 0; color:var(--muted); font-size:.8rem; }
+    .table-scroll { overflow:auto; margin:25px 0 16px; }
+    table { width:100%; border-collapse:collapse; text-align:left; font-size:.87rem; }
+    caption { text-align:left; font-family:var(--mono); font-size:.68rem; color:var(--muted); padding:0 0 14px; text-transform:uppercase; letter-spacing:.06em; }
+    th,td { padding:17px 18px; border-bottom:1px solid var(--line); vertical-align:top; }
+    thead th { background:var(--ink); color:var(--surface); font-weight:550; font-size:1.05rem; }
+    thead th:first-child { font-size:.75rem; color:#c8cdbe; }
+    tbody th { width:23%; font-weight:550; }
+    tbody td { width:38.5%; }
+    tbody tr:nth-child(even) { background:#eaeade; }
+    td strong { font-weight:650; }
+    .big-stat { font-size:1.7rem; letter-spacing:-.04em; line-height:1.15; display:block; }
+    .table-note { color:var(--muted); font-size:.78rem; }
+    .split-note { display:grid; grid-template-columns:1fr 1fr; gap:28px; margin-top:28px; }
+    .split-note > div { border-left:2px solid var(--orange); padding-left:18px; }
+    .split-note p { font-size:.87rem; margin:0; color:var(--muted); }
+    .split-note strong { color:var(--ink); }
+    .opportunities { margin-top:28px; }
+    details { border-top:1px solid var(--line); }
+    details:last-child { border-bottom:1px solid var(--line); }
+    summary { cursor:pointer; list-style:none; display:grid; grid-template-columns:34px 1fr auto 18px; align-items:center; gap:16px; padding:23px 0; }
+    summary::-webkit-details-marker { display:none; }
+    summary::after { content:"+"; font-size:1.4rem; color:var(--orange); text-align:center; }
+    details[open] summary::after { content:"−"; }
+    summary:hover .op-title { color:var(--orange); }
+    .op-num { font-family:var(--mono); font-size:.75rem; color:var(--muted); }
+    .op-title { font-size:1.08rem; font-weight:600; letter-spacing:-.02em; transition:color .15s; }
+    .op-title small { font-size:.82rem; font-weight:400; letter-spacing:0; color:var(--muted); display:block; margin-top:4px; }
+    .tag { font-size:.6rem; padding:5px 9px; background:var(--green-soft); color:var(--green); white-space:nowrap; }
+    .tag.later { background:var(--orange-soft); color:var(--orange); }
+    .op-body { padding:0 0 27px 50px; max-width:850px; font-size:.91rem; }
+    .op-body p:last-child { margin-bottom:0; }
+    .question-example { background:var(--surface); padding:17px 20px; border-left:2px solid var(--orange); margin:0 0 16px; }
+    .question-example .mono { display:block; color:var(--orange); margin-bottom:5px; font-size:.6rem; }
+    .evidence-grid { display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-top:28px; }
+    .evidence { border-top:2px solid var(--green); padding-top:18px; }
+    .evidence.vendor { border-color:var(--orange); }
+    .evidence .eyebrow { color:var(--green); display:block; margin-bottom:12px; }
+    .evidence.vendor .eyebrow { color:var(--orange); }
+    .evidence p { font-size:.88rem; color:var(--muted); }
+    .evidence a { font-size:.8rem; }
+    .boundary { background:var(--orange-soft); padding:24px 28px; margin-top:30px; border-left:3px solid var(--orange); }
+    .boundary p { margin:0; font-size:.89rem; }
+    .research-list { counter-reset:research; list-style:none; margin:28px 0 0; padding:0; }
+    .research-list li { counter-increment:research; display:grid; grid-template-columns:34px 1fr; gap:16px; padding:18px 0; border-top:1px solid var(--line); }
+    .research-list li::before { content:"0" counter(research); font: .72rem var(--mono); color:var(--orange); padding-top:5px; }
+    .research-list p { margin:4px 0 0; font-size:.89rem; color:var(--muted); }
+    .research-list strong { font-size:1rem; }
+    .source-list { display:grid; grid-template-columns:1fr 1fr; gap:20px 32px; list-style:none; padding:0; margin:28px 0; }
+    .source-list li { font-size:.84rem; }
+    .source-list small { display:block; color:var(--muted); font-size:.74rem; margin-top:4px; }
+    .repo-links { padding:20px 0 0; border-top:1px solid var(--line); font-size:.8rem; }
+    .repo-links p { margin:10px 0 0; }
+    .repo-links a { margin-right:14px; display:inline-block; }
+    footer { display:flex; justify-content:space-between; gap:20px; padding:28px 0 45px; font-size:.7rem; color:var(--muted); font-family:var(--mono); }
+    @media (min-width:1500px) { .shell { max-width:1540px; } .layout { gap:85px; } }
+    @media (max-width:1000px) { .shell { padding:0 28px; } .layout { grid-template-columns:145px minmax(0,1fr); gap:32px; } .flow { gap:14px; } .node { padding:16px 12px; } .system-map { padding:22px; } .candidate-node { grid-template-columns:1fr; gap:16px; } .questions { border-left:0; border-top:1px solid #7c6a53; padding:14px 0 0; } }
+    @media (max-width:740px) { .shell { padding:0 20px; } .layout { display:block; } aside { border-right:0; border-bottom:1px solid var(--line); } .rail { position:static; padding:10px 0; } .rail > .eyebrow,.rail-note { display:none; } nav { display:flex; overflow-x:auto; gap:20px; } nav a { white-space:nowrap; font-size:.76rem; } nav a span { display:none; } .masthead { padding:18px 0; } .masthead .mono { font-size:.6rem; } .hero { padding:35px 0; } h1 { margin-top:18px; } .lead { font-size:1.05rem; } .thesis { grid-template-columns:1fr; gap:10px; } section { padding:38px 0; } .flow { grid-template-columns:1fr; gap:22px; } .node + .node::before { content:"↓"; left:50%; top:-25px; } .node { padding:18px; } .candidate-node { padding:18px; } .split-note,.evidence-grid,.source-list { grid-template-columns:1fr; } th,td { padding:14px 12px; } table { min-width:590px; } summary { grid-template-columns:24px 1fr 18px; gap:10px; } summary .tag { display:none; } .op-body { padding-left:34px; } footer { flex-direction:column; gap:8px; } }
+    @media (prefers-reduced-motion:reduce) { html { scroll-behavior:auto; } * { transition:none !important; } }
+    @media print { body { background:white; font-size:11pt; } .shell { max-width:none; padding:0; } .layout { display:block; } aside,.skip { display:none; } .hero { padding:25px 0; } h1 { font-size:38pt; } section { padding:25px 0; } .system-map { print-color-adjust:exact; -webkit-print-color-adjust:exact; } .flow,.candidate-node,.evidence,.boundary { break-inside:avoid; } details > .op-body { display:block !important; content-visibility:visible !important; } table { min-width:0; } .source-list { grid-template-columns:1fr 1fr; } a { color:inherit; } }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#overview">Skip to the research map</a>
+  <div class="shell">
+    <header class="masthead">
+      <a class="brand" href="#overview">Buster<span>Claw</span> / Research</a>
+      <span class="mono">Field map 01 &nbsp;·&nbsp; 13 October 2026</span>
+    </header>
+    <div class="layout">
+      <aside aria-label="Research navigation">
+        <div class="rail">
+          <p class="eyebrow">On this map</p>
+          <nav aria-label="Sections">
+            <a href="#overview"><span>00</span> Overview</a>
+            <a href="#placement"><span>01</span> System map</a>
+            <a href="#models"><span>02</span> The two models</a>
+            <a href="#opportunities"><span>03</span> Where they fit</a>
+            <a href="#evidence"><span>04</span> Evidence &amp; limits</a>
+            <a href="#questions"><span>05</span> Open questions</a>
+            <a href="#sources"><span>06</span> Source ledger</a>
+          </nav>
+          <div class="rail-note"><strong>Research, version 1.</strong>Capabilities are sourced. Proposed uses are hypotheses. No model has been selected or tested in BusterClaw.</div>
+        </div>
+      </aside>
+      <main id="overview">
+        <div class="hero">
+          <div class="eyebrow status">Exploration / decision models</div>
+          <h1>Small decisions.<br><span>A map for BusterClaw.</span></h1>
+          <p class="lead">Where SubQ Snap and Jev could help BusterClaw choose what matters, route work, and evaluate results—while its existing agents do the work.</p>
+          <div class="hero-meta"><span>02 models researched</span><span>05 possible connection points</span><span>Implementation: not started</span></div>
+        </div>
+        <div class="thesis">
+          <span class="eyebrow">Working thesis</span>
+          <p>An optional decision service could handle repeated, bounded judgments around agent runs. The strongest branches to investigate are <strong>context selection, skill selection, and dispatch classification.</strong></p>
+        </div>
+
+        <section id="placement" aria-labelledby="placement-title">
+          <span class="section-number">01 / Placement</span>
+          <h2>A helper around the agent.</h2>
+          <p class="section-intro">BusterClaw currently uses external agent harnesses for reasoning. Its own code owns the queue, tools, memory, trust rules, and receipts. The diagram separates that existing foundation from the decision service under consideration. <a href="../../docs/ARCHITECTURE.md">Repository architecture ↗</a></p>
+          <div class="legend"><span><i aria-hidden="true"></i> Existing capability</span><span><i class="proposed" aria-hidden="true"></i> Proposed connection</span></div>
+          <div class="system-map" role="group" aria-label="Existing BusterClaw workflow with a proposed optional decision service">
+            <p class="mono map-label">BusterClaw today</p>
+            <div class="flow">
+              <div class="node"><small>01 / Intake &amp; context</small><strong>Requests, queue, memory</strong><p>Chat and trusted intake. Library documents, run history, and browser observations.</p></div>
+              <div class="node"><small>02 / Intelligence</small><strong>Existing agent harness</strong><p>Claude Code, Codex, or OpenCode. Plans the work and produces answers and tool calls.</p></div>
+              <div class="node"><small>03 / Execution</small><strong>Tools &amp; receipts</strong><p>BusterClaw applies command trust rules and records actions. Run results feed memory.</p></div>
+            </div>
+            <div class="decision-bridge"><span aria-hidden="true">↕</span> Possible calls before a run, around retrieval, or after a result</div>
+            <div class="candidate-node">
+              <div><small class="mono">Research candidate / optional</small><h3>Jev or SubQ Snap</h3><p>Receives selected state and defined questions. Returns choices, scores, or probabilities for BusterClaw to interpret.</p></div>
+              <div class="questions"><p>Which records are relevant?</p><p>Which workflow or skill fits?</p><p>Does the result need another look?</p></div>
+            </div>
+          </div>
+          <p class="map-caption">The existing path remains available. A model recommendation would not grant permissions or change caller trust. Taking over internal tool choices inside an external harness would require additional harness support.</p>
+        </section>
+
+        <section id="models" aria-labelledby="models-title">
+          <span class="section-number">02 / Model landscape</span>
+          <h2>Same decision shape.<br>Different context budgets.</h2>
+          <p class="section-intro">Both models answer questions with a defined answer space: choose an option, rate a rubric, or estimate whether a statement is true. Their interfaces are suited to small judgments that software can consume directly. <a href="https://docs.subq.ai/endpoints/decisions-api/">Snap API</a> · <a href="https://docs.typesafe.ai/introduction">Jev introduction</a></p>
+          <div class="table-scroll" role="region" aria-label="Model comparison; scroll horizontally on small screens" tabindex="0">
+            <table>
+              <caption>Published specifications · verified 13 October 2026</caption>
+              <thead><tr><th scope="col">Property</th><th scope="col">SubQ Snap</th><th scope="col">Jev</th></tr></thead>
+              <tbody>
+                <tr><th scope="row">Developer</th><td>Subquadratic</td><td>TypeSafe AI</td></tr>
+                <tr><th scope="row">Model ID</th><td><code>subq-snap-preview</code></td><td><code>jev-1.13.0</code></td></tr>
+                <tr><th scope="row">Context</th><td><strong class="big-stat">384K</strong>393,216 tokens for the request.</td><td><strong class="big-stat">32K</strong>State + longest question. Up to 64K for state + all questions combined.</td></tr>
+                <tr><th scope="row">Inputs</th><td>Text / structured state + up to four images.</td><td>Text / structured state. No image, audio, or video input.</td></tr>
+                <tr><th scope="row">Input price</th><td><strong>$0.05</strong> per million tokens.</td><td><strong>$0.042</strong> per million tokens.</td></tr>
+                <tr><th scope="row">Output</th><td>Choices, rubric scores, yes/no probabilities. No output charge.</td><td>Choices, rubric scores, yes/no probabilities. No output charge.</td></tr>
+                <tr><th scope="row">Access</th><td>Public preview announced October 12. Capacity is limited; a waitlist may apply.</td><td>Hosted API with versioned model IDs. Account access and current capacity need confirmation.</td></tr>
+                <tr><th scope="row">Useful distinction</th><td>Can consider much longer artifacts and visual evidence in a single request.</td><td>Fits compact text decisions; documentation includes detailed workflow patterns.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="table-note">Sources: <a href="https://docs.subq.ai/endpoints/decisions-api/">Snap limits</a>, <a href="https://docs.subq.ai/using-the-api/models/">Snap pricing</a>, <a href="https://subq.ai/introducing-subq-snap">Snap availability</a>, <a href="https://docs.typesafe.ai/models">Jev specifications</a>. These are vendor specifications, not local measurements. SubQ's separate long-context language model is outside this map.</p>
+          <div class="split-note">
+            <div><p><strong>Price is unlikely to decide the winner.</strong> At the listed rates, 1,000 requests of 10,000 input tokens would cost about $0.50 for Snap or $0.42 for Jev. Accuracy and avoided agent work matter more than that eight-cent difference.</p></div>
+            <div><p><strong>BusterClaw's economics are different.</strong> Agent harnesses currently run under the operator's own subscriptions. A separate decision API adds a bill; any improvement in latency, token use, or subscription capacity still needs measurement.</p></div>
+          </div>
+        </section>
+
+        <section id="opportunities" aria-labelledby="opportunities-title">
+          <span class="section-number">03 / Connection points</span>
+          <h2>Five places to investigate.</h2>
+          <p class="section-intro">Each branch starts with a decision BusterClaw might benefit from. The fit assessments below are research hypotheses. Expand a row for the proposed role and the evidence we would need.</p>
+          <div class="opportunities">
+            <details open>
+              <summary><span class="op-num">A</span><span class="op-title">Context &amp; memory selection<small>Help the agent find the evidence that matters.</small></span><span class="tag">Priority research</span></summary>
+              <div class="op-body">
+                <div class="question-example"><span class="mono">Example decision</span>“Which of these prior run summaries would help answer this request?”</div>
+                <p><strong>Existing connection:</strong> <a href="../../lib/buster_claw/memory.ex">Memory.search/2</a> retrieves run summaries using SQLite FTS5 and BM25 ranking. A decision model could rerank the shortlist before it reaches an agent.</p>
+                <p><strong>Candidate fit:</strong> Both. Jev has a <a href="https://docs.typesafe.ai/cookbooks/rerank_typesafe">published reranking example</a>; Snap permits a much larger candidate context. Neither automatically discovers files we have not supplied.</p>
+                <p><strong>Question to resolve:</strong> Does reranking recover useful evidence without dropping necessary details, and does it save more agent effort than the extra call costs?</p>
+              </div>
+            </details>
+            <details>
+              <summary><span class="op-num">B</span><span class="op-title">Skill selection<small>Choose a relevant capability, including “none.”</small></span><span class="tag">Priority research</span></summary>
+              <div class="op-body">
+                <div class="question-example"><span class="mono">Example decision</span>“Which available skill best matches this task, or does no skill apply?”</div>
+                <p><strong>Existing connection:</strong> BusterClaw's <a href="../../lib/buster_claw/skills.ex">Skills context</a> and the skill information exposed to agents. A selector could return an existing skill identifier for the agent to consider.</p>
+                <p><strong>Candidate fit:</strong> Both. TypeSafe's <a href="https://docs.typesafe.ai/cookbooks/skill_suggestion">skill-selection cookbook</a> ranks and checks candidates from a 182-skill Hermes catalog. That demonstrates a pattern, not compatibility or measured improvement with BusterClaw.</p>
+                <p><strong>Question to resolve:</strong> Which catalog and descriptions does BusterClaw actually control, and does the suggestion improve the agent's choice? Selecting a skill would not install or execute it.</p>
+              </div>
+            </details>
+            <details>
+              <summary><span class="op-num">C</span><span class="op-title">Dispatch classification<small>Identify the kind of work and appropriate route.</small></span><span class="tag">Priority research</span></summary>
+              <div class="op-body">
+                <div class="question-example"><span class="mono">Example decision</span>“Is this a research request, a scheduling request, or an item needing clarification?”</div>
+                <p><strong>Existing connection:</strong> The <a href="../../lib/buster_claw/dispatch.ex">durable Dispatch queue</a> and <a href="../../lib/buster_claw/dispatcher.ex">Dispatcher</a>. Semantic classification could help choose among explicitly supported workflows.</p>
+                <p><strong>Candidate fit:</strong> Both. Compact requests are a plausible Jev baseline; Snap may help when classification depends on a long thread or document.</p>
+                <p><strong>Question to resolve:</strong> Can either improve routing beyond the existing rules without starving, misrouting, or silently discarding work? Caller trust, kill switches, and budget limits remain code decisions.</p>
+              </div>
+            </details>
+            <details>
+              <summary><span class="op-num">D</span><span class="op-title">Browser-state checks<small>Compare an observed page with an expected state.</small></span><span class="tag later">Explore later</span></summary>
+              <div class="op-body">
+                <div class="question-example"><span class="mono">Example decision</span>“Does this page show a completed submission, a validation error, or an unresolved state?”</div>
+                <p><strong>Existing connection:</strong> <a href="../../lib/buster_claw/browser_control/agent_mode.ex">Browser Agent Mode</a> and observed browser results. A model could classify supplied evidence after an action.</p>
+                <p><strong>Candidate fit:</strong> Snap can accept screenshots alongside text. Jev would require extracted page text or structured state.</p>
+                <p><strong>Question to resolve:</strong> Are visual judgments reliable on actual BusterClaw pages? The classifier would provide evidence for review; it would not authorize a payment or substitute for an action receipt.</p>
+              </div>
+            </details>
+            <details>
+              <summary><span class="op-num">E</span><span class="op-title">Result &amp; completion review<small>Flag a mismatch between the task and its evidence.</small></span><span class="tag later">Explore later</span></summary>
+              <div class="op-body">
+                <div class="question-example"><span class="mono">Example decision</span>“Does the supplied result address the requested outcome, or should the agent inspect it again?”</div>
+                <p><strong>Existing connection:</strong> Agent results, dispatch completion, and <a href="../../lib/buster_claw/memory.ex">recorded run summaries</a>. A checker could flag missing evidence or unresolved requirements.</p>
+                <p><strong>Candidate fit:</strong> Both, for a carefully scoped rubric. Longer history or screenshots may favor investigating Snap.</p>
+                <p><strong>Question to resolve:</strong> How often does a checker approve incomplete work or reject valid work? Test exit codes, acknowledgments, and other exact checks should remain authoritative where available.</p>
+              </div>
+            </details>
+          </div>
+        </section>
+
+        <section id="evidence" aria-labelledby="evidence-title">
+          <span class="section-number">04 / Evidence &amp; limits</span>
+          <h2>Promising enough to map.<br>Still needs local evidence.</h2>
+          <div class="evidence-grid">
+            <article class="evidence vendor"><span class="eyebrow">Vendor evaluation / Snap</span><h3>A reported benchmark lead.</h3><p>Subquadratic reports 61.7 for Snap versus 57.9 for Jev on Decision Index 0.2.1. It also reports a decision in about one second with 100K tokens. These results do not establish accuracy or end-to-end speed in BusterClaw, and that benchmark version is a dated snapshot.</p><a href="https://subq.ai/introducing-subq-snap">Read the launch evaluation ↗</a></article>
+            <article class="evidence"><span class="eyebrow">External research / Jev</span><h3>Strength varies by task.</h3><p>An October 8 preprint finds Jev competitive on knowledge and commonsense benchmarks, with a pronounced weakness on mathematical word problems. This supports investigating bounded semantic decisions; it does not validate agent routing or completion checks.</p><a href="https://arxiv.org/abs/2610.11978">Read the benchmark preprint ↗</a></article>
+            <article class="evidence"><span class="eyebrow">Documented limitation / Jev</span><h3>Confidence needs interpretation.</h3><p>Jev's confidence is computed from its answer distribution. It is not a measured probability that a BusterClaw action will succeed. TypeSafe also documents sensitivity to irrelevant context, option order, and adversarial content.</p><a href="https://docs.typesafe.ai/confidence">Confidence semantics ↗</a> · <a href="https://docs.typesafe.ai/model-jaggedness/jev-1.13">Known limitations ↗</a></article>
+            <article class="evidence vendor"><span class="eyebrow">Data handling / Both</span><h3>Private context crosses a boundary.</h3><p>SubQ documents indefinite retention by default and organization-level zero retention on request. TypeSafe states that it does not train on customer requests and offers enterprise zero retention. Jev's default retention needs further review before any private-data experiment.</p><a href="https://docs.subq.ai/using-the-api/data-retention/">SubQ retention ↗</a> · <a href="https://docs.typesafe.ai/legal">TypeSafe policies ↗</a></article>
+          </div>
+          <div class="boundary"><h3>BusterClaw owns authority.</h3><p>Permissions, trust tiers, credential access, budget enforcement, and exact calculations remain in BusterClaw's deterministic code. A decision model can recommend a route or flag evidence. Its answer does not grant access or override an operator choice.</p></div>
+        </section>
+
+        <section id="questions" aria-labelledby="questions-title">
+          <span class="section-number">05 / Research frontier</span>
+          <h2>What would change our mind?</h2>
+          <p class="section-intro">These questions define the next research pass. They are not an implementation commitment or an instruction to send workspace data to either service.</p>
+          <ol class="research-list">
+            <li><div><strong>Where is there repeated judgment worth offloading?</strong><p>Identify real decisions currently consuming agent turns. Separate those from checks that ordinary code already handles cheaply and exactly.</p></div></li>
+            <li><div><strong>Which model makes fewer costly mistakes?</strong><p>Compare both on the same labeled tasks, including ambiguous requests and “none of the above.” Inspect false positives, missed evidence, and confidence behavior by task.</p></div></li>
+            <li><div><strong>Does the complete workflow get better?</strong><p>Measure added latency, agent turns avoided, input volume, retries, and task completion. Compare against today's behavior and a simple rules-based baseline.</p></div></li>
+            <li><div><strong>How much context is actually necessary?</strong><p>Compare concise retrieved context with larger inputs. A larger context limit is useful only if it changes the quality of the decision.</p></div></li>
+            <li><div><strong>What are the operational terms?</strong><p>Confirm account access, rate limits, data retention, model versioning, and outage behavior. Define a fallback to the existing path for uncertainty or service failure.</p></div></li>
+          </ol>
+        </section>
+
+        <section id="sources" aria-labelledby="sources-title">
+          <span class="section-number">06 / Source ledger</span>
+          <h2>Built from docs and the codebase.</h2>
+          <p class="section-intro">Sources were reviewed on October 13, 2026. Product limits and prices can change. This map contains no live inference results.</p>
+          <ul class="source-list">
+            <li><a href="https://subq.ai/introducing-subq-snap">SubQ Snap launch &amp; evaluation</a><small>Subquadratic · October 12, 2026 · Vendor claims and preview availability.</small></li>
+            <li><a href="https://docs.subq.ai/endpoints/decisions-api/">SubQ Decisions API</a><small>Primary documentation · Questions, context, images, outputs, errors.</small></li>
+            <li><a href="https://docs.subq.ai/using-the-api/models/">SubQ models &amp; pricing</a><small>Primary documentation · Model IDs and token charges.</small></li>
+            <li><a href="https://docs.subq.ai/using-the-api/data-retention/">SubQ data retention</a><small>Primary documentation · Default storage and zero-retention policy.</small></li>
+            <li><a href="https://docs.typesafe.ai/models">Jev models &amp; limits</a><small>TypeSafe AI · Version, context budgets, pricing, and input support.</small></li>
+            <li><a href="https://docs.typesafe.ai/api">Jev API reference</a><small>Primary documentation · State, questions, typed answers.</small></li>
+            <li><a href="https://docs.typesafe.ai/introduction/coding-agents">Jev and coding agents</a><small>Primary documentation · The boundary between a decision model and an agent harness.</small></li>
+            <li><a href="https://docs.typesafe.ai/confidence">Jev confidence</a><small>Primary documentation · Probability distributions and confidence calculations.</small></li>
+            <li><a href="https://docs.typesafe.ai/model-jaggedness/jev-1.13">Jev 1.13 known limitations</a><small>Primary documentation · Numeric precision, context, option order, adversarial content.</small></li>
+            <li><a href="https://docs.typesafe.ai/cookbooks/skill_suggestion">Jev skill-selection cookbook</a><small>Vendor example · Ranking and checking skill candidates.</small></li>
+            <li><a href="https://docs.typesafe.ai/cookbooks/rerank_typesafe">Jev reranking cookbook</a><small>Vendor example · Reranking a BM25 shortlist.</small></li>
+            <li><a href="https://docs.typesafe.ai/legal">TypeSafe data policies</a><small>Primary documentation · Customer data and enterprise zero retention.</small></li>
+            <li><a href="https://arxiv.org/abs/2610.11978">Specialized Decision Models vs. General-Purpose LLMs</a><small>Li et al. · October 8, 2026 · Research preprint, 13 multiple-choice benchmarks.</small></li>
+            <li><a href="https://arxiv.org/abs/2610.06625">JEV versus LLMs: Accuracy, Cost and Calibration</a><small>Denney &amp; DiGiuseppe · October 2026 · Research preprint; advantages vary by task and pricing comparison.</small></li>
+          </ul>
+          <div class="repo-links"><span class="mono">Local code inspected</span><p><a href="../../docs/ARCHITECTURE.md">Architecture</a><a href="../../lib/buster_claw/agent_backend.ex">AgentBackend</a><a href="../../lib/buster_claw/model_policy.ex">ModelPolicy</a><a href="../../lib/buster_claw/dispatcher.ex">Dispatcher</a><a href="../../lib/buster_claw/dispatch.ex">Dispatch</a><a href="../../lib/buster_claw/memory.ex">Memory</a><a href="../../lib/buster_claw/skills.ex">Skills</a><a href="../../lib/buster_claw/browser_control/agent_mode.ex">Browser Agent Mode</a></p></div>
+        </section>
+        <footer><span>BUSTERCLAW / DECISION MODEL RESEARCH / V1</span><span>Local document · 13 October 2026 · <a href="#overview">Back to top ↑</a></span></footer>
+      </main>
+    </div>
+  </div>
+</body>
+</html>
