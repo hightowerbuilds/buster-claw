@@ -26,12 +26,22 @@ defmodule BusterClawWeb.Workbench do
       >
       </div>
       <div class="ic-workbench-main">
-        <div id="workbench-canvas" class="ic-workbench-canvas">
+        <%!-- The Workbench hook lays the panes out with inline custom
+              properties (and marks a narrow canvas `data-stacked`). The server
+              renders neither, so without these, any patch — a chat token, a
+              clock tick — stripped the geometry and every open pane fell back
+              to the full canvas, the last one in DOM order on top. --%>
+        <div
+          id="workbench-canvas"
+          class="ic-workbench-canvas"
+          phx-mounted={JS.ignore_attributes(["data-stacked"])}
+        >
           <section
             :for={panel <- @panel}
             id={"workbench-pane-#{panel.key}"}
             data-workbench-pane={panel.key}
             data-active={to_string(@state.active == panel.key)}
+            phx-mounted={JS.ignore_attributes(["style", "class"])}
             aria-labelledby={"workbench-title-#{panel.key}"}
             hidden={
               not MapSet.member?(@open, panel.key) or

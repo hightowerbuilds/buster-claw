@@ -502,3 +502,19 @@ Under D3 a click at the limit focuses the active terminal, but a click below the
 limit always creates. If you want "click once to show my terminals, click
 again to add one," say so — it changes D3 to *ensure on first click, create on
 the next*, which is one more state and one more thing to explain.
+
+## Defect found after shipping — 10-16
+
+**A LiveView patch stripped the pane geometry.** The hook positions panes with
+inline custom properties and marks a narrow canvas `data-stacked`; the server
+renders neither attribute, and LiveView's patch removes any attribute the
+server did not render. So the first chat token — any patch at all — sent every
+open pane to the CSS fallback (`0, 0, 100%, 100%`), and the last one in DOM
+order, the terminal, covered the chat. Reported as "the terminal takes over
+the screen when the chat has activity"; the focus guard in `terminal.js` had
+been a guess at the same report and was not the cause. Fix:
+`phx-mounted={JS.ignore_attributes(["style", "class"])}` on each pane section
+and `ignore_attributes(["data-stacked"])` on the canvas. Guarded in
+`workbench_live_test.exs`. Rule for the next hook that writes presentation
+onto a server-rendered element: declare the attribute ignored, or put the
+element under `phx-update="ignore"`.

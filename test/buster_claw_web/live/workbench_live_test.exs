@@ -35,6 +35,25 @@ defmodule BusterClawWeb.WorkbenchLiveTest do
     assert has_element?(view, "#workbench-settings[href='/appearance']")
   end
 
+  test "panes keep the hook's inline geometry across patches", %{conn: conn} do
+    # The hook positions panes with inline custom properties the server never
+    # renders. A patch that stripped them sent every open pane to the full
+    # canvas — the terminal covered the chat the moment the chat streamed.
+    {:ok, view, _} = live(conn, ~p"/")
+
+    for key <- ["chat", "terminal", "clock"] do
+      assert has_element?(
+               view,
+               "#workbench-pane-#{key}[phx-mounted*='ignore_attrs'][phx-mounted*='style']"
+             )
+    end
+
+    assert has_element?(
+             view,
+             "#workbench-canvas[phx-mounted*='ignore_attrs'][phx-mounted*='data-stacked']"
+           )
+  end
+
   test "arranging panes restores from zoom without remounting their contents", %{conn: conn} do
     {:ok, view, _} = live(conn, ~p"/")
     render_click(view, "select_home_tab", %{"tab" => "workspace"})
