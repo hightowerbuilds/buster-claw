@@ -21,10 +21,11 @@ this map is the subtraction, and it adds no replacement.
 > only place to add a contact since 09-13, so adding one came back to the
 > corner widget's Contacts tab, created and trusted in one step.
 >
-> **Phase 5 and Part VI are the operator's and are open:** the desktop walk,
-> and the console teardown — release the toll-free number, delete the Supabase
-> project, rotate the Twilio token, clear the stored `twilio_*` and
-> `supabase_*` secrets from the Clinch, drop the six `.env` keys.
+> **Phase 5 is open** (the desktop walk). **Part VI, 10-16:** the website copy
+> is gone (`buster-website` `3112500`). The rest is a five-item checklist the
+> operator runs by hand — the agent's shell is fenced off from secret stores,
+> external deletions and the untracked `.env` — see
+> [Part VI — the checklist](#part-vi--outside-the-repo).
 
 > ### The one-sentence version
 >
@@ -380,3 +381,46 @@ means a migration and losing data the operator typed. **Default:** keep.
 `keypad.wgsl.js` and `sevenseg_glyphs.wgsl.js` are smoke-background art that
 came from the dialler. They reference nothing in the phone code.
 **Default:** keep.
+
+## Part VI — the checklist (10-16)
+
+Inventory taken read-only against the account on 10-16: the Twilio account
+holds **one** number, the local **+1 (360) 364-6763**
+(`PN65f1910221ec3293b77760c139923b03`), its voice and SMS webhooks pointed at
+the Supabase relay `tzptdzmwypdmmnmbruke`; one messaging service, "BusterPhone"
+(`MG2d563001e775c962c8dc4a1cff40f27d`), with that number as its only sender.
+No subaccounts. Nothing else on this machine references the account SID. The
+toll-free 844 number the memory named is not in the account — it was released
+earlier or never bought here. The Supabase CLI's access token is expired.
+
+Done 10-16: **busterclaw.lol** — the BusterPhone feature section, the relay in
+the tech stack, "telephony" in the catalog line, the terms and privacy
+cross-references, and the three `/busterphone/` pages (`buster-website`
+`3112500`, pushed).
+
+Left for the operator, in this order (the number and service first, the token
+last, because rotating it invalidates the credentials the first two use):
+
+1. **Twilio — release the number.** Console → Phone Numbers → Manage → Active
+   numbers → (360) 364-6763 → Release this number. Or, from this folder:
+   `set -a; source .env; set +a` then
+   `curl -X DELETE -u "$TWILIO_ACCOUNT_SID:$TWILIO_AUTH_TOKEN" https://api.twilio.com/2010-04-01/Accounts/$TWILIO_ACCOUNT_SID/IncomingPhoneNumbers/PN65f1910221ec3293b77760c139923b03.json`
+   (204 = released).
+2. **Twilio — delete the messaging service.** Console → Messaging → Services →
+   BusterPhone → Delete. Or `curl -X DELETE -u "$TWILIO_ACCOUNT_SID:$TWILIO_AUTH_TOKEN" https://messaging.twilio.com/v1/Services/MG2d563001e775c962c8dc4a1cff40f27d`.
+3. **Supabase — delete the project.** Dashboard → project `tzptdzmwypdmmnmbruke`
+   → Settings → General → Delete project (type the name). This also kills the
+   two edge functions the released number's webhooks pointed at.
+4. **The Clinch — forget six app keys.** Settings → The Clinch → each of
+   `twilio_account_sid`, `twilio_auth_token`, `twilio_phone_number`,
+   `twilio_messaging_service_sid`, `supabase_url`, `supabase_service_role_key`
+   → Forget. Any that are not listed were never stored; nothing to do.
+5. **Twilio — rotate the auth token.** Console → Account → API keys & tokens →
+   Auth tokens → Request secondary token → Promote to primary. Nothing stores
+   the new one; that is the point.
+6. **`.env` — drop the phone block.** Lines 3–18 (the two comment blocks,
+   `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `TWILIO_MESSAGING_SERVICE_SID`,
+   `BUSTER_CLAW_SMS_ENABLED`, `BUSTER_CLAW_SMS_DAILY_RECIPIENT_CAP`,
+   `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `BUSTER_CLAW_TELEPHONY_DRAIN`).
+   Only `FINNHUB_API_KEY` and `FINANCE_USER_AGENT` stay. The running app does
+   not read `.env` again until the next `./scripts/dev.sh`.

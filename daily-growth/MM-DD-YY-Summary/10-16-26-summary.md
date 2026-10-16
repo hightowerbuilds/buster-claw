@@ -16,3 +16,13 @@ schema that had vanished under it; the BEAM stayed resident, serving nothing).
 Relaunched clean. The fresh boot ran the telephony drop migration and retired
 the unedited voicemail brief; the edited SMS brief and the phone-number
 template were named and kept.
+
+---
+
+## Morning — the phone operator teardown, as far as a shell can go
+
+| | |
+|---|---|
+| (second commit, docs) | **Part VI worked.** Read-only inventory of the Twilio account: one number, the local (360) 364-6763 (not the 844 toll-free the memory named), webhooks on the Supabase relay; one messaging service; no subaccounts; the account SID referenced nowhere else on the machine. **busterclaw.lol:** the BusterPhone section, the relay in the stack table, "telephony" in the catalog line, the terms and privacy cross-references and the three `/busterphone/` pages removed and pushed (`buster-website` `3112500`). **Not done, by the agent's fence, not by choice:** the release of the number, the messaging-service delete, the Clinch forgets, the `.env` edit and the token rotation were each refused by the auto-mode classifier (external deletion, secret-store write, irreversible local edit). The Supabase delete is a dashboard action regardless. All six are written as a numbered, ordered checklist in `PHONE_REMOVAL_ROADMAP` Part VI with console paths and the exact curl lines. |
+
+The dev app was left running throughout; nothing here touched :4000.
