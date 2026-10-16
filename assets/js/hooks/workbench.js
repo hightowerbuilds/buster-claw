@@ -1,4 +1,6 @@
-import {panelGeometry, layoutDots, resizeTree, readLayout, saveLayout} from "../lib/workbench.js"
+import {panelGeometry, layoutDots, resizeTree, readLayout, saveLayout, leavesOf, relabelTree, reorderKeys} from "../lib/workbench.js"
+import {requestNewTerminal, takeTerminalNewFlag, terminalHookIn} from "../lib/tabs.js"
+import {clawConfirm} from "../lib/claw_confirm.js"
 
 function position(el, box) {
   for (const [key, value] of Object.entries(box)) {
@@ -15,15 +17,21 @@ export const Workbench = {
     let saved = null
     try { this.storage = window.localStorage; saved = readLayout(this.storage) } catch { /* Storage can be disabled. */ }
     this.handleEvent("workbench:sync", state => {
-      // While a divider is captured, local geometry leads; the final resize
-      // event commits it. Focus acknowledgements must not interrupt the drag.
-      if (this.drag) return
+      // While a divider or a panel is captured, local geometry leads; the final
+      // resize/reorder event commits it. Focus acknowledgements must not
+      // interrupt the drag.
+      if (this.drag || this.paneDrag) return
       this.state = state
       saveLayout(this.storage, state)
       this.draw()
       window.dispatchEvent(new CustomEvent("bc:workbench-state", {detail: state}))
     })
     this.pushEvent("restore_workbench", {state: saved || this.state}, () => { this.el.dataset.ready = "true" })
+    // ⌘T or the sidebar's Terminal from another app tab: open a slot on arrival.
+    if (takeTerminalNewFlag()) this.pushEvent("workbench_terminal_new", {})
+    this.handleEvent("workbench:limit", detail => window.dispatchEvent(new CustomEvent("bc:workbench-limit", {detail})))
+    this.onTerminalNew = () => this.pushEvent("workbench_terminal_new", {})
+    this.onClick = event => this.closeTerminal(event)
     this.onPointer = event => {
       const divider = event.target.closest("[data-workbench-divider]")
       if (divider) return this.startDrag(event, divider)
@@ -31,6 +39,9 @@ export const Workbench = {
       if (pane && pane.dataset.workbenchPane !== this.state.active) {
         this.pushEvent("workbench_focus", {key: pane.dataset.workbenchPane})
       }
+      // Pick a panel up by its header (not its buttons) — see armPaneDrag.
+      const header = event.target.closest(".ic-workbench-pane-header")
+      if (header && pane && !event.target.closest("button")) this.armPaneDrag(event, pane)
     }
     this.onKey = event => this.resizeWithKeys(event)
     this.onOpen = event => {
@@ -40,9 +51,11 @@ export const Workbench = {
       if (typeof event.detail?.preset === "string") this.pushEvent("workbench_layout", {preset: event.detail.preset})
     }
     this.root.addEventListener("pointerdown", this.onPointer)
+    this.root.addEventListener("click", this.onClick)
     this.dividers.addEventListener("keydown", this.onKey)
     window.addEventListener("bc:workbench-open", this.onOpen)
     window.addEventListener("bc:workbench-layout", this.onLayout)
+    window.addEventListener("bc:terminal-new", this.onTerminalNew)
     this.observer = new ResizeObserver(() => this.draw())
     this.observer.observe(this.canvas)
     this.draw()
@@ -53,6 +66,8 @@ export const Workbench = {
     const geometry = panelGeometry(this.state.tree, this.canvas.clientWidth, this.canvas.clientHeight, this.state.zoom)
     for (const pane of this.canvas.querySelectorAll("[data-workbench-pane]")) {
       const key = pane.dataset.workbenchPane
+      // A lifted panel follows the pointer; its slot is drawn by the others.
+      if (this.paneDrag?.lifted && key === this.paneDrag.key) continue
       if (geometry.panes[key]) position(pane, geometry.panes[key])
     }
     if (this.drag) return
@@ -122,6 +137,93 @@ export const Workbench = {
     this.drag = null
     this.root.classList.remove("is-resizing")
   },
+  // × on a terminal pane (TERMINAL_PANELS D4): ask if something is running,
+  // end the shell for good, then let the server drop the slot. `destroyed()`
+  // alone would keep the PTY for a reattach, and the next terminal opened in
+  // this slot would wake up inside it.
+  async closeTerminal(event) {
+    const button = event.target.closest("[data-workbench-close-terminal]")
+    if (!button) return
+    event.preventDefault()
+    const key = button.dataset.workbenchCloseTerminal
+    const hook = terminalHookIn(this.canvas.querySelector(`[data-workbench-pane="${key}"]`))
+    if (hook && (await hook.isBusy()) && !(await clawConfirm("This terminal is running something. Close it anyway?"))) return
+    if (hook) await hook.closeSession()
+    this.pushEvent("workbench_close", {key})
+  },
+  // ---- Drag a panel to a new spot -------------------------------------------
+  // Pointer down on a header arms it; moving a few pixels lifts the panel.
+  // While lifted it follows the pointer, and whichever panel it hovers slides
+  // over: the order is recomputed and the tree relabelled locally
+  // (`reorderKeys` + `relabelTree`), so the preview is the exact final layout.
+  // The drop sends `workbench_reorder` with the order; Escape puts it back.
+  // Not while zoomed (one panel, nowhere to go) nor on a narrow canvas (the
+  // panes are a column there and the geometry does not apply).
+  armPaneDrag(event, pane) {
+    if (event.button !== 0 || this.state.zoom || this.canvas.dataset.stacked === "true") return
+    if (leavesOf(this.state.tree).length < 2) return
+    this.paneDrag = {key: pane.dataset.workbenchPane, pane, x: event.clientX, y: event.clientY, pointerId: event.pointerId, lifted: false}
+    this.onPaneMove = move => this.movePane(move)
+    this.onPaneUp = () => this.dropPane(false)
+    this.onPaneKey = key => { if (key.key === "Escape") this.dropPane(true) }
+    window.addEventListener("pointermove", this.onPaneMove)
+    window.addEventListener("pointerup", this.onPaneUp)
+    window.addEventListener("pointercancel", this.onPaneUp)
+    window.addEventListener("keydown", this.onPaneKey, true)
+  },
+  movePane(move) {
+    const drag = this.paneDrag
+    if (!drag) return
+    if (!drag.lifted) {
+      if (Math.hypot(move.clientX - drag.x, move.clientY - drag.y) < 6) return
+      const rect = drag.pane.getBoundingClientRect()
+      const canvas = this.canvas.getBoundingClientRect()
+      Object.assign(drag, {
+        lifted: true,
+        tree: this.state.tree,
+        order: leavesOf(this.state.tree),
+        start: leavesOf(this.state.tree),
+        grabX: drag.x - rect.left,
+        grabY: drag.y - rect.top,
+        canvas,
+      })
+      try { drag.pane.setPointerCapture(drag.pointerId) } catch { /* capture is a nicety */ }
+      drag.pane.classList.add("is-lifted")
+      this.root.dataset.paneDragging = "true"
+    }
+    move.preventDefault()
+    const px = move.clientX - drag.canvas.left
+    const py = move.clientY - drag.canvas.top
+    position(drag.pane, {x: px - drag.grabX, y: py - drag.grabY})
+    const geometry = panelGeometry(this.state.tree, this.canvas.clientWidth, this.canvas.clientHeight)
+    const target = Object.entries(geometry.panes).find(([key, box]) =>
+      key !== drag.key && px >= box.x && px <= box.x + box.width && py >= box.y && py <= box.y + box.height
+    )?.[0]
+    if (!target) return
+    const order = reorderKeys(drag.order, drag.key, target)
+    if (order === drag.order) return
+    drag.order = order
+    this.state = {...this.state, tree: relabelTree(drag.tree, order)}
+    this.draw()
+  },
+  dropPane(cancelled) {
+    const drag = this.paneDrag
+    if (!drag) return
+    window.removeEventListener("pointermove", this.onPaneMove)
+    window.removeEventListener("pointerup", this.onPaneUp)
+    window.removeEventListener("pointercancel", this.onPaneUp)
+    window.removeEventListener("keydown", this.onPaneKey, true)
+    this.paneDrag = null
+    if (!drag.lifted) return
+    try { drag.pane.releasePointerCapture(drag.pointerId) } catch { /* already released */ }
+    drag.pane.classList.remove("is-lifted")
+    delete this.root.dataset.paneDragging
+    if (cancelled) this.state = {...this.state, tree: drag.tree}
+    this.draw()
+    // Always commit: a sync that arrived mid-drag (the focus acknowledgement)
+    // was held back, and the reply to this one brings the state current.
+    this.pushEvent("workbench_reorder", {order: cancelled ? drag.start : drag.order})
+  },
   resizeWithKeys(event) {
     const el = event.target.closest("[data-workbench-divider]")
     if (!el) return
@@ -134,11 +236,14 @@ export const Workbench = {
   },
   destroyed() {
     this.stopDrag()
+    this.dropPane(true)
     this.observer.disconnect()
     this.root.removeEventListener("pointerdown", this.onPointer)
+    this.root.removeEventListener("click", this.onClick)
     this.dividers.removeEventListener("keydown", this.onKey)
     window.removeEventListener("bc:workbench-open", this.onOpen)
     window.removeEventListener("bc:workbench-layout", this.onLayout)
+    window.removeEventListener("bc:terminal-new", this.onTerminalNew)
   },
 }
 
@@ -153,16 +258,33 @@ export const WorkbenchMenu = {
         window.dispatchEvent(new CustomEvent("bc:workbench-layout", {detail: {preset: layout.dataset.workbenchLayout}}))
         return
       }
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+      // Terminal always creates (TERMINAL_PANELS D3) — here or on arrival.
+      if (event.target.closest("[data-workbench-terminal-new]")) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        requestNewTerminal()
+        return
+      }
       const link = event.target.closest("[data-workbench-open]")
-      if (!link || !document.querySelector("#workbench-controller") || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+      if (!link || !document.querySelector("#workbench-controller")) return
       event.preventDefault()
       event.stopImmediatePropagation()
       window.dispatchEvent(new CustomEvent("bc:workbench-open", {detail: {key: link.dataset.workbenchOpen}}))
     }
     this.onState = event => {this.state = event.detail; this.bindRoot(); this.paint()}
     this.onNavigate = () => {this.bindRoot(); this.paint()}
+    // A click at the limit: the server refused, the button says so for a beat.
+    this.onLimit = () => {
+      const button = this.root?.querySelector("[data-workbench-terminal-new]")
+      if (!button) return
+      button.classList.remove("is-refused")
+      void button.offsetWidth
+      button.classList.add("is-refused")
+    }
     this.bindRoot()
     window.addEventListener("bc:workbench-state", this.onState)
+    window.addEventListener("bc:workbench-limit", this.onLimit)
     window.addEventListener("phx:page-loading-stop", this.onNavigate)
     try { this.state = readLayout(window.localStorage) } catch { this.state = null }
     this.paint()
@@ -194,6 +316,18 @@ export const WorkbenchMenu = {
       link.dataset.active = String(onWorkArea && this.state?.active === key)
       link.querySelector(".ic-workbench-open-dot").hidden = !open.has(key)
     }
+    const terminal = this.root.querySelector("[data-workbench-terminal-new]")
+    if (terminal) {
+      const count = [...open].filter(key => key === "terminal" || key.startsWith("terminal-")).length
+      const limit = Number(this.state?.terminal_limit) || 4
+      const badge = terminal.querySelector("[data-workbench-terminal-count]")
+      badge.textContent = `${count} / ${limit}`
+      badge.hidden = !(onWorkArea && count > 0)
+      terminal.dataset.atLimit = String(onWorkArea && count >= limit)
+      terminal.title = onWorkArea && count >= limit
+        ? `${limit} terminals is the limit — close one to open another`
+        : "Open a terminal"
+    }
     this.root.querySelector("#workbench-browser").dataset.active = String(location.pathname === "/browse")
     this.root.querySelector("#workbench-settings").dataset.active = String(["/appearance", "/settings", "/notify-settings", "/integrations", "/security"].includes(location.pathname))
     for (const layout of this.state?.layouts || this.defaultLayouts) {
@@ -201,7 +335,7 @@ export const WorkbenchMenu = {
       button.disabled = !onWorkArea || !layout.enabled
       button.setAttribute("aria-pressed", String(onWorkArea && this.state?.preset === layout.key && layout.enabled))
       button.title = !onWorkArea ? "Open a panel to arrange your work area"
-        : !layout.enabled ? `${layout.label} — open ${layout.key === "grid" ? "three" : "two"} panels to use`
+        : !layout.enabled ? `${layout.label} — ${layout.hint}`
         : `${layout.label} — ${open.size} panels`
       const dots = layoutDots(layout.tree).map(point => {
         const dot = document.createElement("span")
@@ -215,6 +349,7 @@ export const WorkbenchMenu = {
   destroyed() {
     this.root.removeEventListener("click", this.onClick, true)
     window.removeEventListener("bc:workbench-state", this.onState)
+    window.removeEventListener("bc:workbench-limit", this.onLimit)
     window.removeEventListener("phx:page-loading-stop", this.onNavigate)
   },
 }

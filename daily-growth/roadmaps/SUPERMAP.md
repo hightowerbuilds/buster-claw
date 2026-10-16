@@ -83,7 +83,7 @@ in flight for this area?" without opening anything.
 ```
 roadmaps/
 ├── SUPERMAP.md ·············· this file — the only index
-├── shell/ ·················· Part I    TERMINAL_PAINT
+├── shell/ ·················· Part I    TERMINAL_PAINT · TERMINAL_PANELS
 ├── surfaces/ ··············· Parts II–III  STUDIO · VOX_TAB · IMAGE_SHADER · LEFTOVERS_SURFACES
 ├── agent-core/ ············· Part V    LEFTOVERS_AGENT_CORE
 ├── integrations/ ··········· Part VI   CLINCH · BUSTERPHONE (+NUMBER_VENDING) · PHONE_INTAKE · PHONE_ACCESS · GOOGLE_VERIFICATION
@@ -289,6 +289,7 @@ and zero issues in the verdict. Budget hours per release, not minutes
 | **The macOS Dock icon** | `Pockets.AppIcon`, `app_icon_set` | **BUILT 08-15** — drop an image in `pockets/app-icon/` and apply it; keyed to the file's bytes, so replacing it reverts to the shipped icon. The bundle icon stays sealed by the signature. **The native half is unwalked** — see [`QA_BACKLOG`](platform/QA_BACKLOG.md) | archived 08-17 · the unwalked native half is [`QA_BACKLOG`](platform/QA_BACKLOG.md)'s |
 | Terminal themes | `TerminalTheme` | SHIPPED · operator walk open | archived 08-17 · the walk is [`RELEASE_GATE`](platform/RELEASE_GATE_ROADMAP.md)'s, gate `G-40` |
 | Terminal paint — the agent recolours itself | — | **SCOPED** | [`TERMINAL_PAINT`](shell/TERMINAL_PAINT_ROADMAP.md) |
+| Terminal panels — up to four shells in the work area | `WorkbenchState`, `TerminalLive` | **BUILT 10-15** — sidebar button and ⌘T create, × closes the shell, split and copy-key buttons gone; ⌘1/2/3 = Work Area / Settings / Browser; Paired columns preset (four → 2×2, five → 3 columns, two stacked); drag a panel by its header to reorder. Phase 5 desktop walk open | [`TERMINAL_PANELS`](shell/TERMINAL_PANELS_ROADMAP.md) |
 
 ---
 
@@ -353,7 +354,7 @@ coming, which is the honest end for a surface nobody reached for. Its map is
 | Workspace | `WorkspaceLive` `/workspace` | SHIPPED | — |
 | Browser | `BrowseLive` `/browse`, `BrowserControl` | SHIPPED | [`LEFTOVERS_SURFACES`](surfaces/LEFTOVERS_SURFACES.md) · gate `G-34` — the payment gate is unwalked |
 | Split view | `SplitLive` `/split` | SHIPPED | — |
-| Terminal | `TerminalLive` `/terminal` | SHIPPED | — |
+| Terminal | `TerminalLive` `/terminal`, work-area panels ×4 | SHIPPED · four slots BUILT 10-15, desktop walk open | [`TERMINAL_PANELS`](shell/TERMINAL_PANELS_ROADMAP.md) |
 | The Manual | `UserGuideLive` `/manual` | SHIPPED | [`LEFTOVERS_SURFACES`](surfaces/LEFTOVERS_SURFACES.md) — no test, worst drift of any surface |
 | Music library | `MusicComponent` (inside Studio → Mix) | SHIPPED | [`LEFTOVERS_SURFACES`](surfaces/LEFTOVERS_SURFACES.md) · gate `G-35` — `nosniff`, **HIGH** |
 

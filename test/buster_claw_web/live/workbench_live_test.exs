@@ -90,4 +90,86 @@ defmodule BusterClawWeb.WorkbenchLiveTest do
     refute has_element?(view, "#workbench-empty")
     assert has_element?(view, "#workbench-pane-chat:not([hidden]) #home-agent-chat")
   end
+
+  test "the sidebar's Terminal opens up to four shells and refuses a fifth", %{conn: conn} do
+    {:ok, view, _} = live(conn, ~p"/")
+
+    assert has_element?(
+             view,
+             "#home-tab-terminal[data-workbench-terminal-new] [data-workbench-terminal-count]"
+           )
+
+    for _ <- 1..4, do: render_click(view, "workbench_terminal_new", %{})
+
+    for slot <- ["terminal", "terminal-2", "terminal-3", "terminal-4"] do
+      assert has_element?(view, "#workbench-pane-#{slot}:not([hidden])")
+      key = BusterClawWeb.WorkbenchState.session_key(slot)
+      child = find_live_child(view, "workbench-#{slot}")
+      assert has_element?(child, "[phx-hook='TerminalView'][data-session-key='#{key}']")
+    end
+
+    assert has_element?(view, "#workbench-pane-terminal-4[data-active='true']")
+    assert has_element?(view, "#workbench-title-terminal-3", "Terminal 3")
+    # A terminal's × is the hook's (busy check, then the PTY), never a bare hide.
+    assert has_element?(
+             view,
+             "#workbench-close-terminal-2[data-workbench-close-terminal='terminal-2']"
+           )
+
+    refute has_element?(view, "#workbench-close-terminal-2[phx-click]")
+    assert has_element?(view, "#workbench-close-chat[phx-click='workbench_close']")
+
+    render_click(view, "workbench_terminal_new", %{})
+    assert_push_event(view, "workbench:limit", %{limit: 4})
+    refute has_element?(view, "#workbench-pane-terminal-5")
+  end
+
+  test "closing a terminal unmounts its shell and frees the slot for the next one", %{
+    conn: conn
+  } do
+    {:ok, view, _} = live(conn, ~p"/")
+    for _ <- 1..3, do: render_click(view, "workbench_terminal_new", %{})
+    second = find_live_child(view, "workbench-terminal-2")
+
+    render_click(view, "workbench_close", %{"key" => "terminal-2"})
+    refute has_element?(view, "#workbench-pane-terminal-2 [phx-hook='TerminalView']")
+    assert has_element?(view, "#workbench-pane-terminal-3:not([hidden])")
+
+    render_click(view, "workbench_terminal_new", %{})
+
+    assert has_element?(
+             view,
+             "#workbench-pane-terminal-2:not([hidden]) [phx-hook='TerminalView']"
+           )
+
+    assert find_live_child(view, "workbench-terminal-2").pid != second.pid
+  end
+
+  test "the terminal deep link ensures one shell rather than minting another", %{conn: conn} do
+    {:ok, view, _} = live(conn, "/?panel=terminal")
+    assert has_element?(view, "#workbench-pane-terminal:not([hidden])")
+    refute has_element?(view, "#workbench-pane-terminal-2:not([hidden])")
+    render_click(view, "select_home_tab", %{"tab" => "terminal"})
+    refute has_element?(view, "#workbench-pane-terminal-2:not([hidden])")
+    assert has_element?(view, "#workbench-pane-terminal[data-active='true']")
+  end
+
+  test "dragging a panel to a new spot reorders without remounting anything", %{conn: conn} do
+    {:ok, view, _} = live(conn, ~p"/")
+    render_click(view, "select_home_tab", %{"tab" => "workspace"})
+    assert_push_event(view, "workbench:sync", %{active: "workspace"})
+    render_click(view, "select_home_tab", %{"tab" => "clock"})
+    assert_push_event(view, "workbench:sync", %{active: "clock"})
+    workspace = find_live_child(view, "workbench-workspace")
+
+    render_click(view, "workbench_reorder", %{"order" => ["clock", "chat", "workspace"]})
+    assert_push_event(view, "workbench:sync", %{tree: tree})
+    assert BusterClawWeb.WorkbenchState.leaves(tree) == ["clock", "chat", "workspace"]
+    assert find_live_child(view, "workbench-workspace").pid == workspace.pid
+    assert has_element?(view, "#workbench-pane-clock:not([hidden])")
+
+    render_click(view, "workbench_reorder", %{"order" => ["clock", "chat", "nope"]})
+    assert_push_event(view, "workbench:sync", %{tree: same})
+    assert same == tree
+  end
 end

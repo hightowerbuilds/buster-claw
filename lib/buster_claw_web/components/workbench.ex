@@ -41,7 +41,7 @@ defmodule BusterClawWeb.Workbench do
           >
             <header class="ic-workbench-pane-header">
               <span class="ic-workbench-pane-mark" aria-hidden="true"></span>
-              <h2 id={"workbench-title-#{panel.key}"} tabindex="-1">{label(panel.key)}</h2>
+              <h2 id={"workbench-title-#{panel.key}"} tabindex="-1">{State.label(panel.key)}</h2>
               <div class="ml-auto flex items-center gap-0.5">
                 <button
                   id={"workbench-zoom-#{panel.key}"}
@@ -51,7 +51,7 @@ defmodule BusterClawWeb.Workbench do
                   aria-label={
                     if(@state.zoom == panel.key,
                       do: "Restore panels",
-                      else: "Maximize #{label(panel.key)}"
+                      else: "Maximize #{State.label(panel.key)}"
                     )
                   }
                   title={if(@state.zoom == panel.key, do: "Restore panels", else: "Maximize panel")}
@@ -67,12 +67,27 @@ defmodule BusterClawWeb.Workbench do
                     class="size-3.5"
                   />
                 </button>
+                <%!-- A terminal's × CLOSES its shell (TERMINAL_PANELS D4), so the
+                      Workbench hook owns that click: busy check, confirm, end the
+                      PTY, then `workbench_close`. Every other pane just hides. --%>
                 <button
+                  :if={State.terminal_slot?(panel.key)}
+                  id={"workbench-close-#{panel.key}"}
+                  type="button"
+                  data-workbench-close-terminal={panel.key}
+                  aria-label={"Close #{State.label(panel.key)}"}
+                  title="Close terminal"
+                  class="ic-workbench-pane-action"
+                >
+                  <.icon name="hero-x-mark" class="size-3.5" />
+                </button>
+                <button
+                  :if={not State.terminal_slot?(panel.key)}
                   id={"workbench-close-#{panel.key}"}
                   type="button"
                   phx-click="workbench_close"
                   phx-value-key={panel.key}
-                  aria-label={"Hide #{label(panel.key)}"}
+                  aria-label={"Hide #{State.label(panel.key)}"}
                   title="Hide panel"
                   class="ic-workbench-pane-action"
                 >
@@ -146,16 +161,28 @@ defmodule BusterClawWeb.Workbench do
         <span class="ic-eyebrow">Your work area</span>
       </div>
       <nav class="ic-workbench-launcher" aria-label="Panels">
+        <%!-- Terminal always CREATES (TERMINAL_PANELS D3): the hook routes the
+              click to the next free slot, up to four, and paints the count. The
+              href is the fallback — and the deep link, which only ensures one. --%>
         <.link
           :for={panel <- @panels}
           id={"home-tab-#{panel.key}"}
           navigate={"/?panel=#{panel.key}"}
           data-workbench-open={panel.key}
+          data-workbench-terminal-new={State.terminal_slot?(panel.key) && "true"}
           data-active="false"
           class="ic-workbench-menu-button"
         >
           <.icon name={panel.icon} class="size-4 shrink-0" />
           <span>{panel.label}</span>
+          <span
+            :if={State.terminal_slot?(panel.key)}
+            class="ic-workbench-count"
+            data-workbench-terminal-count
+            aria-live="polite"
+            hidden
+          >
+          </span>
           <span class="ic-workbench-open-dot" aria-hidden="true" hidden></span>
         </.link>
       </nav>
@@ -176,6 +203,4 @@ defmodule BusterClawWeb.Workbench do
     </div>
     """
   end
-
-  defp label(key), do: Enum.find(State.panels(), &(&1.key == key)).label
 end

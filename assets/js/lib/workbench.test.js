@@ -1,5 +1,5 @@
 import {describe, test, expect} from "bun:test"
-import {panelGeometry, layoutDots, resizeTree, readLayout, saveLayout} from "./workbench.js"
+import {panelGeometry, layoutDots, resizeTree, readLayout, saveLayout, leavesOf, relabelTree, reorderKeys} from "./workbench.js"
 
 const split = {axis: "horizontal", ratio: 0.5, first: "chat", second: {axis: "vertical", ratio: 0.4, first: "terminal", second: "clock"}}
 
@@ -51,5 +51,26 @@ describe("work-area geometry", () => {
       expect(dot.y).toBeGreaterThan(0)
       expect(dot.y).toBeLessThan(100)
     }
+  })
+})
+
+describe("dragging a panel to a new spot", () => {
+  const keys = ["chat", "terminal", "clock", "pockets"]
+  test("the panels between slide toward the vacated spot, in either direction", () => {
+    expect(reorderKeys(keys, "chat", "clock")).toEqual(["terminal", "clock", "chat", "pockets"])
+    expect(reorderKeys(keys, "pockets", "terminal")).toEqual(["chat", "pockets", "terminal", "clock"])
+    expect(reorderKeys(keys, "chat", "chat")).toBe(keys)
+    expect(reorderKeys(keys, "chat", "nope")).toBe(keys)
+    expect(keys).toEqual(["chat", "terminal", "clock", "pockets"])
+  })
+  test("relabelling keeps every partition and ratio and changes only who sits where", () => {
+    const moved = relabelTree(split, ["clock", "chat", "terminal"])
+    expect(leavesOf(moved)).toEqual(["clock", "chat", "terminal"])
+    expect(moved.ratio).toBe(0.5)
+    expect(moved.second.ratio).toBe(0.4)
+    expect(moved.second.axis).toBe("vertical")
+    expect(leavesOf(split)).toEqual(["chat", "terminal", "clock"])
+    expect(relabelTree(null, ["chat"])).toBeNull()
+    expect(relabelTree("chat", ["clock"])).toBe("clock")
   })
 })

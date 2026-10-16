@@ -1,7 +1,7 @@
 // bun test — pure-logic tests for the tab-strip grouping helpers.
 // Run: bun test assets/js/lib/ (from the repo root)
 import {describe, expect, test} from "bun:test"
-import {canonicalGroupKey, chromeChips, closeTabIn, labelForPath, tabDestination} from "./tabs.js"
+import {canonicalGroupKey, chromeChips, closeTabIn, labelForPath, shortcutDestination, tabDestination, terminalRequestRoute} from "./tabs.js"
 
 // 09-13-26: the browser chrome's row of app tabs could switch tabs but not close
 // them, and on /browse that row is the only tab strip you can reach — the DOM
@@ -142,5 +142,37 @@ describe("labelForPath", () => {
     const labels = {"/appearance": "Settings", "/notify-settings": "Settings"}
     expect(labelForPath("/appearance", labels)).toBe("Settings")
     expect(labelForPath("/notify-settings", labels)).toBe("Settings")
+  })
+})
+
+// 10-15-26: ⌘1 ⌘2 ⌘3 stopped meaning "the Nth tab" and became the three places
+// the app has. The Browser's chrome and the DOM strip both route through this.
+describe("shortcutDestination", () => {
+  const tabs = [
+    {path: "/"},
+    {path: "/settings", href: "/notify-settings?x=1"},
+    {path: "/browse?t=abc"},
+    {path: "/browse?t=def"},
+  ]
+  test("the work area, the remembered Settings page, and the first browser tab", () => {
+    expect(shortcutDestination(1, tabs)).toBe("/")
+    expect(shortcutDestination(2, tabs)).toBe("/notify-settings?x=1")
+    expect(shortcutDestination(3, tabs)).toBe("/browse?t=abc")
+  })
+  test("with nothing open, Settings lands on Appearance and Browser on a fresh /browse", () => {
+    expect(shortcutDestination(2, [])).toBe("/appearance")
+    expect(shortcutDestination(3, null)).toBe("/browse")
+  })
+  test("there is no ⌘4 through ⌘9", () => {
+    for (const n of [0, 4, 9]) expect(shortcutDestination(n, tabs)).toBeNull()
+  })
+})
+
+describe("terminalRequestRoute", () => {
+  test("opens a slot on the work area, navigates from any other app tab, and yields to the Browser", () => {
+    expect(terminalRequestRoute("/", true)).toBe("open")
+    expect(terminalRequestRoute("/settings", false)).toBe("navigate")
+    expect(terminalRequestRoute("/browse", false)).toBe("ignore")
+    expect(terminalRequestRoute("/browse?t=abc", true)).toBe("ignore")
   })
 })

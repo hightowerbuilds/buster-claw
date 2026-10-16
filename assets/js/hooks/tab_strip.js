@@ -1,4 +1,4 @@
-import {canonicalGroupKey, closeTabIn, loadTabs, saveTabs, labelForPath, openNewTerminalTab, anyTerminalBusy, tabDestination} from "../lib/tabs.js"
+import {canonicalGroupKey, closeTabIn, loadTabs, saveTabs, labelForPath, requestNewTerminal, shortcutDestination, anyTerminalBusy, tabDestination} from "../lib/tabs.js"
 import {escapeHtml} from "../lib/html.js"
 import {TabRename} from "./tab_rename.js"
 import {dutyTabs} from "./duty_tab.js"
@@ -76,7 +76,7 @@ export const TabStrip = {
   },
   // Menu-accelerator actions, mirroring handleShortcut's keydown behavior.
   menuShortcut(action) {
-    if (action === "new_tab") return this.openTerminalTab()
+    if (action === "new_tab") return requestNewTerminal()
     if (action === "close_tab") return this.closeCurrentTab()
     if (action === "reload") return window.location.reload()
     if (action === "next_tab" || action === "prev_tab") {
@@ -87,8 +87,8 @@ export const TabStrip = {
       window.location.href = this.navTarget(tabs[n])
       return
     }
-    const m = /^tab_([1-9])$/.exec(action)
-    if (m) this.activateTabAt(Number(m[1]))
+    const m = /^tab_([1-3])$/.exec(action)
+    if (m) this.jumpTo(Number(m[1]))
   },
   parseLabels() {
     try { return JSON.parse(this.el.dataset.labels || "{}") } catch (_e) { return {} }
@@ -213,30 +213,11 @@ export const TabStrip = {
       `</span>`
   },
   onClick(e) {
-    const newTab = e.target.closest("[data-newtab]")
-    if (newTab) {
-      e.preventDefault()
-      this.openBrowserTab()
-      return
-    }
-    const newTerminal = e.target.closest("[data-newterminal]")
-    if (newTerminal) {
-      e.preventDefault()
-      this.openTerminalTab()
-      return
-    }
     const closeBtn = e.target.closest("[data-close]")
     if (!closeBtn) return
     e.preventDefault()
     e.stopPropagation()
     this.closeTab(closeBtn.getAttribute("data-close"))
-  },
-  openBrowserTab() {
-    const token = Math.random().toString(36).slice(2, 8)
-    window.location.href = `/browse?t=${token}`
-  },
-  openTerminalTab() {
-    openNewTerminalTab(this.labels)
   },
   onDragStart(e) {
     const tab = e.target.closest("[data-path]")
@@ -446,27 +427,22 @@ export const TabStrip = {
   handleShortcut(e) {
     if (e.altKey || e.shiftKey || !(e.metaKey || e.ctrlKey)) return
     const key = (e.key || "").toLowerCase()
-    // ⌘1…8 jump to the Nth tab; ⌘9 jumps to the last tab (browser convention).
-    if (key >= "1" && key <= "9") {
-      e.preventDefault()
-      e.stopPropagation()
-      this.activateTabAt(Number(key))
-      return
-    }
-    if (key !== "t" && key !== "w") return
+    // ⌘1 ⌘2 ⌘3 are the work area, Settings and the Browser — the only three.
+    // ⌘T opens a terminal panel. ⌘W closes the active tab (never the window).
+    if (!/^[123tw]$/.test(key)) return
     // Handle it ourselves and keep it from reaching the terminal / PTY.
     e.preventDefault()
     e.stopPropagation()
-    if (key === "t") this.openTerminalTab()
-    else this.closeCurrentTab()
+    if (key === "t") requestNewTerminal()
+    else if (key === "w") this.closeCurrentTab()
+    else this.jumpTo(Number(key))
   },
   // Activate the tab at a 1-indexed position in the visible (persisted) order.
   // 9 is special-cased to the last tab, matching browser tab shortcuts. No-op
   // when there's no tab at that slot.
-  activateTabAt(n) {
-    const tabs = this.load()
-    const tab = n === 9 ? tabs[tabs.length - 1] : tabs[n - 1]
-    if (tab) window.location.href = this.navTarget(tab)
+  jumpTo(n) {
+    const dest = shortcutDestination(n, this.load())
+    if (dest) window.location.href = dest
   },
   // ⌘W only ever closes the active tab. Closing the last remaining tab navigates
   // to "/" (which re-seeds the strip with a fresh home tab on the next page

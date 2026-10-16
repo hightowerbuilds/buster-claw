@@ -4,7 +4,7 @@ import {WebglAddon} from "@xterm/addon-webgl"
 
 import {liveTerminals, currentTermTheme, termThemeWithBackground} from "../lib/theme.js"
 import {stripTransparentBackgroundPaint, flushTransparentBackgroundPaint} from "../lib/ansi.js"
-import {openNewTerminalTab, openTerminalSplit, registerTerminal, unregisterTerminal} from "../lib/tabs.js"
+import {registerTerminal, unregisterTerminal} from "../lib/tabs.js"
 import {escapeHtml} from "../lib/html.js"
 
 // PTY-backed terminal (desktop only). xterm.js renders here; the PTY lives in
@@ -23,11 +23,7 @@ export const TerminalView = {
     // true; the onboarding/prefill path sets `data-startup-submit="false"`
     // so the command is pre-typed and left for the user to run.
     this.startupSubmit = this.el.dataset.startupSubmit !== "false"
-    this.terminalPath = this.el.dataset.terminalPath || window.location.pathname + window.location.search
-    this.toolbar = document.getElementById(this.el.dataset.toolbarId || "")
     this.statusEl = document.getElementById(this.el.dataset.statusId || "")
-    this.onToolbarClick = (e) => this.handleToolbarClick(e)
-    this.toolbar?.addEventListener("click", this.onToolbarClick)
     this.setStatus("Connecting")
 
     // Terminal background image (Settings → Appearance). When active, the xterm
@@ -198,28 +194,6 @@ export const TerminalView = {
     await invoke("terminal_input", {id: this.id, data})
     this.setStatus(this.startupSubmit ? "Running" : "Ready")
   },
-  handleToolbarClick(e) {
-    const button = e.target.closest("[data-terminal-action]")
-    if (!button || (this.toolbar && !this.toolbar.contains(button))) return
-
-    e.preventDefault()
-    const action = button.dataset.terminalAction
-
-    if (action === "new") {
-      openNewTerminalTab()
-      return
-    }
-
-    if (action === "split") {
-      openTerminalSplit(this.terminalPath, button.dataset.splitSide || "right")
-      return
-    }
-
-    if (action === "copy-key") {
-      this.copySessionKey()
-      return
-    }
-  },
   setStatus(status) {
     if (this.statusEl) this.statusEl.textContent = status
   },
@@ -274,15 +248,6 @@ export const TerminalView = {
       this.el.style.backgroundAttachment = ""
     }
   },
-  async copySessionKey() {
-    const key = this.sessionKey || "main"
-    try {
-      await navigator.clipboard.writeText(key)
-      this.setStatus("Copied")
-    } catch (_e) {
-      this.setStatus("Copy failed")
-    }
-  },
   // Whether this PTY has a foreground process other than its idle shell — asked
   // by the TabStrip before closing the tab. Native query (tcgetpgrp); any error
   // or a torn-down session reads as not-busy so it never blocks closing.
@@ -295,11 +260,22 @@ export const TerminalView = {
       return false
     }
   },
+  // End this terminal's shell for good: the PTY, the stored session id, and
+  // the listeners. Called by the work area before it closes a terminal pane —
+  // `destroyed()` alone keeps a keyed session alive on purpose (tab switches
+  // reattach to it), so without this the next terminal opened in the same slot
+  // would wake up inside the shell the user just closed.
+  async closeSession() {
+    const invoke = window.__TAURI__?.core?.invoke
+    const id = this.id
+    this.id = null
+    if (this.storageKey) localStorage.removeItem(this.storageKey)
+    if (id && invoke) {
+      try { await invoke("terminal_close", {id}) } catch (_e) { /* already gone */ }
+    }
+  },
   destroyed() {
     unregisterTerminal(this)
-    if (this.toolbar && this.onToolbarClick) {
-      this.toolbar.removeEventListener("click", this.onToolbarClick)
-    }
     this.resizeObserver?.disconnect()
     if (this.resizeRaf) cancelAnimationFrame(this.resizeRaf)
     this.unlistenData?.()

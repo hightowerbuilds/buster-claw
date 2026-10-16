@@ -13,6 +13,7 @@ import {resolve as resolveUrl, display as displayUrl, deriveLabel, faviconFor} f
 // otherwise insert a tofu glyph instead of moving the caret.
 import {installCaretKeys} from "./lib/caret_keys.js"
 import {renderAppTabChips} from "./lib/chrome_app_tabs.js"
+import {loadTabs, shortcutDestination} from "./lib/tabs.js"
 import {installBrowserNav} from "./lib/browser_nav.js"
 
 installCaretKeys()
@@ -285,13 +286,10 @@ window.__menuShortcut = function (action) {
     const n = action === "next_tab" ? (i + 1) % tabs.length : (i - 1 + tabs.length) % tabs.length
     return switchTab(tabs[n].id)
   }
-  const m = /^tab_([1-9])$/.exec(action)
-  if (m) {
-    // ⌘9 = last tab, matching the browser convention (and the app TabStrip).
-    const n = Number(m[1])
-    const t = n === 9 ? tabs[tabs.length - 1] : tabs[n - 1]
-    if (t) switchTab(t.id)
-  }
+  // ⌘1 ⌘2 ⌘3 are the app's three places (work area, Settings, Browser), from
+  // inside the Browser too — they never pick a browser tab.
+  const m = /^tab_([1-3])$/.exec(action)
+  if (m) inv("browser_app_navigate", {path: shortcutDestination(Number(m[1]), loadTabs())})
 }
 
 // --- bookmark bar (persistent quick-access strip below the toolbar) ---

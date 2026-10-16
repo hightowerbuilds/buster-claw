@@ -117,47 +117,14 @@ defmodule BusterClawWeb.TerminalLive do
                 >
                   Connecting
                 </span>
-                <code
-                  data-terminal-key
-                  class="hidden truncate font-mono text-[0.68rem] text-base-content/45 sm:block"
-                >
-                  {@terminal_session_key}
-                </code>
               </div>
             </div>
           </div>
 
           <div class="flex shrink-0 items-center gap-1">
-            <%!-- A tab holds at most two terminals (one split). Once this terminal
-            is already in a split, the split button greys out so a third can't be
-            opened and push a pane out. --%>
-            <button
-              id={"#{@dom_id}-split"}
-              type="button"
-              data-terminal-action="split"
-              data-split-side="right"
-              disabled={@embedded?}
-              title={
-                if(@embedded?,
-                  do: "Two terminals per tab is the limit — close one to split again",
-                  else: "Split terminal"
-                )
-              }
-              aria-label="Split terminal"
-              class={toolbar_button_class()}
-            >
-              <.icon name="hero-plus" class="size-4" />
-            </button>
-            <button
-              id={"#{@dom_id}-copy-key"}
-              type="button"
-              data-terminal-action="copy-key"
-              title="Copy session key"
-              aria-label="Copy session key"
-              class={toolbar_button_class()}
-            >
-              <.icon name="hero-clipboard-document" class="size-4" />
-            </button>
+            <%!-- Split and copy-key left on 10-15 (TERMINAL_PANELS D6): a terminal is
+                  a work-area panel now, opened from the sidebar or ⌘T, and the
+                  session key is the hook's business, not the operator's. --%>
             <button
               id={@commands_button_id}
               type="button"
@@ -487,10 +454,6 @@ defmodule BusterClawWeb.TerminalLive do
       |> maybe_append_query("startup_profile", startup_profile)
 
     "/terminal?" <> URI.encode_query(query)
-  end
-
-  defp toolbar_button_class do
-    "grid size-8 shrink-0 place-items-center rounded-sm text-base-content/60 transition hover:bg-base-content/10 hover:text-primary disabled:cursor-not-allowed disabled:opacity-35"
   end
 
   defp maybe_append_query(query, _key, nil), do: query

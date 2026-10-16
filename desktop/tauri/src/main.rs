@@ -381,16 +381,14 @@ fn build_tabs_menu(handle: &tauri::AppHandle) -> tauri::Result<tauri::menu::Subm
     let next_tab = item("bc_next_tab", "Next Tab", "CmdOrCtrl+Shift+]")?;
     let sep3 = PredefinedMenuItem::separator(handle)?;
 
-    let numbered: Vec<tauri::menu::MenuItem<tauri::Wry>> = (1..=9)
-        .map(|n| {
-            let label = if n == 9 {
-                "Last Tab".to_string()
-            } else {
-                format!("Tab {n}")
-            };
-            item(&format!("bc_tab_{n}"), &label, &format!("CmdOrCtrl+{n}"))
-        })
-        .collect::<Result<_, _>>()?;
+    // ⌘1 ⌘2 ⌘3 jump to the three places the app has — the work area,
+    // Settings and the Browser (operator, 10-15) — and there is no ⌘4–9. The
+    // ids keep the `bc_tab_N` shape so the JS router is unchanged.
+    let numbered: Vec<tauri::menu::MenuItem<tauri::Wry>> =
+        [(1, "Work Area"), (2, "Settings"), (3, "Browser")]
+            .iter()
+            .map(|(n, label)| item(&format!("bc_tab_{n}"), label, &format!("CmdOrCtrl+{n}")))
+            .collect::<Result<_, _>>()?;
 
     let mut items: Vec<&dyn IsMenuItem<tauri::Wry>> = vec![
         &new_tab,

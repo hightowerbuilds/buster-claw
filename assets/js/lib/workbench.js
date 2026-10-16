@@ -54,3 +54,36 @@ export function readLayout(storage) {
 export function saveLayout(storage, state) {
   try { storage.setItem(WORKBENCH_STORAGE_KEY, JSON.stringify(state)) } catch { /* A full store must not disable panes. */ }
 }
+
+// ---- Reordering -----------------------------------------------------------
+// A dragged panel dropped on another's spot. The arrangement's SHAPE depends
+// only on the count and the preset, so moving a panel is relabelling the
+// tree's leaves in a new order — which is why the drag can preview locally and
+// only the drop talks to the server.
+export function leavesOf(tree) {
+  if (!tree) return []
+  if (typeof tree === "string") return [tree]
+  return leavesOf(tree.first).concat(leavesOf(tree.second))
+}
+
+export function relabelTree(tree, order) {
+  let i = 0
+  const visit = node => {
+    if (!node) return node
+    if (typeof node === "string") return order[i++] ?? node
+    return {...node, first: visit(node.first), second: visit(node.second)}
+  }
+  return visit(tree)
+}
+
+// Moving `key` onto `target`: the panels between them slide one slot toward
+// the vacated spot, so the dragged panel ends up exactly where the target was.
+export function reorderKeys(keys, key, target) {
+  const from = keys.indexOf(key)
+  const to = keys.indexOf(target)
+  if (from === -1 || to === -1 || from === to) return keys
+  const next = keys.slice()
+  next.splice(from, 1)
+  next.splice(to, 0, key)
+  return next
+}

@@ -91,55 +91,57 @@ export function labelForPath(fullPath, labels = {}) {
   return labels[path] || path
 }
 
-function newTerminalKey() {
-  const stamp = new Date().toISOString().replace(/\D/g, "").slice(0, 14)
-  const token = Math.random().toString(36).slice(2, 6)
-  return `term-${stamp}-${token}`
+// ---- Work-area terminals ----------------------------------------------------
+// ⌘T and the sidebar's Terminal button both come here (TERMINAL_PANELS D3/D5).
+// On the work area the Workbench hook opens the next slot; anywhere else in the
+// app we go to the work area and open one on arrival, with a one-shot flag the
+// hook consumes — never a URL param, which a reload would replay. In the
+// Browser the chord belongs to the chrome, so this does nothing there.
+export const TERMINAL_NEW_FLAG = "bc:terminal-new"
+
+export function terminalRequestRoute(pathname, onWorkArea) {
+  if (String(pathname || "").split("?")[0] === "/browse") return "ignore"
+  return onWorkArea ? "open" : "navigate"
 }
 
-function nextTerminalNumber(tabs, labels = {}) {
-  const usedNumbers = tabs.flatMap((t) => {
-    const [path] = splitPathQuery(t.path)
-    if (path !== "/terminal") return []
+// The native Tabs menu carries ⌘T too, and a menu accelerator can fire
+// alongside the keydown handler (main.rs, on why ⌘W left the menu). One press
+// must mean one terminal, so a second request inside 300ms is dropped.
+let lastTerminalRequest = 0
 
-    const match = String(t.label || labelForPath(t.path, labels)).match(/^Terminal(?:\s+(\d+))?$/)
-    if (!match) return []
-
-    return [match[1] ? parseInt(match[1], 10) : 1]
-  })
-
-  return Math.max(1, ...usedNumbers) + 1
+export function requestNewTerminal(now = Date.now()) {
+  if (now - lastTerminalRequest < 300) return "debounced"
+  lastTerminalRequest = now
+  const onWorkArea = Boolean(document.querySelector("#workbench-controller"))
+  const route = terminalRequestRoute(window.location.pathname, onWorkArea)
+  if (route === "open") window.dispatchEvent(new CustomEvent("bc:terminal-new"))
+  if (route === "navigate") {
+    try { sessionStorage.setItem(TERMINAL_NEW_FLAG, "1") } catch (_e) { /* the deep link still ensures one */ }
+    window.location.href = "/?panel=terminal"
+  }
+  return route
 }
 
-function createTerminalTab(tabs = loadTabs(), labels = {}) {
-  const key = newTerminalKey()
-  const label = `Terminal ${nextTerminalNumber(tabs, labels)}`
-  const path = `/terminal?session=${encodeURIComponent(key)}&label=${encodeURIComponent(label)}`
-  return {path, label}
+export function takeTerminalNewFlag() {
+  try {
+    const set = sessionStorage.getItem(TERMINAL_NEW_FLAG) === "1"
+    if (set) sessionStorage.removeItem(TERMINAL_NEW_FLAG)
+    return set
+  } catch (_e) { return false }
 }
 
-export function openNewTerminalTab(labels = {}) {
-  const tabs = loadTabs()
-  const tab = createTerminalTab(tabs, labels)
-  tabs.push(tab)
-  saveTabs(tabs)
-  window.location.href = tab.path
-}
-
-function splitPathForTerminal(currentPath, side, labels = {}) {
-  const other = createTerminalTab(loadTabs(), labels)
-  const left = side === "left" ? other.path : currentPath
-  const right = side === "left" ? currentPath : other.path
-  return `/split?left=${encodeURIComponent(left)}&right=${encodeURIComponent(right)}`
-}
-
-export function openTerminalSplit(currentPath, side, labels = {}) {
-  const splitPath = splitPathForTerminal(currentPath, side, labels)
-  const currentTabPath = window.location.pathname + window.location.search
-  const tabs = loadTabs().filter((t) => t.path !== currentPath && t.path !== currentTabPath)
-  tabs.push({path: splitPath, label: labelForPath(splitPath, labels)})
-  saveTabs(tabs)
-  window.location.href = splitPath
+// ⌘1 ⌘2 ⌘3 — Work area, Settings, Browser. Fixed, and the only three
+// (operator, 10-15). Settings reopens its remembered sub-page; Browser its
+// first open browser tab; anything else is not a shortcut.
+export function shortcutDestination(n, tabs) {
+  const list = Array.isArray(tabs) ? tabs : []
+  if (n === 1) return "/"
+  if (n === 2) return tabDestination(list.find((t) => t && t.path === "/settings")) || "/appearance"
+  if (n === 3) {
+    const browser = list.find((t) => t && typeof t.path === "string" && t.path.split("?")[0] === "/browse")
+    return browser ? browser.path : "/browse"
+  }
+  return null
 }
 
 // ---- Closing a tab -----------------------------------------------------------
@@ -218,6 +220,14 @@ export function registerTerminal(hook) {
 
 export function unregisterTerminal(hook) {
   liveTerminals.delete(hook)
+}
+
+// The mounted terminal inside a container (a work-area pane), or null.
+export function terminalHookIn(container) {
+  for (const hook of liveTerminals) {
+    if (container && hook.el && container.contains(hook.el)) return hook
+  }
+  return null
 }
 
 // True if any mounted terminal currently has a foreground child process. Each

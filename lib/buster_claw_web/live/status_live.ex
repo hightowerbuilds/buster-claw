@@ -688,14 +688,14 @@ defmodule BusterClawWeb.StatusLive do
               session: %{"embedded" => true, "workbench" => true}
             )}
           </:panel>
-          <:panel key="terminal">
+          <:panel :for={slot <- BusterClawWeb.WorkbenchState.terminal_slots()} key={slot}>
             {live_render(@socket, BusterClawWeb.TerminalLive,
-              id: "workbench-terminal",
+              id: "workbench-#{slot}",
               session: %{
                 "embedded" => true,
                 "workbench" => true,
-                "terminal_session_key" => "workbench",
-                "terminal_label" => "Terminal"
+                "terminal_session_key" => BusterClawWeb.WorkbenchState.session_key(slot),
+                "terminal_label" => BusterClawWeb.WorkbenchState.label(slot)
               }
             )}
           </:panel>
