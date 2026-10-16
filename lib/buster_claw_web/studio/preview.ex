@@ -43,8 +43,6 @@ defmodule BusterClawWeb.Studio.Preview do
   """
   @spec write(SoundStudio.t(), String.t(), t() | nil) :: {:ok, t()} | {:error, term()}
   def write(%SoundStudio{} = clip, name, previous) when is_binary(name) do
-    File.mkdir_p(SoundStudio.dir())
-
     case SoundStudio.write(clip, Path.join(SoundStudio.dir(), name)) do
       :ok -> {:ok, %{name: name, version: next(previous)}}
       {:error, reason} -> {:error, reason}

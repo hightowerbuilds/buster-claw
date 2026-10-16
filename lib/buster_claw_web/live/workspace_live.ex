@@ -14,7 +14,6 @@ defmodule BusterClawWeb.WorkspaceLive do
 
   alias BusterClaw.FileManager
   alias BusterClaw.Library.Artifact
-  alias BusterClaw.Setup
 
   @impl true
   def mount(_params, _session, socket) do
@@ -100,7 +99,7 @@ defmodule BusterClawWeb.WorkspaceLive do
   def handle_event("set_workspace", _params, socket) do
     path = socket.assigns.tree_root
 
-    case set_workspace_root(path) do
+    case BusterClaw.Workspace.set_root(path) do
       :ok ->
         {:noreply,
          socket
@@ -417,54 +416,5 @@ defmodule BusterClawWeb.WorkspaceLive do
       {:error, reason} ->
         %{path: path, kind: :error, message: "Couldn't read file: #{inspect(reason)}"}
     end
-  end
-
-  # Persist the new workspace root to the Tauri-read boot file, apply it live to
-  # the running session, scaffold the layout, and mark setup complete.
-  defp set_workspace_root(path) do
-    path = Path.expand(path)
-
-    with :ok <- File.mkdir_p(path),
-         :ok <- write_boot_file(path) do
-      Application.put_env(:buster_claw, :workspace_root, path)
-      Application.put_env(:buster_claw, :library_root, Path.join(path, "library"))
-      # The SAME scaffolding boot runs. This used to be a hand-picked subset of
-      # four, so moving your workspace produced a folder missing its jobs,
-      # skills, policy template and the rest until the next app restart.
-      BusterClaw.Workspace.ensure()
-      Setup.confirm_workspace()
-      :ok
-    else
-      {:error, reason} -> {:error, inspect(reason)}
-    end
-  end
-
-  defp write_boot_file(path) do
-    file = boot_file()
-
-    with :ok <- File.mkdir_p(Path.dirname(file)) do
-      File.write(file, path)
-    end
-  end
-
-  # Mirrors the Tauri shell's data dir (dirs::data_dir()/BusterClaw) so main.rs
-  # reads the same `workspace_root` file at next launch.
-  defp boot_file do
-    base =
-      case :os.type() do
-        {:unix, :darwin} ->
-          Path.expand("~/Library/Application Support/BusterClaw")
-
-        {:unix, _} ->
-          Path.join(
-            System.get_env("XDG_DATA_HOME") || Path.expand("~/.local/share"),
-            "BusterClaw"
-          )
-
-        _ ->
-          Path.expand("~/.buster_claw")
-      end
-
-    Path.join(base, "workspace_root")
   end
 end

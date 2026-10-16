@@ -112,15 +112,13 @@ defmodule BusterClawWeb.NotifySettingsLive do
   def handle_event("save_sound", _params, socket) do
     saved =
       consume_uploaded_entries(socket, :sound, fn %{path: path}, entry ->
-        ext = entry.client_name |> Path.extname() |> String.downcase()
-
-        if ext in Sound.accepted_extensions() do
-          File.mkdir_p(Sound.dir())
-          dest = Path.join(Sound.dir(), available_name(entry.client_name))
-          File.cp!(path, dest)
-          {:ok, Path.basename(dest)}
-        else
-          {:ok, :rejected_extension}
+        # The context owns the library folder, the extension allowlist and the
+        # free-name rule; the page used to carry a second copy of all three
+        # (CODE_QUALITY_SWEEP Phase 5).
+        case Sound.install_file(path, entry.client_name) do
+          {:ok, name} -> {:ok, name}
+          {:error, :unsupported_format} -> {:ok, :rejected_extension}
+          {:error, reason} -> {:ok, {:error, reason}}
         end
       end)
 
@@ -130,6 +128,9 @@ defmodule BusterClawWeb.NotifySettingsLive do
 
       [:rejected_extension | _] ->
         {:noreply, put_flash(socket, :error, "Audio files only (MP3, WAV, OGG, M4A, AAC).")}
+
+      [{:error, reason} | _] ->
+        {:noreply, put_flash(socket, :error, "Couldn't add that file: #{inspect(reason)}.")}
 
       [name | _] ->
         {:noreply, socket |> refresh() |> put_flash(:info, "Added #{name}.")}
@@ -170,15 +171,6 @@ defmodule BusterClawWeb.NotifySettingsLive do
 
   # A collision-free destination basename: sanitized, and suffixed -2, -3, …
   # rather than overwriting an existing library file.
-  defp available_name(client_name) do
-    base = client_name |> Path.basename() |> String.replace(~r/[^\w.\-]/u, "-")
-    ext = Path.extname(base)
-    stem = Path.rootname(base)
-
-    Stream.concat([[base]], Stream.map(2..99, fn n -> "#{stem}-#{n}#{ext}" end))
-    |> Enum.find(fn candidate -> not File.exists?(Path.join(Sound.dir(), candidate)) end)
-  end
-
   defp display_name(file), do: file |> Path.rootname() |> String.capitalize()
 
   # Row display comes from @resolved (materialized in refresh/1) — one walk,

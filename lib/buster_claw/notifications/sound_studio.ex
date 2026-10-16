@@ -201,9 +201,11 @@ defmodule BusterClaw.Notifications.SoundStudio do
       block_align::little-16, clip.bits::little-16, "data", len::little-32>> <> clip.data
   end
 
-  @doc "Render a clip and write it to `path`."
+  @doc "Render a clip and write it to `path`, creating the folder if needed."
   def write(%__MODULE__{} = clip, path) when is_binary(path) do
-    File.write(path, render(clip))
+    with :ok <- File.mkdir_p(Path.dirname(path)) do
+      File.write(path, render(clip))
+    end
   end
 
   # ---------------------------------------------------------------------------

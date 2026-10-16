@@ -30,6 +30,21 @@ defmodule BusterClaw.Browser do
   end
 
   @doc """
+  File a captured screenshot under `screenshots/<today>/<ref>.png` in the
+  workspace. The controller that receives the bytes used to write them itself
+  (CODE_QUALITY_SWEEP Phase 5); the workspace layout is this layer's to know.
+  """
+  def store_screenshot(ref, bytes) when is_binary(ref) and is_binary(bytes) do
+    rel = Path.join(["screenshots", Date.to_iso8601(BusterClaw.LocalTime.today()), "#{ref}.png"])
+    abs = Path.expand(rel, BusterClaw.Library.Artifact.workspace_root())
+
+    with :ok <- File.mkdir_p(Path.dirname(abs)),
+         :ok <- File.write(abs, bytes) do
+      {:ok, %{path: rel, absolute_path: abs, bytes: byte_size(bytes)}}
+    end
+  end
+
+  @doc """
   Download a URL's raw bytes (SSRF-guarded), without the markdown conversion
   `fetch/2` does — for capturing binary files (PDF, images, archives, …).
   Returns `{:ok, %{url, body, content_type, filename}}`.

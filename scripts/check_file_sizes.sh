@@ -344,7 +344,7 @@ check lib/buster_claw_web/live/status_live.ex                810 HELD
 # Growth from here means the opposite is happening — behaviour leaking out of a
 # component and into its host — and that is the thing to look at rather than the
 # number.
-check lib/buster_claw_web/live/workspace_live.ex             570 HELD
+check lib/buster_claw_web/live/workspace_live.ex             462 HELD
 check lib/buster_claw_web/live/status/chat.ex                685 HELD
 
 # Added 08-09 when the chat skins pushed this past 1,000 lines. It has never been
@@ -1074,7 +1074,8 @@ check lib/buster_claw/terminal_theme.ex                       880 HELD
 # registry with load-bearing history comments.
 # Raised 660 -> 680 on 09-13 (THREE_DOORS Phase 1): two registry entries,
 # CLAUDE.md and AGENTS.md, with the comment saying why they are one brief.
-check lib/buster_claw/workspace.ex                            680 HELD
+# 10-16 CODE_QUALITY_SWEEP Phase 5: 680 -> 712, set_root/1 moved in from WorkspaceLive.
+check lib/buster_claw/workspace.ex                            712 HELD
 # agent_mode.ex — the reference shape, health-checked twice. All four moduledoc
 # safety properties map to enforcement code rather than hope.
 check lib/buster_claw/browser_control/agent_mode.ex           650 HELD

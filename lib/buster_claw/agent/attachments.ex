@@ -274,6 +274,20 @@ defmodule BusterClaw.Agent.Attachments do
   end
 
   @doc """
+  The bytes of a staged attachment, for a preview — refused outside `root/0`,
+  so a path that arrived from anywhere else can never be read through here.
+  """
+  @spec read(String.t()) :: {:ok, binary()} | {:error, :outside_root | File.posix()}
+  def read(path) when is_binary(path) do
+    root = Path.expand(root())
+    abs = Path.expand(path)
+
+    if abs == root or String.starts_with?(abs, root <> "/"),
+      do: File.read(abs),
+      else: {:error, :outside_root}
+  end
+
+  @doc """
   Absolute path of one conversation's staging directory.
 
   This is the directory a backend is granted for a turn (`--add-dir`), which is

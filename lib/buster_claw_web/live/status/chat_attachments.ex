@@ -421,7 +421,7 @@ defmodule BusterClawWeb.Status.ChatAttachments do
        when is_binary(path) do
     with true <- type in @previewable,
          true <- bytes <= @preview_max_bytes,
-         {:ok, binary} <- File.read(path) do
+         {:ok, binary} <- Attachments.read(path) do
       "data:" <> type <> ";base64," <> Base.encode64(binary)
     else
       _ -> nil

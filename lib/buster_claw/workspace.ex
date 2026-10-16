@@ -402,9 +402,44 @@ defmodule BusterClaw.Workspace do
   end
 
   @doc """
+  Move the workspace: persist `path` to the boot file the Tauri shell reads at
+  launch, apply it to the running session, scaffold the layout, and mark setup
+  complete. The page used to do all of this itself (CODE_QUALITY_SWEEP Phase 5);
+  a workspace move is a context operation, and the boot file is the one place
+  the shell and the app agree on where the workspace is.
+  """
+  def set_root(path) when is_binary(path) do
+    path = Path.expand(path)
+
+    with :ok <- File.mkdir_p(path),
+         :ok <- write_boot_file(path) do
+      Application.put_env(:buster_claw, :workspace_root, path)
+      Application.put_env(:buster_claw, :library_root, Path.join(path, "library"))
+      # The SAME scaffolding boot runs. This used to be a hand-picked subset of
+      # four, so moving your workspace produced a folder missing its jobs,
+      # skills, policy template and the rest until the next app restart.
+      ensure()
+      BusterClaw.Setup.confirm_workspace()
+      :ok
+    else
+      {:error, reason} -> {:error, inspect(reason)}
+    end
+  end
+
+  # Mirrors the Tauri shell's data dir (dirs::data_dir()/BusterClaw) so main.rs
+  # reads the same `workspace_root` file at next launch.
+  defp write_boot_file(path) do
+    file = Path.join(BusterClaw.Recovery.data_dir(), "workspace_root")
+
+    with :ok <- File.mkdir_p(Path.dirname(file)) do
+      File.write(file, path)
+    end
+  end
+
+  @doc """
   Scaffold the workspace: **`:core` only**.
 
-  Called at boot *and* by `WorkspaceLive.set_workspace_root/1`, which is the
+  Called at boot *and* by `set_root/1`, which is the
   point: before this module those two ran different subsets, so moving your
   workspace folder produced a partial layout that only healed on the next app
   restart.

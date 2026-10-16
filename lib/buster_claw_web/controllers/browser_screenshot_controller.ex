@@ -7,9 +7,8 @@ defmodule BusterClawWeb.BrowserScreenshotController do
   """
   use BusterClawWeb, :controller
 
+  alias BusterClaw.Browser
   alias BusterClaw.Browser.Capture
-  alias BusterClaw.Library.Artifact
-  alias BusterClaw.LocalTime
 
   def create(conn, %{"ref" => ref} = params) when is_binary(ref) and ref != "" do
     Capture.fulfill(ref, result_for(ref, params))
@@ -32,12 +31,8 @@ defmodule BusterClawWeb.BrowserScreenshotController do
   defp result_for(_ref, _params), do: {:error, :no_image}
 
   defp store(ref, bytes, params) do
-    rel = Path.join(["screenshots", Date.to_iso8601(LocalTime.today()), "#{ref}.png"])
-    abs = Path.expand(rel, Artifact.workspace_root())
-
-    with :ok <- File.mkdir_p(Path.dirname(abs)),
-         :ok <- File.write(abs, bytes) do
-      {:ok, %{path: rel, absolute_path: abs, url: params["url"], bytes: byte_size(bytes)}}
+    with {:ok, stored} <- Browser.store_screenshot(ref, bytes) do
+      {:ok, Map.put(stored, :url, params["url"])}
     end
   end
 end
