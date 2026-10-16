@@ -312,6 +312,7 @@ and zero issues in the verdict. Budget hours per release, not minutes
 | Calendar | `CalendarComponent` — a work-area panel since 10-15 (one); `/calendar` stays | SHIPPED | — |
 | Phone | `PhoneComponent`, `Phone.CallAction` | SHIPPED — **the keypad dials as of 08-15**, gated and confirmed once before the first ring | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) |
 | Explained | `ExplainedPanel` | SHIPPED · **REWRITTEN 10-16** against the post-phone, post-dock app; Studio keys derived; stale-phrase guard grew and caught five drifts outside the panel | [`EXPLAINED_REWRITE`](surfaces/EXPLAINED_REWRITE_ROADMAP.md) · [`LEFTOVERS_SURFACES`](surfaces/LEFTOVERS_SURFACES.md) |
+| **Code quality sweep 10-16** | whole tree | **SCOPED 10-16** — leftovers of four deletions, 82 test-only publics, 16 web-layer file sites, four frozen files; ten phases, deletions first, renames last | [`CODE_QUALITY_SWEEP_10-16-26`](CODE_QUALITY_SWEEP_10-16-26.md) |
 | Activity | `ActivityComponent` | SHIPPED | — |
 | Widget → Time & Place | `status/weather.ex` | SHIPPED | — |
 | Widget → Contacts | `BusterClaw.Contacts` | SHIPPED | — |

@@ -42,3 +42,11 @@ The dev app was left running throughout; nothing here touched :4000.
 | | |
 |---|---|
 | (third commit) | **`EXPLAINED_REWRITE_ROADMAP` written and built.** Every tutorial re-read against the app on 10-16: no phone, no dock, a sidebar, a work area of panels, a Clock panel with Contacts and Notify, four terminals, attachments in the mail path. The Intro gained one geography paragraph and every tab after it uses the same words. Sites: busterclaw.lol is the download, the docs and the source — no vending. Gmail/GWS: the Clock panel's Contacts tab, the sidebar's duty dock, `Dispatch.md`, the attachment path, `gmail_attachment_download`. Command List: placements, the Duty page. BrowserControl: the Ask door, `browser_secret_*`, `browser_egress_level`, `browser_download`. Models: Codex threads through its app-server, always. Shaders: the `face` name taught as reserved. Pockets: the orphaned `contact-faces` Pocket (no renderer since the phone left) stops being taught as a surface. Studio: routing keys **rendered from `Notifications.Sound`**, the recording verbs added, every voicemail word gone. The audit test's stale-phrase list grew by ten and **caught five drifts outside the panel on its first run** — two sound descriptions, `note_list`'s description, a `/phone` tab-strip label, and the Duty page's blocker linking to a dead `/phone` route — all fixed in the same commit. |
+
+---
+
+## Afternoon — the code quality sweep, mapped
+
+| | |
+|---|---|
+| (fourth commit, docs) | **`CODE_QUALITY_SWEEP_10-16-26.md`** — tooling-first inventory of the whole tree: a reference scan (modules and publics with no caller; 82 test-only publics, down from 125 at 09-05), a leftover-word sweep for every removed feature, a suppression census (nothing to remove — 9 credo disables, no skips, no TODOs), a clause-length scan, asset/CSS/script/static/config reference checks, Rust, tests. Findings: the contact-faces stack is orphaned (no renderer since the phone left), two dead shaders, a dead trading config key, 14 digested fonts tracked in git, 16 web-layer `File.*` sites (up from 9), the four frozen files unchanged, two duplicate bodies, `Olympus` arrived 10-12 with no map. Ten phases, deletions first, renames last; five operator questions with defaults. |
