@@ -46,7 +46,9 @@ defmodule BusterClawWeb.SurfacePanel do
 
       <%!-- aspect-video keeps the shape honest on a narrow window; the max-height
             caps how much vertical room a target eats on a wide one. --%>
-      <div class="relative aspect-video max-h-40 w-full overflow-hidden bg-base-200">
+      <%!-- Short on purpose (one screen, 10-17): the preview is the proof the
+            setting took, not a wallpaper viewer. --%>
+      <div class="relative aspect-video max-h-16 w-full overflow-hidden bg-base-200">
         <%= cond do %>
           <% shader_backed?(@bg) -> %>
             <%!-- The preview runs the SAME shader the surface runs, and for an
@@ -90,20 +92,20 @@ defmodule BusterClawWeb.SurfacePanel do
             already on it. --%>
       <div
         :if={@bg.kind in [:image, :image_shader] and @overlays != []}
-        class="space-y-2 border-t-2 border-base-content/15 p-4"
+        class="space-y-1.5 border-t-2 border-base-content/15 p-3"
       >
-        <form phx-change="set_overlay" class="flex flex-wrap items-center gap-3">
+        <form phx-change="set_overlay" class="flex flex-wrap items-center gap-2">
           <input type="hidden" name="surface" value={@surface} />
           <label
             for={"#{@surface}-overlay"}
-            class="text-sm font-semibold"
+            class="text-xs font-semibold"
           >
             Shader overlay
           </label>
           <select
             id={"#{@surface}-overlay"}
             name="shader"
-            class="rounded border-2 border-base-content/25 bg-base-100 px-2 py-1 text-sm"
+            class="min-w-0 flex-1 rounded border-2 border-base-content/25 bg-base-100 px-2 py-1 text-xs"
           >
             <option value="" selected={@bg.kind == :image}>None</option>
             <option
@@ -115,14 +117,14 @@ defmodule BusterClawWeb.SurfacePanel do
             </option>
           </select>
         </form>
-        <p class="text-sm text-base-content/50">
+        <p class="text-[0.6875rem] leading-4 text-base-content/50">
           A pattern drawn <em>from</em> the picture — it reads the image and thins where
           the image is bright.
         </p>
       </div>
 
-      <div :if={shader_backed?(@bg)} class="space-y-3 border-t-2 border-base-content/15 p-4">
-        <label class="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold">
+      <div :if={shader_backed?(@bg)} class="space-y-2 border-t-2 border-base-content/15 p-3">
+        <label class="inline-flex cursor-pointer items-center gap-2 text-xs font-semibold">
           <input
             type="checkbox"
             checked={@bg.custom}
@@ -132,7 +134,7 @@ defmodule BusterClawWeb.SurfacePanel do
           /> Use custom colors
         </label>
 
-        <form :if={@bg.custom} phx-change="set_colors" class="flex flex-wrap gap-4">
+        <form :if={@bg.custom} phx-change="set_colors" class="flex flex-wrap gap-3">
           <input type="hidden" name="surface" value={@surface} />
           <label :for={{hex, i} <- Enum.with_index(@bg.colors)} class="flex items-center gap-2">
             <input
@@ -141,15 +143,15 @@ defmodule BusterClawWeb.SurfacePanel do
               name={"c#{i + 1}"}
               value={hex}
               phx-debounce="250"
-              class="size-9 cursor-pointer rounded border-2 border-base-content/20 bg-transparent p-0.5"
+              class="size-7 cursor-pointer rounded border-2 border-base-content/20 bg-transparent p-0.5"
             />
-            <span class="text-xs text-base-content/60">
+            <span class="text-[0.6875rem] text-base-content/60">
               {Enum.at(~w(Base Accent Highlight), i)}
             </span>
           </label>
         </form>
 
-        <p :if={!@bg.custom} class="text-sm text-base-content/50">
+        <p :if={!@bg.custom} class="text-[0.6875rem] leading-4 text-base-content/50">
           Using the design's built-in colors.
         </p>
       </div>

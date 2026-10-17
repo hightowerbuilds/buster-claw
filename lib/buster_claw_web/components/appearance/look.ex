@@ -16,12 +16,13 @@ defmodule BusterClawWeb.Appearance.Look do
   @doc "System / Light / Dark. No assigns: the choice lives in the browser."
   def theme_panel(assigns) do
     ~H"""
-    <section class="ic-panel space-y-4 p-6">
-      <h2 class="ic-eyebrow">Theme</h2>
-      <p class="text-sm leading-7 text-base-content/70">
-        Choose how Buster Claw looks. <span class="font-semibold">System</span>
-        follows your operating system's appearance.
-      </p>
+    <section class="ic-panel space-y-2 p-4">
+      <div class="flex items-baseline justify-between gap-2">
+        <h2 class="ic-eyebrow">Theme</h2>
+        <p class="text-[0.6875rem] text-base-content/55">
+          <span class="font-semibold">System</span> follows your OS.
+        </p>
+      </div>
       <div class="flex flex-wrap gap-2">
         <button
           type="button"
@@ -60,25 +61,23 @@ defmodule BusterClawWeb.Appearance.Look do
 
   def chat_look_panel(assigns) do
     ~H"""
-    <%!-- Compact by design: this now lives in half a column under Theme
-          rather than full-width below everything. The two dropdowns share a
-          row, their copy is one line each, and the preview takes the width
-          it is given — a transcript is narrow anyway, so a half column shows
-          it honestly. --%>
-    <section class="ic-panel space-y-3 p-6" aria-labelledby="chat-skin-heading">
-      <h2 id="chat-skin-heading" class="ic-eyebrow">Chat theme</h2>
-      <p class="text-sm leading-7 text-base-content/70">
-        How the chat on the homepage looks. Applies the moment you pick it — here, and
-        in an open homepage.
-      </p>
+    <%!-- Compact by design: this lives in a third of the page under the two
+          surface panels (one screen, 10-17). The two dropdowns share a row,
+          the copy is one line, and the preview takes the width it is given —
+          a transcript is narrow anyway, so a narrow column shows it honestly. --%>
+    <section class="ic-panel space-y-2 p-4" aria-labelledby="chat-skin-heading">
+      <div class="flex items-baseline justify-between gap-2">
+        <h2 id="chat-skin-heading" class="ic-eyebrow">Chat theme</h2>
+        <p class="text-[0.6875rem] text-base-content/55">Applies the moment you pick it.</p>
+      </div>
 
-      <div class="grid gap-3 sm:grid-cols-2">
-        <form phx-change="set_chat_skin" class="space-y-2">
+      <div class="grid gap-2 sm:grid-cols-2">
+        <form phx-change="set_chat_skin" class="space-y-1">
           <label for="chat-skin-select" class="ic-eyebrow block">Theme</label>
           <select
             id="chat-skin-select"
             name="skin"
-            class="w-full rounded border-2 border-base-content/25 bg-base-100 px-3 py-2 text-sm font-semibold focus:border-primary focus:outline-none"
+            class="w-full rounded border-2 border-base-content/25 bg-base-100 px-2 py-1 text-xs font-semibold focus:border-primary focus:outline-none"
           >
             <option
               :for={skin <- @chat_skins}
@@ -93,12 +92,12 @@ defmodule BusterClawWeb.Appearance.Look do
         <%!-- A separate axis, on purpose: bigger text should not cost you the
               look you picked. The two multiply — every skin's font sizes are
               written as a multiple of this one number. --%>
-        <form phx-change="set_chat_text_size" class="space-y-2">
+        <form phx-change="set_chat_text_size" class="space-y-1">
           <label for="chat-text-size-select" class="ic-eyebrow block">Text size</label>
           <select
             id="chat-text-size-select"
             name="size"
-            class="w-full rounded border-2 border-base-content/25 bg-base-100 px-3 py-2 text-sm font-semibold focus:border-primary focus:outline-none"
+            class="w-full rounded border-2 border-base-content/25 bg-base-100 px-2 py-1 text-xs font-semibold focus:border-primary focus:outline-none"
           >
             <option
               :for={size <- @chat_text_sizes}
@@ -115,12 +114,15 @@ defmodule BusterClawWeb.Appearance.Look do
         :for={skin <- @chat_skins}
         :if={skin.key == @chat_skin}
         data-chat-skin-blurb
-        class="text-sm leading-6 text-base-content/70"
+        class="line-clamp-1 text-[0.6875rem] leading-4 text-base-content/60"
       >
         {skin.blurb} Text size scales what you read, not the buttons.
       </p>
 
-      <div class="rounded border-2 border-base-content/20 bg-base-100">
+      <%!-- Clipped with a fade rather than scrolled: the first exchange is
+            enough to show the skin and the size, and the whole transcript is
+            what put this page past one screen. --%>
+      <div class="max-h-24 overflow-hidden rounded border-2 border-base-content/20 bg-base-100 [mask-image:linear-gradient(to_bottom,black_70%,transparent)]">
         <BusterClawWeb.ChatPanel.transcript_preview
           skin={@chat_skin}
           text_size={@chat_text_size}
@@ -133,7 +135,7 @@ defmodule BusterClawWeb.Appearance.Look do
             a settings page does not have. Both are real gaps, and a
             preview that quietly omitted them would be the kind of promise
             this app keeps getting wrong. --%>
-      <p class="text-xs leading-5 text-base-content/55">
+      <p class="text-[0.6875rem] leading-4 text-base-content/50">
         The transcript only — the message box and the panel's own edges are shown on
         the homepage.
       </p>
@@ -143,5 +145,5 @@ defmodule BusterClawWeb.Appearance.Look do
 
   defp theme_btn,
     do:
-      "inline-flex items-center gap-2 rounded border-2 border-base-content/30 px-4 py-2 text-sm font-semibold transition hover:border-primary hover:text-primary"
+      "inline-flex items-center gap-1.5 rounded border-2 border-base-content/30 px-3 py-1.5 text-xs font-semibold transition hover:border-primary hover:text-primary"
 end

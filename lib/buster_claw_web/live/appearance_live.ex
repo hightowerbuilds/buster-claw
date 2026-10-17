@@ -3,13 +3,15 @@ defmodule BusterClawWeb.AppearanceLive do
   Appearance settings (Settings → Appearance sub-tab).
 
   Backgrounds are **one catalog, shown once**: `off`, every shader (built-in and
-  workspace), and the shared image pool. It scrolls in the left column and it is
-  the picker for THE background — click a row and the Work Area, with every
-  terminal in it, is on it. The right column holds the two surfaces that have a
-  background: the Background panel, previewing what is running, and the Clock
-  panel, which is a widget with a sky of its own and so carries its own picker
-  over the same catalog (`Catalog.clock_picker/1`). The same option can back
-  both at once.
+  workspace), and the shared image pool. It is the left column and the picker
+  for THE background — click a row and the Work Area, with every terminal in
+  it, is on it. The middle column is the app's look: the theme buttons and the
+  terminal palette. The right column holds the two surfaces that have a
+  background — the Background panel, previewing what is running, and the Clock
+  panel, a widget with a sky of its own and so its own picker over the same
+  catalog (`Catalog.clock_picker/1`) — with the chat's look under them. The
+  whole page fits one screen (`Layouts.app fit_viewport`); a column scrolls
+  inside itself rather than the page scrolling.
 
   Redesigned 10-17. Until then there were three surfaces (the terminal had its
   own background) and every row carried a button per surface. A terminal is
@@ -279,14 +281,20 @@ defmodule BusterClawWeb.AppearanceLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} socket={@socket}>
-      <section class="space-y-6">
+    <%!-- One screen, no page scroll (10-17): `fit_viewport` clamps the shell
+          to the window, the grid row is `minmax(0,1fr)` so the three columns
+          are exactly the room that is left, and each column scrolls inside
+          itself if it must. Below `lg` the columns stack and the page scrolls
+          as a page. --%>
+    <Layouts.app flash={@flash} socket={@socket} fit_viewport>
+      <section class="flex min-h-0 flex-1 flex-col gap-4">
         <BusterClawWeb.SettingsTabs.tabs active={:appearance} />
 
-        <%!-- Two columns of equal height: the catalog scrolls inside its own
-              panel on the left, the two surface panels stack on the right and
-              set the height for both. --%>
-        <div id="backgrounds" class="grid gap-6 lg:grid-cols-2">
+        <div
+          id="backgrounds"
+          class="grid min-h-0 flex-1 gap-4 overflow-y-auto lg:grid-cols-3 lg:grid-rows-[minmax(0,1fr)] lg:overflow-visible"
+        >
+          <%!-- Column 1: the catalog — images on top, shaders under. --%>
           <.backgrounds_catalog
             image_options={@image_options}
             shader_options={@shader_options}
@@ -295,7 +303,26 @@ defmodule BusterClawWeb.AppearanceLive do
             pool_full={@pool_full}
           />
 
-          <div class="space-y-6">
+          <%!-- Column 2: the app's look — theme, then the terminal's. The
+                `p-1 -m-1` keeps the panels' hard shadows inside the scroll
+                box instead of clipped at its edge, and `shrink-0` on the
+                children keeps a bounded flex column from squashing a panel's
+                preview to nothing — it did, before the column scrolled. --%>
+          <div class="-m-1 flex min-h-0 flex-col gap-4 overflow-y-auto p-1 [&>*]:shrink-0">
+            <.theme_panel />
+            <.terminal_theme_panel
+              terminal_themes={@terminal_themes}
+              agent_theme={@agent_theme}
+              custom_theme={@custom_theme}
+              custom_draft={@custom_draft}
+              custom_name={@custom_name}
+              custom_hue={@custom_hue}
+              custom_error={@custom_error}
+            />
+          </div>
+
+          <%!-- Column 3: what the two surfaces are running, and the chat. --%>
+          <div class="-m-1 flex min-h-0 flex-col gap-4 overflow-y-auto p-1 [&>*]:shrink-0">
             <BusterClawWeb.SurfacePanel.surface_target
               surface={:home}
               bg={@backgrounds.home}
@@ -308,17 +335,6 @@ defmodule BusterClawWeb.AppearanceLive do
             >
               <.clock_picker bg={@backgrounds.widget} options={@clock_options} />
             </BusterClawWeb.SurfacePanel.surface_target>
-          </div>
-        </div>
-
-        <%!-- Left cell stacks the two look-and-feel panels; right cell is the tall
-              terminal palette. A stack rather than three grid children on purpose:
-              auto-placement would put the third one in column 1 ROW 2, below the
-              terminal column's baseline, which is the empty gap this arrangement
-              exists to close. --%>
-        <div class="grid items-start gap-6 lg:grid-cols-2">
-          <div class="space-y-6">
-            <.theme_panel />
             <.chat_look_panel
               chat_skins={@chat_skins}
               chat_skin={@chat_skin}
@@ -326,16 +342,6 @@ defmodule BusterClawWeb.AppearanceLive do
               chat_text_size={@chat_text_size}
             />
           </div>
-
-          <.terminal_theme_panel
-            terminal_themes={@terminal_themes}
-            agent_theme={@agent_theme}
-            custom_theme={@custom_theme}
-            custom_draft={@custom_draft}
-            custom_name={@custom_name}
-            custom_hue={@custom_hue}
-            custom_error={@custom_error}
-          />
         </div>
       </section>
     </Layouts.app>

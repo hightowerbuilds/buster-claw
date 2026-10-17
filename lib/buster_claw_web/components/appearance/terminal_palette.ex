@@ -23,16 +23,15 @@ defmodule BusterClawWeb.Appearance.TerminalPalette do
 
   def terminal_theme_panel(assigns) do
     ~H"""
-    <section class="ic-panel space-y-4 p-6">
-      <h2 class="ic-eyebrow">Terminal theme</h2>
-      <p class="max-w-2xl text-sm leading-7 text-base-content/70">
-        Color scheme for the in-app terminal — background, text, cursor, and ANSI colors.
-        Applies to open terminals immediately.
-      </p>
+    <section class="ic-panel space-y-3 p-4">
+      <div class="flex items-baseline justify-between gap-2">
+        <h2 class="ic-eyebrow">Terminal theme</h2>
+        <p class="text-[0.6875rem] text-base-content/55">Applies to open terminals at once.</p>
+      </div>
       <div
         id="terminal-theme-picker"
         phx-hook="TermThemePicker"
-        class="grid gap-3 sm:grid-cols-2"
+        class="grid gap-2 sm:grid-cols-2"
       >
         <button
           :for={t <- @terminal_themes}
@@ -40,20 +39,20 @@ defmodule BusterClawWeb.Appearance.TerminalPalette do
           phx-click={JS.dispatch("bc:set-term-theme")}
           data-term-theme={t.key}
           title={t.label}
-          class="group flex items-center gap-3 rounded-lg border-2 border-base-content/20 p-2.5 text-left transition hover:border-primary focus:outline-none"
+          class="group flex items-center gap-2 rounded-lg border-2 border-base-content/20 p-1.5 text-left transition hover:border-primary focus:outline-none"
         >
           <span
-            class="flex size-11 shrink-0 flex-col items-start justify-center gap-1 rounded-md px-2 font-mono"
+            class="flex size-9 shrink-0 flex-col items-start justify-center gap-1 rounded-md px-1.5 font-mono"
             style={"background:#{t.swatch.bg}"}
           >
-            <span class="text-xs font-bold leading-none" style={"color:#{t.swatch.fg}"}>
+            <span class="text-[0.625rem] font-bold leading-none" style={"color:#{t.swatch.fg}"}>
               $ ls
             </span>
-            <span class="h-1.5 w-5 rounded-full" style={"background:#{t.swatch.accent}"}></span>
+            <span class="h-1 w-4 rounded-full" style={"background:#{t.swatch.accent}"}></span>
           </span>
           <span class="min-w-0">
-            <span class="block text-sm font-semibold">{t.label}</span>
-            <span class="block font-mono text-xs text-base-content/55">{t.key}</span>
+            <span class="block truncate text-xs font-semibold">{t.label}</span>
+            <span class="block font-mono text-[0.625rem] text-base-content/55">{t.key}</span>
           </span>
           <%!-- The one thing that tells the operator this row is not theirs.
                 Marked rather than moved: the agent's theme is selectable
@@ -86,7 +85,7 @@ defmodule BusterClawWeb.Appearance.TerminalPalette do
             Industrial is not offered as a starting point because it has no
             fixed colours to copy — it is resolved from the app's tokens so it
             can follow the light/dark switch. --%>
-      <div class="space-y-3 border-t-2 border-base-content/15 pt-4">
+      <div class="space-y-2 border-t-2 border-base-content/15 pt-3">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <h3 class="ic-eyebrow">Your own</h3>
           <div :if={@custom_theme} class="flex gap-2">
@@ -129,7 +128,7 @@ defmodule BusterClawWeb.Appearance.TerminalPalette do
             data-hue-slider
             class="ic-hue-slider"
           />
-          <p class="text-xs leading-5 text-base-content/60">
+          <p class="text-[0.6875rem] leading-4 text-base-content/60">
             <span :if={is_nil(@custom_theme)}>
               Drag to build a theme — every colour is generated, so program output
               stays themed.

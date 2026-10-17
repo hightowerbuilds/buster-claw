@@ -32,3 +32,11 @@ marking its selection — each failed, each passed restored.
 
 Walked in Chrome on the dev app: the page, the badge, the Clock select, and the
 Work Area with a terminal slot over the background.
+
+---
+
+## Morning — Appearance on one screen
+
+| | |
+|---|---|
+| (second commit) | **The page fits the window.** `Layouts.app fit_viewport` clamps the shell; the grid row is `minmax(0,1fr)` so three columns get exactly the room left, and each scrolls inside itself (`shrink-0` on the children, or a bounded flex column squashes a preview to nothing — it did). Column 1 is the catalog: filled images as small tiles four to a row with one "Add" tile standing for every free slot (the count says how many), then the shaders two to a row. Column 2 is Theme, then Terminal theme, both tightened. Column 3 is the Background and Clock previews (shorter — the preview is proof the setting took, not a wallpaper viewer) and the chat theme, whose transcript preview is clipped with a fade rather than shown whole. Empty image slots no longer render as placeholder tiles; the catalog description says the picker counts them instead. |
