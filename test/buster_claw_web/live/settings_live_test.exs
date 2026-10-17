@@ -56,61 +56,35 @@ defmodule BusterClawWeb.SettingsLiveTest do
     refute render(view) =~ secret_key_base()
   end
 
-  describe "the Configuration sub-tab rail" do
-    # The same property the GWS console rail underneath needed on 08-08: the
-    # rail, the guard and the dispatch must agree. Two of the three are read
-    # from `Settings.Registry`; the third is the `:if` branches in
-    # `SettingsLive.render/1`, and the `ic-panel` assertion is what catches a
-    # registry key that has no branch — without it a new tab would open a blank
-    # page and this test would still pass.
-    test "every tab the rail offers opens a section", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/settings")
-
+  describe "the Settings tabs that open a section of this page" do
+    # The guard and the dispatch must agree, and the tab bar must offer every
+    # section: a key with no `:if` branch would render a page with nothing under
+    # the tab bar, and a section with no tab would be unreachable.
+    test "every section has a tab, and opens", %{conn: conn} do
       for key <- Registry.keys() do
-        assert has_element?(view, "#settings-config-tab-#{key}"),
-               "the rail does not render a button for #{key}"
+        {:ok, view, html} = live(conn, "/settings?tab=#{key}")
 
-        html = render_click(view, "select_settings_tab", %{"tab" => key})
-
-        assert has_element?(view, ~s(#settings-config-tab-#{key}[aria-selected="true"])),
-               "clicking #{key} did not open it — the guard and the rail disagree"
+        assert has_element?(view, ~s(#settings-tab-#{key}[aria-current="page"])),
+               "#{key} has no tab in the Settings bar, or it is not marked current"
 
         assert html =~ "ic-panel",
-               "#{key} is in the registry but render/1 has no branch for it — the " <>
-                 "rail highlights a tab with nothing under it"
+               "#{key} is in the registry but render/1 has no branch for it"
+      end
+    end
+
+    test "every tab in the bar that points here is a registry key" do
+      for %{path: "/settings?tab=" <> key} <- BusterClawWeb.SettingsTabs.tabs() do
+        assert key in Registry.keys(),
+               "the Settings bar links to ?tab=#{key}, which is no section"
       end
     end
 
     test "an unknown tab key falls back to the default rather than blanking the page",
          %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/settings")
+      {:ok, view, html} = live(conn, "/settings?tab=../../etc")
 
-      html = render_click(view, "select_settings_tab", %{"tab" => "../../etc"})
-
-      assert has_element?(
-               view,
-               ~s(#settings-config-tab-#{Registry.default()}[aria-selected="true"])
-             )
-
+      assert has_element?(view, ~s(#settings-tab-#{Registry.default()}[aria-current="page"]))
       assert html =~ "ic-panel"
-    end
-
-    # The rail loop above proves "about" opens *a* panel. This proves the panel
-    # says the two things it exists to say. Until 08-16 the app displayed its own
-    # version nowhere (UPDATE_ROADMAP F5, G-42), and a "Restart and update" button
-    # beside an unknown current version tells the operator nothing.
-    test "About shows the running version and which build it is", %{conn: conn} do
-      {:ok, _view, html} = live(conn, ~p"/settings?tab=about")
-
-      assert html =~ BusterClaw.BuildInfo.version()
-      assert html =~ BusterClaw.BuildInfo.architecture_label()
-
-      # Both assertions above are self-referential on the VALUE — they compare the
-      # page against the same function that filled it, so they prove it reached
-      # the page and nothing about whether it is right. `build_info_test.exs`
-      # pins the value against the VERSION file; this line is what stops the pair
-      # from passing vacuously on a build where the spec cannot be read.
-      refute html =~ "unknown"
     end
 
     test "?tab= opens that tab, and an unknown one still lands somewhere real", %{conn: conn} do
@@ -139,21 +113,12 @@ defmodule BusterClawWeb.SettingsLiveTest do
 
       assert Registry.default() == "models"
       assert html =~ "Agent harness"
-      # Not the h2 — the rail's own button says "Google Workspace" on every tab.
+      # Not the h2 — the tab bar's own link says "Google Workspace" on every tab.
       refute html =~ "Connect the Google account"
       refute html =~ "Recovery key"
     end
   end
 
-  # DMG-review-8-15 findings 1+2: the packaged app showed every harness disabled
-  # and said nothing about why. Detection was fixed in `BusterClaw.AgentBackend`;
-  # this is the sentence that is owed regardless, because "greyed out" reads as
-  # "unsupported" and the real cause is a PATH the app never saw.
-  #
-  # Both directions are asserted. The PATH is pinned rather than mocked: with
-  # `:login_shell_path` set to nil `ShellPath` falls back to the process PATH,
-  # so pointing that at an empty directory makes nothing findable, and dropping
-  # three executable stubs into it makes everything findable.
   describe "why a harness is greyed out" do
     @describetag :tmp_dir
 

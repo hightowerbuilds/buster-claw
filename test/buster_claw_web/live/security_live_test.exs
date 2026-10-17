@@ -31,4 +31,19 @@ defmodule BusterClawWeb.SecurityLiveTest do
     view |> element("button", "Acknowledge all") |> render_click()
     assert render(view) =~ "0 unacknowledged"
   end
+
+  # About moved here from the Configuration rail on 10-17. Until 08-16 the app
+  # displayed its own version nowhere (UPDATE_ROADMAP F5, G-42).
+  test "About shows the running version and which build it is", %{conn: conn} do
+    {:ok, view, html} = live(conn, ~p"/security")
+
+    assert has_element?(view, "#about")
+    assert html =~ BusterClaw.BuildInfo.version()
+    assert html =~ BusterClaw.BuildInfo.architecture_label()
+    # `build_info_test.exs` pins the value against the VERSION file; this line
+    # stops the pair from passing vacuously on a build where the spec cannot be
+    # read.
+    refute html =~ "unknown"
+    assert has_element?(view, "#about button[phx-click='rerun_setup']")
+  end
 end

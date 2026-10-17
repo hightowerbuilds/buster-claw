@@ -238,7 +238,7 @@ defmodule BusterClawWeb.SplitLiveTest do
   end
 
   for right <- ["/voice", "/settings"] do
-    test "recovered Speech beside #{right} has independent Settings rails", %{conn: conn} do
+    test "recovered Speech beside #{right} has independent Settings tab bars", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/split?left=/voice&right=#{unquote(right)}")
       left = find_live_child(view, "split-pane-left")
       right = find_live_child(view, "split-pane-right")
@@ -246,21 +246,25 @@ defmodule BusterClawWeb.SplitLiveTest do
       for side <- ["left", "right"] do
         assert has_element?(view, "#split-#{side}-settings")
         assert has_element?(view, "#split-#{side}-settings-tabs")
-        assert has_element?(view, "#split-#{side}-settings-tab-configuration")
-        assert has_element?(view, "#split-#{side}-settings-config-rail")
+        assert has_element?(view, "#split-#{side}-settings-tab-models")
+        assert has_element?(view, "#split-#{side}-settings-tab-speech")
       end
 
       refute has_element?(view, "#settings")
       refute has_element?(view, "#settings-tabs")
-      refute has_element?(view, "#settings-config-rail")
 
-      right |> element("#split-right-settings-config-tab-speech") |> render_click()
-      left |> element("#split-left-settings-config-tab-about") |> render_click()
+      # The left pane is the recovered Speech tab, the right is whatever it was
+      # asked for: each marks its own current tab and renders its own section.
+      assert has_element?(left, "#split-left-settings-tab-speech[aria-current='page']")
+      assert has_element?(left, "#settings-speech-left-picker")
+      refute has_element?(right, "#settings-speech-left-picker")
 
-      assert has_element?(left, "#split-left-settings-config-tab-about[aria-selected='true']")
-      assert has_element?(right, "#split-right-settings-config-tab-speech[aria-selected='true']")
-      assert has_element?(right, "#settings-speech-right-picker")
-      refute has_element?(left, "#settings-speech-left-picker")
+      if unquote(right) == "/settings" do
+        assert has_element?(right, "#split-right-settings-tab-models[aria-current='page']")
+      else
+        assert has_element?(right, "#split-right-settings-tab-speech[aria-current='page']")
+        assert has_element?(right, "#settings-speech-right-picker")
+      end
     end
   end
 

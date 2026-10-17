@@ -71,7 +71,7 @@ export const VoiceToggle = {
 // generic "the quick brown fox".
 const AUDITION_LINE = "Buster Claw here. This is how I'll read your replies."
 
-// Settings → Configuration → Speech. Lists the voices installed on THIS Mac (they are downloaded
+// Settings → Speech. Lists the voices installed on THIS Mac (they are downloaded
 // per-machine, so a hard-coded list would offer voices the operator does not
 // have and hide the ones they went and fetched), persists the choice, and
 // auditions it.

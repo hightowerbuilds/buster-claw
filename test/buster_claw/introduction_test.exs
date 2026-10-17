@@ -395,7 +395,7 @@ defmodule BusterClaw.IntroductionTest do
     assert {:ok, ^path} = Introduction.install!()
     upgraded = File.read!(path)
     assert upgraded =~ "Operating Guide"
-    assert upgraded =~ "Configuration → Speech"
+    assert upgraded =~ "Settings → Speech"
 
     for removed <- ~w(VoxCPM Vox2B voice_clip_ voice_message_) do
       refute upgraded =~ removed

@@ -4,10 +4,16 @@ defmodule BusterClawWeb.SecurityLive do
   (refused restricted commands, consequential command invocations, and — as the
   spine is wired further — outbound sends and untrusted ingests). Subscribes to
   the `"security_alerts"` topic so events appear in real time.
+
+  Also the home of **About** since 10-17 — version and build, the setup re-run,
+  and the iMessage access probe — because this is the tab you visit when
+  something is wrong, and the Configuration rail it sat on is gone.
   """
   use BusterClawWeb, :live_view
 
+  alias BusterClaw.BuildInfo
   alias BusterClaw.Sentinel
+  alias BusterClaw.Setup
 
   @keep 100
 
@@ -18,6 +24,16 @@ defmodule BusterClawWeb.SecurityLive do
     {:ok,
      socket
      |> assign(:page_title, "Security")
+     # --- about ---
+     # Both are constant for the life of the VM, so they are read once at mount
+     # rather than on every render. See `BusterClaw.BuildInfo` for why they are
+     # derived rather than stored. About lived on the Configuration rail until
+     # 10-17; it is the foot of this page now — the tab you visit when
+     # something is wrong is the right place for "which build is this".
+     |> assign(:build_version, BuildInfo.version())
+     |> assign(:build_architecture, BuildInfo.architecture_label())
+     |> assign(:status, Setup.status())
+     |> assign(:messages_probe, nil)
      |> load()}
   end
 
@@ -43,6 +59,30 @@ defmodule BusterClawWeb.SecurityLive do
     {:ok, _count} = Sentinel.acknowledge_all()
     {:noreply, load(socket)}
   end
+
+  # --- About -----------------------------------------------------------------
+
+  def handle_event("rerun_setup", _params, socket) do
+    {:noreply, push_navigate(socket, to: ~p"/setup")}
+  end
+
+  # A second click while the first probe is still running is ignored.
+  def handle_event("probe_messages", _params, %{assigns: %{messages_probe: :checking}} = socket),
+    do: {:noreply, socket}
+
+  def handle_event("probe_messages", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:messages_probe, :checking)
+     |> start_async(:messages_probe, fn -> BusterClaw.Messages.probe() end)}
+  end
+
+  @impl true
+  def handle_async(:messages_probe, {:ok, result}, socket),
+    do: {:noreply, assign(socket, :messages_probe, result)}
+
+  def handle_async(:messages_probe, {:exit, _reason}, socket),
+    do: {:noreply, assign(socket, :messages_probe, {:error, :unavailable})}
 
   @impl true
   def render(assigns) do
@@ -120,6 +160,38 @@ defmodule BusterClawWeb.SecurityLive do
             No security events recorded yet.
           </div>
         </section>
+
+        <section id="about" class="ic-panel space-y-4 p-6">
+          <h2 class="ic-eyebrow">About</h2>
+          <dl class="grid gap-3 sm:grid-cols-2">
+            <div>
+              <dt class="ic-eyebrow">Version</dt>
+              <dd class="mt-1 font-mono text-lg">{@build_version}</dd>
+            </div>
+            <div>
+              <dt class="ic-eyebrow">Build</dt>
+              <dd class="mt-1 font-mono text-lg">{@build_architecture}</dd>
+            </div>
+          </dl>
+          <p class="text-sm text-base-content/60">
+            Buster Claw ships one build per processor architecture — never a universal
+            binary. Quote both lines when reporting a problem.
+          </p>
+          <div class="flex flex-wrap items-center justify-between gap-3 border-t-2 border-base-content/15 pt-4">
+            <span class="text-sm text-base-content/70">
+              Setup: <span class="font-mono">{@status.completed} of {@status.total}</span>
+              steps complete.
+            </span>
+            <button
+              type="button"
+              phx-click="rerun_setup"
+              class="rounded border-2 border-base-content/30 px-4 py-2 text-sm font-semibold transition hover:bg-base-200"
+            >
+              {if @status.complete?, do: "Re-run setup wizard", else: "Finish setup"}
+            </button>
+          </div>
+        </section>
+        <BusterClawWeb.MessagesProbe.panel result={@messages_probe} />
       </section>
     </Layouts.app>
     """

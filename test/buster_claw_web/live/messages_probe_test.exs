@@ -16,8 +16,8 @@ defmodule BusterClawWeb.MessagesProbeTest do
     :ok
   end
 
-  test "About offers an explicit check and reports a missing adapter", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/settings?tab=about")
+  test "About (on Security) offers an explicit check and reports a missing adapter", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/security")
     assert has_element?(view, "#messages-probe-result", "Not checked")
     view |> element("#messages-probe-button") |> render_click()
     render_async(view, 2_000)
@@ -53,7 +53,7 @@ defmodule BusterClawWeb.MessagesProbeTest do
     on_exit(fn -> File.rm(path) end)
     Application.put_env(:buster_claw, :messages_binary, path)
 
-    {:ok, view, _html} = live(conn, ~p"/settings?tab=about")
+    {:ok, view, _html} = live(conn, ~p"/security")
     view |> element("#messages-probe-button") |> render_click()
     render_async(view, 2_000)
     assert has_element?(view, "#messages-probe-result", "database access is available")

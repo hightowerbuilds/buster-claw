@@ -1,6 +1,6 @@
 defmodule BusterClawWeb.Settings.ModelsComponent do
   @moduledoc """
-  Configuration → **Agent & models**: the harness picker, the global default
+  Settings → **Agents & models**: the harness picker, the global default
   model, the free-text escape hatch, and the per-surface "in force" table.
 
   Extracted from `SettingsLive` on 08-15, whole — the markup below is the page's

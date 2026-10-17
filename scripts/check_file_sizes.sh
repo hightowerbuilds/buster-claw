@@ -477,7 +477,9 @@ check lib/buster_claw_web/components/settings/speech.ex       88 HELD
 # `send_update/2` relay rather than a straight lift. It was deliberately NOT
 # half-moved in the same pass. Profile and Credentials are small and may simply
 # stay.
-check lib/buster_claw_web/live/settings_live.ex               708 HELD
+# 10-17: the Profile section, the About section, the rail and the probe
+# handlers left `settings_live.ex`; 708 -> 591 banked.
+check lib/buster_claw_web/live/settings_live.ex               591 HELD
 
 # Configuration's rail, copying the registry shape `Explained.Registry` set.
 # The rail, the
@@ -496,7 +498,6 @@ check lib/buster_claw_web/live/settings_live.ex               708 HELD
 check lib/buster_claw_web/live/settings/models_component.ex    256 HELD
 check lib/buster_claw_web/components/settings/models.ex       332 HELD
 check lib/buster_claw_web/components/settings/registry.ex       95 HELD
-check lib/buster_claw_web/components/settings/rail.ex           65 HELD
 
 # Phase 5. Needs its state machine written down BEFORE it is split — eleven-plus
 # transition sites and no diagram anywhere. Frozen so it cannot gain a twelfth.

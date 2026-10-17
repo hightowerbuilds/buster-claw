@@ -27,7 +27,7 @@ defmodule BusterClawWeb.Explained.Gws do
             navigate="/settings"
             class="font-semibold text-primary hover:opacity-80"
           >
-            Configuration → Google Workspace
+            Settings → Google Workspace
           </.link>
           — with the bundled button when this build provides it, or Advanced setup
           with your own OAuth client. Everything below happens in the

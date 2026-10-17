@@ -18,24 +18,6 @@ Use it for things that belong to Buster Claw rather than to the user's Google
 calendar — and be clear which one you wrote to, because "I added it to your
 calendar" is ambiguous and gets people to the wrong meeting.
 
-## Integrations
-
-GitHub, Sentry, and Umami, mirrored into the Library on demand. **There is no
-background poller** — a poll happens because you or the user asked for one,
-or because a verified webhook arrived.
-
-    ./buster-claw run integration_list
-    ./buster-claw run integration_poll --json '{"id":3}'   # or integration_poll_all
-    ./buster-claw run integration_run_list                 # run history
-
-`integration_create` / `integration_update` / `integration_delete` are
-restricted — they hold tokens and webhook secrets. Two things to know:
-webhook signature verification **fails closed** (no configured secret means
-no accepted webhook, by design), and a verified event becomes a **Library
-snapshot, not a queue item** — integrations never enqueue agent work. If the
-user wants a Sentry issue worked, that's a `dispatch_enqueue`, made
-deliberately.
-
 ## Shifts and the runtime
 
 A **shift** is the unit of "Buster Claw is on duty". It runs until stopped —

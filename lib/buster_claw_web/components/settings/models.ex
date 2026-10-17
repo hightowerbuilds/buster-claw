@@ -1,6 +1,6 @@
 defmodule BusterClawWeb.Settings.Models do
   @moduledoc """
-  The markup of Configuration → **Agent & models**: the harness picker with its
+  The markup of Settings → **Agents & models**: the harness picker with its
   "why is this grey" note, the global default and free-text model forms, and
   the per-surface "in force" table.
 

@@ -47,11 +47,12 @@ The dock at the bottom switches between five surfaces:
   window with a payment gate that stops before money moves.
 - **Terminal** — your agent's shell, inside the app. Each click of the dock
   button opens a new one.
-- **Settings** — five tabs: **Appearance**, **Notify**, **Integrations**,
-  **Configuration**, and **Security**. Connecting Google
-  Workspace and choosing which model runs where are both on **Configuration**.
-  Its **Speech** page chooses the macOS voice and speed for reading chat replies
-  aloud in the desktop app. Notification sound routing stays in **Notify**.
+- **Settings** — seven tabs: **Appearance**, **Notify**, **Agents & models**,
+  **Google Workspace**, **Credentials**, **Speech**, and **Security**. Which model
+  runs where is on **Agents & models**; connecting Google is on **Google
+  Workspace**; **Speech** chooses the macOS voice and speed for reading chat
+  replies aloud in the desktop app. Notification sound routing stays in
+  **Notify**, and the app's version and build are at the foot of **Security**.
 
 **Security** (the last Settings tab, or `/security` directly) is the **Sentinel
 audit feed**: every command that changes something, every outbound send, and

@@ -4,10 +4,11 @@ import {recoverRetiredRoute, recoverRetiredTabs} from "./retired_tabs.js"
 
 // The Settings section presents several routes behind one in-page tab bar. In
 // the top browser-style tab strip those routes collapse into a single "Settings"
-// tab keyed by the group's canonical path, so traversing the sub-tabs only moves
+// tab keyed by the group's canonical path, so traversing the tabs only moves
 // the in-page highlight — it never spawns new top-level tabs. The strip
-// remembers the last sub-route visited (see the TabStrip hook's `sync`) so
-// returning to the Settings tab reopens where you left off.
+// remembers the last sub-route visited, query included (see the TabStrip hook's
+// `sync`), so returning to the Settings tab reopens where you left off; four of
+// the tabs are `/settings?tab=…` and group by pathname.
 //
 // This list MUST match `BusterClawWeb.SettingsTabs`'s tab paths exactly. A
 // sub-tab missing here gets no group, so it opens its own top-level tab labelled

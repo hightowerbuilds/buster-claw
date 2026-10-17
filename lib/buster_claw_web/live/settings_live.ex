@@ -1,6 +1,7 @@
 defmodule BusterClawWeb.SettingsLive do
   @moduledoc """
-  Settings → Configuration sub-tab. The single home for account-level
+  The `/settings` LiveView — four of the Settings tabs (Agents & models, Google
+  Workspace, Credentials, Speech), one section per `?tab=`. The single home for account-level
   configuration: **Google Workspace** (connect, accounts, per-surface health,
   Gmail/Calendar tools), **agent models**, onboarding progress, and
   the recovery key.
@@ -8,13 +9,13 @@ defmodule BusterClawWeb.SettingsLive do
   ## The sub-tab rail (08-15)
 
   Those are four unrelated features, and until 08-15 they were one scroll with a
-  ~378-line `render/1`. They are now a rail:
-  `BusterClawWeb.Settings.Registry` is the data-only source the rail, the
-  `select_settings_tab` whitelist and the `:if` dispatch below all read, so a
+  ~378-line `render/1`. They are now four Settings tabs sharing one page:
+  `BusterClawWeb.Settings.Registry` is the data-only source the `?tab=`
+  whitelist and the `:if` dispatch below both read, so a
   tab cannot exist in one and not the others — the same shape as Explained's
   rail, and the fix the GWS console rail underneath needed on 08-08.
 
-  Only **Agent & models** is extracted so far, into
+  Only **Agents & models** is extracted so far, into
   `BusterClawWeb.Settings.ModelsComponent`. Google Workspace and the
   credentials are still inline: a rail with one moved section is a real
   intermediate state, and a half-moved Google Workspace would not be. GWS is the
@@ -22,7 +23,7 @@ defmodule BusterClawWeb.SettingsLive do
   clauses and the only section whose refresh arrives as a `handle_info`, so
   moving it means reaching it with `send_update/2`.
 
-  The rail does not write the URL; see `BusterClawWeb.Settings.Rail` for why.
+  The Settings tab bar links carry `?tab=`; there is no in-page rail (10-17).
   `?tab=` is read at mount so a link or a test can open one directly.
 
   The model picker sits here rather than on a tab of its own — it is agent
@@ -39,7 +40,6 @@ defmodule BusterClawWeb.SettingsLive do
   """
   use BusterClawWeb, :live_view
 
-  alias BusterClaw.BuildInfo
   alias BusterClaw.Clinch
   alias BusterClaw.Clinch.Rekey
   alias BusterClaw.Google
@@ -47,7 +47,6 @@ defmodule BusterClawWeb.SettingsLive do
   alias BusterClaw.Google.Gmail
   alias BusterClaw.Google.GmailSync
   alias BusterClaw.Recovery
-  alias BusterClaw.Setup
   alias BusterClaw.SystemBrowser
   alias BusterClawWeb.ErrorFormatter
   alias BusterClawWeb.GoogleOAuth
@@ -59,12 +58,13 @@ defmodule BusterClawWeb.SettingsLive do
 
     {:ok,
      socket
-     |> assign(:page_title, "Configuration")
      |> assign(:id_prefix, session["settings_id_prefix"] || "")
      |> assign(:speech_id, session["speech_id"] || "settings-speech")
-     |> assign(:messages_probe, nil)
-     # The rail. `?tab=` is read but never written — see `Settings.Rail`.
+     # The section. `?tab=` is what the Settings tab bar links carry; a split
+     # pane hands it over in the session instead. The page is titled for it —
+     # these are four tabs to the operator, not one "Configuration".
      |> assign(:settings_tab, Registry.resolve(tab_param(params) || session["settings_tab"]))
+     |> then(&assign(&1, :page_title, Registry.label(&1.assigns.settings_tab)))
      # --- Google Workspace ---
      |> assign(:bundled_available, BusterClaw.Google.BundledClient.available?())
      |> assign(:gws_tab, :accounts)
@@ -87,14 +87,7 @@ defmodule BusterClawWeb.SettingsLive do
      # a tunnel (Clinch Phase 2).
      |> assign(:restore_path, Recovery.restore_file_path())
      |> assign(:clinch_entries, Clinch.list())
-     |> assign(:unreadable, Rekey.unreadable())
-     # --- about ---
-     # Both are constant for the life of the VM, so they are read once at mount
-     # rather than on every render. See `BusterClaw.BuildInfo` for why they are
-     # derived rather than stored.
-     |> assign(:build_version, BuildInfo.version())
-     |> assign(:build_architecture, BuildInfo.architecture_label())
-     |> assign_status()}
+     |> assign(:unreadable, Rekey.unreadable())}
   end
 
   @impl true
@@ -106,7 +99,7 @@ defmodule BusterClawWeb.SettingsLive do
   # crashing the LiveView with a FunctionClauseError.
   def handle_info(_msg, socket), do: {:noreply, socket}
 
-  # --- The sub-tab rail ---------------------------------------------------
+  # --- The section --------------------------------------------------------
 
   # `SplitLive` renders this view with `live_render/3`, and a child mounted
   # outside the router is handed the ATOM `:not_mounted_at_router` in place of a
@@ -115,24 +108,7 @@ defmodule BusterClawWeb.SettingsLive do
   defp tab_param(%{"tab" => tab}), do: tab
   defp tab_param(_params), do: nil
 
-  # `Registry.resolve/1` is the whitelist: a forged key lands on the default
-  # rather than assigning one no branch renders, which would leave the page
-  # blank below the rail.
   @impl true
-  def handle_event("select_settings_tab", %{"tab" => tab}, socket) do
-    {:noreply, assign(socket, :settings_tab, Registry.resolve(tab))}
-  end
-
-  def handle_event("probe_messages", _params, %{assigns: %{messages_probe: :checking}} = socket),
-    do: {:noreply, socket}
-
-  def handle_event("probe_messages", _params, socket) do
-    {:noreply,
-     socket
-     |> assign(:messages_probe, :checking)
-     |> start_async(:messages_probe, fn -> BusterClaw.Messages.probe() end)}
-  end
-
   # --- Google Workspace events -------------------------------------------
 
   def handle_event("gws_tab", %{"tab" => tab}, socket) do
@@ -326,16 +302,6 @@ defmodule BusterClawWeb.SettingsLive do
     end
   end
 
-  # --- Setup / recovery events ---------------------------------------------
-
-  # On About since 10-17, when the Profile tab (name, organization, the setup
-  # progress list) was deleted as never used. The wizard still has to be
-  # reachable after setup completes, and About is the tab you visit when
-  # something is wrong.
-  def handle_event("rerun_setup", _params, socket) do
-    {:noreply, push_navigate(socket, to: ~p"/setup")}
-  end
-
   # The shell stored or forgot a credential. Re-read the listing — names and
   # metadata only; the value was never here and is not arriving now.
   def handle_event("clinch:changed", _params, socket) do
@@ -346,19 +312,11 @@ defmodule BusterClawWeb.SettingsLive do
   end
 
   @impl true
-  def handle_async(:messages_probe, {:ok, result}, socket),
-    do: {:noreply, assign(socket, :messages_probe, result)}
-
-  def handle_async(:messages_probe, {:exit, _reason}, socket),
-    do: {:noreply, assign(socket, :messages_probe, {:error, :unavailable})}
-
-  @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} socket={@socket}>
       <section id={"#{@id_prefix}settings"} class="space-y-6">
-        <BusterClawWeb.SettingsTabs.tabs active={:configuration} id_prefix={@id_prefix} />
-        <BusterClawWeb.Settings.Rail.rail active={@settings_tab} id_prefix={@id_prefix} />
+        <BusterClawWeb.SettingsTabs.tabs active={@settings_tab} id_prefix={@id_prefix} />
 
         <.live_component
           :if={@settings_tab == "models"}
@@ -480,37 +438,6 @@ defmodule BusterClawWeb.SettingsLive do
           />
           <BusterClawWeb.ClinchPanels.recovery_panel restore_path={@restore_path} />
         </div>
-
-        <section :if={@settings_tab == "about"} class="ic-panel space-y-4 p-6">
-          <h2 class="ic-eyebrow">About</h2>
-          <dl class="grid gap-3 sm:grid-cols-2">
-            <div>
-              <dt class="ic-eyebrow">Version</dt>
-              <dd class="mt-1 font-mono text-lg">{@build_version}</dd>
-            </div>
-            <div>
-              <dt class="ic-eyebrow">Build</dt>
-              <dd class="mt-1 font-mono text-lg">{@build_architecture}</dd>
-            </div>
-          </dl>
-          <p class="text-sm text-base-content/60">
-            Buster Claw ships one build per processor architecture — never a universal
-            binary. Quote both lines when reporting a problem.
-          </p>
-          <div class="flex flex-wrap items-center justify-between gap-3 border-t-2 border-base-content/15 pt-4">
-            <span class="text-sm text-base-content/70">
-              Setup: <span class="font-mono">{@status.completed} of {@status.total}</span>
-              steps complete.
-            </span>
-            <button type="button" phx-click="rerun_setup" class={button_outline()}>
-              {if @status.complete?, do: "Re-run setup wizard", else: "Finish setup"}
-            </button>
-          </div>
-        </section>
-        <BusterClawWeb.MessagesProbe.panel
-          :if={@settings_tab == "about"}
-          result={@messages_probe}
-        />
       </section>
     </Layouts.app>
     """
@@ -607,10 +534,4 @@ defmodule BusterClawWeb.SettingsLive do
   end
 
   # --- shared ------------------------------------------------------------
-
-  defp assign_status(socket), do: assign(socket, :status, Setup.status())
-
-  defp button_outline,
-    do:
-      "rounded border-2 border-base-content/30 px-4 py-2 text-sm font-semibold transition hover:bg-base-200"
 end

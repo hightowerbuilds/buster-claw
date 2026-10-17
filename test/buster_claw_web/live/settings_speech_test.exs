@@ -6,7 +6,7 @@ defmodule BusterClawWeb.SettingsSpeechTest do
   test "Speech exposes the native picker and an honest browser fallback", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/settings?tab=speech")
 
-    assert has_element?(view, "#settings-config-tab-speech[aria-selected='true']")
+    assert has_element?(view, "#settings-tab-speech[aria-current='page']")
 
     assert has_element?(
              view,
@@ -21,10 +21,13 @@ defmodule BusterClawWeb.SettingsSpeechTest do
     refute has_element?(view, "[phx-hook='VoiceRecorder']")
   end
 
-  test "the rail opens Speech and stale Home selections recover to Chat", %{conn: conn} do
+  test "the Speech tab opens Speech and stale Home selections recover to Chat", %{conn: conn} do
     {:ok, settings, _html} = live(conn, ~p"/settings")
-    settings |> element("#settings-config-tab-speech") |> render_click()
-    assert has_element?(settings, "#settings-speech-picker")
+
+    {:ok, speech, _html} =
+      settings |> element("#settings-tab-speech") |> render_click() |> follow_redirect(conn)
+
+    assert has_element?(speech, "#settings-speech-picker")
 
     {:ok, home, _html} = live(conn, ~p"/")
     render_click(home, "select_home_tab", %{"tab" => "phone"})

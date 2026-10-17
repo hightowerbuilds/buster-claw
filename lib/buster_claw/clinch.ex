@@ -296,7 +296,7 @@ defmodule BusterClaw.Clinch do
         Sentinel.observe(
           :credential_missing,
           "#{kind} credential \"#{normalize(name)}\" was needed and is not stored — " <>
-            "store it in Settings → Configuration, or restore the master key if it was rotated",
+            "store it in Settings → Credentials, or restore the master key if it was rotated",
           %{kind: kind, name: normalize(name)},
           caller: opts[:caller]
         )

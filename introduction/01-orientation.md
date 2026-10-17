@@ -87,10 +87,10 @@ The **dock** across the bottom of the window has five tabs:
 |---|---|
 | **Work area** | Panels you open from the sidebar, as many as fit: **Chat** · **Workspace** (the file tree over the folders above) · **Notes** · **Calendar** · **Terminal** (up to four) · **Pockets** · **Explained** · **Activity** · **Clock** |
 | **Browser** | The in-app browser, and where an Agent Mode run is mirrored live |
-| **Settings** | Sub-tabs: **Appearance** · **Notify** · **Integrations** · **Configuration** · **Security** |
+| **Settings** | Tabs: **Appearance** · **Notify** · **Agents & models** · **Google Workspace** · **Credentials** · **Speech** · **Security** |
 
 **Reading chat aloud** uses native macOS speech in the desktop app. Voice and
-speed controls are at **Settings → Configuration → Speech**. Notification
+speed controls are at **Settings → Speech**. Notification
 sound routing remains in **Notify**.
 
 Two surfaces have no dock tab and are reached by link:
