@@ -1,6 +1,11 @@
 defmodule BusterClawWeb.FrontDoorTest do
   @moduledoc """
-  `VI-a`: the four front-door surfaces must say one sentence.
+  `VI-a`: the front-door surfaces must say one sentence.
+
+  Three surfaces as of 10-17: the operator took it off the home chat's empty
+  state, which now reads only "BusterClaw" — a sentence read on every empty
+  chat for months is wallpaper, and the pitch belongs where a newcomer meets the
+  app first. The chat stays under the retired-pitch and harness guards below.
 
   The failure this guards is not hypothetical and not small. Before 08-16 the
   README pitched a runtime, the website pitched the same runtime, the setup
@@ -40,9 +45,13 @@ defmodule BusterClawWeb.FrontDoorTest do
   # 10-16; the sentence moved with it.)
   @surfaces [
     {"README", "README.md"},
-    {"the setup wizard", "lib/buster_claw_web/components/setup/steps.ex"},
-    {"the home chat", "lib/buster_claw_web/components/chat_panel.ex"}
+    {"the setup wizard", "lib/buster_claw_web/components/setup/steps.ex"}
   ]
+
+  # Every surface a retired pitch must stay off, the home chat included — it no
+  # longer carries the sentence, and it must not grow an old one back either.
+  @retired_surfaces @surfaces ++
+                      [{"the home chat", "lib/buster_claw_web/components/chat_panel.ex"}]
 
   defp squish(text), do: text |> String.replace(~r/\s+/, " ") |> String.trim()
 
@@ -81,7 +90,7 @@ defmodule BusterClawWeb.FrontDoorTest do
     for {name, phrase} <- @retired do
       test "#{name} is gone from every surface" do
         offenders =
-          for {surface, path} <- @surfaces,
+          for {surface, path} <- @retired_surfaces,
               File.read!(path) =~ unquote(phrase),
               do: "#{surface} (#{path})"
 
@@ -119,5 +128,14 @@ defmodule BusterClawWeb.FrontDoorTest do
            who switched — `VI-i` in FRONT_DOOR_ROADMAP.md. If a harness must be
            named here, read it from ModelPolicy rather than hardcoding it.
            """
+  end
+
+  # The operator's call (10-17): an empty chat shows the name and nothing else.
+  # Pinned so the pitch does not drift back in under a "helpful" rewrite.
+  test "the home chat's empty state is just the name" do
+    source = File.read!("lib/buster_claw_web/components/chat_panel.ex")
+
+    assert source =~ ~s(attr :empty_message, :string, default: "BusterClaw"\n)
+    refute source =~ "Ask it to summarize a document"
   end
 end

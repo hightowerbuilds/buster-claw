@@ -114,26 +114,14 @@ defmodule BusterClawWeb.ChatPanel do
   attr :queue, :list, required: true
   attr :agent_cli_missing, :boolean, default: false
 
-  # The home screen's front door, and one of the four surfaces `VI-a` requires to
-  # say one sentence — see `BusterClawWeb.FrontDoorTest`, which fails if this
-  # drifts from the README and the wizard.
+  # What an empty chat says: the name, and nothing else (operator's call, 10-17).
   #
-  # Two things it deliberately no longer does. It does not name **Claude**: the
-  # harness is `ModelPolicy.backend_for(:chat)` and returns codex or opencode just
-  # as readily, so the old copy was false for any operator who had switched. And
-  # it no longer opens with mail and queue jargon, both of which assume a concept
-  # a newcomer does not have yet. What replaces them is an outcome and a promise
-  # about evidence, which is the thing this app has and a chat box does not.
-  #
-  # The retired phrasings are quoted in `BusterClawWeb.FrontDoorTest` and nowhere
-  # else on purpose — that guard refuses them anywhere in this file, comments
-  # included, because a retired pitch sitting beside the live one is how a
-  # surface ends up saying two things.
-  attr :empty_message, :string,
-    default:
-      "An assistant on your Mac that uses your tools, keeps working, and shows you what it did. " <>
-        "Ask it to summarize a document, draft a reply without sending it, or look something up — " <>
-        "then check Activity to see exactly what it touched."
+  # Until then this carried the front-door sentence (`VI-a`, see
+  # `BusterClawWeb.FrontDoorTest`) followed by three example asks. The operator
+  # had read it on every empty chat for months and wanted the panel quiet; the
+  # pitch belongs to the first-run surfaces — the README and the setup wizard —
+  # which still carry it. It does not name a harness either way (`VI-i`).
+  attr :empty_message, :string, default: "BusterClaw"
 
   slot :pinned,
     doc:
