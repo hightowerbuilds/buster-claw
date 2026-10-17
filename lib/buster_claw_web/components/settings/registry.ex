@@ -4,8 +4,7 @@ defmodule BusterClawWeb.Settings.Registry do
   rail, the parent's `select_settings_tab` whitelist and the dispatch in
   `SettingsLive.render/1` all read.
 
-  Copied from `BusterClawWeb.Studio.Registry`, which copied
-  `BusterClawWeb.Explained.Registry`, which solved this first. The property
+  Copied from `BusterClawWeb.Explained.Registry`, which solved this first. The property
   worth copying is that a sub-tab cannot exist in the rail and not in the guard:
   all three read `tabs/0`, and `resolve/1` is the only thing that turns a
   clicked string into a key. That is the same shape as the GWS console rail
@@ -27,10 +26,10 @@ defmodule BusterClawWeb.Settings.Registry do
   ## Adding a sub-tab
 
   One entry here, plus one `:if` branch in `SettingsLive.render/1`. There is no
-  placeholder path — unlike Explained and Studio, every tab here is a section
+  placeholder path — unlike Explained, every tab here is a section
   that already existed on the long page, so a key with no branch renders an
   empty tab rather than an honest stub. If this page ever grows a tab before its
-  section exists, copy Studio's `@built` + placeholder.
+  section exists, copy Explained's `@built` + stub.
   """
 
   # The sub-tabs, in rail order. `blurb` is the rail button's `title` — the one

@@ -10,7 +10,7 @@ defmodule BusterClawWeb.NoSniff do
   is a long-lived chunked stream. That was the right call for `accepts` and
   sessions, but it also meant none of them got `put_secure_browser_headers`, so
   `X-Content-Type-Options` appeared **nowhere in the codebase** until
-  `RangeResponse` started sending it for the three audio routes.
+  the audio routes started sending it.
 
   The remaining routes were fixed one at a time, which is how four of them drifted
   back out of coverage. **A pipeline makes it one invariant instead of nine
@@ -33,8 +33,7 @@ defmodule BusterClawWeb.NoSniff do
 
   Cheap, and it closes the gap for every route serving bytes with a declared
   non-HTML type: `/ws/image`, `/appearance/image/:slot`, `/notify/sound`,
-  `/shaders/:name`, `/pockets/:pocket/:file`, `/browser/agent-view/:run_id`, and
-  the three `RangeResponse` audio routes.
+  `/shaders/:name`, `/pockets/:pocket/:file` and `/browser/agent-view/:run_id`.
 
   ## What it does NOT fix, so nobody reads more into it
 

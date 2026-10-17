@@ -24,8 +24,6 @@ defmodule BusterClawWeb.MediaNoSniffTest do
   # the header is asserted on whatever status comes back.
   @media_routes [
     {"/appearance/image/home", "uploaded appearance asset"},
-    {"/music/track/nope.mp3", "music library audio"},
-    {"/studio/file/nope.wav", "studio working file"},
     {"/notify/sound", "fallback notification chime"},
     {"/notify/sound/nope.mp3", "named notification chime"},
     {"/ws/image?path=nope.png", "workspace image bytes"},
@@ -63,16 +61,6 @@ defmodule BusterClawWeb.MediaNoSniffTest do
 
       assert conn.status == 200
       assert get_resp_header(conn, "x-content-type-options") == ["nosniff"]
-    end
-
-    test "the header is sent exactly once, not duplicated by RangeResponse", %{conn: conn} do
-      # `RangeResponse` sets nosniff itself for the three audio routes, and those
-      # scopes now also pipe through `:media`. `put_resp_header` replaces rather
-      # than appends, so this must stay a single value — a duplicated header is
-      # malformed and some clients drop the response.
-      conn = get(conn, "/music/track/nope.mp3")
-
-      assert length(get_resp_header(conn, "x-content-type-options")) == 1
     end
   end
 end

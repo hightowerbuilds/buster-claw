@@ -171,7 +171,7 @@ defmodule BusterClaw.WorkspaceTest do
 
   # Module attributes defined as a literal, or as a Path.join of literals — take
   # the first string either way, since only the top-level segment matters
-  # (`@subdir Path.join("studio", "tracks")` lives under the declared `studio`).
+  # (a nested `Path.join("x", "y")` lives under the declared `x`).
   defp attribute_values(src) do
     ~r/^\s*@([a-z_]+)\s+(?:Path\.join\()?"([^"]+)"/m
     |> Regex.scan(src)
@@ -357,60 +357,6 @@ defmodule BusterClaw.WorkspaceTest do
       # Machine-regenerated files are deleted at the old home, not carried along.
       refute File.exists?(Path.join(root, "INTRODUCTION.md"))
       refute File.exists?(Path.join(root, ".buster-claw/dispatch/Dispatch.md"))
-    end
-
-    test "audio is one folder: no top-level music/ or studio/", %{root: root} do
-      :ok = Workspace.ensure()
-      BusterClaw.Music.ensure()
-      BusterClaw.Studio.Editor.ensure()
-
-      listing = File.ls!(root)
-      refute "music" in listing
-      refute "studio" in listing
-      assert "sounds" in listing
-
-      assert File.dir?(Path.join([root, "sounds", "music"]))
-      assert File.dir?(Path.join([root, "sounds", "studio"]))
-    end
-
-    test "chimes and the music library don't see each other", %{root: root} do
-      BusterClaw.Music.ensure()
-      File.write!(Path.join([root, "sounds", "chime.wav"]), "chime")
-      File.write!(Path.join([root, "sounds", "music", "song.mp3"]), "song")
-
-      # Sound.list/0 filters on File.regular?, so the nested dirs stay out of it.
-      assert BusterClaw.Notifications.Sound.list() == ["chime.wav"]
-      assert BusterClaw.Music.list() == ["song.mp3"]
-    end
-
-    test "migrates an existing install's music/ and studio/ into sounds/", %{root: root} do
-      File.mkdir_p!(Path.join(root, "music"))
-      File.mkdir_p!(Path.join(root, "studio"))
-      File.write!(Path.join([root, "music", "song.mp3"]), "audio")
-      File.write!(Path.join([root, "studio", "take.wav"]), "take")
-
-      :ok = Workspace.ensure()
-
-      refute "music" in File.ls!(root)
-      refute "studio" in File.ls!(root)
-      assert File.read!(Path.join([root, "sounds", "music", "song.mp3"])) == "audio"
-      assert File.read!(Path.join([root, "sounds", "studio", "take.wav"])) == "take"
-    end
-
-    test "the migration merges rather than clobbers when both exist", %{root: root} do
-      File.mkdir_p!(Path.join(root, "music"))
-      File.mkdir_p!(Path.join([root, "sounds", "music"]))
-      File.write!(Path.join([root, "music", "old.mp3"]), "from the old folder")
-      File.write!(Path.join([root, "music", "clash.mp3"]), "old copy")
-      File.write!(Path.join([root, "sounds", "music", "clash.mp3"]), "new copy")
-
-      :ok = Workspace.ensure()
-
-      # The non-colliding file moved...
-      assert File.read!(Path.join([root, "sounds", "music", "old.mp3"])) == "from the old folder"
-      # ...the collision was left alone, both copies intact.
-      assert File.read!(Path.join([root, "sounds", "music", "clash.mp3"])) == "new copy"
-      assert File.read!(Path.join([root, "music", "clash.mp3"])) == "old copy"
     end
 
     test "the migration is idempotent and a no-op on a fresh install", %{root: root} do

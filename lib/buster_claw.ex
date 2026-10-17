@@ -22,9 +22,7 @@ defmodule BusterClaw do
     `BrowserControl` (the engine: flows, checks, Agent Mode, commerce, egress),
     `BrowserHistory`, `Favicons`, `UrlGuard`.
   * **Look and sound** — `Appearance` and `Shaders`, `TerminalTheme`,
-    `TerminalPaint`, `ChatSkin`, `Notifications.Sound` and the Sound Studio
-    (`Studio.Editor`, `Studio.Mix`, `Studio.Catalog`, `Studio.Capture`),
-    `Music`.
+    `TerminalPaint`, `ChatSkin`, `Notifications.Sound` (the chime library).
   * **Secrets and setup** — `Clinch` (credentials), `Vault`, `Encrypted`,
     `Settings`, `Setup`, `RuntimeConfig`, `Recovery`, `ApiToken`.
   * **Documents for the model and the human** — `Introduction` (the model's

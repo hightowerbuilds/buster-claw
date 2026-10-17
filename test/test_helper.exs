@@ -2,7 +2,7 @@
 # `mix test --include browser_engine` on a machine that has one installed.
 #
 # :macos tests need tools that ship only with macOS (`/usr/bin/afinfo` behind
-# `SoundStudio.probe/1`, `plutil` behind the Info.plist lint). They are the
+# `Notifications.Sound.probe/1`, `plutil` behind the Info.plist lint). They are the
 # shipping platform, so they run here and are skipped on a Linux runner rather
 # than failing there forever.
 #

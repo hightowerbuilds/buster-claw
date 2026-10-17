@@ -36,7 +36,7 @@ defmodule BusterClawWeb.VoxCommandRemovalTest do
       assert Commands.command_type(name) == nil
     end
 
-    for name <- ~w(notify_create notify_list sound_import sound_apply sound_record) do
+    for name <- ~w(notify_create notify_list sound_list sound_apply sound_probe) do
       assert name in names
     end
   end

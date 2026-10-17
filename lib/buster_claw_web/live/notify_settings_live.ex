@@ -22,8 +22,8 @@ defmodule BusterClawWeb.NotifySettingsLive do
 
   # Each routing row: the map key, its section, and the kind/source a Test fire
   # uses so the routed path is genuinely exercised. Labels are NOT here — they
-  # live in `Sound.route_label/1`, because the Studio's assign-on-render offers
-  # the same keys and a label defined twice is a label that drifts.
+  # live in `Sound.route_label/1`, because `sound_routes` shows the same keys
+  # and a label defined twice is a label that drifts.
   @rows [
     %{key: "default", group: :base, kind: "reminder", source: "manual"},
     %{key: "timer", group: :kind, kind: "timer", source: "manual"},

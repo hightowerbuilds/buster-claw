@@ -9,12 +9,12 @@ defmodule BusterClawWeb.Settings.ModelsComponent do
   1:1 onto `BusterClaw.ModelPolicy`: every assign here is derived from that
   module and nothing else on the Configuration page reads any of them.
 
-  ## Why this is a live_component and Studio's panels are not
+  ## Why this is a live_component and the home panels are not
 
   Configuration is a **route** (`live "/settings"`), not an `:if`-gated home
-  panel. Home panels are discarded on every tab switch, which is why
-  `BusterClawWeb.Studio.MixState` holds the arranger's undo stack in the LiveView
-  instead of in the component. Nothing here needs to outlive a sub-tab switch:
+  panel. Home panels are discarded on every tab switch, which is why their
+  state lives in the LiveView rather than in a component. Nothing here needs to
+  outlive a sub-tab switch:
   every value is re-read from `ModelPolicy` in `update/2`, and `:model_note` —
   the one piece of genuinely transient state — *should* clear when you leave.
   So the component owns all of it, and its six `handle_event` clauses and ten

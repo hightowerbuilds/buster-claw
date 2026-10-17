@@ -205,9 +205,8 @@ defmodule BusterClaw.Workspace do
       seed: {BusterClaw.Notes, :ensure},
       note: "The operator's Markdown vault — the Workspace Notes tab, read by note_*."
     },
-    # A DECLARED PARENT WITH USER-NAMED CHILDREN — the same shape as `sounds/`,
-    # whose `music/` and `studio/` are deliberately not declared here. This
-    # registry describes top-level entries; every Pocket is one level down, so
+    # A DECLARED PARENT WITH USER-NAMED CHILDREN. This registry describes
+    # top-level entries; every Pocket is one level down, so
     # the layout guard keeps its full value while the operator names whatever
     # they like inside.
     #
@@ -282,19 +281,17 @@ defmodule BusterClaw.Workspace do
     },
 
     # --- on demand, drop zones: you put the first file in, not us ----------
-    # All audio lives under `sounds/`: chimes at the top, `sounds/music/` for the
-    # dock player's library, `sounds/studio/` for the Sound Studio's working
-    # files. Those two are NOT declared here — this registry describes top-level
-    # entries, and they are inside one. Each is created by its own surface
-    # (Music.ensure/0, Studio.Editor.ensure/0), so opening Notify doesn't conjure a
-    # music library and vice versa.
+    # All audio lives under `sounds/`: the notification chimes. (`sounds/music/`
+    # and `sounds/studio/` were the music library's and the Sound Studio's
+    # until both were deleted on 10-16; a folder an old install still has is
+    # left alone.)
     %{
       name: "sounds",
       kind: :dir,
       tier: :on_demand,
       owner: BusterClaw.Notifications.Sound,
       seed: {BusterClaw.Notifications.Sound, :ensure},
-      note: "All audio — notification chimes, plus music/ and studio/ inside."
+      note: "All audio — the notification chimes."
     },
     %{
       name: "shaders",
@@ -461,8 +458,6 @@ defmodule BusterClaw.Workspace do
 
   # Old layouts fold into the current one before anything seeds:
   #
-  #   - Audio used to sprawl across three top-level folders (`music/`, `sounds/`,
-  #     `studio/`); it is one now, with the library and the Studio inside it.
   #   - `job-descriptions/` and `appearance/` were feature-named; they are
   #     content-named now (`jobs/`, `backgrounds/`). Appearance's Settings
   #     pointers are rewritten by `Appearance.ensure/0`, which boots after this.
@@ -474,8 +469,6 @@ defmodule BusterClaw.Workspace do
   # anything writes next to them. Idempotent by shape rather than by a marker:
   # once the old entry is gone there is nothing left to do.
   @relocations [
-    {"music", "sounds/music"},
-    {"studio", "sounds/studio"},
     {"job-descriptions", "jobs"},
     {"appearance", "backgrounds"},
     # The SECOND move for this directory: `appearance/` → `backgrounds/` (a

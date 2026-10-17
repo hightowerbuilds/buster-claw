@@ -34,9 +34,9 @@ defmodule BusterClaw.Commands.Catalog.Appearance do
   same line `terminal_theme_select` sits on.
 
   **Not gated**, and the argument is the shape of the act rather than its
-  loudness. Compare the two entries that *are* gated: `sound_apply` changes what
-  the machine does when nobody is watching, and `sound_record` opens the
-  microphone. A background is neither. It writes one `Settings` key, touches no
+  loudness. Compare the one `sound_*` entry that *is* gated: `sound_apply`
+  changes what the machine does when nobody is watching. A background does
+  not. It writes one `Settings` key, touches no
   file, sends nothing outbound, is visible the instant it happens, and is undone
   by one more call or one click in Settings. A confirmation dialog for it would
   be theatre, and gating an act whose whole failure mode is "the operator sees

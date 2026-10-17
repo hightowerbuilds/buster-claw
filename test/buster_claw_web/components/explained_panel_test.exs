@@ -38,7 +38,7 @@ defmodule BusterClawWeb.ExplainedPanelTest do
       # this line fail and be updated on purpose.
       # `ramshackle` merged into `studio` on 08-16 and its module was deleted.
       assert ExplainedPanel.tab_keys() ==
-               ~w(intro models gws browser shaders pockets cmd studio site ntf)
+               ~w(intro models gws browser shaders pockets cmd site ntf)
     end
 
     test "every registry tab renders a body, and every dispatch has a registry tab" do
@@ -52,7 +52,7 @@ defmodule BusterClawWeb.ExplainedPanelTest do
 
       # Backward: a dispatch for a key the registry does not have is
       # unreachable, so no render can see it. Asserted against the source, the
-      # same way SettingsTabsTest and StudioPanelTest see an orphan.
+      # same way SettingsTabsTest sees an orphan.
       panel = Path.expand("../../../lib/buster_claw_web/components/explained_panel.ex", __DIR__)
 
       literals =

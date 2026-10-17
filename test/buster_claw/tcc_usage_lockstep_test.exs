@@ -2,10 +2,13 @@ defmodule BusterClaw.TccUsageLockstepTest do
   @moduledoc """
   Retained capture paths and the desktop microphone usage string must agree.
 
-  The reference recorder is gone, but `sound_record` still invokes ffmpeg's
-  microphone capture. TCC may attribute that request up the process chain to
-  the desktop app. The embedded browser can also host pages requesting media.
-  A scan limited to our JavaScript would miss these paths.
+  The app's own capture paths are gone — the Vox recorder (10-11) and the
+  Studio's `sound_record` (10-16) — but the embedded browser hosts arbitrary
+  pages, and a page calling `getUserMedia` inside a content webview is a
+  microphone request TCC attributes to the desktop app. Under the hardened
+  runtime a missing usage string there is a TERMINATION, not a prompt. So the
+  browser is a standing capture path and the key must stay declared; the scan
+  below lists any JS of our own that joins it.
 
   This guards declarations, not consent or successful capture on a real Mac.
   """
@@ -64,12 +67,11 @@ defmodule BusterClaw.TccUsageLockstepTest do
         path |> File.read!() |> strip_js_comments() |> String.contains?("getUserMedia")
       end)
 
-    native =
-      BusterClaw.Commands.Catalog.entries()
-      |> Enum.filter(&(&1.name == "sound_record"))
-      |> Enum.map(& &1.name)
+    # The embedded browser's content webviews: arbitrary pages, any of which
+    # may request the microphone. Always a caller.
+    browser = ["desktop/tauri/src/browser (content webviews host arbitrary pages)"]
 
-    Enum.sort(javascript ++ native)
+    Enum.sort(javascript ++ browser)
   end
 
   # A `<key>` inside an XML comment is prose, not a declaration — and the comments

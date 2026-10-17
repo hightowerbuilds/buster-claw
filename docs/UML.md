@@ -348,7 +348,7 @@ From `lib/buster_claw_web/router.ex`.
 ```mermaid
 flowchart LR
     subgraph browser["pipe :browser (session, CSRF, LiveView)"]
-        R1["/ , /browse, /split, /terminal, /calendar,<br/>/integrations, /security, /settings,<br/>/appearance, /notify-settings,<br/>/studio, /workspace, /manual, /setup"]
+        R1["/ , /browse, /split, /terminal, /calendar,<br/>/integrations, /security, /settings,<br/>/appearance, /notify-settings,<br/>/workspace, /manual, /setup"]
         R2["/google/oauth/callback"]
         R3["/voice → /settings?tab=speech (legacy redirect)"]
     end

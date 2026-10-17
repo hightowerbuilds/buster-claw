@@ -23,15 +23,15 @@ defmodule BusterClawWeb.Explained.Registry do
   # derived by hand, and re-measured whenever a verb lands or leaves — the
   # contract test in `status_live_test.exs` ("the Command List tab is the atlas")
   # compares these against the live catalog and is the only reason the numbers
-  # are trustworthy. Last measured 10-15, after the phone's ten verbs left.
+  # are trustworthy. Last measured 10-16, after the Studio's eleven verbs left.
   @command_stats %{
-    total: 183,
-    read: 74,
+    total: 172,
+    read: 71,
     trigger: 19,
-    mutate: 90,
-    safe: 81,
-    restricted: 102,
-    gated: 17
+    mutate: 82,
+    safe: 78,
+    restricted: 94,
+    gated: 16
   }
 
   # Feature sub-tabs: rail + tile metadata for every non-site tab. A key in
@@ -134,31 +134,6 @@ defmodule BusterClawWeb.Explained.Registry do
       # this tab is not the day to discover the link 404s.
       path: "/terminal",
       path_label: "Open the terminal"
-    },
-    # Studio is one tab covering the whole workshop: the library, the routing
-    # table, the four editing verbs and the single gated `sound_apply`. The
-    # Sketch Pad was its third sub-tab until 09-05 and the Voice Library (the
-    # cut-up) its second until 09-19; both were deleted whole.
-    #
-    # Studio and Ramshackle were TWO tabs from 08-09 to 08-16, on the argument
-    # that someone wanting a custom chime should not have to read about dynamic
-    # time warping first. Sound argument, and it still cost more than it bought:
-    # two tabs described two ENGINES rather than one place you go to make
-    # something, and the Ramshackle tab had drifted into claiming the Voice
-    # surface was unbuilt months after it shipped. Merged 08-16; the module was
-    # deleted rather than left orphaned.
-    %{
-      key: "studio",
-      label: "Studio",
-      eyebrow: "The workshop",
-      blurb: "The experimental corner: cut audio and make your own chimes.",
-      body:
-        "Mix, at /studio, cuts and arranges audio, and the sound verbs behind it " <>
-          "turn a recording into the chime your machine plays. Framed as " <>
-          "experimental on purpose — it is where this app tries things, and it " <>
-          "will keep changing shape.",
-      path: "/studio",
-      path_label: "Open the Studio"
     }
   ]
 
@@ -167,7 +142,7 @@ defmodule BusterClawWeb.Explained.Registry do
   # returns [] and the `:for` that renders them is vacuous. Left in place rather
   # than deleted — the stub is what makes adding a tab a one-line edit here, and
   # a `@features` entry with no panel must still render something true.
-  @built ~w(models shaders pockets browser cmd gws studio)
+  @built ~w(models shaders pockets browser cmd gws)
 
   # The two outbound tabs. They are not features — neither teaches this app, and
   # both send you to a website — which is why they sit last rather than second

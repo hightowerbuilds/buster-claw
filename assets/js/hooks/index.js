@@ -15,13 +15,6 @@ import {DutyTab} from "./duty_tab.js"
 import {SplitResizer} from "./split.js"
 import {TerminalView, TermThemePicker} from "./terminal.js"
 import {SmokeBackground} from "./smoke_background.js"
-import {AudioClip} from "./audio_clip.js"
-import {WaveTrim} from "./wave_trim.js"
-import {TrackArrange} from "./track_arrange.js"
-import {StudioKeys} from "./studio_keys.js"
-import {StudioAudition} from "./studio_audition.js"
-import {VoiceAudition} from "./voice_audition.js"
-import {StudioContextMenu} from "./studio_context_menu.js"
 import {ShaderPreview} from "./shader_preview.js"
 import {ShaderTimer} from "./shader_timer.js"
 import {FileTreeDnd} from "./file_tree_dnd.js"
@@ -31,7 +24,6 @@ import {ChatDropzone} from "./chat_dropzone.js"
 import {NotifySound, SoundPreview} from "./notify_sound.js"
 import {Composer} from "./composer.js"
 import {NoteEditor} from "./note_editor.js"
-import StudioMenuBar from "./studio_menu_bar.js"
 import {NotesKeys} from "./notes_keys.js"
 import {NoteContextMenu, NoteTitle} from "./note_context.js"
 import {ClinchManager, ClinchAppKeys, RecoveryKey} from "./clinch.js"
@@ -41,7 +33,6 @@ export const Hooks = {
   WorkbenchMenu,
   BrowserActivity,
   Olympus,
-  VoiceAudition,
   Clock,
   DockClock,
   ScreenshotBridge,
@@ -62,12 +53,6 @@ export const Hooks = {
   TerminalView,
   TermThemePicker,
   SmokeBackground,
-  AudioClip,
-  WaveTrim,
-  TrackArrange,
-  StudioKeys,
-  StudioAudition,
-  StudioContextMenu,
   ShaderPreview,
   ShaderTimer,
   FileTreeDnd,
@@ -77,7 +62,6 @@ export const Hooks = {
   NotifySound,
   SoundPreview,
   NoteEditor,
-  StudioMenuBar,
   NotesKeys,
   NoteContextMenu,
   NoteTitle,

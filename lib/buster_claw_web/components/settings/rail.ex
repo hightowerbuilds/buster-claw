@@ -5,7 +5,7 @@ defmodule BusterClawWeb.Settings.Rail do
   Presentation only: it renders `BusterClawWeb.Settings.Registry.tabs/0` and
   pushes `select_settings_tab` at the parent LiveView, which owns the
   `:settings_tab` assign and the dispatch. Same shape as
-  `BusterClawWeb.StudioPanel`'s rail, minus the dispatch — three of the four
+  `BusterClawWeb.ExplainedPanel`'s rail, minus the dispatch — three of the four
   sections are still inline in `SettingsLive.render/1`, so the branch lives
   there.
 

@@ -148,8 +148,6 @@ accepted_unmatched_return =
 #     artifact: `is_binary(html) and ...` inside thin_page?, where Dialyzer
 #     proves html is currently always binary. The guard is defense against a
 #     malformed page map; the finding is noise from the `and` expansion.
-#   * sound_studio_component.ex — a LiveView catch-all. A new error atom from
-#     StudioMix renders a generic message instead of crashing the whole page.
 #   * cli.ex :no_return — simply true: stand_down/2, its trap closure, and
 #     die/2 all end in System.halt/1.
 #
@@ -219,8 +217,7 @@ other_findings = [
   {"lib/buster_claw/integrations/github.ex", :pattern_match_cov},
   {"lib/buster_claw/system_browser.ex", :pattern_match_cov},
   {"lib/buster_claw/terminal_commands.ex", :pattern_match_cov},
-  {"lib/buster_claw_web/controllers/browser_home_controller.ex", :pattern_match},
-  {"lib/buster_claw_web/live/sound_studio_component.ex", :pattern_match_cov}
+  {"lib/buster_claw_web/controllers/browser_home_controller.ex", :pattern_match}
 ]
 
 accepted_unmatched_return ++ other_findings

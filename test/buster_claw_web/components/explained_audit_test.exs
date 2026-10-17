@@ -80,6 +80,11 @@ defmodule BusterClawWeb.ExplainedAuditTest do
             "the dock",
             "sub-tab",
             "corner widget",
+            "Sound Studio",
+            "/studio",
+            "sound_import",
+            "sound_record",
+            "Mix tab",
             "Workspace page's"
           ] do
         refute text =~ stale, "#{tab} still describes retired functionality: #{stale}"

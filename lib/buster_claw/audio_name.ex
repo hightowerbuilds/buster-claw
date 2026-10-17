@@ -1,7 +1,7 @@
 defmodule BusterClaw.AudioName do
   @moduledoc """
   Filename sanitation for user-visible audio: the one `safe_name/1` that Music,
-  Sound, the Studio's editor, and its mixes all share.
+  the sound library uses.
 
   A leaf on purpose (CODE_QUALITY_REFACTOR_ROADMAP Phase 1): it lived in
   `Music`, and `Notifications.Sound` calling it there while `Music` called

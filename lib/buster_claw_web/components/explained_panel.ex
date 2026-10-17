@@ -20,7 +20,7 @@ defmodule BusterClawWeb.ExplainedPanel do
   | `Explained.Intro` | the launcher grid and Get Started |
   | `Explained.Sites` | busterclaw.lol, Notes That Float |
   | `Explained.Stub` | any feature tab whose tutorial is unwritten (none today) |
-  | `Explained.Models`, `.Shaders`, `.Pockets`, `.Browser`, `.Cmd`, `.Gws`, `.Studio` | the seven tutorials |
+  | `Explained.Models`, `.Shaders`, `.Pockets`, `.Browser`, `.Cmd`, `.Gws` | the six tutorials |
   | `Explained.Shared` | the leaf components tutorials are built from |
 
   The rail, the Intro grid, the parent's event whitelist (via `tab_keys/0`) and
@@ -37,7 +37,6 @@ defmodule BusterClawWeb.ExplainedPanel do
   import BusterClawWeb.Explained.Pockets
   import BusterClawWeb.Explained.Shaders
   import BusterClawWeb.Explained.Sites
-  import BusterClawWeb.Explained.Studio
   import BusterClawWeb.Explained.Stub
 
   alias BusterClawWeb.Explained.Registry
@@ -102,7 +101,6 @@ defmodule BusterClawWeb.ExplainedPanel do
         <.gws_panel :if={@tab == "gws"} />
         <.cmd_panel :if={@tab == "cmd"} />
         <.browser_panel :if={@tab == "browser"} />
-        <.studio_panel :if={@tab == "studio"} />
         <.stub_panel :for={stub <- @stubs} :if={@tab == stub.key} stub={stub} />
       </div>
     </section>

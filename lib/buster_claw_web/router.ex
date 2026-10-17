@@ -40,10 +40,10 @@ defmodule BusterClawWeb.Router do
   # each scope below.
   #
   # It is a pipeline rather than a `put_resp_header` per controller because there
-  # are nine such routes and fixing them individually is exactly how four of them
-  # ended up uncovered — `X-Content-Type-Options` appeared nowhere in the codebase
-  # until `RangeResponse` began sending it for audio. A scope missing
-  # `pipe_through :media` is now visible in this file beside eight that have it.
+  # are several such routes and fixing them individually is exactly how four of
+  # them ended up uncovered — `X-Content-Type-Options` appeared nowhere in the
+  # codebase until the audio routes began sending it. A scope missing
+  # `pipe_through :media` is now visible in this file beside the ones that have it.
   # See `BusterClawWeb.NoSniff` for what it defends and what it does not.
   pipeline :media do
     plug BusterClawWeb.NoSniff
@@ -88,17 +88,6 @@ defmodule BusterClawWeb.Router do
       live "/settings", SettingsLive, :index
       live "/appearance", AppearanceLive, :index
       live "/notify-settings", NotifySettingsLive, :index
-      # NO DOCK TAB as of 09-02-26 — the Studio is being spun out into its own
-      # project, and the tab it used to own went to the Sketch Pad. **That Pad was
-      # deleted on 09-05 and the dock slot went with it**, so nothing in the app
-      # links here any more.
-      #
-      # The route still stays, for the reason it stayed before: it is the only way
-      # to reach Mix and the Voice Library, and roughly thirty tests exercise them
-      # through it. Deleting it is the spin-off's job, together with those tests.
-      # An unreachable route is untidy; a route deleted out from under its own
-      # test suite is an afternoon of guessing which failures were intentional.
-      live "/studio", StudioLive, :index
       live "/workspace", WorkspaceLive, :index
       live "/manual", UserGuideLive, :index
       live "/setup", SetupLive, :index
@@ -116,27 +105,6 @@ defmodule BusterClawWeb.Router do
     pipe_through :media
 
     get "/image/:slot", AppearanceController, :image
-  end
-
-  # Music library audio for the dock player. Only `:media` (media element
-  # requests, not HTML); the name is resolved by Music.path_for/1 against the
-  # library listing, never joined from raw input; loopback-only. Unlike the
-  # routes around it this one honors byte ranges — a track is long enough to
-  # seek through. See BusterClawWeb.RangeResponse.
-  scope "/music", BusterClawWeb do
-    pipe_through :media
-
-    get "/track/:name", MusicController, :show
-  end
-
-  # Studio working files (<workspace>/studio/) for the Studio tab's waveform and
-  # preview. Only `:media`; the name is resolved by Studio.Editor.path_for/1 against
-  # the real listing, never joined from raw input. Byte ranges (and nosniff) via
-  # RangeResponse — imported material can be long enough to scrub.
-  scope "/studio", BusterClawWeb do
-    pipe_through :media
-
-    get "/file/:name", StudioFileController, :show
   end
 
   # Workspace notification sounds, played by the NotifySound hook when a

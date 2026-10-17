@@ -51,8 +51,8 @@ defmodule BusterClaw.Notifications.Sound do
   # Human labels for the routing keys, in the order a person should meet them:
   # the catch-all, then the kinds you set alarms with, then where a thing came
   # from, then the agent's own noises. Here rather than in a LiveView because
-  # two surfaces now offer routing — Settings → Notify and the Studio's
-  # assign-on-render — and a label defined twice is a label that drifts.
+  # Settings → Notify and the `sound_routes` command both show them, and a
+  # label defined twice is a label that drifts.
   @route_labels [
     {"default", "Default"},
     {"timer", "Timers"},
@@ -167,7 +167,7 @@ defmodule BusterClaw.Notifications.Sound do
   copy of every static asset beside the original (`alarm.wav` →
   `alarm-85cf46bf....wav`), so after a release build this directory holds each
   chime twice. Listing both doubled the routing menu in Settings → Notify and
-  filled the Studio's sidebar with what reads as system junk. The hash suffix is
+  showed what reads as system junk. The hash suffix is
   only ever a build product here — this directory ships with exactly what
   `SoundGen` wrote — so recognizing it is safe, and the alternative (a hardcoded
   list of sixteen names) would silently drop the seventeenth chime.
@@ -203,7 +203,7 @@ defmodule BusterClaw.Notifications.Sound do
 
   @doc """
   Copy the bundled chimes into `<workspace>/sounds/` so the set is real files on
-  disk — editable in the Studio, visible in Finder.
+  disk — visible and editable in Finder.
 
   **Never called at boot.** SOUND_ROADMAP Part III rule 1 forbids *seeding*, and
   the reason still holds: an automatic copy would resurrect files the operator
@@ -252,9 +252,8 @@ defmodule BusterClaw.Notifications.Sound do
   @doc """
   Copy a file into the sound library under a free name, returning that name.
 
-  The deliberate step that moves audio from working material to a finished
-  effect — `sounds/studio/` holds what you are editing, `sounds/` holds what the
-  app will play unattended, and this is the door between them.
+  The door into the library: `sounds/` holds what the app will play
+  unattended, and the Notify settings upload lands here.
 
   **Never overwrites**, because this layer overrides bundled chimes by basename:
   installing something called `alarm.wav` would silently replace the built-in
@@ -289,101 +288,6 @@ defmodule BusterClaw.Notifications.Sound do
   defp next_free(stem, ext, n) do
     candidate = "#{stem}-#{n}#{ext}"
     if candidate in list(), do: next_free(stem, ext, n + 1), else: candidate
-  end
-
-  @doc """
-  Rename a workspace sound, carrying its routing with it.
-
-  `stem` is the new name without extension; the original extension is kept, so
-  a rename cannot change what kind of file this is. Only the workspace layer is
-  renameable — `path_for/1` returns nil for a bundled-only chime, which is the
-  refusal.
-
-  Two consequences worth knowing, both of them the point rather than side
-  effects. Any event routed to the old name is **repointed** (the mirror of
-  `delete/1`'s prune — a rename should not silently unhook a notification). And
-  because this layer overrides the bundled set **by basename**, renaming
-  `confirm.wav` to `doorbell.wav` stops it overriding `confirm` and makes it a
-  standalone sound: the built-in comes back. That is what renaming an override
-  *means*.
-  """
-  def rename(name, stem) when is_binary(name) and is_binary(stem) do
-    with path when is_binary(path) <- path_for(name),
-         {:ok, new_name} <- renamed(name, stem),
-         :ok <- refuse_taken(new_name),
-         :ok <- File.rename(path, Path.join(dir(), new_name)) do
-      repoint_map_value(name, new_name)
-      {:ok, new_name}
-    else
-      nil -> {:error, :not_found}
-      {:error, _reason} = error -> error
-    end
-  end
-
-  def rename(_name, _stem), do: {:error, :not_found}
-
-  # A stem sanitized by Music's sanitizer (shared across every renameable
-  # surface), with the ORIGINAL extension reattached — so a rename can never
-  # change what kind of file this is, and typing "x.txt" over a .wav yields
-  # "x.wav".
-  #
-  # The emptiness check is on the REQUEST, not the sanitized result:
-  # `Music.safe_name/1` substitutes "track" for anything that reduces to
-  # nothing, so a check on its output could never fire and "   " would quietly
-  # become a sound called "track". Same reasoning as `Studio.Mix.safe_mix_name/1`.
-  def renamed_to(name, stem) do
-    if String.match?(stem, ~r/[\p{L}\p{N}]/u) do
-      ext = Path.extname(name)
-
-      clean =
-        stem
-        |> String.trim()
-        |> BusterClaw.AudioName.safe_name()
-        |> Path.rootname()
-        |> String.trim()
-
-      {:ok, clean <> ext}
-    else
-      {:error, :invalid_name}
-    end
-  end
-
-  @doc """
-  Rename an audio file on disk to `<stem><ext>`, keeping its extension.
-
-  The one body behind `Music.rename/2` and `Studio.Editor.rename/2`, which were
-  byte-identical copies until 10-16 (CODE_QUALITY_SWEEP Phase 4). Each caller
-  resolves `path` through its own allowlist (`path_for/1`), so a name that is
-  not a real library entry arrives here as `nil` and is refused before any
-  filesystem call; `taken?` is the caller's own listing, so a rename can never
-  overwrite a sibling.
-  """
-  def rename_file(nil, _dir, _name, _stem, _taken?), do: {:error, :not_found}
-
-  def rename_file(path, dir, name, stem, taken?)
-      when is_binary(path) and is_binary(name) and is_binary(stem) do
-    with {:ok, new_name} <- renamed_to(name, stem),
-         false <- taken?.(new_name),
-         :ok <- File.rename(path, Path.join(dir, new_name)) do
-      {:ok, new_name}
-    else
-      true -> {:error, :name_taken}
-      {:error, _reason} = error -> error
-    end
-  end
-
-  defp renamed(name, stem), do: renamed_to(name, stem)
-
-  # Collisions refuse rather than auto-suffix: a rename is the user naming a
-  # thing, and quietly handing back `bongos-2.wav` is not what they asked for.
-  defp refuse_taken(new_name) do
-    if new_name in list(), do: {:error, :name_taken}, else: :ok
-  end
-
-  defp repoint_map_value(old, new) do
-    sound_map()
-    |> Map.new(fn {key, value} -> {key, if(value == old, do: new, else: value)} end)
-    |> persist_map()
   end
 
   @doc "Remove a sound file and any map entries routing to it."
@@ -522,6 +426,61 @@ defmodule BusterClaw.Notifications.Sound do
 
   @doc "True when at least one chime is available to play."
   def available?, do: path() != nil
+
+  @prober "/usr/bin/afinfo"
+
+  @doc """
+  Header-read facts about an audio file — duration, sample rate, channels —
+  without decoding a byte of audio.
+
+  `/usr/bin/afinfo` is a licensing-free system binary and O(header) regardless
+  of file size, so a twenty-minute recording still gets a length. Returns
+  `{:ok, %{duration_ms: float, sample_rate: int, channels: int}}`, or
+  `{:error, :not_found | :no_prober | :unsupported_source}`. Moved here from the
+  Sound Studio's editor when the Studio was deleted (10-16); `sound_probe` is
+  its one caller.
+  """
+  def probe(path) when is_binary(path) do
+    cond do
+      not File.regular?(path) -> {:error, :not_found}
+      not File.regular?(@prober) -> {:error, :no_prober}
+      true -> run_probe(path)
+    end
+  end
+
+  def probe(_path), do: {:error, :not_found}
+
+  defp run_probe(path) do
+    # A list of args, so this never reaches a shell.
+    case System.cmd(@prober, [path], stderr_to_stdout: true) do
+      {output, 0} -> parse_probe(output)
+      {_output, _status} -> {:error, :unsupported_source}
+    end
+  rescue
+    _error -> {:error, :no_prober}
+  end
+
+  # afinfo prints, for every format it understands:
+  #
+  #     Data format:     2 ch,  44100 Hz, ...
+  #     estimated duration: 0.809977 sec
+  #
+  # ("estimated" is afinfo's word even when the header is exact.)
+  defp parse_probe(output) do
+    with [_, secs] <- Regex.run(~r/estimated duration:\s*([\d.]+)\s*sec/, output),
+         [_, ch, hz] <- Regex.run(~r/Data format:\s*(\d+)\s+ch,\s*([\d.]+)\s*Hz/, output),
+         {duration, _} <- Float.parse(secs),
+         {rate, _} <- Float.parse(hz) do
+      {:ok,
+       %{
+         duration_ms: duration * 1000.0,
+         sample_rate: trunc(rate),
+         channels: String.to_integer(ch)
+       }}
+    else
+      _ -> {:error, :unsupported_source}
+    end
+  end
 
   @doc "The audio content-type for a resolved sound path."
   def content_type(sound_path) do

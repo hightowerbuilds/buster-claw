@@ -36,7 +36,7 @@ defmodule BusterClawWeb.Explained.Cmd do
           Buster Claw's agent-addressable backend operations share one canonical
           set of
           <span id="explained-command-total" class="font-mono font-bold">{@command_stats.total}</span>
-          commands. Some UI-only work — parts of Appearance and Studio, say —
+          commands. Some UI-only work — parts of Appearance, say —
           deliberately stays outside that surface. You do not memorize the
           commands: say outcomes in Chat and let the agent select them. <a
             href="#explained-command-atlas"

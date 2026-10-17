@@ -133,13 +133,13 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
     #   this is the minimum visibility the reference design requires. Read-only;
     #   nothing outbound, nothing irreversible.
     #
-    #   sound_list / sound_routes / sound_sources / sound_probe (added 08-08,
-    #   STUDIO_ROADMAP Part I Phase 0) — the read half of the Studio surface.
-    #   They list the sound library's two layers, the event routing table, and
-    #   the studio's imported clips, and read one named file's header/samples to
-    #   report format, duration and peak. Names are basenames allowlisted
-    #   against a directory listing, so nothing outside `sounds/` is reachable.
-    #   Nothing here writes a file, changes a route, or plays anything.
+    #   sound_list / sound_routes / sound_probe (added 08-08) — the read half of
+    #   the sound surface. They list the sound library's two layers and the
+    #   event routing table, and read one named file's header to report format
+    #   and duration. Names are basenames allowlisted against a directory
+    #   listing, so nothing outside `sounds/` is reachable. Nothing here writes
+    #   a file, changes a route, or plays anything. (`sound_sources` left with
+    #   the Studio on 10-16.)
     #
     #   sound_probe's reach WIDENED 08-08 (Part I Phase 1) and stays :safe: it
     #   now also takes an `event_id` (a phone event whose recording_path the app
@@ -259,12 +259,9 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
       shift_stop
       skill_suggestions
       slides_get
-      sound_devices
-      sound_input_level
       sound_list
       sound_probe
       sound_routes
-      sound_sources
       tasks_get
       tasks_list
       terminal_tab_open
@@ -277,19 +274,9 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
     # data, no secret, nothing irreversible — it answers "where could financial
     # data come from", which is the same answer for every caller.
     #
-    # `sound_devices` and `sound_input_level` reviewed and added 08-09 with the
-    # capture surface. Each is a read in the strict sense — neither opens the
-    # microphone, and that is the line worth stating, because both sit next to a
-    # verb that does:
-    #   * `sound_devices` ASKS WHAT EXISTS via `system_profiler`. Enumerating
-    #     inputs is not capturing from one; it needs no TCC consent and returns
-    #     the same answer whether or not consent was ever granted.
-    #   * `sound_input_level` reads the OS input volume. It is the get half of a
-    #     pair whose set half is deliberately `:restricted` — reading a mixer
-    #     level reveals nothing about the room.
-    # `sound_record` and `sound_input_level_set` are NOT here, by design: the
-    # first is `:restricted` AND `gated` (see `sound_capture_test.exs` for why
-    # `:restricted` alone would not have been enough), the second `:restricted`.
+    # `sound_devices` and `sound_input_level` were reviewed onto this list 08-09
+    # with the capture surface and LEFT it on 10-16 with the Studio
+    # (`STUDIO_REMOVAL_ROADMAP`), microphone verbs and all.
     #
     # `sound_gaps` and `voice_bank_list` were reviewed onto this list (08-09,
     # 08-16) and LEFT it on 09-19, when the cut-up engine was deleted whole

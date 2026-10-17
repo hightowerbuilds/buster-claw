@@ -236,110 +236,6 @@ defmodule BusterClawWeb.Status.ExplainedLiveTest do
       assert html =~ String.slice(sample.description, 0, 60)
     end
 
-    test "the Studio tab teaches the library, the routing table, and the one gated verb",
-         %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/")
-      render_click(view, "select_home_tab", %{"tab" => "explained"})
-
-      html = render_click(view, "select_explained_tab", %{"tab" => "studio"})
-
-      assert has_element?(view, "#explained-studio-surfaces")
-      assert has_element?(view, "#explained-studio-safety")
-      assert html =~ ~s(href="/notify-settings")
-
-      for cmd <- ~w(sound_routes sound_list sound_trim sound_fade sound_normalize
-                    sound_concat sound_probe sound_apply) do
-        assert html =~ ~s(data-terminal-command-copy="#{cmd}"),
-               "the Studio tutorial does not offer #{cmd} as a copyable command"
-
-        assert Commands.command_type(cmd) != nil,
-               "tutorial names #{cmd}, which is not in the command catalog"
-      end
-
-      catalog = Map.new(Commands.list_commands(), &{&1.name, &1})
-
-      # The claim this tutorial is built on: of everything the page teaches,
-      # `sound_apply` alone crosses from "a file exists" to "the machine behaves
-      # differently", and it is the one carrying the gate.
-      #
-      # Scoped to the verbs THIS PAGE names, deliberately. The first draft asserted
-      # `sound_apply` was the only gated verb in the whole `sound_*` family, which
-      # was true of HEAD and false the moment the capture work lands `sound_record`
-      # — also gated, for an unrelated reason (it opens the microphone). That
-      # version would have passed here and then failed in someone else's commit,
-      # which is a worse defect than the one it was guarding against.
-      assert Map.fetch!(catalog, "sound_apply") |> Map.get(:gated, false),
-             "the Studio tutorial rests on sound_apply being gated"
-
-      for name <- ~w(sound_routes sound_list sound_trim sound_fade sound_normalize
-                     sound_concat sound_probe sound_import sound_delete
-                     sound_restore_defaults) do
-        refute Map.get(Map.fetch!(catalog, name), :gated, false),
-               "the Studio tutorial teaches #{name} as a verb that writes and stops, " <>
-                 "but it is now gated — the page's safety story needs rewriting"
-      end
-
-      # The counterweight, and it matters as much: the way back must NOT be gated.
-      restore = Map.fetch!(catalog, "sound_restore_defaults")
-      assert restore.type == :mutate
-      refute Map.get(restore, :gated, false), "gating the undo strands whoever needs it"
-
-      # The four editing verbs write a new source and nothing else — none of them
-      # may quietly become the thing that changes what plays.
-      for name <- ~w(sound_trim sound_fade sound_normalize sound_concat) do
-        entry = Map.fetch!(catalog, name)
-        assert entry.type == :mutate
-        assert entry.tier == :restricted
-        refute Map.get(entry, :gated, false), "#{name} writes a new source; it must not be gated"
-      end
-
-      refute html =~ "Tutorial in the works"
-    end
-
-    # Was "the Studio tab offers every cut-up verb, and each one exists" until
-    # 09-19, when the cut-up engine, its verbs and the Voice Library half of the
-    # page were deleted (`CUTUP_DELETION_ROADMAP`). The contract survives for the
-    # verbs that are left: every command the tutorial offers must exist.
-    test "the Studio tab offers only verbs that exist, and none of the cut-up's", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/")
-      render_click(view, "select_home_tab", %{"tab" => "explained"})
-
-      html = render_click(view, "select_explained_tab", %{"tab" => "studio"})
-
-      offered =
-        ~r/data-terminal-command-copy="([a-z_]+)"/
-        |> Regex.scan(html, capture: :all_but_first)
-        |> List.flatten()
-        |> Enum.uniq()
-
-      # Not vacuous: the page teaches the library, the four edits and the gate.
-      for cmd <- ~w(sound_routes sound_list sound_trim sound_fade sound_normalize
-                    sound_concat sound_probe sound_apply) do
-        assert cmd in offered, "the Studio tutorial does not offer #{cmd} as a copyable command"
-      end
-
-      for cmd <- offered do
-        assert Commands.command_type(cmd) != nil,
-               "tutorial names #{cmd}, which is not in the command catalog"
-      end
-
-      # The deleted half must not leave a ghost in the copy — a tutorial naming
-      # a tab that is gone is the drift this page keeps having.
-      refute has_element?(view, "#explained-studio-cutup-verbs")
-      refute html =~ "Voice Library"
-      refute html =~ "Sketch Pad"
-
-      # The framing is a contract, not decoration. Every other Explained tab
-      # documents something the product depends on; this one documents a
-      # workshop, and saying so is what buys the room to keep changing it. If
-      # the Studio is ever presented as settled, this fails and somebody has to
-      # decide whether that is true.
-      assert html =~ "Experimental"
-      assert html =~ "where this app tries things"
-
-      refute html =~ "Tutorial in the works"
-    end
-
     test "every Explained demo declares its contract and offers the two safe actions",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
@@ -362,8 +258,9 @@ defmodule BusterClawWeb.Status.ExplainedLiveTest do
       stubs = Enum.map(BusterClawWeb.Explained.Registry.stubs(), & &1.key)
       tabs = BusterClawWeb.ExplainedPanel.tab_keys() -- (~w(intro site ntf) ++ stubs)
 
-      # Seven since 10-15: the phone tutorial left with the phone.
-      assert length(tabs) >= 7, "the demo-contract sweep lost tabs instead of gaining them"
+      # Six since 10-16: the Studio tutorial left with the Studio (seven from
+      # 10-15, when the phone's left with the phone).
+      assert length(tabs) >= 6, "the demo-contract sweep lost tabs instead of gaining them"
 
       for tab <- tabs do
         html = render_click(view, "select_explained_tab", %{"tab" => tab})

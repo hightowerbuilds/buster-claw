@@ -11,8 +11,8 @@ defmodule BusterClawWeb.SettingsLive do
   ~378-line `render/1`. They are now a rail:
   `BusterClawWeb.Settings.Registry` is the data-only source the rail, the
   `select_settings_tab` whitelist and the `:if` dispatch below all read, so a
-  tab cannot exist in one and not the others — the same shape as Explained's and
-  Studio's rails, and the fix the GWS console rail underneath needed on 08-08.
+  tab cannot exist in one and not the others — the same shape as Explained's
+  rail, and the fix the GWS console rail underneath needed on 08-08.
 
   Only **Agent & models** is extracted so far, into
   `BusterClawWeb.Settings.ModelsComponent`. Google Workspace, the profile and
@@ -20,8 +20,7 @@ defmodule BusterClawWeb.SettingsLive do
   intermediate state, and a half-moved Google Workspace would not be. GWS is the
   next cut and the awkward one — it is 12 of the remaining `handle_event`
   clauses and the only section whose refresh arrives as a `handle_info`, so
-  moving it means reaching it with `send_update/2` the way
-  `BusterClawWeb.Studio.MixState` does.
+  moving it means reaching it with `send_update/2`.
 
   The rail does not write the URL; see `BusterClawWeb.Settings.Rail` for why.
   `?tab=` is read at mount so a link or a test can open one directly.

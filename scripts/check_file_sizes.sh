@@ -143,7 +143,6 @@ check lib/buster_claw_web/components/explained_panel.ex        118 HELD
 # it bought: two tabs described two ENGINES rather than one place you go to make
 # something, and the Ramshackle tab had drifted into claiming the Voice surface
 # was unbuilt months after it shipped.
-check lib/buster_claw_web/components/explained/studio.ex       358 HELD
 # 460 -> 660 on 08-15. The tab gained a SECOND SPINE rather than more of the
 # first: three capabilities with three unrelated blockers (inbound voice works;
 # outbound SMS is built and blocked on Twilio paperwork; outbound voice needs no
@@ -447,64 +446,9 @@ check lib/buster_claw_web/live/status/notify.ex               77 HELD
 # The seam if it grows again: the ARRANGER half (history, open mix, selection)
 # and the CLIP half (effects, preview) share only `mutate_open_mix/2`. Splitting
 # there is clean; splitting anywhere else is not.
-check lib/buster_claw_web/live/studio/mix_state.ex            240 HELD
 check lib/buster_claw_web/live/status/weather.ex              97 HELD
 
-# The Studio tab's sub-tab rail (STUDIO_ROADMAP VI.0b, 08-09): Mix is the
-# existing studio, Voice is a placeholder until Parts V and VI land. Capped ON
-# ARRIVAL, and the two numbers are deliberately different.
-#
-# `studio_panel.ex` has NO headroom: it is the rail and the dispatch and nothing
-# else — the shape `explained_panel.ex` above proved — so its first line of growth
-# means a Voice surface is landing in the dispatcher instead of in its own module,
-# which is the decision this gate should make someone defend. Note what it does
-# NOT do: `sound_studio_component.ex` is FROZEN at exactly its size, so the rail
-# lives ABOVE it and Mix renders it unchanged. That is why the frozen cap below
-# still holds with a whole sub-tab axis added.
-#
-# `registry.ex` gets a little room on purpose. The design promise is that adding
-# a sub-tab — or splitting Voice into recording and dictionary, which the roadmap
-# expects — is ONE edit in the registry; a zero-headroom cap would quietly make it
-# two.
-# Raised 08-14, 142 -> 170, when Voice stopped being a placeholder and became
-# VI.1's Ramshackle surface. This is the raise the note above says to question,
-# so it says what it bought: an `alias`, a six-attr block, and a 12-line
-# dispatch that renders `Studio.Voice.voice/1` and nothing else. The SURFACE is
-# 220 lines in `components/studio/voice.ex` and its state is 166 in
-# `live/studio/voice_state.ex`, both created for it. If a later reader finds pane
-# markup, filtering, or corpus reads in this file, this raise was wrong and the
-# cut is owed.
-# Raised 08-16, 170 -> 185 and 75 -> 85, for the THIRD sub-tab: Contribute, the
-# recorder (STUDIO_ROADMAP V.6-V.8). This is the split the note above predicted
-# in as many words — "or splitting Voice into recording and dictionary, which the
-# roadmap expects" — so it is the raise that note was written to permit, and it
-# bought exactly what was forecast: one `@tabs` entry plus one word in `@built`
-# in the registry, and one `alias` + one `attr` + a 6-line dispatch in the panel.
-#
-# The registry's share is mostly PROSE, not tabs: its moduledoc now records that
-# the one-edit promise held when tested. If a later reader is tempted to reclaim
-# that, note the tab data itself is 15 lines of the 79.
-#
-# The same test still applies: if pane markup, device enumeration or PCM handling
-# ever appears in `studio_panel.ex`, this raise was wrong. The surface is 251
-# lines in `components/studio/contribute.ex` and its state 233 in
-# `live/status/contribute.ex`, both created for it.
-# 195 -> 215 on 08-16 for the Sketch Pad's dispatch: an alias, a four-line
-# `:if` block and the comment above it. The "NO headroom" note above still
-# stands as the rule — this file is a rail and a dispatch and must not become a
-# place features live — and a third tab arriving is exactly the growth it was
-# capped to make visible rather than to forbid.
-check lib/buster_claw_web/components/studio_panel.ex         171 HELD
-check lib/buster_claw_web/components/studio/registry.ex       85 HELD
 
-# --- The Studio, on its own route (08-16) ------------------------------------
-#
-# `studio_live.ex` is what `StatusLive` handed over: the Studio's whole event
-# surface, unchanged. Every clause still delegates one line deep into
-# `Status.Studio` / `Status.Voice` / `Status.Recorder`, which did not move — so
-# growth here means a handler that stopped delegating, which is the thing to
-# look at rather than the line count itself.
-check lib/buster_claw_web/live/studio_live.ex                321 HELD
 
 check lib/buster_claw_web/live/notes_component.ex              744 HELD
 check lib/buster_claw_web/components/notes/editor.ex           300 HELD
@@ -516,100 +460,6 @@ check lib/buster_claw_web/components/notes/switcher.ex         134 HELD
 # 10-11: deleted VoxComponent and its synthesis panels. Native speech moved
 # into Configuration; the surviving phone greeting owns only status and reset.
 check lib/buster_claw_web/components/settings/speech.ex       88 HELD
-
-# Phase 3. 20% markup, so ~987 lines of logic in a live_component. The source
-# catalog comes out to core, where the missing sound_* CLI will need it.
-# 1235 -> 1206 on 08-16, and DOWN is the direction this row has been waiting for.
-# The mixdown, the effect chain and `placement/1` moved to `Studio.Render`, which
-# is where they wanted to be once clips gained effects — a render is domain work
-# and was only ever in a LiveView because it was three short functions.
-#
-# The gate is what forced it: this file could not have grown to hold the chain,
-# so the choice was extract or do not ship. That is the whole argument for FROZEN.
-# 1184 -> 1178 on 08-16. A `duplicate_clip` handler needed four lines, and FROZEN
-# means a new feature is funded by an EXTRACTION rather than a raised cap — so
-# `render_error/1` moved to `Editor.Format`, where the rest of this tab's
-# pure presentation already lives. Net six lines down, and the gate is the only
-# reason the right thing happened rather than the easy one.
-# 1178 -> 1038 on 08-16: the frozen Phase 3 was finally taken. The source
-# catalog — five item builders, the group roster and the folded-groups setting —
-# moved to `BusterClaw.Studio.Catalog` in CORE, with the web's
-# `url` decoration left behind in `Editor.Catalog`.
-#
-# That split is what unfroze this file, and it only worked because of the
-# correction the 08-13 review made to the original plan: four builders baked
-# router `~p` URLs, so a naive move would have dragged `BusterClawWeb.Router`
-# into `lib/buster_claw/`. Core carries a filesystem PATH — which is what the
-# unbuilt `sound_*` CLI needs — and the web adds the URL on top.
-#
-# **The 140 lines are banked here rather than left as headroom on purpose.**
-# The Mix tab is about to gain a menu bar, and it goes in its own module beside
-# `arranger.ex` and `overlays.ex` — which is the pattern this file already
-# follows and the reason FROZEN keeps producing extractions instead of growth.
-#
-# 1038 -> 995 the same day, when the menu bar landed and took the tab-bar
-# toolbar with it: New mix and Import moved onto the surface they act on. The
-# sidebar (202 lines, ungated) was deleted outright.
-# 995 -> 985 when the music library manager was deleted on 08-16: its render
-# branch, the `:library` kind guards and the `@player` thread went with it.
-# 985 -> 972 on 08-16, and the direction is the point. Clip trim needed ~70
-# lines of handlers in here, and FROZEN means a feature is funded by an
-# EXTRACTION rather than a raised cap — so the socket-free edit block went to
-# `Editor.Edits`, which the 08-13 review had already named as the better
-# second cut of the frozen Phase 3. Third time the freeze produced an extraction
-# instead of growth, and the file ended up SMALLER than before the feature.
-#
-# UNFROZEN 08-16 (operator). FROZEN -> HELD, 972 -> 1070.
-#
-# **By the letter of this file's own rule.** FROZEN means "a target of an
-# unstarted roadmap phase", and Phase 3 — the phase it was frozen FOR — was
-# taken the same day. A tier whose stated condition has been met and which
-# nobody re-argues is how a gate stops meaning what it says.
-#
-# What the freeze was worth, recorded because the number alone does not show it:
-# **1,235 -> 972 while GAINING the effect chain, duplicate-clip, a menu bar and
-# clip trim.** Four extractions, three of them producing files that exist only
-# because a feature could not be paid for any other way — `Studio.Render`,
-# `Editor.Format`, `Editor.Edits`. Nobody set out to refactor on any
-# of those days.
-#
-# HELD at +10% is the ordinary contract: maintenance is fine, a feature landing
-# whole in here is not. **If it reaches 1070, the question is not "raise it" —
-# it is whether the 29 event clauses want the same treatment the catalog got.**
-check lib/buster_claw_web/live/sound_studio_component.ex     1070 HELD
-# The Studio's effect chain, capped on arrival. `effects.ex` is the registry AND
-# the DSP: adding an effect is a `@catalog` entry plus an `apply_one/2` clause,
-# and it then appears in the inspector, saves into the mix, applies on render and
-# is audible in preview with nothing else touched. That is the extension point
-# the operator asked for, so the thing to watch is whether it stays one.
-#
-# If it grows past this, the seam is REGISTRY vs DSP — the catalog and the
-# clamping are contract, the comb filters are arithmetic. They are together today
-# because splitting four effects across two files would be ceremony.
-#
-# `render.ex` is the mixdown, extracted from the FROZEN component on 08-16. Watch
-# for source RESOLUTION appearing here: it is passed in as a function on purpose,
-# because it spans the sidebar's three groups and belongs to the surface.
-check lib/buster_claw/studio/effects.ex         400 HELD
-# 160 -> 175: the window is now applied here, and the comment explaining why
-# doing so was SAFE (add_clip sets duration to the source's own length, so the
-# cut is a no-op on every mix written before trim) is worth more than the line.
-check lib/buster_claw/studio/render.ex          175 HELD
-# The clip inspector: remove, and the chain. Renders `Effects.catalog/0`, so a new
-# effect needs no edit here. Its controls carry NO `phx-target` — they bubble to
-# `StatusLive` so they route through undo — and a later reader "fixing" that by
-# adding one would silently remove ⌘Z from every effect.
-check lib/buster_claw_web/components/sound_studio/clip_inspector.ex 240 HELD
-# The Mix menu bar — the file bar that replaced the sidebar on 08-16. Most of
-# its length is menu markup, and the part to watch is not the size: it is the
-# table in its moduledoc saying where each deleted sidebar control went. If a
-# control lands here with no row in that table, something was orphaned.
-# The Mix tab's socket-free edit operations, extracted 08-16 to pay for clip
-# trim. Two things called "trim" live near each other now and are opposites:
-# `Edits.apply_trim/2` cuts a FILE and writes a new source; `Mix.trim_clip/4`
-# narrows a clip's window and touches nothing on disk. Its moduledoc says so.
-check lib/buster_claw_web/components/sound_studio/edits.ex    130 HELD
-check lib/buster_claw_web/components/sound_studio/menu_bar.ex     400 HELD
 
 # Phase 4 STARTED 08-15, so this stops being FROZEN and becomes HELD: 936 -> 643,
 # banked here at 708. It was frozen as "four unrelated features sharing a
@@ -625,15 +475,15 @@ check lib/buster_claw_web/components/sound_studio/menu_bar.ex     400 HELD
 # stay.
 check lib/buster_claw_web/live/settings_live.ex               708 HELD
 
-# Configuration's rail, copying the registry shape for the third time —
-# `Explained.Registry` and `Studio.Registry` first. The rail, the
+# Configuration's rail, copying the registry shape `Explained.Registry` set.
+# The rail, the
 # `select_settings_tab` whitelist and the dispatch all read the registry, so a
 # tab cannot exist in one and not the others; that property has already caught a
 # rail button the guard refused and a console tab that fell back silently.
 #
 # `registry.ex` gets headroom on purpose and `rail.ex` gets none — the same pair
-# of numbers, for the same reason, as `studio/registry.ex` and
-# `studio_panel.ex`. "Adding a tab is one edit in the registry" is a promise a
+# of numbers, for the same reason, as Explained's registry and panel.
+# "Adding a tab is one edit in the registry" is a promise a
 # zero-headroom cap would turn into a lie; a rail that grows is a rail that has
 # stopped being only a rail.
 # 10-16 (CODE_QUALITY_SWEEP Phase 7): the markup is `components/settings/
@@ -734,7 +584,7 @@ check lib/buster_claw_web/components/calendar/views.ex        310 HELD
 check lib/buster_claw/calendar/grid.ex                        221 HELD
 # Raised 08-10, 541 -> 560, for the `Messages | Contacts` sub-tab rail: the rail
 # markup, one guarded event, and the two `:if` wrappers the panels moved inside.
-# The rail is HERE rather than in a panel module for the reason `StudioPanel`
+# The rail is HERE rather than in a panel module for the reason `ExplainedPanel`
 # records — each panel brings its own `.ic-panel`, which on the homepage is
 # translucent, so nesting one inside another doubles the blur. The tab LIST is
 # not here at all; it is `Phone.Registry`, which is the point of the change.
@@ -959,11 +809,6 @@ check lib/buster_claw/integrations/github.ex                  500 HELD
 # arrival with no headroom: it is a security boundary whose entire job is to
 # be small and to be the ONLY copy. If it grows, ask what got added to a path
 # check. The two stores below it shed their duplicate copies to it.
-# The Studio's source catalog, extracted from the frozen component 08-16. Its
-# whole discipline is that an item carries a PATH and never a URL — that is what
-# lets it live in core at all, and what the unbuilt `sound_*` CLI will need. If
-# it grows, ask whether a web concern crept back in.
-check lib/buster_claw/studio/catalog.ex        184 HELD
 # 10-11: Capture.Take left with its final caller, the Vox reference recorder.
 
 # The web command surface (`1eee2f8`), 894 -> 848 by collapsing the six
@@ -1077,10 +922,6 @@ check assets/js/hooks/tab_close_confirm.js                     72 HELD
 # get under a cap.
 check assets/js/hooks/note_editor.js                          600 HELD
 
-# The Mix menu bar's open/close behaviour and nothing else — it never writes
-# markup, which is why it needs no `phx-update="ignore"`. Growth means it started
-# owning content, and that is the thing to look at rather than the number.
-check assets/js/hooks/studio_menu_bar.js                       73 HELD
 
 # ── The Rust shell. The 07-22 shape, asserted at last. ───────────────────────
 #
@@ -1112,11 +953,9 @@ check desktop/tauri/src/browser/state.rs                      520 HELD
 # is left is the library, the Studio's sources, and the edits. HELD, not frozen.
 # One trap survives for whoever touches it: `under_library/1` is the security
 # boundary of the whole family and must keep exactly one home.
-# 10-16 CODE_QUALITY_SWEEP Phase 6: the facade; the verbs live in sound/{library,edit,shared}.ex.
-check lib/buster_claw/commands/sound.ex                      126 HELD
-check lib/buster_claw/commands/sound/library.ex              560 HELD
-check lib/buster_claw/commands/sound/edit.ex                 330 HELD
-check lib/buster_claw/commands/sound/shared.ex               170 HELD
+# 10-16: the Studio's eleven verbs left with it (STUDIO_REMOVAL_ROADMAP); the
+# five chime verbs are one module again. Capped at +10% of its size on arrival.
+check lib/buster_claw/commands/sound.ex                      460 HELD
 
 # ── Core files the review read and ruled feature-sized. ──────────────────────
 #
@@ -1201,7 +1040,7 @@ check lib/buster_claw/model_policy.ex                         540 HELD
 # catalog/web.ex — pure data, 37 documented entries at ~16 lines each: the
 # honest cost of the surface, per the standing entries/0 ruling.
 check lib/buster_claw/commands/catalog/web.ex                 660 HELD
-check lib/buster_claw/commands/catalog/sound.ex               257 HELD
+check lib/buster_claw/commands/catalog/sound.ex                82 HELD
 # telephony.ex — the one file in this batch the review did not diagnose
 # individually. Capped as a plain regrowth alarm; if it trips, read it properly
 # before raising the number.
@@ -1226,16 +1065,8 @@ check lib/buster_claw/commands/catalog/sound.ex               257 HELD
 # `trim_clip/4`, and both ends of the on-disk format. Most of the added lines
 # are the argument — that the window belongs to the CLIP and never to the file,
 # which is the property a later reader is most likely to "simplify" away.
-# 10-16 (CODE_QUALITY_SWEEP Phase 10): the Sound Studio left `Notifications`.
-# `BusterClaw.Studio.{Editor, Mix, Catalog, Capture, Effects, Render}` live under
-# lib/buster_claw/studio/; the chime library (`Notifications.Sound`, SoundGen,
-# SoundBoard) stays. A rename, no behaviour: the caps carried over unchanged.
-check lib/buster_claw/studio/mix.ex             870 HELD
 # sound.ex — the two-layer library + routing walk the whole surface rests on.
 check lib/buster_claw/notifications/sound.ex                  610 HELD
-# sound_studio.ex — PCM16 editing core + studio folder catalog. Mildly two jobs;
-# `Editor.Store` is the seam IF the folder half grows, not before.
-check lib/buster_claw/studio/editor.ex           800 HELD
 
 if [ "$fail" -ne 0 ]; then
   echo "FAIL: the file-size inventory does not hold."
