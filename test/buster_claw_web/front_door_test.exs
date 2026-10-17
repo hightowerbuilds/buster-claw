@@ -34,11 +34,13 @@ defmodule BusterClawWeb.FrontDoorTest do
   # vacuously green while the app said something new.
   @sentence "An assistant on your Mac that uses your tools, keeps working, and shows you what it did"
 
-  # Each surface, and the file that owns its copy. `SetupLive`'s headline wraps
-  # across source lines in HEEx, so its check normalizes whitespace first.
+  # Each surface, and the file that owns its copy. The wizard's headline wraps
+  # across source lines in HEEx, so its check normalizes whitespace first. (The
+  # welcome screen moved from `setup_live.ex` to the Setup.Steps component on
+  # 10-16; the sentence moved with it.)
   @surfaces [
     {"README", "README.md"},
-    {"the setup wizard", "lib/buster_claw_web/live/setup_live.ex"},
+    {"the setup wizard", "lib/buster_claw_web/components/setup/steps.ex"},
     {"the home chat", "lib/buster_claw_web/components/chat_panel.ex"}
   ]
 

@@ -606,7 +606,7 @@ defmodule BusterClawWeb.AppearanceLiveTest do
     test "the preview renders the real bubbles, every role", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/appearance")
 
-      # Through the same private chat_bubble/1 the live chat uses. A second copy
+      # Through the same `Bubbles.chat_bubble/1` the live chat uses. A second copy
       # of the bubble markup would drift, and this is the surface where a drift
       # would be least visible.
       for role <- ~w(user assistant tool meta) do

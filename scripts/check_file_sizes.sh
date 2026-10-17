@@ -366,7 +366,14 @@ check lib/buster_claw_web/live/status/chat.ex                685 HELD
 # What this file gained is the opposite of bulk: five Tailwind type literals
 # LEFT it (`text-[17px]` and friends), because a utility class cannot be
 # multiplied and the sizes had to become `calc(x * var(--chat-scale, 1))`.
-check lib/buster_claw_web/components/chat_panel.ex          1040 HELD
+# 10-16 (CODE_QUALITY_SWEEP Phase 7): the cut named above is made. The bubble
+# family is `chat_panel/bubbles.ex` and the composer with its attachment pieces
+# is `chat_panel/composer.ex`; both are imported, so the skin contract (one
+# bubble implementation for the live log and the preview) holds by the
+# compiler rather than by `defp`. 1,001 -> 481.
+check lib/buster_claw_web/components/chat_panel.ex           530 HELD
+check lib/buster_claw_web/components/chat_panel/bubbles.ex   301 HELD
+check lib/buster_claw_web/components/chat_panel/composer.ex  308 HELD
 
 # Added 08-09 when the terminal theme editor took this from 705 to ~991. Never
 # decomposed, so like chat_panel.ex above this is the first number on the file
@@ -407,7 +414,14 @@ check lib/buster_claw_web/components/chat_panel.ex          1040 HELD
 # Flex children do not shrink below their content, so a long option name pushed
 # the buttons out of the row instead of ellipsing — invisible with two surfaces,
 # reachable with three. The EXTRACTION OWED above is unchanged and now overdue.
-check lib/buster_claw_web/live/appearance_live.ex            1075 HELD
+# 10-16 (CODE_QUALITY_SWEEP Phase 7): the EXTRACTION OWED is paid. The render
+# is the layout and three calls; the catalog, the two look-and-feel panels and
+# the terminal palette are `components/appearance/`. 1,064 -> 466. The mode
+# grammar's third copy (`workspace_shader/1`) stays with the events that use it.
+check lib/buster_claw_web/live/appearance_live.ex             513 HELD
+check lib/buster_claw_web/components/appearance/catalog.ex    349 HELD
+check lib/buster_claw_web/components/appearance/look.ex       162 HELD
+check lib/buster_claw_web/components/appearance/terminal_palette.ex 280 HELD
 check lib/buster_claw_web/live/status/comms.ex                36 HELD
 # Raised 08-09, 114 -> 150, for the Studio's Mix|Voice sub-tab (STUDIO_ROADMAP
 # VI.0b). This module moved instead of `status_live.ex` — which is at its cap and
@@ -613,7 +627,11 @@ check lib/buster_claw_web/live/settings_live.ex               708 HELD
 # `studio_panel.ex`. "Adding a tab is one edit in the registry" is a promise a
 # zero-headroom cap would turn into a lie; a rail that grows is a rail that has
 # stopped being only a rail.
-check lib/buster_claw_web/live/settings/models_component.ex    470 HELD
+# 10-16 (CODE_QUALITY_SWEEP Phase 7): the markup is `components/settings/
+# models.ex` (harness picker, default-model forms, in-force table); the
+# component keeps its state and events. 463 -> 232.
+check lib/buster_claw_web/live/settings/models_component.ex    256 HELD
+check lib/buster_claw_web/components/settings/models.ex       332 HELD
 check lib/buster_claw_web/components/settings/registry.ex       95 HELD
 check lib/buster_claw_web/components/settings/rail.ex           65 HELD
 
@@ -1207,3 +1225,25 @@ if [ "$fail" -ne 0 ]; then
 fi
 
 echo "OK: file-size inventory holds."
+
+# --- Render decomposition (10-16, CODE_QUALITY_SWEEP Phase 7) ----------------
+#
+# The remaining page-sized render functions, cut by the purity rule: markup and
+# the pure helpers only the markup reads leave as function components; the
+# events, the state and the context calls stay in the LiveView. Each component
+# declares exactly the assigns it reads. Capped at +10% on arrival.
+#
+# SetupLive: one component per wizard step (`components/setup/steps.ex`);
+# the dead `:order` assign in `step_dots` left with it. 684 -> 350.
+check lib/buster_claw_web/live/setup_live.ex                  385 HELD
+check lib/buster_claw_web/components/setup/steps.ex           454 HELD
+# BrowseLive: the agent-mode banner and rail are `browser/agent_watch.ex`; the
+# activity bar joined `browser/activity_graph.ex`, which it toggles. 455 -> 299.
+check lib/buster_claw_web/live/browse_live.ex                 329 HELD
+check lib/buster_claw_web/components/browser/agent_watch.ex   191 HELD
+check lib/buster_claw_web/components/browser/activity_graph.ex 169 HELD
+# BrowserChromeController: the 270-line heredoc is `browser/chrome_page.ex`, a
+# HEEx document, for the reason `Browser.Layout` gives — HEEx escapes by
+# construction. The controller is the three inputs and a send. 320 -> 49.
+check lib/buster_claw_web/controllers/browser_chrome_controller.ex 60 HELD
+check lib/buster_claw_web/components/browser/chrome_page.ex   349 HELD

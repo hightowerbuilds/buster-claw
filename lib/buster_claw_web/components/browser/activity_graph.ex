@@ -1,6 +1,46 @@
 defmodule BusterClawWeb.Browser.ActivityGraph do
-  @moduledoc "The browser's live graph; its hook owns the bounded SVG projection."
+  @moduledoc """
+  The browser's live graph — its hook owns the bounded SVG projection — and the
+  bar above the surface that toggles it (from `BrowseLive.render/1`, 10-16).
+  """
   use BusterClawWeb, :html
+
+  attr :surface_id, :string, required: true
+  attr :activity_open, :boolean, required: true
+  attr :activity_expanded, :boolean, required: true
+
+  @doc "The strip above the surface that opens, closes and expands the graph."
+  def activity_bar(assigns) do
+    ~H"""
+    <div class="ic-browser-activity-bar">
+      <span>
+        Browse <span class="ic-browser-activity-divider">/</span> Follow the agent's path
+      </span>
+      <div class="flex items-center gap-4">
+        <button
+          :if={@activity_open}
+          id={"browser-activity-expand-" <> @surface_id}
+          type="button"
+          phx-click="expand_activity"
+          aria-expanded={to_string(@activity_expanded)}
+        >
+          <.icon name="hero-arrows-pointing-out" class="size-3.5" />
+          {if @activity_expanded, do: "Show browser", else: "Expand graph"}
+        </button>
+        <button
+          id={"browser-activity-toggle-" <> @surface_id}
+          type="button"
+          phx-click="toggle_activity"
+          aria-expanded={to_string(@activity_open)}
+          aria-controls={"browser-activity-" <> @surface_id}
+        >
+          <.icon name="hero-share" class="size-3.5" />
+          {if @activity_open, do: "Hide graph", else: "Activity graph"}
+        </button>
+      </div>
+    </div>
+    """
+  end
 
   attr :id, :string, required: true
 

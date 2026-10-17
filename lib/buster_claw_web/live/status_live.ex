@@ -765,7 +765,7 @@ defmodule BusterClawWeb.StatusLive do
             />
           </:panel>
         </BusterClawWeb.Workbench.shell>
-        <BusterClawWeb.ChatPanel.svg_modal svgs={@chat_svgs} zoomed={@zoomed_id} />
+        <BusterClawWeb.ChatPanel.Bubbles.svg_modal svgs={@chat_svgs} zoomed={@zoomed_id} />
       </section>
     </Layouts.app>
     """

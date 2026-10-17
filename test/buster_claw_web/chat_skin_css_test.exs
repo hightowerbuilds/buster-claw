@@ -127,7 +127,13 @@ defmodule BusterClawWeb.ChatSkinCssTest do
     # Every `data-chat-*` selector in the stylesheet has to exist in ChatPanel, or
     # it is a rule that quietly does nothing. This is the pair of the anchor test
     # in ChatPanelTest, from the other side.
-    panel = File.read!(Path.expand("../../lib/buster_claw_web/components/chat_panel.ex", __DIR__))
+    # The panel's markup is three files since 10-16: the panel, its bubbles and
+    # its composer. An anchor rendered by any of them is alive.
+    panel =
+      ~w(chat_panel.ex chat_panel/bubbles.ex chat_panel/composer.ex)
+      |> Enum.map_join("\n", fn file ->
+        File.read!(Path.expand("../../lib/buster_claw_web/components/" <> file, __DIR__))
+      end)
 
     used =
       Regex.scan(~r/\[data-chat-[a-z-]+/, skin_section())

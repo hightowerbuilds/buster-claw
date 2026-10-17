@@ -30,8 +30,10 @@ defmodule BusterClawWeb.BrowserChromeControllerTest do
     # Tabs menu). Collapsed width 16px must match Rust's SIDEBAR_COLLAPSED_WIDTH.
     assert body =~ ~s(id="bumper")
     assert body =~ "--sidebar-w: 16px"
-    # The behavior lives in the bundled chrome app, not inline script.
-    assert body =~ ~s(<script src="/assets/js/chrome.js"></script>)
+    # The behavior lives in the bundled chrome app, not inline script. (Whitespace
+    # inside the element is the HEEx formatter's, since the page became a
+    # component on 10-16; an empty element is still the assertion.)
+    assert body =~ ~r{<script src="/assets/js/chrome.js">\s*</script>}
     refute body =~ "window.__onContentNavigated"
   end
 

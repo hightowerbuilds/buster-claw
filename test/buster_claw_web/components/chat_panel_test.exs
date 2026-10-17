@@ -47,7 +47,7 @@ defmodule BusterClawWeb.ChatPanelTest do
 
   describe "composer chips" do
     test "a pending image shows its name, size, thumbnail and a way out" do
-      html = render_component(&ChatPanel.attach_chips/1, attachments: [image()])
+      html = render_component(&ChatPanel.Composer.attach_chips/1, attachments: [image()])
 
       assert html =~ "shot.png"
       assert html =~ "2.0 KB"
@@ -59,7 +59,7 @@ defmodule BusterClawWeb.ChatPanelTest do
     end
 
     test "a pending file gets an icon rather than a broken thumbnail" do
-      html = render_component(&ChatPanel.attach_chips/1, attachments: [file()])
+      html = render_component(&ChatPanel.Composer.attach_chips/1, attachments: [file()])
 
       assert html =~ "report.pdf"
       assert html =~ "1.0 MB"
@@ -67,14 +67,14 @@ defmodule BusterClawWeb.ChatPanelTest do
     end
 
     test "nothing pending renders nothing at all" do
-      assert render_component(&ChatPanel.attach_chips/1, attachments: []) == ""
+      assert render_component(&ChatPanel.Composer.attach_chips/1, attachments: []) == ""
     end
   end
 
   describe "the refusal banner" do
     test "says which file and why, and offers a way to clear it" do
       html =
-        render_component(&ChatPanel.attach_error/1,
+        render_component(&ChatPanel.Composer.attach_error/1,
           error: %{
             reason: "too_large",
             filename: "huge.png",
@@ -90,7 +90,7 @@ defmodule BusterClawWeb.ChatPanelTest do
 
     test "a blocked send adds its own line without losing the reason" do
       html =
-        render_component(&ChatPanel.attach_error/1,
+        render_component(&ChatPanel.Composer.attach_error/1,
           error: %{
             reason: "too_large",
             filename: "huge.png",
@@ -107,7 +107,7 @@ defmodule BusterClawWeb.ChatPanelTest do
     end
 
     test "no error renders nothing" do
-      assert render_component(&ChatPanel.attach_error/1, error: nil, upload: nil)
+      assert render_component(&ChatPanel.Composer.attach_error/1, error: nil, upload: nil)
              |> String.trim() == ""
     end
   end
@@ -154,8 +154,8 @@ defmodule BusterClawWeb.ChatPanelTest do
     end
   end
 
-  # `chat_bubble/1` is private (it is only ever rendered by the panel), so the
-  # bubble is exercised through the panel with a one-message stream.
+  # The bubble is exercised through the panel with a one-message stream — the
+  # panel is what renders it, and the stream is the shape it is rendered from.
   defp user_bubble(text, attachments) do
     msg = %{
       id: 1,
