@@ -2,7 +2,7 @@ defmodule BusterClaw.JobsTest do
   # async: false — points the global :workspace_root at a tmp jobs dir.
   use ExUnit.Case, async: false
 
-  alias BusterClaw.{Commands, Jobs, TrustedSenders}
+  alias BusterClaw.{Jobs, TrustedSenders}
 
   setup do
     root = Path.join(System.tmp_dir!(), "bc_jobs_#{System.unique_integer([:positive])}")

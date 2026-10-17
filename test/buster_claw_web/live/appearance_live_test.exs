@@ -249,7 +249,8 @@ defmodule BusterClawWeb.AppearanceLiveTest do
     {:ok, view, _html} = live(conn, "/appearance")
 
     assert render_click(view, "remove_image", %{"slot" => "not-a-number"})
-    assert Process.alive?(view.pid)
+    # A crashed view would raise here; a render is the proof it is still up.
+    assert render(view)
   end
 
   # --- per-surface palette -------------------------------------------------

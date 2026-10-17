@@ -154,7 +154,8 @@ defmodule BusterClaw.Agent.CodexAppServerTest do
       # unattributable notification is a codex release adding a feature, not an
       # error worth taking the connection down for.
       refute_receive {:chat_event, ^ref, _event}, 200
-      assert Process.alive?(pid)
+      # Exits if the connection died on the stray notification.
+      _ = :sys.get_state(pid)
     end
 
     test "two conversations on one connection do not see each other's events" do

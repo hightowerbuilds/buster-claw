@@ -107,7 +107,8 @@ defmodule BusterClawWeb.CalendarLiveTest do
     assert render_hook(grid, "inspect", %{"id" => "not-a-number"})
     assert render_hook(grid, "edit", %{"id" => "not-a-number"})
     assert render_hook(grid, "delete", %{"id" => "999999999"})
-    assert Process.alive?(view.pid)
+    # A crashed view would raise here; a render is the proof it is still up.
+    assert render(view)
   end
 
   defp pad(n) when n < 10, do: "0#{n}"

@@ -70,7 +70,8 @@ defmodule BusterClaw.Commands.AgentRunsTest do
     on_exit(fn ->
       Application.delete_env(:buster_claw, :agent_run_session_starter)
       Application.delete_env(:buster_claw, :agent_run_session_mod)
-      if Process.alive?(session), do: GenServer.stop(session)
+      # A kill signal to a pid that is already gone is a no-op, so no guard.
+      Process.exit(session, :kill)
     end)
 
     {:ok, session: session}
@@ -130,7 +131,9 @@ defmodule BusterClaw.Commands.AgentRunsTest do
 
     # The task (the "command caller") is gone; the run is not.
     run = AgentMode.whereis(started.run_id)
-    assert is_pid(run) and Process.alive?(run)
+    assert is_pid(run)
+    # Exits if the run went down with its caller.
+    _ = :sys.get_state(run)
     assert started.mode == :agent_working
     assert started.commerce == false
     assert AgentMode.mode(run) == :agent_working
@@ -164,13 +167,14 @@ defmodule BusterClaw.Commands.AgentRunsTest do
   test "stop halts the run and shuts its session down", %{session: session} do
     started = start!()
     run = AgentMode.whereis(started.run_id)
+    session_ref = Process.monitor(session)
 
     assert {:ok, %{mode: :stopped}} = Commands.agent_run_stop(%{"id" => started.run_id})
     assert AgentMode.mode(run) == :stopped
 
     # The run refuses new actions and its browser session is gone with it.
     assert {:error, {:not_acting, :stopped}} = AgentMode.navigate(run, "https://example.com/")
-    refute Process.alive?(session)
+    assert_receive {:DOWN, ^session_ref, :process, ^session, _reason}
   end
 
   test "navigate drives the run under its scope: ok, halted, and handoff results" do
@@ -365,6 +369,7 @@ defmodule BusterClaw.Commands.AgentRunsTest do
     test "finish ends the run as done and shuts its session down", %{session: session} do
       started = start!()
       run = AgentMode.whereis(started.run_id)
+      session_ref = Process.monitor(session)
 
       assert {:ok, %{mode: :done}} = Commands.agent_run_finish(%{"id" => started.run_id})
       assert AgentMode.mode(run) == :done
@@ -372,7 +377,7 @@ defmodule BusterClaw.Commands.AgentRunsTest do
       # Done is terminal and non-acting, exactly like stopped — and the browser
       # window does not outlive the errand.
       assert {:error, {:not_acting, :done}} = AgentMode.navigate(run, "https://example.com/")
-      refute Process.alive?(session)
+      assert_receive {:DOWN, ^session_ref, :process, ^session, _reason}
     end
 
     test "a handoff can be finished by the human's side without resuming" do

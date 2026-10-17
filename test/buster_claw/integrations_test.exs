@@ -1,7 +1,7 @@
 defmodule BusterClaw.IntegrationsTest do
   use BusterClaw.DataCase
 
-  alias BusterClaw.{Integrations, Library}
+  alias BusterClaw.Integrations
 
   setup do
     Req.Test.verify_on_exit!()
@@ -167,25 +167,5 @@ defmodule BusterClaw.IntegrationsTest do
     integration = Integrations.get_integration!(integration.id)
     assert integration.last_status == "disabled"
     assert integration.last_error == "Integration is disabled"
-  end
-
-  defp raw_document!(name, tags) do
-    filename =
-      name
-      |> String.downcase()
-      |> String.replace(" ", "-")
-      |> Kernel.<>(".md")
-
-    assert {:ok, document} =
-             Library.save_raw_document(%{
-               date: ~D[2026-05-18],
-               filename: filename,
-               name: name,
-               source_url: "https://example.com/#{filename}",
-               tags: tags,
-               content: "# #{name}\n\nImportant operational source material."
-             })
-
-    document
   end
 end

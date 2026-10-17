@@ -3,7 +3,7 @@ defmodule BusterClaw.Agent.StreamEventTest do
 
   alias BusterClaw.Agent.StreamEvent
 
-  defp tool(name, input \\ %{}),
+  defp tool(name, input),
     do: %{
       "type" => "assistant",
       "message" => %{"content" => [%{"type" => "tool_use", "name" => name, "input" => input}]}

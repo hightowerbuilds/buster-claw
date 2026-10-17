@@ -42,7 +42,7 @@ defmodule BusterClaw.Orchestration.UptimeTest do
 
     assert_received {:uptime, :start_caffeinate}
     assert_received {:uptime, :launchd_load}
-    assert Process.alive?(pid)
+    # `sync/1` above already answered from the same pid, so it is alive.
   end
 
   test "releases caffeinate + launchd on :shift_stopped" do
@@ -108,8 +108,7 @@ defmodule BusterClaw.Orchestration.UptimeTest do
     send(pid, {:orchestration, :shift_started})
     sync(pid)
     send(pid, {:orchestration, :shift_stopped})
+    # Answering is the proof it survived the message.
     sync(pid)
-
-    assert Process.alive?(pid)
   end
 end

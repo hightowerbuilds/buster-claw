@@ -50,7 +50,7 @@ defmodule BusterClaw.RateLimiterTest do
     send(pid, :sweep)
 
     # Still the same process, still answering — not restarted, not dead.
-    assert Process.alive?(pid)
+    _ = :sys.get_state(pid)
     assert RateLimiter.reset() == :ok
     assert Process.whereis(RateLimiter) == pid
   end

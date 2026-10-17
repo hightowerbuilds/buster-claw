@@ -249,7 +249,6 @@ defmodule BusterClaw.ShellPathTest do
       ShellPath.refresh()
 
       assert ShellPath.path() == nil
-      assert Process.alive?(self())
       assert ShellPath.find_executable("sh") == System.find_executable("sh")
     end
 
@@ -263,7 +262,6 @@ defmodule BusterClaw.ShellPathTest do
       ShellPath.refresh()
 
       assert ShellPath.path() == nil
-      assert Process.alive?(self())
     end
 
     test "a SHELL that is a directory yields nil" do
@@ -489,7 +487,6 @@ defmodule BusterClaw.ShellPathTest do
       {elapsed_us, result} = :timer.tc(fn -> ShellPath.path() end)
 
       assert result == nil
-      assert Process.alive?(self())
       assert elapsed_us < 10_000_000, "the 3s cap did not hold: #{div(elapsed_us, 1000)}ms"
     end
   end

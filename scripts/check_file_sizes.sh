@@ -331,7 +331,12 @@ check lib/buster_claw_web/components/gws/calendar_sync.ex    101 HELD
 # the panel render with it. The ratchet is what asked for this number — the file
 # came in at 738 and a cap left at 1060 would have quietly re-opened 300 lines
 # of room the extraction had just closed.
-check lib/buster_claw_web/live/status_live.ex                810 HELD
+# 810 -> 766 on 10-16 (CODE_QUALITY_SWEEP Phase 9): the Clock panel's two widget
+# seams the map named took their hosts — the Contacts verbs into
+# `status/comms.ex` (which already shaped the tab) and the Notify tab whole
+# into `status/notify.ex`. The clauses stay here and delegate one line deep,
+# the `status/chat.ex` shape. 773 -> 696.
+check lib/buster_claw_web/live/status_live.ex                766 HELD
 
 # The Workspace page, capped on arrival — the rule this repo adopted on 08-16 —
 # because 09-05 is the day it stopped being one thing. It was a file tree with a
@@ -422,7 +427,11 @@ check lib/buster_claw_web/live/appearance_live.ex             513 HELD
 check lib/buster_claw_web/components/appearance/catalog.ex    349 HELD
 check lib/buster_claw_web/components/appearance/look.ex       162 HELD
 check lib/buster_claw_web/components/appearance/terminal_palette.ex 280 HELD
-check lib/buster_claw_web/live/status/comms.ex                36 HELD
+# 36 -> 99 on 10-16: the three trust verbs (add-and-trust, drop an orphan
+# entry, untrust) joined the two loaders. One module for the tab's reads and
+# writes, so the gate's two halves cannot drift apart.
+check lib/buster_claw_web/live/status/comms.ex                99 HELD
+check lib/buster_claw_web/live/status/notify.ex               77 HELD
 # Raised 08-09, 114 -> 150, for the Studio's Mix|Voice sub-tab (STUDIO_ROADMAP
 # VI.0b). This module moved instead of `status_live.ex` — which is at its cap and
 # is the point of these two numbers sitting next to each other: it took the mount

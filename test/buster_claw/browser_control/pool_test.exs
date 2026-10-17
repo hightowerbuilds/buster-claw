@@ -93,7 +93,7 @@ defmodule BusterClaw.BrowserControl.PoolTest do
       spawn(fn ->
         {:ok, s} = Pool.checkout(pool)
         send(parent, {:leased, s})
-        Process.sleep(:infinity)
+        receive do: (:never -> :ok)
       end)
 
     assert_receive {:leased, _session}, 1_000

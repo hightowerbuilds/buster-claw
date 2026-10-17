@@ -5,18 +5,16 @@ defmodule BusterClawWeb.StatusLive do
   # aliased so every call site below reads as it did before the split.
   import BusterClawWeb.Status.Chat
   import BusterClawWeb.Status.Comms
+  import BusterClawWeb.Status.Notify
   import BusterClawWeb.Status.Weather
 
   require Logger
 
   alias BusterClaw.Agent.Chat
   alias BusterClaw.Appearance
-  alias BusterClaw.Contacts
   alias BusterClaw.Notifications
-  alias BusterClaw.Notifications.Schedule
   alias BusterClaw.Runtime.Status
   alias BusterClaw.Setup
-  alias BusterClaw.TrustedSenders
   alias BusterClaw.Weather
   alias BusterClawWeb.Status.ChatAttachments
 
@@ -144,19 +142,7 @@ defmodule BusterClawWeb.StatusLive do
     end
   end
 
-  # --- Notify widget ---------------------------------------------------------
-
-  defp load_notifications(socket), do: assign(socket, :notifications, Notifications.upcoming())
-
-  defp notify_form, do: to_form(%{"label" => "", "minutes" => "", "at" => ""}, as: :notify)
-
-  defp assign_notify_error(socket, params, field, message) do
-    assign(socket, :notify_form, to_form(params, as: :notify, errors: [{field, {message, []}}]))
-  end
-
-  # Timer/alarm/reminder wall-clock arithmetic lives in
-  # `BusterClaw.Notifications.Schedule` — pure, and extracted 08-03 so the
-  # next-occurrence and DST cases can be asserted without driving a mount.
+  # The Notify widget's form, list and verbs live in `Status.Notify`.
 
   # "Ask about this page" (THREE_DOORS Phase 3). The browser chrome's Ask button
   # hands the active tab over by URL — `browser_app_navigate("/?ask=page&url=…")`
@@ -221,46 +207,15 @@ defmodule BusterClawWeb.StatusLive do
   end
 
   def handle_event("add_contact", params, socket) do
-    with {:ok, contact} <- Contacts.create_contact(Map.take(params, ["name", "email"])),
-         {:ok, _} <- Contacts.set_trusted(contact, true) do
-      {:noreply,
-       socket
-       |> assign(adding_contact: false, contact_error: nil)
-       |> load_trust()
-       |> load_contacts()}
-    else
-      {:error, %Ecto.Changeset{} = changeset} ->
-        {:noreply, assign(socket, :contact_error, first_contact_error(changeset))}
-
-      {:error, reason} ->
-        {:noreply, assign(socket, :contact_error, "could not update trust: #{inspect(reason)}")}
-    end
+    {:noreply, add_trusted_contact(socket, params)}
   end
 
-  # Removing an *orphan* entry — an address or wildcard with no contact behind it.
-  # There is nothing else to clean up, so the policy line is simply dropped.
   def handle_event("remove_contact", %{"entry" => entry}, socket) do
-    TrustedSenders.remove_entry(entry)
-    {:noreply, load_trust(socket)}
+    {:noreply, remove_trust_entry(socket, entry)}
   end
 
-  # Untrusting a *contact* is not the same act as deleting them. This revokes the
-  # policy entry and leaves the person in your contacts — their mail stops being
-  # queued, their name and face stay. Conflating the two would let a UI tidy-up
-  # quietly rewrite the security policy.
   def handle_event("untrust_contact", %{"id" => id}, socket) do
-    contact = Contacts.get_contact!(id)
-
-    case Contacts.set_trusted(contact, false) do
-      {:ok, _} ->
-        {:noreply, load_trust(socket)}
-
-      {:error, reason} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Could not update the trust policy: #{inspect(reason)}")
-         |> load_trust()}
-    end
+    {:noreply, untrust_contact(socket, id)}
   end
 
   def handle_event("select_home_tab", %{"tab" => tab}, socket)
@@ -337,46 +292,19 @@ defmodule BusterClawWeb.StatusLive do
 
   def handle_event("notify_kind", %{"kind" => kind}, socket)
       when kind in ["timer", "alarm", "reminder"] do
-    {:noreply, socket |> assign(:notify_kind, kind) |> assign(:notify_form, notify_form())}
+    {:noreply, select_notify_kind(socket, kind)}
   end
 
   def handle_event("notify_create", %{"notify" => params}, socket) do
-    kind = Map.get(params, "kind", "timer")
-    label = params |> Map.get("label", "") |> String.trim() |> Schedule.default_label(kind)
-
-    with :ok <- if(label == "", do: {:error, :label, "add a label"}, else: :ok),
-         {:ok, fire_at} <- Schedule.fire_at(kind, params) do
-      attrs = %{
-        "kind" => kind,
-        "label" => label,
-        "fire_at" => fire_at,
-        "status" => "pending",
-        "source" => "manual"
-      }
-
-      case Notifications.create_notification(attrs) do
-        {:ok, _notification} ->
-          {:noreply, socket |> assign(:notify_form, notify_form()) |> load_notifications()}
-
-        {:error, _changeset} ->
-          {:noreply, assign_notify_error(socket, params, :label, "could not create #{kind}")}
-      end
-    else
-      {:error, field, message} ->
-        {:noreply, assign_notify_error(socket, params, field, message)}
-    end
+    {:noreply, create_notification(socket, params)}
   end
 
   def handle_event("notify_dismiss", %{"id" => id}, socket) do
-    notification = Enum.find(socket.assigns.notifications, &(to_string(&1.id) == id))
-    if notification, do: Notifications.dismiss(notification)
-    {:noreply, load_notifications(socket)}
+    {:noreply, dismiss_notification(socket, id)}
   end
 
   def handle_event("notify_snooze", %{"id" => id}, socket) do
-    notification = Enum.find(socket.assigns.notifications, &(to_string(&1.id) == id))
-    if notification, do: Notifications.snooze(notification, 300)
-    {:noreply, load_notifications(socket)}
+    {:noreply, snooze_notification(socket, id)}
   end
 
   def handle_event("set_weather_location", %{"query" => query}, socket) do
@@ -629,14 +557,6 @@ defmodule BusterClawWeb.StatusLive do
 
   def handle_async(:weather, {:exit, reason}, socket) do
     {:noreply, assign(socket, :weather, {:error, {:exit, reason}})}
-  end
-
-  defp first_contact_error(changeset) do
-    changeset
-    |> Ecto.Changeset.traverse_errors(fn {msg, _opts} -> msg end)
-    |> Enum.flat_map(fn {field, msgs} -> Enum.map(msgs, &"#{field} #{&1}") end)
-    |> List.first()
-    |> Kernel.||("could not save the contact")
   end
 
   defp switch_home_tab(socket, tab) do

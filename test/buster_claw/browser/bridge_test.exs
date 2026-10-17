@@ -37,7 +37,8 @@ defmodule BusterClaw.Browser.BridgeTest do
 
   test "fulfilling an unknown ref is a harmless no-op" do
     assert :ok = Bridge.fulfill("cmd-does-not-exist", {:ok, %{}})
-    assert Process.alive?(Process.whereis(Bridge))
+    # Exits if the server died on the unknown ref.
+    _ = :sys.get_state(Bridge)
   end
 
   test "request times out cleanly when nothing answers" do

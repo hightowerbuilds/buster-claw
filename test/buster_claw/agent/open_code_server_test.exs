@@ -340,7 +340,8 @@ defmodule BusterClaw.Agent.OpenCodeServerTest do
 
       ref = ctx.ref
       refute_receive {:chat_event, ^ref, _event}, 100
-      assert Process.alive?(ctx.pid)
+      # Exits if the connection died on the stray event.
+      _ = :sys.get_state(ctx.pid)
     end
   end
 
