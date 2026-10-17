@@ -1,10 +1,14 @@
 const base = path => String(path || "").split(/[?#]/)[0]
 const speech = "/settings?tab=speech"
+// Integrations was deleted 10-17; a remembered Settings subpage lands on the
+// first tab instead of a route that no longer exists.
+const appearance = "/appearance"
 
 // A retired pane is replaced in place. Its neighbor keeps its exact path, so
 // native browser surfaces and terminal sessions stay with the same pane.
 export function recoverRetiredRoute(path) {
   if (base(path) === "/voice") return speech
+  if (base(path) === "/integrations") return appearance
   if (base(path) !== "/split") return path
   const url = new URL(path, "http://app.local")
   let changed = false

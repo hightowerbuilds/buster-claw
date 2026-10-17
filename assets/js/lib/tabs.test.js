@@ -124,6 +124,10 @@ describe("canonicalGroupKey", () => {
       .toBe("/settings?tab=speech")
   })
 
+  test("a remembered Integrations subpage recovers to Appearance", () => {
+    expect(tabDestination({path: "/settings", href: "/integrations"})).toBe("/appearance")
+  })
+
   test("ungrouped routes return null", () => {
     for (const p of ["/terminal", "/browse", "/calendar", "/workspace"]) {
       expect(canonicalGroupKey(p)).toBeNull()

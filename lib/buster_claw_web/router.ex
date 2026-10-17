@@ -71,8 +71,10 @@ defmodule BusterClawWeb.Router do
   scope "/", BusterClawWeb do
     pipe_through :browser
 
-    # Older tab storage can still point at the retired command-list editor.
+    # Older tab storage can still point at a retired Settings page: the
+    # command-list editor, and Integrations (deleted 10-17).
     get "/cmd-list", LegacySettingsController, :index
+    get "/integrations", LegacySettingsController, :index
     get "/voice", LegacyVoiceController, :index
 
     live_session :default, on_mount: [BusterClawWeb.RequireOnboarding] do
