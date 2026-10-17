@@ -182,7 +182,7 @@ defmodule BusterClawWeb.NotifySettingsLive do
     # neither — it plays under the chime's own name, and deleting it would
     # only restore the bundled one.
     |> assign(:own, sounds -- bundled)
-    |> assign(:own_files, Enum.map(sounds -- bundled, &file_row/1))
+    |> assign(:own_columns, columns(sounds -- bundled, 3))
     |> assign(:map, Sound.sound_map())
     |> assign(:sound_on, Sound.enabled?())
     # The walk, MATERIALIZED. Calling @resolved[row.key] inline in the
@@ -194,34 +194,14 @@ defmodule BusterClawWeb.NotifySettingsLive do
     |> assign(:resolved, Map.new(Sound.route_keys(), &{&1, Sound.resolved(&1)}))
   end
 
-  # One row of the file list: what Finder would show, from one `File.stat`.
-  # A file that vanishes between `list/0` and here reads as 0 B with no date
-  # rather than crashing the page — the next refresh drops it.
-  defp file_row(name) do
-    stat =
-      case File.stat(Path.join(Sound.dir(), name), time: :local) do
-        {:ok, stat} -> stat
-        _ -> %File.Stat{size: 0, mtime: nil}
-      end
+  # Split a list into `n` columns filled top to bottom: the first column gets
+  # the first ceil(len/n) entries, and so on. An empty list is no columns.
+  defp columns([], _n), do: []
 
-    %{
-      name: name,
-      label: display_name(name),
-      kind: name |> Path.extname() |> String.trim_leading("."),
-      size: human_size(stat.size),
-      modified: local_stamp(stat.mtime)
-    }
+  defp columns(items, n) do
+    per = div(length(items) + n - 1, n)
+    Enum.chunk_every(items, per)
   end
-
-  defp human_size(bytes) when bytes < 1_024, do: "#{bytes} B"
-  defp human_size(bytes) when bytes < 1_048_576, do: "#{Float.round(bytes / 1_024, 1)} KB"
-  defp human_size(bytes), do: "#{Float.round(bytes / 1_048_576, 1)} MB"
-
-  defp local_stamp({{y, m, d}, {h, mi, _s}}) do
-    :io_lib.format("~4..0B-~2..0B-~2..0B ~2..0B:~2..0B", [y, m, d, h, mi]) |> to_string()
-  end
-
-  defp local_stamp(_), do: ""
 
   # "boot.wav" -> "Boot". Row display comes from @resolved (materialized in
   # refresh/1) — one walk, Sound's own, snapshotted into a tracked assign. See
@@ -317,74 +297,47 @@ defmodule BusterClawWeb.NotifySettingsLive do
                 </form>
               </div>
 
+              <%!-- Three columns, filled top to bottom then across, the way a
+                    file browser's column view reads. A row is the filename and
+                    nothing else — the extension already says what it is. --%>
               <div
                 id="own-sounds"
-                class="max-h-36 overflow-y-auto rounded border-2 border-base-content/20"
+                class="max-h-40 overflow-y-auto rounded border-2 border-base-content/20 p-1"
               >
-                <table class="w-full table-fixed border-collapse text-xs">
-                  <thead class="sticky top-0 z-10 bg-base-100">
-                    <tr class="border-b-2 border-base-content/15 text-left">
-                      <th class="w-7 px-2 py-1.5"></th>
-                      <th class="ic-eyebrow px-2 py-1.5 font-semibold">Name</th>
-                      <th class="ic-eyebrow w-24 px-2 py-1.5 font-semibold">Kind</th>
-                      <th class="ic-eyebrow w-20 px-2 py-1.5 text-right font-semibold">Size</th>
-                      <th class="ic-eyebrow w-36 px-2 py-1.5 font-semibold">Modified</th>
-                      <th class="w-16 px-2 py-1.5"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr
-                      :for={file <- @own_files}
-                      data-own-sound={file.name}
-                      class="group border-b border-base-content/10 transition last:border-b-0 hover:bg-base-200/60"
+                <div :if={@own_columns != []} class="grid gap-x-1 lg:grid-cols-3">
+                  <ul :for={column <- @own_columns} class="min-w-0">
+                    <li
+                      :for={sound <- column}
+                      data-own-sound={sound}
+                      class="group grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-1.5 rounded px-1.5 py-0.5 text-xs transition hover:bg-base-200/60"
                     >
-                      <td class="px-2 py-1">
-                        <.icon name="hero-musical-note" class="size-3.5 text-primary" />
-                      </td>
-                      <td class="truncate px-2 py-1 font-semibold" title={file.name}>
-                        {file.label}
-                        <span class="ml-1 font-mono text-[0.625rem] font-normal text-base-content/45">
-                          {file.name}
-                        </span>
-                      </td>
-                      <td class="px-2 py-1 font-mono uppercase text-base-content/60">{file.kind}</td>
-                      <td class="px-2 py-1 text-right font-mono tabular-nums text-base-content/60">
-                        {file.size}
-                      </td>
-                      <td class="whitespace-nowrap px-2 py-1 font-mono tabular-nums text-base-content/60">
-                        {file.modified}
-                      </td>
-                      <td class="px-1 py-1">
-                        <span class="flex items-center justify-end gap-0.5">
-                          <button
-                            type="button"
-                            data-preview-url={~p"/notify/sound/#{file.name}"}
-                            class="grid size-6 place-items-center rounded text-base-content/60 transition hover:text-primary"
-                            aria-label={"Preview #{file.name}"}
-                          >
-                            <.icon name="hero-play" class="size-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            phx-click="delete_sound"
-                            phx-value-name={file.name}
-                            data-claw-confirm={"Delete #{file.name}? Routings pointing at it reset to inherit."}
-                            class="grid size-6 place-items-center rounded text-base-content/60 transition hover:text-error"
-                            aria-label={"Delete #{file.name}"}
-                          >
-                            <.icon name="hero-trash" class="size-3.5" />
-                          </button>
-                        </span>
-                      </td>
-                    </tr>
-                    <tr :if={@own == []}>
-                      <td colspan="6" class="px-3 py-3 text-center text-xs text-base-content/45">
-                        None yet — the sixteen built-in chimes are in every menu. Drop a file
-                        into <span class="font-mono">sounds/</span> or add one above.
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+                      <.icon name="hero-musical-note" class="size-3.5 text-primary" />
+                      <span class="min-w-0 truncate font-mono" title={sound}>{sound}</span>
+                      <button
+                        type="button"
+                        data-preview-url={~p"/notify/sound/#{sound}"}
+                        class="grid size-5 place-items-center rounded text-base-content/50 transition hover:text-primary"
+                        aria-label={"Preview #{sound}"}
+                      >
+                        <.icon name="hero-play" class="size-3" />
+                      </button>
+                      <button
+                        type="button"
+                        phx-click="delete_sound"
+                        phx-value-name={sound}
+                        data-claw-confirm={"Delete #{sound}? Routings pointing at it reset to inherit."}
+                        class="grid size-5 place-items-center rounded text-base-content/50 transition hover:text-error"
+                        aria-label={"Delete #{sound}"}
+                      >
+                        <.icon name="hero-trash" class="size-3" />
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+                <p :if={@own == []} class="px-2 py-2 text-center text-xs text-base-content/45">
+                  None yet — the sixteen built-in chimes are in every menu. Drop a file
+                  into <span class="font-mono">sounds/</span> or add one above.
+                </p>
               </div>
             </div>
           </div>

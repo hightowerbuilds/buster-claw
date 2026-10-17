@@ -64,3 +64,11 @@ Work Area with a terminal slot over the background.
 | | |
 |---|---|
 | (fifth commit) | **The chips became a file-explorer list.** Under the board, the operator's own sounds are a table — Name (with the filename beside it), Kind, Size, Modified, then ▶ and delete — with a sticky header in a box that scrolls on its own, so a long `sounds/` folder never pushes the board off the screen. One `File.stat` per row, local time, a vanished file reads as 0 B rather than crashing. The count and the upload sit on the row above it. |
+
+---
+
+## Morning — the sound list in three columns
+
+| | |
+|---|---|
+| (sixth commit) | **Three columns, filenames only.** The operator asked for the list in three columns, then for the extra information to go: no kind, no size, no modified — the extension already says what a file is. A row is the filename, ▶ and delete; the list fills top to bottom then across (`columns/2`), in a box that scrolls on its own. The `File.stat` machinery from the previous commit went with the columns it fed. |
