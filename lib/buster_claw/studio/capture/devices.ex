@@ -1,4 +1,4 @@
-defmodule BusterClaw.Notifications.Capture.Devices do
+defmodule BusterClaw.Studio.Capture.Devices do
   @moduledoc """
   Audio input devices available for recording — the read half of the Studio's
   recorder, and the data behind a future `sound_devices` verb.
@@ -59,7 +59,7 @@ defmodule BusterClaw.Notifications.Capture.Devices do
   returning a list with a hole in it.
   """
 
-  # A first-party macOS binary at a fixed path — the same rule `SoundStudio`
+  # A first-party macOS binary at a fixed path — the same rule `Studio.Editor`
   # follows for `afconvert`/`afinfo`: name the absolute path, never search $PATH.
   @profiler "/usr/sbin/system_profiler"
 

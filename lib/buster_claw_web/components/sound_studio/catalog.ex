@@ -8,7 +8,7 @@ defmodule BusterClawWeb.SoundStudio.Catalog do
 
   ## What moved out on 08-16, and what stayed
 
-  The catalog itself is now `BusterClaw.Notifications.StudioCatalog` in core
+  The catalog itself is now `BusterClaw.Studio.Catalog` in core
   (frozen Phase 3). **This module is what is left once the web is subtracted:
   the `url` field, and nothing else.**
 
@@ -23,7 +23,7 @@ defmodule BusterClawWeb.SoundStudio.Catalog do
   """
   use BusterClawWeb, :verified_routes
 
-  alias BusterClaw.Notifications.StudioCatalog
+  alias BusterClaw.Studio.Catalog, as: StudioCatalog
 
   @doc """
   Every source the studio can open, grouped, each item carrying a playable

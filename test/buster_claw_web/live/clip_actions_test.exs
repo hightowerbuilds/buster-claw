@@ -27,14 +27,14 @@ defmodule BusterClawWeb.ClipActionsTest do
 
   import Phoenix.LiveViewTest
 
-  alias BusterClaw.Notifications.SoundStudio
-  alias BusterClaw.Notifications.StudioMix
+  alias BusterClaw.Studio.Editor
+  alias BusterClaw.Studio.Mix
 
   setup %{conn: conn} do
     root = Path.join(System.tmp_dir!(), "bc_clipact_#{System.unique_integer([:positive])}")
     prev = Application.get_env(:buster_claw, :workspace_root)
     Application.put_env(:buster_claw, :workspace_root, root)
-    File.mkdir_p!(SoundStudio.dir())
+    File.mkdir_p!(Editor.dir())
     BusterClaw.Settings.mark_onboarding_complete()
 
     on_exit(fn ->
@@ -49,17 +49,17 @@ defmodule BusterClawWeb.ClipActionsTest do
     data = Enum.reduce(1..100, <<>>, fn s, acc -> acc <> <<s::little-signed-16>> end)
 
     :ok =
-      SoundStudio.write(
-        %SoundStudio{sample_rate: 22_050, channels: 1, bits: 16, data: data},
-        Path.join(SoundStudio.dir(), "a.wav")
+      Editor.write(
+        %Editor{sample_rate: 22_050, channels: 1, bits: 16, data: data},
+        Path.join(Editor.dir(), "a.wav")
       )
 
-    {:ok, "m"} = StudioMix.create("m")
-    {:ok, mix} = StudioMix.load("m")
+    {:ok, "m"} = Mix.create("m")
+    {:ok, mix} = Mix.load("m")
     [track | _] = mix.tracks
-    placed = StudioMix.add_clip(mix, track.id, "a.wav", 0, 90)
-    :ok = StudioMix.save(placed)
-    [clip] = Enum.map(StudioMix.clips(placed), fn {_t, c} -> c end)
+    placed = Mix.add_clip(mix, track.id, "a.wav", 0, 90)
+    :ok = Mix.save(placed)
+    [clip] = Enum.map(Mix.clips(placed), fn {_t, c} -> c end)
 
     # /studio since 08-16 — was a Home sub-tab click. It also clicked the rail's
     # Mix button until 09-19; Mix is the only tab now, so there is no rail.
@@ -149,11 +149,11 @@ defmodule BusterClawWeb.ClipActionsTest do
 
       render_hook(element(view, "#studio-ctx"), "remove_clip", %{"id" => clip.id})
 
-      {:ok, reloaded} = StudioMix.load("m")
-      assert StudioMix.clips(reloaded) == []
+      {:ok, reloaded} = Mix.load("m")
+      assert Mix.clips(reloaded) == []
 
       # The clip left the arrangement; the audio it pointed at is untouched.
-      assert "a.wav" in SoundStudio.list()
+      assert "a.wav" in Editor.list()
       assert still_open(view) == "mix:m"
     end
 
@@ -162,13 +162,13 @@ defmodule BusterClawWeb.ClipActionsTest do
       {view, clip} = studio_with_clip(conn)
       render_hook(element(view, "#studio-ctx"), "remove_clip", %{"id" => clip.id})
 
-      {:ok, gone} = StudioMix.load("m")
-      assert StudioMix.clips(gone) == []
+      {:ok, gone} = Mix.load("m")
+      assert Mix.clips(gone) == []
 
       render_click(view, "studio_undo", %{})
 
-      {:ok, restored} = StudioMix.load("m")
-      assert length(StudioMix.clips(restored)) == 1
+      {:ok, restored} = Mix.load("m")
+      assert length(Mix.clips(restored)) == 1
     end
 
     test "offers Duplicate clip too, and only the clip items", %{conn: conn} do
@@ -184,8 +184,8 @@ defmodule BusterClawWeb.ClipActionsTest do
 
       render_hook(element(view, "#studio-ctx"), "duplicate_clip", %{"id" => clip.id})
 
-      {:ok, mix} = StudioMix.load("m")
-      placed = Enum.map(StudioMix.clips(mix), fn {track, c} -> {track.id, c} end)
+      {:ok, mix} = Mix.load("m")
+      placed = Enum.map(Mix.clips(mix), fn {track, c} -> {track.id, c} end)
       assert length(placed) == 2
 
       [{track_a, original}, {track_b, copy}] = Enum.sort_by(placed, fn {_t, c} -> c.start_ms end)
@@ -219,33 +219,33 @@ defmodule BusterClawWeb.ClipActionsTest do
 
       render_hook(element(view, "#studio-ctx"), "duplicate_clip", %{"id" => clip.id})
 
-      {:ok, after_dup} = StudioMix.load("m")
+      {:ok, after_dup} = Mix.load("m")
 
       copy =
         after_dup
-        |> StudioMix.clips()
+        |> Mix.clips()
         |> Enum.map(fn {_t, c} -> c end)
         |> Enum.find(&(&1.id != clip.id))
 
-      assert [%{type: "reverb", params: %{"mix" => 0.8}}] = StudioMix.chain(copy)
+      assert [%{type: "reverb", params: %{"mix" => 0.8}}] = Mix.chain(copy)
     end
 
     test "duplicating is undoable, and an unknown id is a no-op", %{conn: conn} do
       {view, clip} = studio_with_clip(conn)
 
       render_hook(element(view, "#studio-ctx"), "duplicate_clip", %{"id" => clip.id})
-      {:ok, two} = StudioMix.load("m")
-      assert length(StudioMix.clips(two)) == 2
+      {:ok, two} = Mix.load("m")
+      assert length(Mix.clips(two)) == 2
 
       render_click(view, "studio_undo", %{})
-      {:ok, back} = StudioMix.load("m")
-      assert length(StudioMix.clips(back)) == 1
+      {:ok, back} = Mix.load("m")
+      assert length(Mix.clips(back)) == 1
 
       # A stale client costs a no-op, never a crash.
       render_hook(element(view, "#studio-ctx"), "duplicate_clip", %{"id" => "ghost"})
       assert still_open(view) == "mix:m"
-      {:ok, still} = StudioMix.load("m")
-      assert length(StudioMix.clips(still)) == 1
+      {:ok, still} = Mix.load("m")
+      assert length(Mix.clips(still)) == 1
     end
 
     # Not the menu, but the same defect and the same fix: the clipboard spec
@@ -262,16 +262,16 @@ defmodule BusterClawWeb.ClipActionsTest do
       render_click(view, "studio_copy", %{})
       render_click(view, "studio_paste", %{})
 
-      {:ok, mix} = StudioMix.load("m")
+      {:ok, mix} = Mix.load("m")
 
       pasted =
         mix
-        |> StudioMix.clips()
+        |> Mix.clips()
         |> Enum.map(fn {_t, c} -> c end)
         |> Enum.find(&(&1.id != clip.id))
 
       assert pasted, "nothing was pasted"
-      assert [%{type: "reverse"}] = StudioMix.chain(pasted)
+      assert [%{type: "reverse"}] = Mix.chain(pasted)
     end
 
     test "a stale selection heals itself rather than rendering a ghost clip",
@@ -314,14 +314,14 @@ defmodule BusterClawWeb.ClipActionsTest do
 
       refute has_element?(view, "#studio-trim-clip")
 
-      {:ok, mix} = StudioMix.load("m")
-      assert StudioMix.window(StudioMix.find_clip(mix, clip.id)) == {20.0, 40.0}
+      {:ok, mix} = Mix.load("m")
+      assert Mix.window(Mix.find_clip(mix, clip.id)) == {20.0, 40.0}
 
       # It rides the same history every other clip edit does, so ⌘Z is not a
       # special case anyone had to remember to wire.
       render_click(view, "studio_undo", %{})
-      {:ok, restored} = StudioMix.load("m")
-      assert StudioMix.window(StudioMix.find_clip(restored, clip.id)) == {0.0, 90.0}
+      {:ok, restored} = Mix.load("m")
+      assert Mix.window(Mix.find_clip(restored, clip.id)) == {0.0, 90.0}
     end
 
     test "a junk length is a no-op rather than a clip trimmed to nothing", %{conn: conn} do
@@ -332,8 +332,8 @@ defmodule BusterClawWeb.ClipActionsTest do
       |> element("#studio-trim-clip form")
       |> render_submit(%{"offset_ms" => "", "duration_ms" => "not a number"})
 
-      {:ok, mix} = StudioMix.load("m")
-      assert StudioMix.window(StudioMix.find_clip(mix, clip.id)) == {0.0, 90.0}
+      {:ok, mix} = Mix.load("m")
+      assert Mix.window(Mix.find_clip(mix, clip.id)) == {0.0, 90.0}
     end
   end
 end

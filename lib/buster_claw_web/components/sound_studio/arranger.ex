@@ -36,12 +36,12 @@ defmodule BusterClawWeb.SoundStudio.Arranger do
   import BusterClawWeb.SoundStudio.Catalog
   import BusterClawWeb.SoundStudio.Format
 
-  alias BusterClaw.Notifications.StudioMix
+  alias BusterClaw.Studio.Mix
 
   @track_palette ["#FF4D1C", "#1C9BFF", "#2FD068"]
 
   attr :myself, :any, required: true
-  attr :mix, :any, required: true, doc: "the open StudioMix, or nil"
+  attr :mix, :any, required: true, doc: "the open Mix, or nil"
   attr :selected, :any, required: true
   attr :groups, :list, required: true, doc: "the source catalog, for clip URLs and the add menu"
   attr :note, :any, required: true
@@ -80,8 +80,8 @@ defmodule BusterClawWeb.SoundStudio.Arranger do
           <h2 class="truncate text-lg font-bold tracking-tight">{@mix.name}</h2>
           <p class="font-mono text-xs text-base-content/50">
             {length(@mix.tracks)} {if length(@mix.tracks) == 1, do: "track", else: "tracks"} · {length(
-              StudioMix.clips(@mix)
-            )} clips · {ms(StudioMix.duration_ms(@mix))}
+              Mix.clips(@mix)
+            )} clips · {ms(Mix.duration_ms(@mix))}
           </p>
         </div>
         <div class="flex shrink-0 items-center gap-1">
@@ -185,7 +185,7 @@ defmodule BusterClawWeb.SoundStudio.Arranger do
         <div class="w-28 shrink-0"></div>
         <div class="relative h-4 min-w-0 flex-1 border-b border-base-content/20">
           <span
-            :for={tick <- StudioMix.ticks(StudioMix.view_ms(@mix))}
+            :for={tick <- Mix.ticks(Mix.view_ms(@mix))}
             style={"left: #{tick.pct}%"}
             class="absolute top-0 -translate-x-1/2 font-mono text-[9px] text-base-content/35"
           >
@@ -204,7 +204,7 @@ defmodule BusterClawWeb.SoundStudio.Arranger do
         id={arranger_dom_id(@mix)}
         phx-hook="TrackArrange"
         phx-target={@myself}
-        data-view-ms={StudioMix.view_ms(@mix)}
+        data-view-ms={Mix.view_ms(@mix)}
         class="relative flex select-none flex-col gap-1"
       >
         <%!-- The playhead. Hidden until the transport runs; the hook owns
@@ -295,10 +295,10 @@ defmodule BusterClawWeb.SoundStudio.Arranger do
           <div
             data-track
             data-track-id={track.id}
-            data-audible={to_string(StudioMix.audible?(@mix, track))}
+            data-audible={to_string(Mix.audible?(@mix, track))}
             class={[
               "relative h-14 min-w-0 flex-1 border-2 border-base-content/15 bg-base-content/[0.03] data-[track-target]:border-primary/60",
-              not StudioMix.audible?(@mix, track) && "opacity-40"
+              not Mix.audible?(@mix, track) && "opacity-40"
             ]}
           >
             <%!-- Fill and border come from the TRACK (siblings must read
@@ -312,7 +312,7 @@ defmodule BusterClawWeb.SoundStudio.Arranger do
               data-clip-id={clip.id}
               data-start-ms={clip.start_ms}
               data-src={clip_src(@groups, clip)}
-              style={"left: #{StudioMix.position_pct(clip.start_ms, StudioMix.view_ms(@mix))}%; width: #{StudioMix.width_pct(clip.duration_ms, StudioMix.view_ms(@mix))}%; border-color: #{track_color(track)}B3; background-color: #{track_color(track)}#{if @studio_clip == clip.id, do: "80", else: "40"}"}
+              style={"left: #{Mix.position_pct(clip.start_ms, Mix.view_ms(@mix))}%; width: #{Mix.width_pct(clip.duration_ms, Mix.view_ms(@mix))}%; border-color: #{track_color(track)}B3; background-color: #{track_color(track)}#{if @studio_clip == clip.id, do: "80", else: "40"}"}
               class={[
                 "absolute inset-y-2 cursor-grab overflow-hidden rounded-xs border px-1 active:cursor-grabbing",
                 @studio_clip == clip.id && "ring-2 ring-primary"
@@ -333,10 +333,10 @@ defmodule BusterClawWeb.SoundStudio.Arranger do
           type="button"
           phx-click="add_track"
           phx-target={@myself}
-          disabled={length(@mix.tracks) >= StudioMix.max_tracks()}
+          disabled={length(@mix.tracks) >= Mix.max_tracks()}
           title={
-            if length(@mix.tracks) >= StudioMix.max_tracks(),
-              do: "An mix holds at most #{StudioMix.max_tracks()} tracks",
+            if length(@mix.tracks) >= Mix.max_tracks(),
+              do: "An mix holds at most #{Mix.max_tracks()} tracks",
               else: "Add a track"
           }
           class="btn btn-ghost btn-xs w-28 justify-start font-mono uppercase disabled:opacity-30"
@@ -379,5 +379,5 @@ defmodule BusterClawWeb.SoundStudio.Arranger do
 
   # One place computes the arranger's DOM id: the container carries it, and the
   # transport button points at it by data attribute.
-  defp arranger_dom_id(%StudioMix{name: name}), do: "studio-arranger-#{:erlang.phash2(name)}"
+  defp arranger_dom_id(%Mix{name: name}), do: "studio-arranger-#{:erlang.phash2(name)}"
 end

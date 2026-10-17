@@ -6,7 +6,7 @@ defmodule BusterClaw.Commands.SoundTest do
   alias BusterClaw.Commands
   alias BusterClaw.Notifications.Sound
   alias BusterClaw.Notifications.SoundGen
-  alias BusterClaw.Notifications.SoundStudio
+  alias BusterClaw.Studio.Editor
 
   # afconvert is a macOS system binary, but the suite should not fail on a
   # machine without it — the decode-dependent cases are skipped instead, the
@@ -45,7 +45,7 @@ defmodule BusterClaw.Commands.SoundTest do
     silence = pcm(300, 0.0)
     body = Enum.map_join(1..bursts, silence, fn _burst -> pcm(300, 440.0) end)
 
-    SoundStudio.render(%SoundStudio{data: silence <> body <> silence})
+    Editor.render(%Editor{data: silence <> body <> silence})
   end
 
   defp pcm(ms, hz) do
@@ -64,18 +64,18 @@ defmodule BusterClaw.Commands.SoundTest do
   # 200 ms of DC at a constant level: every sample is the same non-zero number,
   # so a ramp that lands on true zero is visible in the bytes. A sine or a chime
   # starts at zero anyway, which would make the fade assertions vacuous.
-  defp flat(ms \\ 200), do: SoundStudio.render(%SoundStudio{data: dc(ms)})
+  defp flat(ms \\ 200), do: Editor.render(%Editor{data: dc(ms)})
 
   defp dc(ms), do: :binary.copy(<<8000::little-signed-16>>, trunc(22_050 * ms / 1000))
 
   defp first_sample(path) do
-    {:ok, clip} = SoundStudio.read(path)
+    {:ok, clip} = Editor.read(path)
     <<sample::little-signed-16, _rest::binary>> = clip.data
     sample
   end
 
   defp last_sample(path) do
-    {:ok, clip} = SoundStudio.read(path)
+    {:ok, clip} = Editor.read(path)
     <<sample::little-signed-16>> = binary_part(clip.data, byte_size(clip.data) - 2, 2)
     sample
   end
@@ -686,7 +686,7 @@ defmodule BusterClaw.Commands.SoundTest do
     end
 
     test "digital silence is returned untouched rather than divided by zero", %{root: root} do
-      source(root, "silence.wav", SoundStudio.render(%SoundStudio{data: pcm(200, 0.0)}))
+      source(root, "silence.wav", Editor.render(%Editor{data: pcm(200, 0.0)}))
 
       assert {:ok, result} = Commands.Sound.sound_normalize(%{"source" => "silence.wav"})
 
@@ -697,8 +697,8 @@ defmodule BusterClaw.Commands.SoundTest do
 
   describe "sound_concat" do
     setup %{root: root} do
-      source(root, "one.wav", SoundStudio.render(%SoundStudio{data: dc(200)}))
-      source(root, "two.wav", SoundStudio.render(%SoundStudio{data: dc(100)}))
+      source(root, "one.wav", Editor.render(%Editor{data: dc(200)}))
+      source(root, "two.wav", Editor.render(%Editor{data: dc(100)}))
       :ok
     end
 
@@ -738,7 +738,7 @@ defmodule BusterClaw.Commands.SoundTest do
       source(
         root,
         "other-rate.wav",
-        SoundStudio.render(%SoundStudio{
+        Editor.render(%Editor{
           data: dc(100),
           sample_rate: 44_100
         })

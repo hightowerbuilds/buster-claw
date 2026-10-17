@@ -5,8 +5,8 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
 
   alias BusterClaw.Notifications.Sound
   alias BusterClaw.Notifications.SoundGen
-  alias BusterClaw.Notifications.SoundStudio
-  alias BusterClaw.Notifications.StudioMix
+  alias BusterClaw.Studio.Editor
+  alias BusterClaw.Studio.Mix
   alias BusterClawWeb.SoundStudio.Catalog
 
   setup do
@@ -214,10 +214,10 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       # whose facts came back all-nil. Only peak may go unmeasured; length and
       # format read from the header, and the trim tool keeps its duration.
       data_bytes = 9_000_000
-      big = %SoundStudio{data: <<0::size(data_bytes * 8)>>}
+      big = %Editor{data: <<0::size(data_bytes * 8)>>}
       studio_dir = Path.join([root, "sounds", "studio"])
       File.mkdir_p!(studio_dir)
-      File.write!(Path.join(studio_dir, "long.wav"), SoundStudio.render(big))
+      File.write!(Path.join(studio_dir, "long.wav"), Editor.render(big))
 
       {view, _html} = open_studio(conn)
       html = select(view, "import:long.wav")
@@ -417,8 +417,8 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       if before, do: assert(File.read!(original) == before)
 
       # And the result is what was asked for, to the sample.
-      {:ok, clip} = SoundStudio.import_source(trimmed)
-      assert_in_delta SoundStudio.duration_ms(clip), 300.0, 1.0
+      {:ok, clip} = Editor.import_source(trimmed)
+      assert_in_delta Editor.duration_ms(clip), 300.0, 1.0
     end
 
     test "the result is opened, and the trim clears with it", %{conn: conn} do
@@ -532,7 +532,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       html = new_audio(view, "   ")
 
       assert html =~ "Give the mix a name"
-      assert StudioMix.list() == []
+      assert Mix.list() == []
     end
 
     test "clips are added to a chosen track and queue up rather than stacking", %{conn: conn} do
@@ -607,8 +607,8 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
 
       # Tracks SUM: both clips start at 0 on their own tracks, so the render is
       # as long as the longer one, not the two end to end.
-      {:ok, clip} = SoundStudio.import_source(mixed)
-      assert_in_delta SoundStudio.duration_ms(clip), 1_320.0, 20.0
+      {:ok, clip} = Editor.import_source(mixed)
+      assert_in_delta Editor.duration_ms(clip), 1_320.0, 20.0
 
       # And the result is opened, so you can hear what you just made.
       assert render(view) =~ ~s(phx-value-id="sound:mix me-mix.wav")
@@ -783,10 +783,10 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       # long as alarm would mean M rendered anyway — the lie this exists to
       # prevent.
       {:ok, boot} =
-        SoundStudio.import_source(BusterClaw.Notifications.Sound.resolve_path("boot.wav"))
+        Editor.import_source(BusterClaw.Notifications.Sound.resolve_path("boot.wav"))
 
-      {:ok, clip} = SoundStudio.import_source(mixed)
-      assert_in_delta SoundStudio.duration_ms(clip), SoundStudio.duration_ms(boot), 20.0
+      {:ok, clip} = Editor.import_source(mixed)
+      assert_in_delta Editor.duration_ms(clip), Editor.duration_ms(boot), 20.0
     end
 
     test "solo isolates: every unsoloed region dims and stays out of the mix",
@@ -810,12 +810,12 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       view |> element("button[phx-click='render_mix']") |> render_click()
 
       {:ok, boot} =
-        SoundStudio.import_source(BusterClaw.Notifications.Sound.resolve_path("boot.wav"))
+        Editor.import_source(BusterClaw.Notifications.Sound.resolve_path("boot.wav"))
 
       {:ok, clip} =
-        SoundStudio.import_source(Path.join([root, "sounds", "solo mix-mix.wav"]))
+        Editor.import_source(Path.join([root, "sounds", "solo mix-mix.wav"]))
 
-      assert_in_delta SoundStudio.duration_ms(clip), SoundStudio.duration_ms(boot), 20.0
+      assert_in_delta Editor.duration_ms(clip), Editor.duration_ms(boot), 20.0
     end
 
     test "muting everything refuses the render with its own sentence, and undo reaches it",
@@ -979,8 +979,8 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
 
       # Undo rewrites the file, not just the screen — the arrangement on disk is
       # the arrangement.
-      {:ok, audio} = StudioMix.load(name)
-      assert length(StudioMix.clips(audio)) == 1
+      {:ok, audio} = Mix.load(name)
+      assert length(Mix.clips(audio)) == 1
 
       assert File.regular?(Path.join([root, "sounds", "studio", "mixes", name <> ".mix.json"]))
     end
@@ -1225,7 +1225,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
 
     test "the menu offers Info and New audio only for real files", %{conn: conn, root: root} do
       import!(root, "clip.wav")
-      {:ok, name} = StudioMix.create("arrangement")
+      {:ok, name} = Mix.create("arrangement")
 
       {_view, html} = open_studio(conn)
 
@@ -1278,7 +1278,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       html = menu_hook(view, "new_mix_from_source", "import:bells.wav")
 
       assert html =~ "New mix “bells” from bells."
-      assert {:ok, audio} = StudioMix.load("bells")
+      assert {:ok, audio} = Mix.load("bells")
 
       # On the first track, at the top of the ruler, with a real length — an
       # empty arrangement you then have to fill is the version nobody uses.
@@ -1307,8 +1307,8 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       refute File.regular?(Path.join([root, "sounds", "studio", "rough.wav"]))
 
       # The clip points at the new name, so the mix still renders.
-      assert {:ok, mix} = StudioMix.load("rough")
-      assert [{_track, %{source: "import:polished.wav"}}] = StudioMix.clips(mix)
+      assert {:ok, mix} = Mix.load("rough")
+      assert [{_track, %{source: "import:polished.wav"}}] = Mix.clips(mix)
     end
 
     test "the extension is not the user's to change", %{conn: conn, root: root} do
@@ -1375,14 +1375,14 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
     end
 
     test "renaming a mix moves the name inside the file too", %{conn: conn} do
-      {:ok, _name} = StudioMix.create("draft")
+      {:ok, _name} = Mix.create("draft")
       {view, _html} = open_studio(conn)
 
       html = menu_hook(view, "rename_source", %{"id" => "mix:draft", "name" => "final cut"})
 
       assert html =~ "Renamed to final cut."
-      assert StudioMix.list() == ["final cut"]
-      assert {:ok, mix} = StudioMix.load("final cut")
+      assert Mix.list() == ["final cut"]
+      assert {:ok, mix} = Mix.load("final cut")
       # A file whose contents disagree with its name surfaces months later.
       assert mix.name == "final cut"
     end
@@ -1393,7 +1393,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       html = menu_hook(view, "new_mix_from_source", "nonsense")
       # "New mix" alone is the toolbar's own button; the note is the tell.
       refute html =~ "New mix “"
-      assert StudioMix.list() == []
+      assert Mix.list() == []
     end
   end
 end

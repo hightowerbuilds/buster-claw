@@ -23,7 +23,7 @@ defmodule BusterClaw do
     `BrowserHistory`, `Favicons`, `UrlGuard`.
   * **Look and sound** — `Appearance` and `Shaders`, `TerminalTheme`,
     `TerminalPaint`, `ChatSkin`, `Notifications.Sound` and the Sound Studio
-    (`Notifications.SoundStudio`, `StudioMix`, `StudioCatalog`, `Capture`),
+    (`Studio.Editor`, `Studio.Mix`, `Studio.Catalog`, `Studio.Capture`),
     `Music`.
   * **Secrets and setup** — `Clinch` (credentials), `Vault`, `Encrypted`,
     `Settings`, `Setup`, `RuntimeConfig`, `Recovery`, `ApiToken`.

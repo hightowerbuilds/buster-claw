@@ -45,7 +45,7 @@ defmodule BusterClaw.Commands.Sound do
   ## The editing verbs all render to a new name
 
   `sound_trim`, `sound_fade`, `sound_normalize` and `sound_concat` each wrap one
-  pure function in `SoundStudio` and write the result as a **new** source; an
+  pure function in `Studio.Editor` and write the result as a **new** source; an
   existing name is refused as `:name_taken` unless `overwrite: true`. Editing in
   place would destroy a recording that cannot be re-recorded, and a render to a
   new file is reviewable in a way an in-place mutation is not.
@@ -90,7 +90,7 @@ defmodule BusterClaw.Commands.Sound do
   default and stays honest about what it could not answer.
 
   Names are basenames, never paths. Resolution goes through `Sound.path_for/1`,
-  `Sound.bundled_path_for/1` and `SoundStudio.path_for/1`, each of which
+  `Sound.bundled_path_for/1` and `Studio.Editor.path_for/1`, each of which
   allowlists against a real directory listing, and anything carrying a separator
   is refused as `:invalid_name` before it gets that far.
   """

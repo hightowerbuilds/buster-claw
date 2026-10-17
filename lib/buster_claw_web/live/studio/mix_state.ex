@@ -39,8 +39,8 @@ defmodule BusterClawWeb.Studio.MixState do
   import Phoenix.Component
   import Phoenix.LiveView
 
-  alias BusterClaw.Notifications.Studio.Render
-  alias BusterClaw.Notifications.StudioMix
+  alias BusterClaw.Studio.Mix
+  alias BusterClaw.Studio.Render
   alias BusterClawWeb.SoundStudio.Catalog
   alias BusterClawWeb.Studio.Preview
   alias BusterClawWeb.StudioPanel
@@ -90,7 +90,7 @@ defmodule BusterClawWeb.Studio.MixState do
     |> assign(:studio_redo, [])
   end
 
-  def push_studio_history(socket, %StudioMix{} = previous) do
+  def push_studio_history(socket, %Mix{} = previous) do
     socket
     |> assign(
       :studio_undo,
@@ -106,7 +106,7 @@ defmodule BusterClawWeb.Studio.MixState do
   def step_history(socket, from_key, to_key) do
     with [previous | rest] <- socket.assigns[from_key],
          {:ok, current} <- open_mix(socket) do
-      StudioMix.save(previous)
+      Mix.save(previous)
       send_update(BusterClawWeb.SoundStudioComponent, id: "home-studio")
 
       socket
@@ -121,7 +121,7 @@ defmodule BusterClawWeb.Studio.MixState do
 
   def open_mix(socket) do
     case socket.assigns.studio_source do
-      "mix:" <> name -> StudioMix.load(name)
+      "mix:" <> name -> Mix.load(name)
       _ -> {:error, :no_mix}
     end
   end
@@ -136,7 +136,7 @@ defmodule BusterClawWeb.Studio.MixState do
         if updated == mix do
           socket
         else
-          StudioMix.save(updated)
+          Mix.save(updated)
           send_update(BusterClawWeb.SoundStudioComponent, id: "home-studio")
           push_studio_history(socket, mix)
         end
@@ -209,7 +209,7 @@ defmodule BusterClawWeb.Studio.MixState do
   defp find_selected(socket) do
     with id when is_binary(id) <- socket.assigns.studio_clip,
          {:ok, mix} <- open_mix(socket) do
-      mix |> StudioMix.clips() |> Enum.find_value(fn {_t, c} -> if c.id == id, do: c end)
+      mix |> Mix.clips() |> Enum.find_value(fn {_t, c} -> if c.id == id, do: c end)
     else
       _ -> nil
     end

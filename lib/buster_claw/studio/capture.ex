@@ -1,4 +1,4 @@
-defmodule BusterClaw.Notifications.Capture do
+defmodule BusterClaw.Studio.Capture do
   @moduledoc """
   Agent-addressable audio capture (STUDIO_ROADMAP V.9) — the BEAM spawning
   `ffmpeg -f avfoundation` to land a recording in the Studio's sources.
@@ -40,7 +40,7 @@ defmodule BusterClaw.Notifications.Capture do
 
   require Logger
 
-  alias BusterClaw.Notifications.SoundStudio
+  alias BusterClaw.Studio.Editor
 
   # Homebrew puts ffmpeg in a different place on Intel and Apple Silicon, and
   # unlike `afconvert`/`afinfo` (macOS system binaries, always at a fixed path)
@@ -48,7 +48,7 @@ defmodule BusterClaw.Notifications.Capture do
   # PATH, and a missing binary is `{:error, :no_recorder}` — never a raise.
   @candidates ["/usr/local/bin/ffmpeg", "/opt/homebrew/bin/ffmpeg"]
 
-  # Duration ceiling, in seconds. Five minutes, matching `SoundStudio`'s
+  # Duration ceiling, in seconds. Five minutes, matching `Studio.Editor`'s
   # mixdown ceiling: audio longer than the arranger can ever render is audio
   # this module has no business producing. It is also ~13 MB at the internal
   # format, which is a sane thing for an agent to be able to ask for without a
@@ -110,7 +110,7 @@ defmodule BusterClaw.Notifications.Capture do
     Enum.find(@candidates, &File.regular?/1) || System.find_executable("ffmpeg")
   end
 
-  @doc "True when a recorder binary is available. Asked cheaply, like `SoundStudio.decoder_available?/0`."
+  @doc "True when a recorder binary is available. Asked cheaply, like `Editor.decoder_available?/0`."
   def recorder_available?, do: is_binary(recorder_path())
 
   @doc """
@@ -121,7 +121,7 @@ defmodule BusterClaw.Notifications.Capture do
   exercised on synthesized buffers rather than only through a microphone that
   may not be granted.
   """
-  def silent?(%SoundStudio{} = clip), do: SoundStudio.peak(clip) <= @silence_floor
+  def silent?(%Editor{} = clip), do: Editor.peak(clip) <= @silence_floor
 
   @doc """
   Record from an input device into the Studio's sources.
@@ -130,7 +130,7 @@ defmodule BusterClaw.Notifications.Capture do
 
     * `:seconds` — **required.** How long to record, `0 < seconds <= #{@max_seconds}`.
     * `:name` — optional output name. Defaults to `recording-<utc timestamp>.wav`.
-      The extension is forced to `.wav` by `SoundStudio.save/2`.
+      The extension is forced to `.wav` by `Editor.save/2`.
     * `:device` — optional avfoundation audio device, by index (`0`) or by name
       (`"MacBook Pro Microphone"`). Defaults to the system default input.
     * `:runner` — test seam. A 2-arity function with `System.cmd/2`'s shape,
@@ -230,7 +230,7 @@ defmodule BusterClaw.Notifications.Capture do
   # requires. `-nostdin` matters: this runs under a port, and an ffmpeg that
   # reads stdin would fight the BEAM for it.
   defp args(device, seconds, out) do
-    {rate, channels, _bits} = SoundStudio.internal_format()
+    {rate, channels, _bits} = Editor.internal_format()
 
     [
       "-hide_banner",
@@ -299,7 +299,7 @@ defmodule BusterClaw.Notifications.Capture do
   end
 
   defp read_capture(tmp) do
-    case SoundStudio.read(tmp) do
+    case Editor.read(tmp) do
       {:ok, clip} -> {:ok, clip}
       {:error, _reason} -> {:error, :unreadable_capture}
     end
@@ -308,10 +308,10 @@ defmodule BusterClaw.Notifications.Capture do
   # Read the header back rather than trusting the flags we passed. Verified
   # 08-09 against ffmpeg 8.1: PCM (format 1), 1 channel, 22050 Hz, 16-bit —
   # with a `LIST`/`ISFT` chunk sitting between `fmt ` and `data`, which is
-  # exactly why `SoundStudio.parse/1` walks the chunk list instead of seeking
+  # exactly why `Editor.parse/1` walks the chunk list instead of seeking
   # to byte 44.
   defp check_format(clip) do
-    if SoundStudio.internal?(clip) do
+    if Editor.internal?(clip) do
       :ok
     else
       {:error, {:unexpected_format, {clip.sample_rate, clip.channels, clip.bits}}}
@@ -323,7 +323,7 @@ defmodule BusterClaw.Notifications.Capture do
   end
 
   defp silence_message(clip) do
-    peak = SoundStudio.peak(clip)
+    peak = Editor.peak(clip)
 
     """
     The recording finished without an error but contains no audio (peak #{Float.round(peak, 6)}).
@@ -342,7 +342,7 @@ defmodule BusterClaw.Notifications.Capture do
     """
   end
 
-  # `save/2` renders through `SoundStudio.render/1`, which canonicalizes the
+  # `save/2` renders through `Editor.render/1`, which canonicalizes the
   # file to the studio's minimal header — ffmpeg's ISFT metadata chunk does not
   # survive, and should not.
   #
@@ -352,19 +352,19 @@ defmodule BusterClaw.Notifications.Capture do
   # happened and cannot be re-taken, so refusing would throw away the one thing
   # here that is unrepeatable.
   defp save(clip, device, name) do
-    case SoundStudio.save(clip, name || default_name()) do
+    case Editor.save(clip, name || default_name()) do
       {:ok, stored} -> {:ok, describe(clip, stored, device)}
       {:error, reason} -> {:error, reason}
     end
   end
 
   defp describe(clip, stored, device) do
-    peak = SoundStudio.peak(clip)
+    peak = Editor.peak(clip)
 
     %{
       name: stored,
-      path: Path.join(SoundStudio.dir(), stored),
-      duration_ms: round(SoundStudio.duration_ms(clip)),
+      path: Path.join(Editor.dir(), stored),
+      duration_ms: round(Editor.duration_ms(clip)),
       peak: peak,
       clipped: peak >= 1.0,
       sample_rate: clip.sample_rate,

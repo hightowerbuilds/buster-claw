@@ -76,7 +76,7 @@ defmodule BusterClawWeb.SoundStudio.MenuBar do
   """
   use BusterClawWeb, :html
 
-  alias BusterClaw.Notifications.StudioMix
+  alias BusterClaw.Studio.Mix
   alias BusterClawWeb.SoundStudio.Catalog
 
   attr :myself, :any, required: true, doc: "the component's target — see the two-owners note"
@@ -99,7 +99,7 @@ defmodule BusterClawWeb.SoundStudio.MenuBar do
       assigns
       |> assign(:mixes, group_items(assigns.groups, "mix"))
       |> assign(:material, Catalog.addable_groups(assigns.groups))
-      |> assign(:mix_open?, match?(%StudioMix{}, assigns.mix))
+      |> assign(:mix_open?, match?(%Mix{}, assigns.mix))
 
     ~H"""
     <div

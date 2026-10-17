@@ -1,4 +1,4 @@
-defmodule BusterClaw.Notifications.Studio.EffectsTest do
+defmodule BusterClaw.Studio.EffectsTest do
   @moduledoc """
   The Studio's effect chain — the DSP and the contract around it.
 
@@ -8,17 +8,17 @@ defmodule BusterClaw.Notifications.Studio.EffectsTest do
   """
   use ExUnit.Case, async: true
 
-  alias BusterClaw.Notifications.SoundStudio
-  alias BusterClaw.Notifications.Studio.Effects
+  alias BusterClaw.Studio.Editor
+  alias BusterClaw.Studio.Effects
 
   # A clip whose samples are distinguishable at every position, so reversal and
   # resampling are visible rather than plausible.
   defp clip(samples) do
     data = Enum.reduce(samples, <<>>, fn s, acc -> acc <> <<s::little-signed-16>> end)
-    %SoundStudio{sample_rate: 22_050, channels: 1, bits: 16, data: data}
+    %Editor{sample_rate: 22_050, channels: 1, bits: 16, data: data}
   end
 
-  defp samples(%SoundStudio{data: data}), do: for(<<s::little-signed-16 <- data>>, do: s)
+  defp samples(%Editor{data: data}), do: for(<<s::little-signed-16 <- data>>, do: s)
 
   defp effect(type, params \\ %{}) do
     {:ok, built} = Effects.build(type)
@@ -42,7 +42,7 @@ defmodule BusterClaw.Notifications.Studio.EffectsTest do
       for %{type: type} <- Effects.catalog() do
         result = Effects.apply_one(subject, effect(type))
 
-        assert %SoundStudio{} = result, "#{type} did not return a clip"
+        assert %Editor{} = result, "#{type} did not return a clip"
         assert result.sample_rate == subject.sample_rate, "#{type} changed the sample rate"
         assert result.channels == subject.channels, "#{type} changed the channel count"
         assert result.bits == subject.bits, "#{type} changed the bit depth"
@@ -160,7 +160,7 @@ defmodule BusterClaw.Notifications.Studio.EffectsTest do
       subject = clip([1, 2, 3])
 
       for junk <- [%{}, %{type: nil}, "nonsense", 7, nil] do
-        assert %SoundStudio{} = Effects.apply_chain(subject, [junk])
+        assert %Editor{} = Effects.apply_chain(subject, [junk])
       end
     end
   end

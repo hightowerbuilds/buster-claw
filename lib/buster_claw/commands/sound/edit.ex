@@ -12,7 +12,7 @@ defmodule BusterClaw.Commands.Sound.Edit do
   10-16 (CODE_QUALITY_SWEEP Phase 6); see that module for the surface's story.
   """
   alias BusterClaw.Commands.Sound.Shared
-  alias BusterClaw.Notifications.SoundStudio
+  alias BusterClaw.Studio.Editor
 
   # ---------------------------------------------------------------------------
   # Import — the door into the studio
@@ -33,15 +33,15 @@ defmodule BusterClaw.Commands.Sound.Edit do
          path: path,
          event_id: origin.event_id,
          library_path: origin.relative,
-         duration_ms: SoundStudio.duration_ms(clip),
+         duration_ms: Editor.duration_ms(clip),
          sample_rate: clip.sample_rate,
          channels: clip.channels,
          bits: clip.bits,
          peak: Shared.peak_of(clip),
-         internal: SoundStudio.internal?(clip),
+         internal: Editor.internal?(clip),
          internal_format: Shared.internal_format(),
          decoded: decoded?,
-         decoder_available: SoundStudio.decoder_available?(),
+         decoder_available: Editor.decoder_available?(),
          bytes: Shared.byte_size_of(path),
          replaced: replaced?,
          notes: import_notes(decoded?, replaced?)
@@ -59,15 +59,15 @@ defmodule BusterClaw.Commands.Sound.Edit do
   defp import_clip(path) do
     decoded? = not already_internal?(path)
 
-    case SoundStudio.import_source(path) do
+    case Editor.import_source(path) do
       {:ok, clip} -> {:ok, clip, decoded?}
       {:error, reason} -> {:error, reason}
     end
   end
 
   defp already_internal?(path) do
-    case SoundStudio.read(path) do
-      {:ok, clip} -> SoundStudio.internal?(clip)
+    case Editor.read(path) do
+      {:ok, clip} -> Editor.internal?(clip)
       {:error, _reason} -> false
     end
   end
@@ -93,9 +93,9 @@ defmodule BusterClaw.Commands.Sound.Edit do
       edit(args, "trim", fn clip ->
         # `end_ms` resolves against the clip, which is the one part of the span
         # that cannot be checked before the audio is open.
-        to = to || SoundStudio.duration_ms(clip)
+        to = to || Editor.duration_ms(clip)
 
-        with {:ok, cut} <- SoundStudio.splice(clip, from, to) do
+        with {:ok, cut} <- Editor.splice(clip, from, to) do
           {:ok, cut, %{start_ms: from, end_ms: to}}
         end
       end)
@@ -124,8 +124,7 @@ defmodule BusterClaw.Commands.Sound.Edit do
   def sound_fade(%{"source" => source} = args) when is_binary(source) do
     with {:ok, in_ms, out_ms} <- ramps(args) do
       edit(args, "fade", fn clip ->
-        {:ok, SoundStudio.fade(clip, in_ms: in_ms, out_ms: out_ms),
-         %{in_ms: in_ms, out_ms: out_ms}}
+        {:ok, Editor.fade(clip, in_ms: in_ms, out_ms: out_ms), %{in_ms: in_ms, out_ms: out_ms}}
       end)
     end
   end
@@ -152,7 +151,7 @@ defmodule BusterClaw.Commands.Sound.Edit do
     with {:ok, target} <- normalize_target(args) do
       edit(args, "normalize", fn clip ->
         levelled =
-          if target, do: SoundStudio.normalize(clip, target), else: SoundStudio.normalize(clip)
+          if target, do: Editor.normalize(clip, target), else: Editor.normalize(clip)
 
         # `target` is nil when the module's own default was used, so the number
         # that says what actually happened is `peak` beside `source_peak` — and
@@ -182,14 +181,14 @@ defmodule BusterClaw.Commands.Sound.Edit do
     with {:ok, target} <- Shared.stored_name(name),
          {:ok, path, replaced?} <- studio_target(target, overwrite?),
          {:ok, loaded} <- concat_sources(sources),
-         {:ok, joined} <- SoundStudio.concat(Enum.map(loaded, & &1.clip)),
+         {:ok, joined} <- Editor.concat(Enum.map(loaded, & &1.clip)),
          :ok <- write_source(joined, path) do
       {:ok,
        %{
          name: target,
          path: path,
          sources: Enum.map(loaded, &Map.take(&1, [:name, :duration_ms, :peak])),
-         duration_ms: SoundStudio.duration_ms(joined),
+         duration_ms: Editor.duration_ms(joined),
          peak: Shared.peak_of(joined),
          bytes: Shared.byte_size_of(path),
          replaced: replaced?,
@@ -231,7 +230,7 @@ defmodule BusterClaw.Commands.Sound.Edit do
        %{
          name: name,
          clip: clip,
-         duration_ms: SoundStudio.duration_ms(clip),
+         duration_ms: Editor.duration_ms(clip),
          peak: Shared.peak_of(clip)
        }}
     end
@@ -281,9 +280,9 @@ defmodule BusterClaw.Commands.Sound.Edit do
         name: target,
         path: path,
         source: source,
-        source_duration_ms: SoundStudio.duration_ms(clip),
+        source_duration_ms: Editor.duration_ms(clip),
         source_peak: Shared.peak_of(clip),
-        duration_ms: SoundStudio.duration_ms(edited),
+        duration_ms: Editor.duration_ms(edited),
         peak: Shared.peak_of(edited),
         bytes: Shared.byte_size_of(path),
         replaced: replaced?,
@@ -306,7 +305,7 @@ defmodule BusterClaw.Commands.Sound.Edit do
   # rather than the audio listing, so a non-audio file squatting the name is
   # still protected.
   defp studio_target(target, overwrite?) do
-    path = Path.join(SoundStudio.dir(), target)
+    path = Path.join(Editor.dir(), target)
     exists? = File.exists?(path)
 
     cond do
@@ -317,7 +316,7 @@ defmodule BusterClaw.Commands.Sound.Edit do
   end
 
   defp write_source(clip, path) do
-    File.mkdir_p(SoundStudio.dir())
-    SoundStudio.write(clip, path)
+    File.mkdir_p(Editor.dir())
+    Editor.write(clip, path)
   end
 end

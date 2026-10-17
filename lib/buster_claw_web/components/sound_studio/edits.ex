@@ -18,7 +18,7 @@ defmodule BusterClawWeb.SoundStudio.Edits do
   Everything here takes plain values and returns plain values. No socket, no
   assigns — which is also why it is testable without mounting anything.
 
-  ## `apply_trim/2` cuts a FILE. `StudioMix.trim_clip/4` does not.
+  ## `apply_trim/2` cuts a FILE. `Mix.trim_clip/4` does not.
 
   Worth stating together, because the app now has two things called trim and
   they are opposites. This one splices audio and writes a **new source** to the
@@ -28,9 +28,9 @@ defmodule BusterClawWeb.SoundStudio.Edits do
   """
   import BusterClawWeb.SoundStudio.Catalog
 
-  alias BusterClaw.Notifications.SoundStudio
-  alias BusterClaw.Notifications.Studio.Render
-  alias BusterClaw.Notifications.StudioMix
+  alias BusterClaw.Studio.Editor
+  alias BusterClaw.Studio.Mix
+  alias BusterClaw.Studio.Render
 
   def measured_duration(source) do
     case clip_duration(source) do
@@ -54,7 +54,7 @@ defmodule BusterClawWeb.SoundStudio.Edits do
   def clip_duration(source) do
     case resolve_source(source) do
       %{path: path} when is_binary(path) ->
-        case SoundStudio.probe(path) do
+        case Editor.probe(path) do
           {:ok, %{duration_ms: ms}} -> {:ok, ms}
           {:error, _reason} -> decoded_duration(path)
         end
@@ -66,8 +66,8 @@ defmodule BusterClawWeb.SoundStudio.Edits do
   end
 
   def decoded_duration(path) do
-    case SoundStudio.import_source(path) do
-      {:ok, clip} -> {:ok, SoundStudio.duration_ms(clip)}
+    case Editor.import_source(path) do
+      {:ok, clip} -> {:ok, Editor.duration_ms(clip)}
       {:error, reason} -> {:error, reason}
     end
   end
@@ -82,7 +82,7 @@ defmodule BusterClawWeb.SoundStudio.Edits do
   # because the extraction is what made the two costs visible as different
   # things: `groups/0` is the expensive read, `find_source/2` is the cheap
   # lookup over a result you already have.
-  def render_mix(%StudioMix{} = mix) do
+  def render_mix(%Mix{} = mix) do
     catalog = groups()
     Render.install(mix, &find_source(catalog, &1))
   end
@@ -92,15 +92,15 @@ defmodule BusterClawWeb.SoundStudio.Edits do
   def apply_trim(%{path: nil}, _trim), do: {:error, :enoent}
 
   def apply_trim(%{path: path, name: name}, %{from_ms: from, to_ms: to}) do
-    with {:ok, clip} <- SoundStudio.import_source(path),
-         {:ok, cut} <- SoundStudio.splice(clip, from, to) do
+    with {:ok, clip} <- Editor.import_source(path),
+         {:ok, cut} <- Editor.splice(clip, from, to) do
       # A cut from the middle of a file starts and ends mid-waveform, and a
       # mid-waveform edge is a step from silence to full amplitude — the loudest
       # click a sound can have. These two ramps are DE-CLICKING, not shaping;
       # the fade tool (next) is the one that shapes.
       cut
-      |> SoundStudio.fade(in_ms: 2, out_ms: 6)
-      |> SoundStudio.save(Path.rootname(name) <> "-trim")
+      |> Editor.fade(in_ms: 2, out_ms: 6)
+      |> Editor.save(Path.rootname(name) <> "-trim")
     end
   end
 

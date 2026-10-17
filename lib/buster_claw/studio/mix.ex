@@ -1,10 +1,10 @@
-defmodule BusterClaw.Notifications.StudioMix do
+defmodule BusterClaw.Studio.Mix do
   @moduledoc """
   A **mix** — the Studio's arrangement: several stacked tracks, each holding
   clips placed at millisecond offsets, summed into one sound
   (SOUND_STUDIO_ROADMAP Phase 6).
 
-  Where `SoundStudio` edits *one* file, this arranges *many*. A track is a
+  Where `Studio.Editor` edits *one* file, this arranges *many*. A track is a
   horizontal row; a clip is a reference to something in the Studio's catalog
   plus a start time. Tracks sum, so a bed on one track and hits on another are
   heard together — that is the whole reason tracks exist rather than one long
@@ -44,7 +44,7 @@ defmodule BusterClaw.Notifications.StudioMix do
   still accepts `"lanes"`, and no arrangement is orphaned. `to_map/1` and
   `from_map/2` remain the entire translation layer.
 
-  The mix extension filter in `SoundStudio.list/0` means these never show up as
+  The mix extension filter in `Editor.list/0` means these never show up as
   importable clips.
   """
 
@@ -52,8 +52,8 @@ defmodule BusterClaw.Notifications.StudioMix do
 
   alias BusterClaw.Library.Artifact
   alias BusterClaw.Music
-  alias BusterClaw.Notifications.SoundStudio
-  alias BusterClaw.Notifications.Studio.Effects
+  alias BusterClaw.Studio.Editor
+  alias BusterClaw.Studio.Effects
 
   # v2 disk layout. See the moduledoc: v1 (`tracks/`, `.track.json`, `"lanes"`)
   # is migrated on boot and still readable, so nothing is orphaned.
@@ -76,7 +76,7 @@ defmodule BusterClaw.Notifications.StudioMix do
           start_ms: number(),
           offset_ms: number(),
           duration_ms: number(),
-          effects: [BusterClaw.Notifications.Studio.Effects.effect()]
+          effects: [BusterClaw.Studio.Effects.effect()]
         }
   @type track :: %{
           id: binary(),
@@ -94,19 +94,19 @@ defmodule BusterClaw.Notifications.StudioMix do
   @doc """
   Prepare the Studio: its folder, and the mix layout's v1→v2 fold.
 
-  This used to be the other way round — `SoundStudio.ensure/0` called
+  This used to be the other way round — `Editor.ensure/0` called
   `migrate_v1/0`, on the reasoning that the folder is made there so the fold
   belongs there too. It reads well and it pointed the dependency **upwards**: the
   audio-format module, which the cut-up engine and the recorder both sit on, knew
   about arrangements.
 
   `check_cycles.sh` found it the moment `Studio.Effects` arrived and closed the
-  loop (`SoundStudio → StudioMix → Effects → SoundStudio`). The fix is this
+  loop (`Editor → Mix → Effects → Editor`). The fix is this
   function: the mix layer prepares itself and calls down to the format layer,
   which is the direction that was always true.
   """
   def ensure do
-    SoundStudio.ensure()
+    Editor.ensure()
     migrate_v1()
     :ok
   end
@@ -545,11 +545,11 @@ defmodule BusterClaw.Notifications.StudioMix do
       case kept do
         [] ->
           File.rmdir(old)
-          Logger.info("StudioMix: migrated studio/tracks/ to studio/mixes/")
+          Logger.info("Studio.Mix: migrated studio/tracks/ to studio/mixes/")
 
         names ->
           Logger.warning(
-            "StudioMix: kept studio/tracks/ — #{length(names)} item(s) already exist " <>
+            "Studio.Mix: kept studio/tracks/ — #{length(names)} item(s) already exist " <>
               "under studio/mixes/ and were not overwritten: #{Enum.join(names, ", ")}"
           )
       end
@@ -557,7 +557,7 @@ defmodule BusterClaw.Notifications.StudioMix do
 
     :ok
   rescue
-    error -> Logger.warning("StudioMix: v1 migration failed: #{Exception.message(error)}")
+    error -> Logger.warning("Studio.Mix: v1 migration failed: #{Exception.message(error)}")
   end
 
   # True when the entry is dealt with (moved, or not ours to move).

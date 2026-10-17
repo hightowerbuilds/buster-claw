@@ -3,7 +3,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
   The homepage **Studio** sub-tab (SOUND_STUDIO_ROADMAP Phase 3) — every piece
   of mix in the workspace down the left, the selected one open on the right.
 
-  This is the surface the editing core (`Notifications.SoundStudio`) was built
+  This is the surface the editing core (`Studio.Editor`) was built
   under. The facts shown for a selection — duration, peak, format, which layer
   it resolved from — are read by that module, not guessed from the filename, so
   what the panel claims about a file is what an edit would actually operate on.
@@ -39,8 +39,8 @@ defmodule BusterClawWeb.SoundStudioComponent do
 
   alias BusterClaw.Music
   alias BusterClaw.Notifications.Sound
-  alias BusterClaw.Notifications.SoundStudio
-  alias BusterClaw.Notifications.StudioMix
+  alias BusterClaw.Studio.Editor
+  alias BusterClaw.Studio.Mix
 
   # Analysing a source means reading it end to end, and for anything compressed
   # it means a decoder round trip. Fine for a chime; not something to do on
@@ -55,7 +55,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
   @impl true
   def mount(socket) do
     # The Studio's working folder (`sounds/studio/`) appears when the Studio does.
-    BusterClaw.Notifications.StudioMix.ensure()
+    BusterClaw.Studio.Mix.ensure()
 
     {:ok,
      socket
@@ -69,13 +69,13 @@ defmodule BusterClawWeb.SoundStudioComponent do
      |> assign(:trim_clip, nil)
      |> assign(:note, nil)
      |> allow_upload(:import,
-       # A MIME wildcard, NOT `SoundStudio.accepted_extensions/0`. LiveView's
+       # A MIME wildcard, NOT `Editor.accepted_extensions/0`. LiveView's
        # `:accept` only takes extensions the `mime` package has a registered
        # type for, and `.m4a` has none — passing the real list raises on mount
        # and the whole tab fails to render (MUSIC_ROADMAP Phase 4, inherited as
        # SOUND_STUDIO_ROADMAP Part V landmine 3).
        #
-       # Wider here is also the right shape: `SoundStudio.store/2` is the gate,
+       # Wider here is also the right shape: `Editor.store/2` is the gate,
        # and it gates by DECODING. A file the picker allows and the server
        # refuses gets a reason; a file the picker blocks cannot even be tried.
        #
@@ -111,7 +111,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
   # non-issue here for free: a tab switch discards this component, and the mix
   # is exactly where it was because it was never only in memory.
   defp load_mix(socket, %{kind: :mix, name: name}) do
-    case StudioMix.load(name) do
+    case Mix.load(name) do
       {:ok, mix} -> assign(socket, :mix, mix)
       {:error, _reason} -> assign(socket, :mix, nil)
     end
@@ -123,7 +123,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
   # The catalog
   # ---------------------------------------------------------------------------
 
-  # The catalog moved to `BusterClaw.Notifications.StudioCatalog` on 08-16
+  # The catalog moved to `BusterClaw.Studio.Catalog` on 08-16
   # (frozen Phase 3) with the web's `url` decoration in
   # `BusterClawWeb.SoundStudio.Catalog`. This file was FROZEN and the catalog
   # was the first thing it had to give up to gain any room at all; taking that
@@ -154,7 +154,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
 
   @impl true
   def handle_event("new_mix", %{"name" => name}, socket) do
-    case StudioMix.create(name) do
+    case Mix.create(name) do
       {:ok, created} ->
         send(self(), {:studio_select, "mix:" <> created})
         {:noreply, socket |> assign(:groups, groups()) |> assign(:note, {:info, "New mix."})}
@@ -168,22 +168,22 @@ defmodule BusterClawWeb.SoundStudioComponent do
   end
 
   def handle_event("add_track", _params, socket) do
-    {:noreply, save_mix(socket, StudioMix.add_track(socket.assigns.mix))}
+    {:noreply, save_mix(socket, Mix.add_track(socket.assigns.mix))}
   end
 
   def handle_event("remove_track", %{"id" => track_id}, socket) do
-    {:noreply, save_mix(socket, StudioMix.remove_track(socket.assigns.mix, track_id))}
+    {:noreply, save_mix(socket, Mix.remove_track(socket.assigns.mix, track_id))}
   end
 
   # Mute and solo ride the same save path as every other edit, so they land in
   # the undo history and survive a tab switch like anything else that changes
   # what a render will contain.
   def handle_event("toggle_mute", %{"id" => track_id}, socket) do
-    {:noreply, save_mix(socket, StudioMix.toggle_mute(socket.assigns.mix, track_id))}
+    {:noreply, save_mix(socket, Mix.toggle_mute(socket.assigns.mix, track_id))}
   end
 
   def handle_event("toggle_solo", %{"id" => track_id}, socket) do
-    {:noreply, save_mix(socket, StudioMix.toggle_solo(socket.assigns.mix, track_id))}
+    {:noreply, save_mix(socket, Mix.toggle_solo(socket.assigns.mix, track_id))}
   end
 
   def handle_event("add_clip", %{"source" => source, "track" => track_id}, socket) do
@@ -193,9 +193,9 @@ defmodule BusterClawWeb.SoundStudioComponent do
       {:ok, duration} ->
         # Land it after whatever is already on that track, so successive adds
         # queue up instead of stacking invisibly at zero.
-        at = StudioMix.track_end_ms(mix, track_id)
+        at = Mix.track_end_ms(mix, track_id)
 
-        {:noreply, save_mix(socket, StudioMix.add_clip(mix, track_id, source, at, duration))}
+        {:noreply, save_mix(socket, Mix.add_clip(mix, track_id, source, at, duration))}
 
       {:error, reason} ->
         {:noreply, assign(socket, :note, {:error, trim_error(reason)})}
@@ -221,11 +221,11 @@ defmodule BusterClawWeb.SoundStudioComponent do
   end
 
   def handle_event("remove_clip", %{"id" => clip_id}, socket) do
-    {:noreply, save_mix(socket, StudioMix.remove_clip(socket.assigns.mix, clip_id))}
+    {:noreply, save_mix(socket, Mix.remove_clip(socket.assigns.mix, clip_id))}
   end
 
   def handle_event("duplicate_clip", %{"id" => clip_id}, socket) do
-    {:noreply, save_mix(socket, StudioMix.duplicate_clip(socket.assigns.mix, clip_id))}
+    {:noreply, save_mix(socket, Mix.duplicate_clip(socket.assigns.mix, clip_id))}
   end
 
   # Trim, in three events: open, apply, close.
@@ -235,9 +235,9 @@ defmodule BusterClawWeb.SoundStudioComponent do
   # probes a file, and a modal that probes on every re-render is a modal that
   # touches the disk every keystroke.
   def handle_event("open_trim_clip", %{"id" => clip_id}, socket) do
-    case StudioMix.find_clip(socket.assigns.mix, clip_id) do
+    case Mix.find_clip(socket.assigns.mix, clip_id) do
       clip when is_map(clip) ->
-        {offset_ms, duration_ms} = StudioMix.window(clip)
+        {offset_ms, duration_ms} = Mix.window(clip)
 
         {:noreply,
          assign(socket, :trim_clip, %{
@@ -261,7 +261,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
   def handle_event("apply_trim_clip", %{"offset_ms" => offset, "duration_ms" => duration}, socket) do
     case socket.assigns.trim_clip do
       %{id: clip_id} ->
-        mix = StudioMix.trim_clip(socket.assigns.mix, clip_id, to_ms(offset), to_ms(duration))
+        mix = Mix.trim_clip(socket.assigns.mix, clip_id, to_ms(offset), to_ms(duration))
 
         {:noreply, socket |> save_mix(mix) |> assign(:trim_clip, nil)}
 
@@ -276,13 +276,13 @@ defmodule BusterClawWeb.SoundStudioComponent do
   # Pushed by the TrackArrange hook on drop.
   def handle_event("move_clip", %{"clip_id" => id, "track_id" => track, "start_ms" => at}, socket)
       when is_binary(id) and is_binary(track) and is_number(at) do
-    {:noreply, save_mix(socket, StudioMix.move_clip(socket.assigns.mix, id, track, at))}
+    {:noreply, save_mix(socket, Mix.move_clip(socket.assigns.mix, id, track, at))}
   end
 
   def handle_event("move_clip", _params, socket), do: {:noreply, socket}
 
   def handle_event("delete_mix", _params, socket) do
-    StudioMix.delete(socket.assigns.mix.name)
+    Mix.delete(socket.assigns.mix.name)
     send(self(), {:studio_select, nil})
     {:noreply, socket |> assign(:groups, groups()) |> assign(:note, {:info, "Audio deleted."})}
   end
@@ -333,11 +333,11 @@ defmodule BusterClawWeb.SoundStudioComponent do
   def handle_event("new_mix_from_source", %{"id" => id}, socket) when is_binary(id) do
     with %{label: label} <- find_source(socket.assigns.groups, id),
          {:ok, duration} <- clip_duration(id),
-         {:ok, name} <- StudioMix.create(label),
-         {:ok, mix} <- StudioMix.load(name) do
+         {:ok, name} <- Mix.create(label),
+         {:ok, mix} <- Mix.load(name) do
       track = hd(mix.tracks)
-      mix = StudioMix.add_clip(mix, track.id, id, 0, duration)
-      StudioMix.save(mix)
+      mix = Mix.add_clip(mix, track.id, id, 0, duration)
+      Mix.save(mix)
 
       # Selection lives in StatusLive; opening the new arrangement is the point.
       send(self(), {:studio_select, "mix:" <> name})
@@ -489,7 +489,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
     if entry.done? do
       result =
         consume_uploaded_entry(socket, entry, fn %{path: path} ->
-          {:ok, SoundStudio.store(path, entry.client_name)}
+          {:ok, Editor.store(path, entry.client_name)}
         end)
 
       case result do
@@ -506,13 +506,13 @@ defmodule BusterClawWeb.SoundStudioComponent do
     end
   end
 
-  defp save_mix(socket, %StudioMix{} = mix) do
+  defp save_mix(socket, %Mix{} = mix) do
     # Hand the PREVIOUS state up before overwriting it, so undo has somewhere to
     # go. Sending the old state rather than letting the parent re-read it avoids
     # a race where this write has already landed on disk.
     if socket.assigns[:mix], do: send(self(), {:studio_history, socket.assigns.mix})
 
-    StudioMix.save(mix)
+    Mix.save(mix)
     socket |> assign(:mix, mix) |> assign(:groups, groups())
   end
 
@@ -557,7 +557,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
       note: nil
     }
 
-    case SoundStudio.probe(path) do
+    case Editor.probe(path) do
       {:ok, probed} ->
         %{
           base
@@ -585,12 +585,12 @@ defmodule BusterClawWeb.SoundStudioComponent do
   # rename also retargets every mix clip that pointed at the old id — the clip
   # stores a reference, which is what lets a mix survive its sources being
   # edited and exactly what a rename could otherwise orphan.
-  defp rename_source("import:" <> old, stem), do: retargeting("import:", old, stem, SoundStudio)
+  defp rename_source("import:" <> old, stem), do: retargeting("import:", old, stem, Editor)
   defp rename_source("music:" <> old, stem), do: retargeting("music:", old, stem, Music)
   defp rename_source("sound:" <> old, stem), do: retargeting("sound:", old, stem, Sound)
 
   defp rename_source("mix:" <> old, requested) do
-    case StudioMix.rename(old, requested) do
+    case Mix.rename(old, requested) do
       {:ok, new} -> {:ok, "mix:" <> new, "Renamed to #{new}."}
       {:error, reason} -> {:error, reason}
     end
@@ -601,7 +601,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
   defp retargeting(prefix, old, stem, module) do
     case module.rename(old, stem) do
       {:ok, new} ->
-        moved = StudioMix.retarget(prefix <> old, prefix <> new)
+        moved = Mix.retarget(prefix <> old, prefix <> new)
         {:ok, prefix <> new, "Renamed to #{Path.rootname(new)}." <> mixes_note(moved)}
 
       {:error, reason} ->
@@ -633,8 +633,8 @@ defmodule BusterClawWeb.SoundStudioComponent do
 
   # `Sound.delete/1` only ever removes the workspace layer, so a "built-in"
   # id sent here anyway returns :not_found — the fail-closed the handler wants.
-  defp delete_source("import:" <> name), do: SoundStudio.delete(name)
-  defp delete_source("mix:" <> name), do: StudioMix.delete(name)
+  defp delete_source("import:" <> name), do: Editor.delete(name)
+  defp delete_source("mix:" <> name), do: Mix.delete(name)
   defp delete_source("music:" <> name), do: Music.delete(name)
   defp delete_source("sound:" <> name), do: Sound.delete(name)
   defp delete_source(_id), do: {:error, :not_found}
@@ -663,12 +663,12 @@ defmodule BusterClawWeb.SoundStudioComponent do
   defp analyze(%{path: path}) do
     case File.stat(path) do
       {:ok, %{size: size}} when size <= @analysis_byte_cap ->
-        case SoundStudio.import_source(path) do
+        case Editor.import_source(path) do
           {:ok, clip} ->
             %{
               size: size,
-              duration_ms: SoundStudio.duration_ms(clip),
-              peak: SoundStudio.peak(clip),
+              duration_ms: Editor.duration_ms(clip),
+              peak: Editor.peak(clip),
               rate: clip.sample_rate,
               channels: clip.channels,
               error: nil
@@ -684,7 +684,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
         # real Length (and the trim tool keeps working — WaveTrim maps drags
         # through duration_ms). Only peak stays unmeasured, because peak
         # genuinely needs the decoded samples.
-        case SoundStudio.probe(path) do
+        case Editor.probe(path) do
           {:ok, probed} ->
             %{
               size: size,
@@ -769,7 +769,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
         studio_clipboard={@studio_clipboard}
       />
 
-      <%!-- The three floating surfaces live in `SoundStudio.Overlays`. They are
+      <%!-- The three floating surfaces live in `Editor.Overlays`. They are
             overlays, not layout: each is `fixed` and none participates in the
             arranger's sizing, so moving them changed no class on the surface
             underneath. Their attrs are the whole of what they read. --%>

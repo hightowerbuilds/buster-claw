@@ -41,7 +41,7 @@ defmodule BusterClawWeb.StudioLive do
 
   import BusterClawWeb.Studio.MixState
 
-  alias BusterClaw.Notifications.StudioMix
+  alias BusterClaw.Studio.Mix
 
   @impl true
   def mount(_params, _session, socket) do
@@ -115,14 +115,14 @@ defmodule BusterClawWeb.StudioLive do
         # a TRIMMED clip pasted the whole source back — the identical silent
         # loss, one field along. Read through `window/1` so a clip predating the
         # field still answers.
-        {offset_ms, duration_ms} = StudioMix.window(clip)
+        {offset_ms, duration_ms} = Mix.window(clip)
 
         {:noreply,
          assign(socket, :studio_clipboard, %{
            source: clip.source,
            offset_ms: offset_ms,
            duration_ms: duration_ms,
-           effects: StudioMix.chain(clip)
+           effects: Mix.chain(clip)
          })}
     end
   end
@@ -139,8 +139,8 @@ defmodule BusterClawWeb.StudioLive do
       %{} = spec ->
         {:noreply,
          mutate_open_mix(socket, fn mix ->
-           track = StudioMix.paste_track(mix, socket.assigns.studio_clip)
-           StudioMix.place_copy(mix, spec, track.id, StudioMix.track_end_ms(track))
+           track = Mix.paste_track(mix, socket.assigns.studio_clip)
+           Mix.place_copy(mix, spec, track.id, Mix.track_end_ms(track))
          end)}
     end
   end
@@ -151,7 +151,7 @@ defmodule BusterClawWeb.StudioLive do
         {:noreply, socket}
 
       id ->
-        socket = mutate_open_mix(socket, &StudioMix.remove_clip(&1, id))
+        socket = mutate_open_mix(socket, &Mix.remove_clip(&1, id))
         {:noreply, assign(socket, :studio_clip, nil)}
     end
   end
@@ -173,10 +173,10 @@ defmodule BusterClawWeb.StudioLive do
   def handle_event("select_clip", _params, socket), do: {:noreply, socket}
 
   def handle_event("studio_add_effect", %{"type" => type}, socket),
-    do: {:noreply, effect_change(socket, &StudioMix.add_effect(&1, &2, type))}
+    do: {:noreply, effect_change(socket, &Mix.add_effect(&1, &2, type))}
 
   def handle_event("studio_remove_effect", %{"position" => position}, socket),
-    do: {:noreply, effect_change(socket, &StudioMix.remove_effect(&1, &2, to_int(position)))}
+    do: {:noreply, effect_change(socket, &Mix.remove_effect(&1, &2, to_int(position)))}
 
   def handle_event("studio_set_effect_param", params, socket) do
     %{"position" => position, "key" => key, "value" => value} = params
@@ -184,7 +184,7 @@ defmodule BusterClawWeb.StudioLive do
     {:noreply,
      effect_change(
        socket,
-       &StudioMix.put_effect_param(&1, &2, to_int(position), key, value)
+       &Mix.put_effect_param(&1, &2, to_int(position), key, value)
      )}
   end
 
@@ -235,7 +235,7 @@ defmodule BusterClawWeb.StudioLive do
   # hands the PREVIOUS state up so undo has something to go back to. Sending the
   # old state rather than having the parent re-read it avoids a race where the
   # component has already written the new one to disk.
-  def handle_info({:studio_history, %StudioMix{} = previous}, socket) do
+  def handle_info({:studio_history, %Mix{} = previous}, socket) do
     {:noreply, push_studio_history(socket, previous)}
   end
 

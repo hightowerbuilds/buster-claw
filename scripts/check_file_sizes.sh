@@ -528,13 +528,13 @@ check lib/buster_claw_web/components/settings/speech.ex       88 HELD
 # so the choice was extract or do not ship. That is the whole argument for FROZEN.
 # 1184 -> 1178 on 08-16. A `duplicate_clip` handler needed four lines, and FROZEN
 # means a new feature is funded by an EXTRACTION rather than a raised cap — so
-# `render_error/1` moved to `SoundStudio.Format`, where the rest of this tab's
+# `render_error/1` moved to `Editor.Format`, where the rest of this tab's
 # pure presentation already lives. Net six lines down, and the gate is the only
 # reason the right thing happened rather than the easy one.
 # 1178 -> 1038 on 08-16: the frozen Phase 3 was finally taken. The source
 # catalog — five item builders, the group roster and the folded-groups setting —
-# moved to `BusterClaw.Notifications.StudioCatalog` in CORE, with the web's
-# `url` decoration left behind in `SoundStudio.Catalog`.
+# moved to `BusterClaw.Studio.Catalog` in CORE, with the web's
+# `url` decoration left behind in `Editor.Catalog`.
 #
 # That split is what unfroze this file, and it only worked because of the
 # correction the 08-13 review made to the original plan: four builders baked
@@ -555,7 +555,7 @@ check lib/buster_claw_web/components/settings/speech.ex       88 HELD
 # 985 -> 972 on 08-16, and the direction is the point. Clip trim needed ~70
 # lines of handlers in here, and FROZEN means a feature is funded by an
 # EXTRACTION rather than a raised cap — so the socket-free edit block went to
-# `SoundStudio.Edits`, which the 08-13 review had already named as the better
+# `Editor.Edits`, which the 08-13 review had already named as the better
 # second cut of the frozen Phase 3. Third time the freeze produced an extraction
 # instead of growth, and the file ended up SMALLER than before the feature.
 #
@@ -570,7 +570,7 @@ check lib/buster_claw_web/components/settings/speech.ex       88 HELD
 # **1,235 -> 972 while GAINING the effect chain, duplicate-clip, a menu bar and
 # clip trim.** Four extractions, three of them producing files that exist only
 # because a feature could not be paid for any other way — `Studio.Render`,
-# `SoundStudio.Format`, `SoundStudio.Edits`. Nobody set out to refactor on any
+# `Editor.Format`, `Editor.Edits`. Nobody set out to refactor on any
 # of those days.
 #
 # HELD at +10% is the ordinary contract: maintenance is fine, a feature landing
@@ -590,11 +590,11 @@ check lib/buster_claw_web/live/sound_studio_component.ex     1070 HELD
 # `render.ex` is the mixdown, extracted from the FROZEN component on 08-16. Watch
 # for source RESOLUTION appearing here: it is passed in as a function on purpose,
 # because it spans the sidebar's three groups and belongs to the surface.
-check lib/buster_claw/notifications/studio/effects.ex         400 HELD
+check lib/buster_claw/studio/effects.ex         400 HELD
 # 160 -> 175: the window is now applied here, and the comment explaining why
 # doing so was SAFE (add_clip sets duration to the source's own length, so the
 # cut is a no-op on every mix written before trim) is worth more than the line.
-check lib/buster_claw/notifications/studio/render.ex          175 HELD
+check lib/buster_claw/studio/render.ex          175 HELD
 # The clip inspector: remove, and the chain. Renders `Effects.catalog/0`, so a new
 # effect needs no edit here. Its controls carry NO `phx-target` — they bubble to
 # `StatusLive` so they route through undo — and a later reader "fixing" that by
@@ -606,7 +606,7 @@ check lib/buster_claw_web/components/sound_studio/clip_inspector.ex 240 HELD
 # control lands here with no row in that table, something was orphaned.
 # The Mix tab's socket-free edit operations, extracted 08-16 to pay for clip
 # trim. Two things called "trim" live near each other now and are opposites:
-# `Edits.apply_trim/2` cuts a FILE and writes a new source; `StudioMix.trim_clip/4`
+# `Edits.apply_trim/2` cuts a FILE and writes a new source; `Mix.trim_clip/4`
 # narrows a clip's window and touches nothing on disk. Its moduledoc says so.
 check lib/buster_claw_web/components/sound_studio/edits.ex    130 HELD
 check lib/buster_claw_web/components/sound_studio/menu_bar.ex     400 HELD
@@ -963,7 +963,7 @@ check lib/buster_claw/integrations/github.ex                  500 HELD
 # whole discipline is that an item carries a PATH and never a URL — that is what
 # lets it live in core at all, and what the unbuilt `sound_*` CLI will need. If
 # it grows, ask whether a web concern crept back in.
-check lib/buster_claw/notifications/studio_catalog.ex        184 HELD
+check lib/buster_claw/studio/catalog.ex        184 HELD
 # 10-11: Capture.Take left with its final caller, the Vox reference recorder.
 
 # The web command surface (`1eee2f8`), 894 -> 848 by collapsing the six
@@ -1226,12 +1226,16 @@ check lib/buster_claw/commands/catalog/sound.ex               257 HELD
 # `trim_clip/4`, and both ends of the on-disk format. Most of the added lines
 # are the argument — that the window belongs to the CLIP and never to the file,
 # which is the property a later reader is most likely to "simplify" away.
-check lib/buster_claw/notifications/studio_mix.ex             870 HELD
+# 10-16 (CODE_QUALITY_SWEEP Phase 10): the Sound Studio left `Notifications`.
+# `BusterClaw.Studio.{Editor, Mix, Catalog, Capture, Effects, Render}` live under
+# lib/buster_claw/studio/; the chime library (`Notifications.Sound`, SoundGen,
+# SoundBoard) stays. A rename, no behaviour: the caps carried over unchanged.
+check lib/buster_claw/studio/mix.ex             870 HELD
 # sound.ex — the two-layer library + routing walk the whole surface rests on.
 check lib/buster_claw/notifications/sound.ex                  610 HELD
 # sound_studio.ex — PCM16 editing core + studio folder catalog. Mildly two jobs;
-# `SoundStudio.Store` is the seam IF the folder half grows, not before.
-check lib/buster_claw/notifications/sound_studio.ex           800 HELD
+# `Editor.Store` is the seam IF the folder half grows, not before.
+check lib/buster_claw/studio/editor.ex           800 HELD
 
 if [ "$fail" -ne 0 ]; then
   echo "FAIL: the file-size inventory does not hold."

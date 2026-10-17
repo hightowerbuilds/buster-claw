@@ -1,4 +1,4 @@
-defmodule BusterClaw.Notifications.SoundStudio do
+defmodule BusterClaw.Studio.Editor do
   @moduledoc """
   The editing core of the Sound Studio (SOUND_STUDIO_ROADMAP Phase 1) — read a
   WAV, cut a piece out of it, shape the edges, write it back.
@@ -543,7 +543,7 @@ defmodule BusterClaw.Notifications.SoundStudio do
     :ok
   rescue
     error ->
-      Logger.warning("SoundStudio.ensure failed: #{Exception.message(error)}")
+      Logger.warning("Editor.ensure failed: #{Exception.message(error)}")
       :ok
   end
 
@@ -631,7 +631,7 @@ defmodule BusterClaw.Notifications.SoundStudio do
 
   Callers must retarget any mix clip that referenced it — a clip stores
   `"import:<name>"`, so the rename would otherwise leave it pointing at nothing.
-  `StudioMix.retarget/2` is that step; `SoundStudioComponent` does both together.
+  `Mix.retarget/2` is that step; `SoundStudioComponent` does both together.
   """
   def rename(name, stem) when is_binary(name) and is_binary(stem),
     do:

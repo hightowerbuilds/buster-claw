@@ -1,4 +1,4 @@
-defmodule BusterClaw.Notifications.Capture.Level do
+defmodule BusterClaw.Studio.Capture.Level do
   @moduledoc """
   Reads and writes the **OS input volume** — the one capture control the web
   layer provably cannot reach.

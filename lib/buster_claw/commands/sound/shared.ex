@@ -9,7 +9,7 @@ defmodule BusterClaw.Commands.Sound.Shared do
   # Public only so `Sound.Library` and `Sound.Edit` can reach them; not a
   # command surface.
   alias BusterClaw.AudioName
-  alias BusterClaw.Notifications.SoundStudio
+  alias BusterClaw.Studio.Editor
 
   # A name is a basename or it is nothing. `path_for/1` already allowlists
   # against a directory listing, so traversal could never resolve — but a
@@ -29,8 +29,8 @@ defmodule BusterClaw.Commands.Sound.Shared do
 
   # `peak/1` is defined for PCM16 only. A 24-bit WAV is a legitimate thing to
   # find on disk and must report "no peak", not raise.
-  def peak_of(%SoundStudio{bits: 16} = clip), do: SoundStudio.peak(clip)
-  def peak_of(%SoundStudio{}), do: nil
+  def peak_of(%Editor{bits: 16} = clip), do: Editor.peak(clip)
+  def peak_of(%Editor{}), do: nil
 
   # Where the file being imported comes from: a path relative to the Library
   # root. (An `event_id` naming a phone recording was the other way until the
@@ -105,9 +105,9 @@ defmodule BusterClaw.Commands.Sound.Shared do
   # and a 24-bit WAV dropped into the studio by hand would otherwise raise
   # instead of being refused. Everything `sound_import` writes qualifies.
   def editable_clip(path) do
-    case SoundStudio.read(path) do
-      {:ok, %SoundStudio{bits: 16} = clip} -> {:ok, clip}
-      {:ok, %SoundStudio{}} -> {:error, :unsupported_format}
+    case Editor.read(path) do
+      {:ok, %Editor{bits: 16} = clip} -> {:ok, clip}
+      {:ok, %Editor{}} -> {:error, :unsupported_format}
       {:error, _reason} = error -> error
     end
   end
@@ -119,7 +119,7 @@ defmodule BusterClaw.Commands.Sound.Shared do
   # The name to run `sound_import` for is the honest answer to "that audio is
   # not here" — never a silent second write into the studio.
   def studio_source(name) do
-    case SoundStudio.path_for(name) do
+    case Editor.path_for(name) do
       nil -> {:error, {:not_imported, name}}
       path -> {:ok, path}
     end
@@ -150,7 +150,7 @@ defmodule BusterClaw.Commands.Sound.Shared do
   def boolean(_value, default), do: default
 
   def internal_format do
-    {rate, channels, bits} = SoundStudio.internal_format()
+    {rate, channels, bits} = Editor.internal_format()
     %{sample_rate: rate, channels: channels, bits: bits}
   end
 

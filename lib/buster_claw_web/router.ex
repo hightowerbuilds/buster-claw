@@ -130,7 +130,7 @@ defmodule BusterClawWeb.Router do
   end
 
   # Studio working files (<workspace>/studio/) for the Studio tab's waveform and
-  # preview. Only `:media`; the name is resolved by SoundStudio.path_for/1 against
+  # preview. Only `:media`; the name is resolved by Studio.Editor.path_for/1 against
   # the real listing, never joined from raw input. Byte ranges (and nosniff) via
   # RangeResponse — imported material can be long enough to scrub.
   scope "/studio", BusterClawWeb do

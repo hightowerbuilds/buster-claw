@@ -29,7 +29,7 @@ defmodule BusterClawWeb.Studio.Preview do
   addable as a clip. One name, overwritten, is the honest shape.
   """
 
-  alias BusterClaw.Notifications.SoundStudio
+  alias BusterClaw.Studio.Editor
 
   @typedoc "What a surface assigns after a successful render."
   @type t :: %{name: String.t(), version: pos_integer()}
@@ -41,9 +41,9 @@ defmodule BusterClawWeb.Studio.Preview do
   time. Returns `{:error, reason}` untouched — a surface that cannot write its
   preview should say so, not render a play button for a file that is not there.
   """
-  @spec write(SoundStudio.t(), String.t(), t() | nil) :: {:ok, t()} | {:error, term()}
-  def write(%SoundStudio{} = clip, name, previous) when is_binary(name) do
-    case SoundStudio.write(clip, Path.join(SoundStudio.dir(), name)) do
+  @spec write(Editor.t(), String.t(), t() | nil) :: {:ok, t()} | {:error, term()}
+  def write(%Editor{} = clip, name, previous) when is_binary(name) do
+    case Editor.write(clip, Path.join(Editor.dir(), name)) do
       :ok -> {:ok, %{name: name, version: next(previous)}}
       {:error, reason} -> {:error, reason}
     end

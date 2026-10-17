@@ -1,4 +1,4 @@
-defmodule BusterClaw.Notifications.Studio.Render do
+defmodule BusterClaw.Studio.Render do
   @moduledoc """
   Turning an arrangement into audio — the mixdown, and the effect chain on the
   way through.
@@ -33,9 +33,9 @@ defmodule BusterClaw.Notifications.Studio.Render do
   """
 
   alias BusterClaw.Notifications.Sound
-  alias BusterClaw.Notifications.SoundStudio
-  alias BusterClaw.Notifications.Studio.Effects
-  alias BusterClaw.Notifications.StudioMix
+  alias BusterClaw.Studio.Editor
+  alias BusterClaw.Studio.Effects
+  alias BusterClaw.Studio.Mix
 
   @typedoc "Why a render was refused."
   @type error :: :empty_mix | :all_silenced | :missing_source | term()
@@ -48,18 +48,18 @@ defmodule BusterClaw.Notifications.Studio.Render do
   resolution spans the library, the studio folder and the music library, and that
   knowledge belongs to the surface that owns those lists — not here.
   """
-  @spec mixdown(StudioMix.t(), (String.t() -> term())) ::
-          {:ok, SoundStudio.t()} | {:error, error()}
-  def mixdown(%StudioMix{} = mix, resolve) when is_function(resolve, 1) do
+  @spec mixdown(Mix.t(), (String.t() -> term())) ::
+          {:ok, Editor.t()} | {:error, error()}
+  def mixdown(%Mix{} = mix, resolve) when is_function(resolve, 1) do
     # Audible clips only: the render must be what the arranger SHOWS it will be,
     # and a muted track that still rendered would make M a lie with a UI.
     placements =
       mix
-      |> StudioMix.audible_clips()
+      |> Mix.audible_clips()
       |> Enum.map(fn {_track, clip} -> placement(clip, resolve) end)
 
     cond do
-      StudioMix.clips(mix) == [] ->
+      Mix.clips(mix) == [] ->
         {:error, :empty_mix}
 
       # Clips exist but mute/solo silenced every one — a different mistake than
@@ -71,7 +71,7 @@ defmodule BusterClaw.Notifications.Studio.Render do
         {:error, :missing_source}
 
       true ->
-        SoundStudio.mixdown(Enum.map(placements, fn {:ok, p} -> p end))
+        Editor.mixdown(Enum.map(placements, fn {:ok, p} -> p end))
     end
   end
 
@@ -86,7 +86,7 @@ defmodule BusterClaw.Notifications.Studio.Render do
   previewed accurately is more misleading than none.
   """
   @spec preview(map(), (String.t() -> term())) ::
-          {:ok, SoundStudio.t()} | {:error, :missing_source}
+          {:ok, Editor.t()} | {:error, :missing_source}
   def preview(clip, resolve) when is_function(resolve, 1) do
     case placement(clip, resolve) do
       {:ok, {audio, _offset}} -> {:ok, audio}
@@ -109,13 +109,13 @@ defmodule BusterClaw.Notifications.Studio.Render do
   library — it owns the never-overwrite rule, which matters here because this
   layer shadows bundled chimes by basename.
   """
-  @spec install(StudioMix.t(), (String.t() -> term())) :: {:ok, String.t()} | {:error, error()}
-  def install(%StudioMix{} = mix, resolve) when is_function(resolve, 1) do
+  @spec install(Mix.t(), (String.t() -> term())) :: {:ok, String.t()} | {:error, error()}
+  def install(%Mix{} = mix, resolve) when is_function(resolve, 1) do
     with {:ok, mixed} <- mixdown(mix, resolve) do
       tmp = Path.join(System.tmp_dir!(), "bc-render-#{:erlang.unique_integer([:positive])}.wav")
 
       try do
-        with :ok <- File.write(tmp, SoundStudio.render(mixed)) do
+        with :ok <- File.write(tmp, Editor.render(mixed)) do
           Sound.install_file(tmp, Path.rootname(mix.name <> "-mix") <> ".wav")
         end
       after
@@ -128,7 +128,7 @@ defmodule BusterClaw.Notifications.Studio.Render do
   #
   # NOTE the offset is the clip's declared `start_ms` and nothing here adjusts
   # it for length changes. An effect may make the audio longer or shorter than
-  # the block on the timeline (`Studio.Effects` says why), and `SoundStudio.mixdown/1`
+  # the block on the timeline (`Studio.Effects` says why), and `Editor.mixdown/1`
   # sums overlaps — so a reverb tail bleeding into the next clip is correct
   # rather than a bug to correct.
   #
@@ -148,12 +148,12 @@ defmodule BusterClaw.Notifications.Studio.Render do
   # the operator sees: they trimmed a clip and then shaped it. Effecting first
   # and cutting after would mean a reverb applied to audio the mix never uses.
   defp placement(clip, resolve) do
-    {offset_ms, duration_ms} = StudioMix.window(clip)
+    {offset_ms, duration_ms} = Mix.window(clip)
 
     with %{path: path} when is_binary(path) <- resolve.(clip.source),
-         {:ok, decoded} <- SoundStudio.import_source(path),
-         {:ok, windowed} <- SoundStudio.splice(decoded, offset_ms, offset_ms + duration_ms) do
-      {:ok, {Effects.apply_chain(windowed, StudioMix.chain(clip)), clip.start_ms}}
+         {:ok, decoded} <- Editor.import_source(path),
+         {:ok, windowed} <- Editor.splice(decoded, offset_ms, offset_ms + duration_ms) do
+      {:ok, {Effects.apply_chain(windowed, Mix.chain(clip)), clip.start_ms}}
     else
       _ -> {:error, clip.source}
     end

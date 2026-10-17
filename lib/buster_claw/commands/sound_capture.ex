@@ -55,9 +55,9 @@ defmodule BusterClaw.Commands.SoundCapture do
   `sound_import` without opening the microphone.
   """
 
-  alias BusterClaw.Notifications.Capture
-  alias BusterClaw.Notifications.Capture.Devices
-  alias BusterClaw.Notifications.Capture.Level
+  alias BusterClaw.Studio.Capture
+  alias BusterClaw.Studio.Capture.Devices
+  alias BusterClaw.Studio.Capture.Level
 
   @doc "Input devices available for recording."
   def sound_devices(_args \\ %{}) do

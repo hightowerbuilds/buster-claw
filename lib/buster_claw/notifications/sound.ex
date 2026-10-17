@@ -330,7 +330,7 @@ defmodule BusterClaw.Notifications.Sound do
   # The emptiness check is on the REQUEST, not the sanitized result:
   # `Music.safe_name/1` substitutes "track" for anything that reduces to
   # nothing, so a check on its output could never fire and "   " would quietly
-  # become a sound called "track". Same reasoning as `StudioMix.safe_mix_name/1`.
+  # become a sound called "track". Same reasoning as `Studio.Mix.safe_mix_name/1`.
   def renamed_to(name, stem) do
     if String.match?(stem, ~r/[\p{L}\p{N}]/u) do
       ext = Path.extname(name)
@@ -351,7 +351,7 @@ defmodule BusterClaw.Notifications.Sound do
   @doc """
   Rename an audio file on disk to `<stem><ext>`, keeping its extension.
 
-  The one body behind `Music.rename/2` and `SoundStudio.rename/2`, which were
+  The one body behind `Music.rename/2` and `Studio.Editor.rename/2`, which were
   byte-identical copies until 10-16 (CODE_QUALITY_SWEEP Phase 4). Each caller
   resolves `path` through its own allowlist (`path_for/1`), so a name that is
   not a real library entry arrives here as `nil` and is refused before any

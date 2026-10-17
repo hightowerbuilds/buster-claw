@@ -1,4 +1,4 @@
-defmodule BusterClaw.Notifications.Studio.Effects do
+defmodule BusterClaw.Studio.Effects do
   @moduledoc """
   What can be done to a clip, and how — the Studio's effect chain.
 
@@ -24,7 +24,7 @@ defmodule BusterClaw.Notifications.Studio.Effects do
   and "your reverb was 0.02 too wet" is not a thing anyone can act on.
 
   **Format-preserving.** Sample rate, channel count and bit depth go in and come
-  out unchanged. `SoundStudio.mixdown/1` refuses clips that disagree on format,
+  out unchanged. `Editor.mixdown/1` refuses clips that disagree on format,
   so an effect that resampled would turn one bad parameter into `:format_mismatch`
   on the whole arrangement.
 
@@ -39,7 +39,7 @@ defmodule BusterClaw.Notifications.Studio.Effects do
 
   The alternative — re-deriving `duration_ms` after every parameter change — was
   rejected: it makes the arranger jump under the operator while they drag a
-  slider, and it makes an effect's *undo* move clips. `SoundStudio.mixdown/1`
+  slider, and it makes an effect's *undo* move clips. `Editor.mixdown/1`
   sums overlapping audio, so a reverb tail bleeding into the next clip is
   correct: that is what a reverb tail does on a real desk.
 
@@ -47,16 +47,16 @@ defmodule BusterClaw.Notifications.Studio.Effects do
   clip *starts* and how much source it uses. With a long tail it is not where the
   sound stops. The arranger says so rather than drawing a lie.
 
-  ## Why these are not `SoundStudio` functions
+  ## Why these are not `Editor` functions
 
-  `SoundStudio` owns the format — parse, render, splice, fade, mixdown — and is
+  `Editor` owns the format — parse, render, splice, fade, mixdown — and is
   called by the cut-up engine, the chime designer and the recorder. Effects are a
   *mix* concept: they exist because a clip sits in an arrangement. Putting them
   there would make the file every audio caller depends on grow for a feature only
   one of them uses.
   """
 
-  alias BusterClaw.Notifications.SoundStudio
+  alias BusterClaw.Studio.Editor
 
   @typedoc "One effect in a chain: a known type and its parameters."
   @type effect :: %{type: String.t(), params: %{String.t() => number()}}
@@ -164,35 +164,35 @@ defmodule BusterClaw.Notifications.Studio.Effects do
   Total by construction — an unknown type is skipped, so a mix file edited by
   hand renders rather than refusing.
   """
-  @spec apply_chain(SoundStudio.t(), [effect()] | nil) :: SoundStudio.t()
-  def apply_chain(%SoundStudio{} = clip, nil), do: clip
-  def apply_chain(%SoundStudio{} = clip, []), do: clip
+  @spec apply_chain(Editor.t(), [effect()] | nil) :: Editor.t()
+  def apply_chain(%Editor{} = clip, nil), do: clip
+  def apply_chain(%Editor{} = clip, []), do: clip
 
-  def apply_chain(%SoundStudio{} = clip, effects) when is_list(effects) do
+  def apply_chain(%Editor{} = clip, effects) when is_list(effects) do
     Enum.reduce(effects, clip, fn effect, acc -> apply_one(acc, effect) end)
   end
 
-  def apply_chain(%SoundStudio{} = clip, _effects), do: clip
+  def apply_chain(%Editor{} = clip, _effects), do: clip
 
   @doc """
   Apply one effect. Never raises; an unknown type is the identity.
 
   Every clause below reads and writes 16-bit mono/stereo PCM through
-  `SoundStudio`'s own accessors, so the format contract holds by construction.
+  `Editor`'s own accessors, so the format contract holds by construction.
   """
-  @spec apply_one(SoundStudio.t(), term()) :: SoundStudio.t()
-  def apply_one(%SoundStudio{} = clip, %{type: "reverse"}), do: reverse(clip)
+  @spec apply_one(Editor.t(), term()) :: Editor.t()
+  def apply_one(%Editor{} = clip, %{type: "reverse"}), do: reverse(clip)
 
-  def apply_one(%SoundStudio{} = clip, %{type: "gain"} = effect),
+  def apply_one(%Editor{} = clip, %{type: "gain"} = effect),
     do: gain(clip, param(effect, "amount"))
 
-  def apply_one(%SoundStudio{} = clip, %{type: "speed"} = effect),
+  def apply_one(%Editor{} = clip, %{type: "speed"} = effect),
     do: speed(clip, param(effect, "rate"))
 
-  def apply_one(%SoundStudio{} = clip, %{type: "reverb"} = effect),
+  def apply_one(%Editor{} = clip, %{type: "reverb"} = effect),
     do: reverb(clip, param(effect, "size"), param(effect, "mix"))
 
-  def apply_one(%SoundStudio{} = clip, _unknown), do: clip
+  def apply_one(%Editor{} = clip, _unknown), do: clip
 
   # ---------------------------------------------------------------------------
   # The effects themselves
@@ -203,7 +203,7 @@ defmodule BusterClaw.Notifications.Studio.Effects do
   defp reverse(clip) do
     reversed =
       clip.data
-      |> chunk_frames(SoundStudio.frame_bytes(clip))
+      |> chunk_frames(Editor.frame_bytes(clip))
       |> Enum.reverse()
       |> IO.iodata_to_binary()
 
@@ -214,7 +214,7 @@ defmodule BusterClaw.Notifications.Studio.Effects do
   # int16 wrapping turns the loudest moment of a clip into the harshest possible
   # click, which is exactly where it is least forgivable.
   defp gain(clip, amount) do
-    SoundStudio.map_samples(clip, fn s, _i -> s * amount end)
+    Editor.map_samples(clip, fn s, _i -> s * amount end)
   end
 
   # Varispeed: resample by a ratio, so pitch and duration move together. This is
@@ -227,7 +227,7 @@ defmodule BusterClaw.Notifications.Studio.Effects do
   # Below 2.0 on speech it is not audible; the fix, if it ever matters, is a
   # low-pass before the resample and belongs here rather than in the caller.
   defp speed(clip, rate) when rate > 0 do
-    source = SoundStudio.samples(clip.data)
+    source = Editor.samples(clip.data)
     count = length(source)
     table = List.to_tuple(source)
     target = max(trunc(count / rate), 1)
@@ -241,7 +241,7 @@ defmodule BusterClaw.Notifications.Studio.Effects do
         a = at(table, left, count)
         b = at(table, left + 1, count)
 
-        <<SoundStudio.clamp16(a + (b - a) * frac)::little-signed-16>>
+        <<Editor.clamp16(a + (b - a) * frac)::little-signed-16>>
       end
 
     %{clip | data: resampled}
@@ -266,7 +266,7 @@ defmodule BusterClaw.Notifications.Studio.Effects do
     delays = Enum.map([1116, 1188, 1277, 1356], &max(trunc(&1 * scale * rate / 44_100), 1))
     feedback = 0.72 + size * 0.2
 
-    dry = SoundStudio.samples(clip.data)
+    dry = Editor.samples(clip.data)
     tail = trunc(rate * (0.3 + size * 1.2))
     padded = dry ++ List.duplicate(0, tail)
 
@@ -281,7 +281,7 @@ defmodule BusterClaw.Notifications.Studio.Effects do
       padded
       |> Enum.zip(wet)
       |> Enum.reduce(<<>>, fn {d, w}, acc ->
-        acc <> <<SoundStudio.clamp16(d * (1.0 - mix) + w * mix)::little-signed-16>>
+        acc <> <<Editor.clamp16(d * (1.0 - mix) + w * mix)::little-signed-16>>
       end)
 
     %{clip | data: data}

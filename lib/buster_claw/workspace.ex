@@ -286,7 +286,7 @@ defmodule BusterClaw.Workspace do
     # dock player's library, `sounds/studio/` for the Sound Studio's working
     # files. Those two are NOT declared here — this registry describes top-level
     # entries, and they are inside one. Each is created by its own surface
-    # (Music.ensure/0, SoundStudio.ensure/0), so opening Notify doesn't conjure a
+    # (Music.ensure/0, Studio.Editor.ensure/0), so opening Notify doesn't conjure a
     # music library and vice versa.
     %{
       name: "sounds",

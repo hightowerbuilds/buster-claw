@@ -1,8 +1,8 @@
-defmodule BusterClaw.Notifications.SoundStudioTest do
+defmodule BusterClaw.Studio.EditorTest do
   use ExUnit.Case, async: true
 
   alias BusterClaw.Notifications.SoundGen
-  alias BusterClaw.Notifications.SoundStudio
+  alias BusterClaw.Studio.Editor
 
   # afconvert is a macOS system binary, but the suite should not fail on a
   # machine that lacks it — the decode tests define themselves out instead.
@@ -10,26 +10,26 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
 
   # A clip from a list of int16 samples, at the internal format.
   defp clip(samples) do
-    %SoundStudio{data: for(s <- samples, into: <<>>, do: <<s::little-signed-16>>)}
+    %Editor{data: for(s <- samples, into: <<>>, do: <<s::little-signed-16>>)}
   end
 
-  defp samples(%SoundStudio{data: data}), do: for(<<s::little-signed-16 <- data>>, do: s)
+  defp samples(%Editor{data: data}), do: for(<<s::little-signed-16 <- data>>, do: s)
 
   describe "parse/1 and render/1" do
     test "every bundled chime survives a parse/render round trip byte-identically" do
       for key <- SoundGen.keys() do
         original = SoundGen.render(key)
-        assert {:ok, parsed} = SoundStudio.parse(original)
+        assert {:ok, parsed} = Editor.parse(original)
 
-        assert SoundStudio.render(parsed) == original,
+        assert Editor.render(parsed) == original,
                "#{key}: round trip changed the bytes"
       end
     end
 
     test "a parsed chime reports the internal format" do
-      assert {:ok, parsed} = SoundStudio.parse(SoundGen.render("boot"))
-      assert SoundStudio.internal?(parsed)
-      assert {22_050, 1, 16} == SoundStudio.internal_format()
+      assert {:ok, parsed} = Editor.parse(SoundGen.render("boot"))
+      assert Editor.internal?(parsed)
+      assert {22_050, 1, 16} == Editor.internal_format()
     end
 
     test "the data chunk is found past intervening chunks, not at a fixed offset" do
@@ -48,20 +48,20 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
           <<0>> <>
           <<"data", byte_size(audio)::little-32>> <> audio
 
-      assert {:ok, parsed} = SoundStudio.parse(binary)
+      assert {:ok, parsed} = Editor.parse(binary)
       assert samples(parsed) == [1, -1, 2, -2]
     end
 
     test "refuses things that are not WAVs, and lying chunk lengths" do
-      assert {:error, :not_a_wav} = SoundStudio.parse("this is a text file, not audio")
-      assert {:error, :not_a_wav} = SoundStudio.parse(<<>>)
+      assert {:error, :not_a_wav} = Editor.parse("this is a text file, not audio")
+      assert {:error, :not_a_wav} = Editor.parse(<<>>)
 
       truncated =
         <<"RIFF", 0::little-32, "WAVE", "fmt ", 16::little-32, 1::little-16, 1::little-16,
           22_050::little-32, 44_100::little-32, 2::little-16, 16::little-16>> <>
           <<"data", 9_999::little-32, 0, 0>>
 
-      assert {:error, :malformed_wav} = SoundStudio.parse(truncated)
+      assert {:error, :malformed_wav} = Editor.parse(truncated)
     end
   end
 
@@ -73,7 +73,7 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
     test "is half-open: `from` is included, `to` is excluded", %{ramp: ramp} do
       # 0..99 inclusive == 100 samples, at 22050 Hz that is 0 to ~4.535 ms.
       to_ms = 100 * 1000 / 22_050
-      assert {:ok, cut} = SoundStudio.splice(ramp, 0, to_ms)
+      assert {:ok, cut} = Editor.splice(ramp, 0, to_ms)
 
       got = samples(cut)
       assert length(got) == 100
@@ -85,9 +85,9 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
       mid = 500 * 1000 / 22_050
       total = 1000 * 1000 / 22_050
 
-      assert {:ok, a} = SoundStudio.splice(ramp, 0, mid)
-      assert {:ok, b} = SoundStudio.splice(ramp, mid, total)
-      assert {:ok, joined} = SoundStudio.concat([a, b])
+      assert {:ok, a} = Editor.splice(ramp, 0, mid)
+      assert {:ok, b} = Editor.splice(ramp, mid, total)
+      assert {:ok, joined} = Editor.concat([a, b])
 
       # If the end were inclusive, sample 500 would appear twice and this would
       # be 1001 samples with an audible step at the join.
@@ -95,13 +95,13 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
     end
 
     test "clamps out-of-range selections instead of raising", %{ramp: ramp} do
-      assert {:ok, cut} = SoundStudio.splice(ramp, -500, 999_999)
+      assert {:ok, cut} = Editor.splice(ramp, -500, 999_999)
       assert samples(cut) == samples(ramp)
     end
 
     test "refuses an empty or inverted selection", %{ramp: ramp} do
-      assert {:error, :empty_selection} = SoundStudio.splice(ramp, 5, 5)
-      assert {:error, :empty_selection} = SoundStudio.splice(ramp, 8, 2)
+      assert {:error, :empty_selection} = Editor.splice(ramp, 5, 5)
+      assert {:error, :empty_selection} = Editor.splice(ramp, 8, 2)
     end
   end
 
@@ -110,7 +110,7 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
       flat = clip(List.duplicate(10_000, 500))
       ms = 100 * 1000 / 22_050
 
-      faded = SoundStudio.fade(flat, in_ms: ms, out_ms: ms)
+      faded = Editor.fade(flat, in_ms: ms, out_ms: ms)
       got = samples(faded)
 
       assert List.first(got) == 0, "fade-in did not start from silence"
@@ -122,7 +122,7 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
     test "is monotonic across the ramp — no bumps on the way up" do
       flat = clip(List.duplicate(10_000, 500))
       ms = 100 * 1000 / 22_050
-      ramp = faded_head(SoundStudio.fade(flat, in_ms: ms), 100)
+      ramp = faded_head(Editor.fade(flat, in_ms: ms), 100)
 
       assert ramp == Enum.sort(ramp)
       assert List.last(ramp) <= 10_000
@@ -130,7 +130,7 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
 
     test "ramps longer than the clip are clamped, not an error" do
       flat = clip(List.duplicate(10_000, 100))
-      faded = SoundStudio.fade(flat, in_ms: 10_000, out_ms: 10_000)
+      faded = Editor.fade(flat, in_ms: 10_000, out_ms: 10_000)
 
       assert length(samples(faded)) == 100
       assert Enum.all?(samples(faded), &(abs(&1) <= 10_000))
@@ -138,7 +138,7 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
 
     test "a zero-length or single-sample ramp is a no-op, not a silencer" do
       flat = clip(List.duplicate(10_000, 50))
-      assert samples(SoundStudio.fade(flat, in_ms: 0, out_ms: 0)) == samples(flat)
+      assert samples(Editor.fade(flat, in_ms: 0, out_ms: 0)) == samples(flat)
     end
 
     defp faded_head(clip, n), do: clip |> samples() |> Enum.take(n)
@@ -147,9 +147,9 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
   describe "normalize/2" do
     test "brings a quiet clip up to the target" do
       quiet = clip([1_000, -1_000, 500])
-      normalized = SoundStudio.normalize(quiet)
+      normalized = Editor.normalize(quiet)
 
-      assert_in_delta SoundStudio.peak(normalized), 0.891, 0.001
+      assert_in_delta Editor.peak(normalized), 0.891, 0.001
     end
 
     test "never clips — not even from int16's extra-loud negative rail" do
@@ -158,18 +158,18 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
       hot = clip([-32_768, 32_767, -32_768])
 
       for target <- [0.5, 0.891, 1.0] do
-        got = samples(SoundStudio.normalize(hot, target))
+        got = samples(Editor.normalize(hot, target))
         assert Enum.all?(got, &(&1 >= -32_768 and &1 <= 32_767))
       end
     end
 
     test "silence is returned untouched rather than divided by zero" do
       silence = clip(List.duplicate(0, 64))
-      assert samples(SoundStudio.normalize(silence)) == samples(silence)
+      assert samples(Editor.normalize(silence)) == samples(silence)
     end
 
     test "an empty clip does not crash the gain calculation" do
-      assert samples(SoundStudio.normalize(clip([]))) == []
+      assert samples(Editor.normalize(clip([]))) == []
     end
   end
 
@@ -177,7 +177,7 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
     test "places a clip at its offset, padding the gap with silence" do
       one = clip([9_000, 9_000])
       # 22050 samples == 1000 ms, so a 1000 ms offset is exactly 22050 zeros.
-      assert {:ok, mixed} = SoundStudio.mixdown([{one, 1_000}])
+      assert {:ok, mixed} = Editor.mixdown([{one, 1_000}])
 
       got = samples(mixed)
       assert length(got) == 22_052
@@ -189,16 +189,16 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
       a = clip([1_000, 1_000, 1_000])
       b = clip([500, 500, 500])
 
-      assert {:ok, mixed} = SoundStudio.mixdown([{a, 0}, {b, 0}])
+      assert {:ok, mixed} = Editor.mixdown([{a, 0}, {b, 0}])
       assert samples(mixed) == [1_500, 1_500, 1_500]
     end
 
     test "the result runs from zero to the furthest clip's end" do
       short = clip(List.duplicate(100, 10))
-      assert {:ok, mixed} = SoundStudio.mixdown([{short, 500}, {short, 0}])
+      assert {:ok, mixed} = Editor.mixdown([{short, 500}, {short, 0}])
 
       # Furthest edge is 500 ms + 10 samples.
-      assert SoundStudio.sample_count(mixed) == 11_025 + 10
+      assert Editor.sample_count(mixed) == 11_025 + 10
     end
 
     test "a summed overload clamps instead of wrapping" do
@@ -206,7 +206,7 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
       hot = clip([30_000, -30_000])
       placements = for _ <- 1..4, do: {hot, 0}
 
-      assert {:ok, mixed} = SoundStudio.mixdown(placements)
+      assert {:ok, mixed} = Editor.mixdown(placements)
       # Wrapping would turn +120000 into a large NEGATIVE sample: a full-scale
       # sign flip, the loudest artifact possible.
       assert samples(mixed) == [32_767, -32_768]
@@ -214,27 +214,27 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
 
     test "a negative offset is treated as the start of the ruler" do
       one = clip([7, 7])
-      assert {:ok, mixed} = SoundStudio.mixdown([{one, -5_000}])
+      assert {:ok, mixed} = Editor.mixdown([{one, -5_000}])
       assert samples(mixed) == [7, 7]
     end
 
     test "refuses an empty arrangement and a format mismatch" do
-      assert {:error, :empty_selection} = SoundStudio.mixdown([])
+      assert {:error, :empty_selection} = Editor.mixdown([])
 
       wide = %{clip([1, 2]) | sample_rate: 44_100}
-      assert {:error, :format_mismatch} = SoundStudio.mixdown([{clip([1, 2]), 0}, {wide, 0}])
+      assert {:error, :format_mismatch} = Editor.mixdown([{clip([1, 2]), 0}, {wide, 0}])
     end
 
     test "refuses a render longer than the ceiling rather than eating the machine" do
       # A clip dragged to the far end of a ruler should report, not allocate
       # minutes of integer lists.
-      assert {:error, :too_long} = SoundStudio.mixdown([{clip([1]), 400_000}])
+      assert {:error, :too_long} = Editor.mixdown([{clip([1]), 400_000}])
     end
 
     test "a mixdown is a normal clip — renderable, measurable, saveable" do
-      assert {:ok, mixed} = SoundStudio.mixdown([{clip(List.duplicate(1_000, 100)), 50}])
-      assert SoundStudio.internal?(mixed)
-      assert {:ok, ^mixed} = SoundStudio.parse(SoundStudio.render(mixed))
+      assert {:ok, mixed} = Editor.mixdown([{clip(List.duplicate(1_000, 100)), 50}])
+      assert Editor.internal?(mixed)
+      assert {:ok, ^mixed} = Editor.parse(Editor.render(mixed))
     end
   end
 
@@ -243,19 +243,19 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
       a = clip([1, 2])
       b = %{clip([3, 4]) | sample_rate: 44_100}
 
-      assert {:error, :format_mismatch} = SoundStudio.concat([a, b])
-      assert {:error, :empty_selection} = SoundStudio.concat([])
+      assert {:error, :format_mismatch} = Editor.concat([a, b])
+      assert {:error, :empty_selection} = Editor.concat([])
     end
   end
 
   describe "measurement" do
     test "duration follows the sample count and rate" do
-      assert_in_delta SoundStudio.duration_ms(clip(List.duplicate(0, 22_050))), 1_000.0, 0.001
+      assert_in_delta Editor.duration_ms(clip(List.duplicate(0, 22_050))), 1_000.0, 0.001
     end
 
     test "peak reads full scale as 1.0 and silence as 0.0" do
-      assert_in_delta SoundStudio.peak(clip([32_767, -100])), 1.0, 0.0001
-      assert SoundStudio.peak(clip([0, 0])) == 0.0
+      assert_in_delta Editor.peak(clip([32_767, -100])), 1.0, 0.0001
+      assert Editor.peak(clip([0, 0])) == 0.0
     end
   end
 
@@ -274,39 +274,39 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
     end
 
     test "is `studio/`, NOT `sounds/` — an import must not become a chime by basename" do
-      assert Path.basename(SoundStudio.dir()) == "studio"
+      assert Path.basename(Editor.dir()) == "studio"
       # `sounds/` is the effects library, where a file overrides a bundled chime
       # by basename. A three-minute voicemail landing there would silently
       # enlist itself as `voicemail.wav`.
-      refute SoundStudio.dir() == BusterClaw.Notifications.Sound.dir()
+      refute Editor.dir() == BusterClaw.Notifications.Sound.dir()
     end
 
     test "ensure/0 creates the folder and a README so it is visible in the workspace" do
-      assert :ok = SoundStudio.ensure()
-      assert File.dir?(SoundStudio.dir())
-      assert File.exists?(Path.join(SoundStudio.dir(), "README.md"))
+      assert :ok = Editor.ensure()
+      assert File.dir?(Editor.dir())
+      assert File.exists?(Path.join(Editor.dir(), "README.md"))
     end
 
     test "ensure/0 does not overwrite a README the operator edited" do
-      SoundStudio.ensure()
-      readme = Path.join(SoundStudio.dir(), "README.md")
+      Editor.ensure()
+      readme = Path.join(Editor.dir(), "README.md")
       File.write!(readme, "mine")
 
-      SoundStudio.ensure()
+      Editor.ensure()
       assert File.read!(readme) == "mine"
     end
 
     if @decoder_available do
       test "store/2 gates by DECODING, not by extension" do
-        SoundStudio.ensure()
+        Editor.ensure()
         prose = Path.join(System.tmp_dir!(), "prose-#{System.unique_integer([:positive])}.wav")
         File.write!(prose, "I am prose wearing a .wav extension")
         on_exit(fn -> File.rm(prose) end)
 
         # Passes the extension check, fails the decode — so it never lands and
         # never becomes a sidebar entry that breaks on selection.
-        assert {:error, :not_audio} = SoundStudio.store(prose, "prose.wav")
-        assert SoundStudio.list() == []
+        assert {:error, :not_audio} = Editor.store(prose, "prose.wav")
+        assert Editor.list() == []
       end
 
       test "store/2 refuses a format the studio cannot take at all" do
@@ -314,7 +314,7 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
         File.write!(source, SoundGen.render("boot"))
         on_exit(fn -> File.rm(source) end)
 
-        assert {:error, :unsupported_format} = SoundStudio.store(source, "doc.pdf")
+        assert {:error, :unsupported_format} = Editor.store(source, "doc.pdf")
       end
 
       test "store/2 lands a real file, and two of the same name coexist" do
@@ -322,9 +322,9 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
         File.write!(source, SoundGen.render("chat"))
         on_exit(fn -> File.rm(source) end)
 
-        assert {:ok, "clip.wav"} = SoundStudio.store(source, "clip.wav")
-        assert {:ok, "clip-2.wav"} = SoundStudio.store(source, "clip.wav")
-        assert SoundStudio.list() == ["clip-2.wav", "clip.wav"]
+        assert {:ok, "clip.wav"} = Editor.store(source, "clip.wav")
+        assert {:ok, "clip-2.wav"} = Editor.store(source, "clip.wav")
+        assert Editor.list() == ["clip-2.wav", "clip.wav"]
       end
 
       test "store/2 reduces a hostile name to a safe basename" do
@@ -332,33 +332,33 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
         File.write!(source, SoundGen.render("chat"))
         on_exit(fn -> File.rm(source) end)
 
-        assert {:ok, stored} = SoundStudio.store(source, "../../etc/evil.wav")
+        assert {:ok, stored} = Editor.store(source, "../../etc/evil.wav")
         refute stored =~ "/"
         refute stored =~ ".."
-        assert File.regular?(Path.join(SoundStudio.dir(), stored))
+        assert File.regular?(Path.join(Editor.dir(), stored))
       end
 
       test "path_for/1 is an allowlist over the real listing, so traversal never resolves" do
         source = Path.join(System.tmp_dir!(), "ok-#{System.unique_integer([:positive])}.wav")
         File.write!(source, SoundGen.render("chat"))
         on_exit(fn -> File.rm(source) end)
-        {:ok, name} = SoundStudio.store(source, "ok.wav")
+        {:ok, name} = Editor.store(source, "ok.wav")
 
-        assert SoundStudio.path_for(name)
-        assert is_nil(SoundStudio.path_for("../../etc/passwd"))
-        assert is_nil(SoundStudio.path_for("nope.wav"))
-        assert is_nil(SoundStudio.path_for(nil))
+        assert Editor.path_for(name)
+        assert is_nil(Editor.path_for("../../etc/passwd"))
+        assert is_nil(Editor.path_for("nope.wav"))
+        assert is_nil(Editor.path_for(nil))
       end
 
       test "delete/1 removes a stored file and refuses anything else" do
         source = Path.join(System.tmp_dir!(), "gone-#{System.unique_integer([:positive])}.wav")
         File.write!(source, SoundGen.render("chat"))
         on_exit(fn -> File.rm(source) end)
-        {:ok, name} = SoundStudio.store(source, "gone.wav")
+        {:ok, name} = Editor.store(source, "gone.wav")
 
-        assert :ok = SoundStudio.delete(name)
-        assert SoundStudio.list() == []
-        assert {:error, :not_found} = SoundStudio.delete(name)
+        assert :ok = Editor.delete(name)
+        assert Editor.list() == []
+        assert {:error, :not_found} = Editor.delete(name)
       end
     end
   end
@@ -371,14 +371,14 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
       File.write!(path, SoundGen.render("confirm"))
       on_exit(fn -> File.rm(path) end)
 
-      assert {:ok, clip} = SoundStudio.import_source(path)
-      assert SoundStudio.internal?(clip)
-      assert SoundStudio.render(clip) == SoundGen.render("confirm")
+      assert {:ok, clip} = Editor.import_source(path)
+      assert Editor.internal?(clip)
+      assert Editor.render(clip) == SoundGen.render("confirm")
     end
 
     test "a missing file reports rather than raises" do
-      assert {:error, :not_found} = SoundStudio.import_source("/no/such/file.wav")
-      assert {:error, :not_found} = SoundStudio.import_source(nil)
+      assert {:error, :not_found} = Editor.import_source("/no/such/file.wav")
+      assert {:error, :not_found} = Editor.import_source(nil)
     end
 
     if @decoder_available do
@@ -387,18 +387,18 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
         frames = for i <- 0..4409, do: rem(i * 7, 20_000) - 10_000
         data = for s <- frames, into: <<>>, do: <<s::little-signed-16, s::little-signed-16>>
 
-        wide = %SoundStudio{sample_rate: 44_100, channels: 2, bits: 16, data: data}
+        wide = %Editor{sample_rate: 44_100, channels: 2, bits: 16, data: data}
 
         path =
           Path.join(System.tmp_dir!(), "studio-wide-#{System.unique_integer([:positive])}.wav")
 
-        File.write!(path, SoundStudio.render(wide))
+        File.write!(path, Editor.render(wide))
         on_exit(fn -> File.rm(path) end)
 
-        assert {:ok, clip} = SoundStudio.import_source(path)
-        assert SoundStudio.internal?(clip)
+        assert {:ok, clip} = Editor.import_source(path)
+        assert Editor.internal?(clip)
         # ~100 ms in, ~100 ms out (allow the resampler a few samples of slack).
-        assert_in_delta SoundStudio.duration_ms(clip), 100.0, 5.0
+        assert_in_delta Editor.duration_ms(clip), 100.0, 5.0
       end
 
       test "a compressed source decodes to the internal format" do
@@ -415,9 +415,9 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
 
         {_out, 0} = System.cmd("/usr/bin/afconvert", ["-f", "m4af", "-d", "aac", source, m4a])
 
-        assert {:ok, clip} = SoundStudio.import_source(m4a)
-        assert SoundStudio.internal?(clip)
-        assert SoundStudio.duration_ms(clip) > 0
+        assert {:ok, clip} = Editor.import_source(m4a)
+        assert Editor.internal?(clip)
+        assert Editor.duration_ms(clip) > 0
       end
 
       test "a text file fails cleanly instead of producing noise" do
@@ -427,7 +427,7 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
         File.write!(path, "I am prose wearing a .wav extension")
         on_exit(fn -> File.rm(path) end)
 
-        assert {:error, :unsupported_source} = SoundStudio.import_source(path)
+        assert {:error, :unsupported_source} = Editor.import_source(path)
       end
     end
   end
@@ -443,18 +443,18 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
       File.write!(path, SoundGen.render("confirm"))
       on_exit(fn -> File.rm(path) end)
 
-      {:ok, clip} = SoundStudio.import_source(path)
+      {:ok, clip} = Editor.import_source(path)
 
-      assert {:ok, probed} = SoundStudio.probe(path)
+      assert {:ok, probed} = Editor.probe(path)
       # afinfo's header estimate must agree with the decoded truth.
-      assert_in_delta probed.duration_ms, SoundStudio.duration_ms(clip), 5.0
+      assert_in_delta probed.duration_ms, Editor.duration_ms(clip), 5.0
       assert probed.sample_rate == clip.sample_rate
       assert probed.channels == clip.channels
     end
 
     test "a missing file reports rather than raises" do
-      assert {:error, :not_found} = SoundStudio.probe("/no/such/file.wav")
-      assert {:error, :not_found} = SoundStudio.probe(nil)
+      assert {:error, :not_found} = Editor.probe("/no/such/file.wav")
+      assert {:error, :not_found} = Editor.probe(nil)
     end
 
     @tag :macos
@@ -468,7 +468,7 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
       File.write!(path, "I am prose wearing a .wav extension")
       on_exit(fn -> File.rm(path) end)
 
-      assert {:error, :unsupported_source} = SoundStudio.probe(path)
+      assert {:error, :unsupported_source} = Editor.probe(path)
     end
   end
 end

@@ -1,8 +1,8 @@
-defmodule BusterClaw.Notifications.CaptureTest do
+defmodule BusterClaw.Studio.CaptureTest do
   use ExUnit.Case, async: false
 
-  alias BusterClaw.Notifications.Capture
-  alias BusterClaw.Notifications.SoundStudio
+  alias BusterClaw.Studio.Capture
+  alias BusterClaw.Studio.Editor
 
   # Every recording test drives an injected runner: the microphone cannot be
   # relied on in a test, because missing consent is the entire problem this
@@ -28,11 +28,11 @@ defmodule BusterClaw.Notifications.CaptureTest do
   end
 
   # A WAV in the studio's internal format, from a list of int16 samples. Written
-  # with `SoundStudio.render/1` so the test exercises the same encoder the app
+  # with `Editor.render/1` so the test exercises the same encoder the app
   # ships — no second WAV writer here either.
   defp wav(samples) do
-    %SoundStudio{data: for(s <- samples, into: <<>>, do: <<s::little-signed-16>>)}
-    |> SoundStudio.render()
+    %Editor{data: for(s <- samples, into: <<>>, do: <<s::little-signed-16>>)}
+    |> Editor.render()
   end
 
   defp silent_wav(n), do: wav(List.duplicate(0, n))
@@ -65,7 +65,7 @@ defmodule BusterClaw.Notifications.CaptureTest do
       assert message =~ "no audio"
 
       # And nothing was stored: a silent take must not leave a file behind.
-      assert SoundStudio.list() == []
+      assert Editor.list() == []
     end
 
     test "a capture with real signal is accepted and stored" do
@@ -73,7 +73,7 @@ defmodule BusterClaw.Notifications.CaptureTest do
 
       assert result.peak > Capture.silence_floor()
       assert File.regular?(result.path)
-      assert result.name in SoundStudio.list()
+      assert result.name in Editor.list()
     end
 
     test "silent?/1 is a NEAR-zero test, not an exact-zero test" do
@@ -104,7 +104,7 @@ defmodule BusterClaw.Notifications.CaptureTest do
       assert {:ok, result} = Capture.record(seconds: 2, runner: fake_ffmpeg(tone_wav(44_100)))
 
       assert {result.sample_rate, result.channels, result.bits} ==
-               SoundStudio.internal_format()
+               Editor.internal_format()
 
       # 44_100 samples at 22_050 Hz is two seconds.
       assert result.duration_ms == 2000
@@ -114,7 +114,7 @@ defmodule BusterClaw.Notifications.CaptureTest do
 
     test "a header that is not the internal format is refused, not silently accepted" do
       wrong =
-        SoundStudio.render(%SoundStudio{sample_rate: 48_000, data: <<1000::little-signed-16>>})
+        Editor.render(%Editor{sample_rate: 48_000, data: <<1000::little-signed-16>>})
 
       assert {:error, {:unexpected_format, {48_000, 1, 16}}} =
                Capture.record(seconds: 1, runner: fake_ffmpeg(wrong))
@@ -123,7 +123,7 @@ defmodule BusterClaw.Notifications.CaptureTest do
     test "it lands in the Studio's sources — sounds/studio/, never sounds/" do
       assert {:ok, result} = Capture.record(seconds: 1, runner: fake_ffmpeg(tone_wav(2205)))
 
-      assert Path.dirname(result.path) == SoundStudio.dir()
+      assert Path.dirname(result.path) == Editor.dir()
       assert Path.basename(Path.dirname(result.path)) == "studio"
       # Recording never routes a chime: nothing appears in the effects library.
       refute File.exists?(Path.join(BusterClaw.Notifications.Sound.dir(), result.name))
@@ -145,7 +145,7 @@ defmodule BusterClaw.Notifications.CaptureTest do
       assert second.name == "room-tone-2.wav"
 
       assert File.read!(first.path) == before, "the first take was overwritten"
-      assert Enum.sort(SoundStudio.list()) == ["room-tone-2.wav", "room-tone.wav"]
+      assert Enum.sort(Editor.list()) == ["room-tone-2.wav", "room-tone.wav"]
     end
   end
 
@@ -200,7 +200,7 @@ defmodule BusterClaw.Notifications.CaptureTest do
       failing = fn _exe, _args -> {"Error opening input file :9.", 251} end
 
       assert {:error, {:capture_failed, 251}} = Capture.record(seconds: 1, runner: failing)
-      assert SoundStudio.list() == []
+      assert Editor.list() == []
     end
 
     test "exit 0 with nothing parseable on disk is :unreadable_capture" do
@@ -222,7 +222,7 @@ defmodule BusterClaw.Notifications.CaptureTest do
       assert {:error, :timeout} =
                Capture.record(seconds: 0.05, grace_ms: 0, runner: wedged)
 
-      assert SoundStudio.list() == []
+      assert Editor.list() == []
     end
 
     test "a runner that is not a 2-arity function is refused" do
@@ -253,7 +253,7 @@ defmodule BusterClaw.Notifications.CaptureTest do
   end
 
   defp clip(samples) do
-    %SoundStudio{data: for(s <- samples, into: <<>>, do: <<s::little-signed-16>>)}
+    %Editor{data: for(s <- samples, into: <<>>, do: <<s::little-signed-16>>)}
   end
 
   defp tmp_captures do

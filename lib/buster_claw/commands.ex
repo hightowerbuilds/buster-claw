@@ -575,7 +575,7 @@ defmodule BusterClaw.Commands do
   defdelegate sound_probe(args), to: BusterClaw.Commands.Sound
   # The door into the studio: a Library recording becomes an editable source
   defdelegate sound_import(args), to: BusterClaw.Commands.Sound
-  # Editing: one pure SoundStudio function each, rendered to a NEW source
+  # Editing: one pure Studio.Editor function each, rendered to a NEW source
   defdelegate sound_trim(args), to: BusterClaw.Commands.Sound
   defdelegate sound_fade(args), to: BusterClaw.Commands.Sound
   defdelegate sound_normalize(args), to: BusterClaw.Commands.Sound

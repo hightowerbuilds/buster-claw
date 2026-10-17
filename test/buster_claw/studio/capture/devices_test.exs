@@ -1,7 +1,7 @@
-defmodule BusterClaw.Notifications.Capture.DevicesTest do
+defmodule BusterClaw.Studio.Capture.DevicesTest do
   use ExUnit.Case, async: true
 
-  alias BusterClaw.Notifications.Capture.Devices
+  alias BusterClaw.Studio.Capture.Devices
 
   # Captured verbatim from `system_profiler SPAudioDataType -json` on the
   # operator's Mac (2026-08-09). Worth keeping whole rather than trimming to the

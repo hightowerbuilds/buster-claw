@@ -1,7 +1,7 @@
-defmodule BusterClaw.Notifications.Capture.LevelTest do
+defmodule BusterClaw.Studio.Capture.LevelTest do
   use ExUnit.Case, async: true
 
-  alias BusterClaw.Notifications.Capture.Level
+  alias BusterClaw.Studio.Capture.Level
 
   # osascript is a macOS system binary; the one test that actually invokes it
   # defines itself out on a machine that lacks it rather than failing.

@@ -15,7 +15,7 @@ defmodule BusterClaw.Commands.Sound.Library do
   """
   alias BusterClaw.Commands.Sound.Shared
   alias BusterClaw.Notifications.Sound
-  alias BusterClaw.Notifications.SoundStudio
+  alias BusterClaw.Studio.Editor
 
   @workspace "workspace"
   @bundled "bundled"
@@ -149,10 +149,10 @@ defmodule BusterClaw.Commands.Sound.Library do
   # ---------------------------------------------------------------------------
 
   def sound_sources(_args \\ %{}) do
-    dir = SoundStudio.dir()
+    dir = Editor.dir()
 
     sources =
-      Enum.map(SoundStudio.list(), fn name ->
+      Enum.map(Editor.list(), fn name ->
         path = Path.join(dir, name)
         %{name: name, path: path, bytes: Shared.byte_size_of(path)}
       end)
@@ -163,7 +163,7 @@ defmodule BusterClaw.Commands.Sound.Library do
        count: length(sources),
        # Reported rather than assumed: without the system decoder, only WAV
        # already in the internal format can ever be imported here.
-       decoder_available: SoundStudio.decoder_available?(),
+       decoder_available: Editor.decoder_available?(),
        internal_format: Shared.internal_format(),
        sources: sources
      }}
@@ -216,7 +216,7 @@ defmodule BusterClaw.Commands.Sound.Library do
   # studio's raw sources — the same precedence the player uses, extended to the
   # one store the player never reads.
   defp locate(name) do
-    case {Sound.path_for(name), Sound.bundled_path_for(name), SoundStudio.path_for(name)} do
+    case {Sound.path_for(name), Sound.bundled_path_for(name), Editor.path_for(name)} do
       {path, _bundled, _studio} when is_binary(path) -> {:ok, @workspace, path}
       {_workspace, path, _studio} when is_binary(path) -> {:ok, @bundled, path}
       {_workspace, _bundled, path} when is_binary(path) -> {:ok, @studio, path}
@@ -229,7 +229,7 @@ defmodule BusterClaw.Commands.Sound.Library do
     header = header_facts(path)
     clip = clip_facts(path)
     decoded = decoded_facts(clip, path, decode?)
-    decoder? = SoundStudio.decoder_available?()
+    decoder? = Editor.decoder_available?()
 
     %{
       name: target.name,
@@ -267,12 +267,12 @@ defmodule BusterClaw.Commands.Sound.Library do
   # because a 24-bit WAV parses fine and still has no peak.
   defp decoded_facts(clip, path, true) do
     if is_nil(clip[:peak]) do
-      case SoundStudio.import_source(path) do
+      case Editor.import_source(path) do
         {:ok, decoded} ->
           %{
             ran: true,
             peak: Shared.peak_of(decoded),
-            duration_ms: SoundStudio.duration_ms(decoded)
+            duration_ms: Editor.duration_ms(decoded)
           }
 
         {:error, reason} ->
@@ -288,15 +288,15 @@ defmodule BusterClaw.Commands.Sound.Library do
   # What the file itself says, once parsed as a WAV. Peak needs samples, so it
   # is the fact only this path can supply.
   defp clip_facts(path) do
-    case SoundStudio.read(path) do
+    case Editor.read(path) do
       {:ok, clip} ->
         %{
           readable: true,
-          internal: SoundStudio.internal?(clip),
+          internal: Editor.internal?(clip),
           sample_rate: clip.sample_rate,
           channels: clip.channels,
           bits: clip.bits,
-          duration_ms: SoundStudio.duration_ms(clip),
+          duration_ms: Editor.duration_ms(clip),
           peak: Shared.peak_of(clip)
         }
 
@@ -308,7 +308,7 @@ defmodule BusterClaw.Commands.Sound.Library do
   # `afinfo`, which reads a header rather than decoding audio — so a long mp3
   # still gets a duration without materializing it as PCM.
   defp header_facts(path) do
-    case SoundStudio.probe(path) do
+    case Editor.probe(path) do
       {:ok, facts} -> facts
       {:error, reason} -> %{probe_error: reason}
     end
@@ -367,7 +367,7 @@ defmodule BusterClaw.Commands.Sound.Library do
          {:ok, path} <- Shared.studio_source(clean) do
       bytes = Shared.byte_size_of(path)
 
-      case SoundStudio.delete(clean) do
+      case Editor.delete(clean) do
         :ok ->
           {:ok,
            %{
@@ -467,7 +467,7 @@ defmodule BusterClaw.Commands.Sound.Library do
       previous_sound: before.assigned,
       previously_played: before.plays,
       plays: Sound.resolved(key),
-      duration_ms: SoundStudio.duration_ms(clip),
+      duration_ms: Editor.duration_ms(clip),
       peak: Shared.peak_of(clip),
       bytes: Shared.byte_size_of(Sound.path_for(installed) || ""),
       enabled: Sound.enabled?(),

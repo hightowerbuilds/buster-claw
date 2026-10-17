@@ -26,7 +26,7 @@ defmodule BusterClawWeb.SoundStudio.ClipInspector do
 
   ## Remove was always there. It just had no button.
 
-  `StudioMix.remove_clip/2` and its handler have existed since the arranger did —
+  `Mix.remove_clip/2` and its handler have existed since the arranger did —
   reachable **only** by selecting a clip and pressing ⌫. That is a real feature
   that reads as a missing one, which is the same thing as missing for anybody who
   has not read `studio_keys.js`. The keyboard path still works and is still the
@@ -54,8 +54,8 @@ defmodule BusterClawWeb.SoundStudio.ClipInspector do
   """
   use BusterClawWeb, :html
 
-  alias BusterClaw.Notifications.Studio.Effects
-  alias BusterClaw.Notifications.StudioMix
+  alias BusterClaw.Studio.Effects
+  alias BusterClaw.Studio.Mix
   alias BusterClawWeb.SoundStudio.Format
 
   attr :clip, :any, required: true, doc: "the selected clip map, or nil"
@@ -129,7 +129,7 @@ defmodule BusterClawWeb.SoundStudio.ClipInspector do
       </div>
 
       <p
-        :if={StudioMix.chain(@clip) == []}
+        :if={Mix.chain(@clip) == []}
         class="font-mono text-[0.6rem] text-base-content/40"
       >
         No effects — this clip renders as its source.
@@ -139,7 +139,7 @@ defmodule BusterClawWeb.SoundStudio.ClipInspector do
             a swell into the note and reverse-then-reverb is a note with a tail. --%>
       <ol class="flex flex-col gap-1">
         <li
-          :for={{effect, position} <- Enum.with_index(StudioMix.chain(@clip))}
+          :for={{effect, position} <- Enum.with_index(Mix.chain(@clip))}
           class="flex flex-wrap items-center gap-2 rounded border border-base-content/15 px-2 py-1"
         >
           <span class="shrink-0 font-mono text-[0.6rem] text-base-content/35">{position + 1}</span>
@@ -230,6 +230,6 @@ defmodule BusterClawWeb.SoundStudio.ClipInspector do
   # Only these two change the rendered length today. Asked of the catalog rather
   # than hardcoded per clip so a future time-stretch says so by existing.
   defp lengthens?(clip) do
-    Enum.any?(StudioMix.chain(clip), &(&1.type in ~w(reverb speed)))
+    Enum.any?(Mix.chain(clip), &(&1.type in ~w(reverb speed)))
   end
 end

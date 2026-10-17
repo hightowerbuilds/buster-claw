@@ -1,4 +1,4 @@
-defmodule BusterClaw.Notifications.StudioCatalog do
+defmodule BusterClaw.Studio.Catalog do
   @moduledoc """
   Everything the Studio can open, grouped — as **core** data, with no web in it.
 
@@ -24,7 +24,7 @@ defmodule BusterClaw.Notifications.StudioCatalog do
   ## `groups/0` is expensive and is not cached
 
   It performs **four directory listings**:
-  `StudioMix.list/0`, `SoundStudio.list/0`, `Sound.list/0` + `Sound.bundled_list/0`,
+  `Mix.list/0`, `Editor.list/0`, `Sound.list/0` + `Sound.bundled_list/0`,
   and `Music.tracks/0`. That cost is stated here
   because it is easy to reach for `groups/0` in a loop without noticing —
   `resolve_source/1` did exactly that, once per clip, on every mixdown.
@@ -42,8 +42,8 @@ defmodule BusterClaw.Notifications.StudioCatalog do
   """
   alias BusterClaw.Music
   alias BusterClaw.Notifications.Sound
-  alias BusterClaw.Notifications.SoundStudio
-  alias BusterClaw.Notifications.StudioMix
+  alias BusterClaw.Studio.Editor
+  alias BusterClaw.Studio.Mix
 
   @doc """
   Every source the studio can open, grouped for the sidebar.
@@ -87,7 +87,7 @@ defmodule BusterClaw.Notifications.StudioCatalog do
   def resolve_source(id), do: find_source(groups(), id)
 
   defp mix_items do
-    Enum.map(StudioMix.list(), fn name ->
+    Enum.map(Mix.list(), fn name ->
       %{
         id: "mix:" <> name,
         kind: :mix,
@@ -102,14 +102,14 @@ defmodule BusterClaw.Notifications.StudioCatalog do
   end
 
   defp import_items do
-    Enum.map(SoundStudio.list(), fn name ->
+    Enum.map(Editor.list(), fn name ->
       %{
         id: "import:" <> name,
         kind: :import,
         name: name,
         label: Path.rootname(name),
         sub: String.trim_leading(Path.extname(name), "."),
-        path: SoundStudio.path_for(name)
+        path: Editor.path_for(name)
       }
     end)
   end

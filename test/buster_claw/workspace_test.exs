@@ -1,7 +1,7 @@
 defmodule BusterClaw.WorkspaceTest do
   # async: false — the ensure/0 tests point the global :workspace_root at a tmp
   # dir. Run async, they hand their temp workspace to every other test reading
-  # that env concurrently (it took out SoundStudio and BrowserSuggest first try).
+  # that env concurrently (it took out Editor and BrowserSuggest first try).
   use ExUnit.Case, async: false
 
   alias BusterClaw.Workspace
@@ -362,7 +362,7 @@ defmodule BusterClaw.WorkspaceTest do
     test "audio is one folder: no top-level music/ or studio/", %{root: root} do
       :ok = Workspace.ensure()
       BusterClaw.Music.ensure()
-      BusterClaw.Notifications.SoundStudio.ensure()
+      BusterClaw.Studio.Editor.ensure()
 
       listing = File.ls!(root)
       refute "music" in listing
