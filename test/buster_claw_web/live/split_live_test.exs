@@ -255,9 +255,9 @@ defmodule BusterClawWeb.SplitLiveTest do
       refute has_element?(view, "#settings-config-rail")
 
       right |> element("#split-right-settings-config-tab-speech") |> render_click()
-      left |> element("#split-left-settings-config-tab-profile") |> render_click()
+      left |> element("#split-left-settings-config-tab-about") |> render_click()
 
-      assert has_element?(left, "#split-left-settings-config-tab-profile[aria-selected='true']")
+      assert has_element?(left, "#split-left-settings-config-tab-about[aria-selected='true']")
       assert has_element?(right, "#split-right-settings-config-tab-speech[aria-selected='true']")
       assert has_element?(right, "#settings-speech-right-picker")
       refute has_element?(left, "#settings-speech-left-picker")

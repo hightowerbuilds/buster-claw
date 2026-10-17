@@ -1,7 +1,7 @@
 defmodule BusterClaw.FinanceFinnhubTest do
-  # Needs the database as of Phase 3b: the Finnhub key resolves through
-  # `Clinch.AppKeys`, which reads the Clinch first and falls back to app env.
-  # These tests still drive the fallback via `Application.put_env`.
+  # The Finnhub key is read from the app env (`config/runtime.exs`) at the
+  # moment of use; these tests drive it via `Application.put_env`. (A Clinch
+  # store for it existed from Phase 3b until 10-17.)
   use BusterClaw.DataCase, async: false
 
   alias BusterClaw.Finance.Finnhub

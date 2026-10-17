@@ -360,7 +360,7 @@ defmodule BusterClaw.ClinchTest do
     end
 
     test "a config read does not flood the feed" do
-      # AppKeys resolves on every drain tick and every Twilio call. If those wrote
+      # An app key is read at the moment of use, often. If those reads wrote
       # a missing-credential event each time, one unconfigured install would bury
       # every real event under thousands.
       assert :error = Clinch.resolve({:app_key, "finnhub_api_key"}, audit: false)

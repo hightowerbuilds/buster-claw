@@ -18,8 +18,6 @@ defmodule BusterClaw.Setup do
   alias BusterClaw.Settings
   alias BusterClaw.WorkspaceCLI
 
-  @profile_name_key "profile_name"
-  @profile_org_key "profile_org"
   @workspace_confirmed_key "workspace_confirmed"
   @went_live_key "went_live_at"
 
@@ -54,16 +52,7 @@ defmodule BusterClaw.Setup do
   @doc "True once the user has gone live (`went_live_at` is set)."
   def live_complete?, do: present?(Settings.get(@went_live_key))
 
-  # --- Profile + workspace persistence -----------------------------------
-
-  def profile_name, do: Settings.get(@profile_name_key, "")
-  def profile_org, do: Settings.get(@profile_org_key, "")
-
-  def put_profile(name, org) do
-    Settings.put(@profile_name_key, String.trim(to_string(name)))
-    Settings.put(@profile_org_key, String.trim(to_string(org)))
-    :ok
-  end
+  # --- Workspace persistence ---------------------------------------------
 
   def confirm_workspace, do: Settings.put(@workspace_confirmed_key, "true")
 

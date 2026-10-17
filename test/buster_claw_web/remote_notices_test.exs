@@ -103,14 +103,13 @@ defmodule BusterClawWeb.RemoteNoticesTest do
     # The Clinch's remote posture is the one row of Phase 5's capability matrix
     # that is a security property rather than a convenience: management must be
     # unavailable, and must SAY so rather than offering a control that fails.
-    # There are TWO panels that hide themselves without Tauri — `clinch_panel`
-    # and `app_keys_panel` — and each carries its own copy of the notice.
+    # Until 10-17 there were TWO panels that hid themselves without Tauri —
+    # `clinch_panel` and `app_keys_panel` — each with its own copy of the
+    # notice; the app-keys panel left with the Finnhub key it existed for.
     #
-    # So this COUNTS rather than matching. A `=~` over the whole page is happy
-    # with one copy, which means the panel that actually regressed passes: I
-    # proved that by regressing exactly one of them and watching this test stay
-    # green. The count is derived from the markers in the component rather than
-    # hardcoded, so a third self-hiding panel raises the bar on its own.
+    # So this COUNTS rather than matching, against the markers in the
+    # component rather than a literal, so a second self-hiding panel raises the
+    # bar on its own and a panel that stops hiding lowers it.
     test "every self-hiding credential panel ships its own notice", %{conn: conn} do
       panels =
         "lib/buster_claw_web/components/clinch_panels.ex"
@@ -118,10 +117,10 @@ defmodule BusterClawWeb.RemoteNoticesTest do
         |> then(&Regex.scan(~r/data-clinch-unavailable/, &1))
         |> length()
 
-      assert panels >= 2,
-             "expected at least the Clinch and app-keys panels to hide themselves " <>
-               "without Tauri; found #{panels}. If a panel stopped hiding, it now " <>
-               "shows a form that cannot work over a tunnel."
+      assert panels >= 1,
+             "expected at least the Clinch panel to hide itself without Tauri; " <>
+               "found #{panels}. If a panel stopped hiding, it now shows a form " <>
+               "that cannot work over a tunnel."
 
       {:ok, _view, html} = live(conn, ~p"/settings?tab=credentials")
       text = String.replace(html, ~r/\s+/, " ")

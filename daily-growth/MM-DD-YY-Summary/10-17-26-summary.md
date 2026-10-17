@@ -96,3 +96,11 @@ retired-route recovery maps it the same way, so a remembered tab, a bookmark
 and a restored window all land. One controller test and one JS test each.
 (`StaplerRetryTest` failed once in the full run — a counter-file timing flake,
 passes alone — and passed on the rerun.)
+
+---
+
+## Late morning — Configuration: Profile and Service credentials deleted
+
+| | |
+|---|---|
+| (ninth commit) | **Two things on the Configuration rail that nobody used.** The **Profile** sub-tab (a name and organization form stored by `Setup` and read by nothing, plus the setup-progress list) is deleted; the one thing on it worth keeping, the "Re-run setup wizard" button, moved to About with a one-line setup count, since the wizard has to stay reachable after setup completes. The **Service credentials** panel on Credentials — `Clinch.AppKeys`, a registry with one row, the Finnhub key, and the `ClinchAppKeys` hook that stored it through the shell — is deleted; the Finnhub client reads the env-configured key at the moment of use again, as it did before Phase 3b, and the `:app_key` kind stays in the Clinch's enum so stored rows still load and list. Credentials is now the Clinch and the recovery key. `Setup.profile_name/org/put_profile` are gone. Tests: the service-credentials describe is gone, the remote-notices count is `>= 1`, the split test clicks About instead of Profile. 2829 tests. |

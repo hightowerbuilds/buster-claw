@@ -2,7 +2,7 @@ defmodule BusterClawWeb.SettingsLive do
   @moduledoc """
   Settings → Configuration sub-tab. The single home for account-level
   configuration: **Google Workspace** (connect, accounts, per-surface health,
-  Gmail/Calendar tools), **agent models**, the profile, onboarding progress, and
+  Gmail/Calendar tools), **agent models**, onboarding progress, and
   the recovery key.
 
   ## The sub-tab rail (08-15)
@@ -15,8 +15,8 @@ defmodule BusterClawWeb.SettingsLive do
   rail, and the fix the GWS console rail underneath needed on 08-08.
 
   Only **Agent & models** is extracted so far, into
-  `BusterClawWeb.Settings.ModelsComponent`. Google Workspace, the profile and
-  the credentials are still inline: a rail with one moved section is a real
+  `BusterClawWeb.Settings.ModelsComponent`. Google Workspace and the
+  credentials are still inline: a rail with one moved section is a real
   intermediate state, and a half-moved Google Workspace would not be. GWS is the
   next cut and the awkward one — it is 12 of the remaining `handle_event`
   clauses and the only section whose refresh arrives as a `handle_info`, so
@@ -41,7 +41,6 @@ defmodule BusterClawWeb.SettingsLive do
 
   alias BusterClaw.BuildInfo
   alias BusterClaw.Clinch
-  alias BusterClaw.Clinch.AppKeys
   alias BusterClaw.Clinch.Rekey
   alias BusterClaw.Google
   alias BusterClaw.Google.CalendarSync
@@ -80,10 +79,7 @@ defmodule BusterClawWeb.SettingsLive do
      |> assign_gmail_forms()
      |> assign_calendar_form()
      # Agent models own every assign they need — see `Settings.ModelsComponent`.
-     # --- profile / onboarding / recovery ---
-     |> assign(:profile_name, Setup.profile_name())
-     |> assign(:profile_org, Setup.profile_org())
-     |> assign(:profile_note, nil)
+     # --- recovery ---
      # The recovery key is deliberately NOT assigned. It used to be — which put
      # the value that decrypts every other credential into a LiveView payload and
      # a rendered diff. The `RecoveryKey` hook reads it from the Keychain through
@@ -91,7 +87,6 @@ defmodule BusterClawWeb.SettingsLive do
      # a tunnel (Clinch Phase 2).
      |> assign(:restore_path, Recovery.restore_file_path())
      |> assign(:clinch_entries, Clinch.list())
-     |> assign(:app_keys, app_keys())
      |> assign(:unreadable, Rekey.unreadable())
      # --- about ---
      # Both are constant for the life of the VM, so they are read once at mount
@@ -331,19 +326,12 @@ defmodule BusterClawWeb.SettingsLive do
     end
   end
 
-  # --- Profile / onboarding / recovery events ----------------------------
+  # --- Setup / recovery events ---------------------------------------------
 
-  def handle_event("save_profile", %{"name" => name, "org" => org}, socket) do
-    Setup.put_profile(name, org)
-
-    {:noreply,
-     socket
-     |> assign(:profile_name, String.trim(name))
-     |> assign(:profile_org, String.trim(org))
-     |> assign(:profile_note, "Saved.")
-     |> assign_status()}
-  end
-
+  # On About since 10-17, when the Profile tab (name, organization, the setup
+  # progress list) was deleted as never used. The wizard still has to be
+  # reachable after setup completes, and About is the tab you visit when
+  # something is wrong.
   def handle_event("rerun_setup", _params, socket) do
     {:noreply, push_navigate(socket, to: ~p"/setup")}
   end
@@ -354,7 +342,6 @@ defmodule BusterClawWeb.SettingsLive do
     {:noreply,
      socket
      |> assign(:clinch_entries, Clinch.list())
-     |> assign(:app_keys, app_keys())
      |> assign(:unreadable, Rekey.unreadable())}
   end
 
@@ -486,69 +473,7 @@ defmodule BusterClawWeb.SettingsLive do
           />
         </section>
 
-        <section :if={@settings_tab == "profile"} class="ic-panel space-y-4 p-6">
-          <h2 class="ic-eyebrow">Profile</h2>
-          <form phx-submit="save_profile" class="grid gap-3 sm:grid-cols-2">
-            <label class="block">
-              <span class="ic-eyebrow">Your name</span>
-              <input
-                type="text"
-                name="name"
-                value={@profile_name}
-                autocomplete="off"
-                placeholder="Ada Lovelace"
-                class="input mt-1 w-full"
-              />
-            </label>
-            <label class="block">
-              <span class="ic-eyebrow">Organization</span>
-              <input
-                type="text"
-                name="org"
-                value={@profile_org}
-                autocomplete="off"
-                placeholder="Analytical Engines Ltd."
-                class="input mt-1 w-full"
-              />
-            </label>
-            <button type="submit" class={["sm:col-span-2 sm:justify-self-start", button_outline()]}>
-              Save profile
-            </button>
-          </form>
-          <p
-            :if={@profile_note}
-            class="rounded-sm border-2 border-primary/40 bg-primary/10 px-3 py-2 text-sm"
-          >
-            {@profile_note}
-          </p>
-        </section>
-
-        <section :if={@settings_tab == "profile"} class="ic-panel space-y-4 p-6">
-          <div class="flex items-center justify-between gap-4">
-            <h2 class="ic-eyebrow">Setup progress</h2>
-            <span class="font-mono text-xs text-base-content/60">
-              {@status.completed} of {@status.total} complete
-            </span>
-          </div>
-          <ul class="space-y-2 text-sm">
-            <li :for={s <- @status.steps} class="flex items-center gap-2">
-              <.icon
-                name={if s.complete, do: "hero-check-circle-solid", else: "hero-minus-circle"}
-                class={[
-                  "size-5 shrink-0",
-                  if(s.complete, do: "text-success", else: "text-base-content/40")
-                ]}
-              />
-              <span class={if s.complete, do: "", else: "text-base-content/60"}>{s.label}</span>
-            </li>
-          </ul>
-          <button type="button" phx-click="rerun_setup" class={button_outline()}>
-            {if @status.complete?, do: "Re-run setup wizard", else: "Finish setup"}
-          </button>
-        </section>
-
         <div :if={@settings_tab == "credentials"} class="space-y-6">
-          <BusterClawWeb.ClinchPanels.app_keys_panel app_keys={@app_keys} />
           <BusterClawWeb.ClinchPanels.clinch_panel
             entries={@clinch_entries}
             unreadable={@unreadable}
@@ -572,6 +497,15 @@ defmodule BusterClawWeb.SettingsLive do
             Buster Claw ships one build per processor architecture — never a universal
             binary. Quote both lines when reporting a problem.
           </p>
+          <div class="flex flex-wrap items-center justify-between gap-3 border-t-2 border-base-content/15 pt-4">
+            <span class="text-sm text-base-content/70">
+              Setup: <span class="font-mono">{@status.completed} of {@status.total}</span>
+              steps complete.
+            </span>
+            <button type="button" phx-click="rerun_setup" class={button_outline()}>
+              {if @status.complete?, do: "Re-run setup wizard", else: "Finish setup"}
+            </button>
+          </div>
         </section>
         <BusterClawWeb.MessagesProbe.panel
           :if={@settings_tab == "about"}
@@ -675,17 +609,6 @@ defmodule BusterClawWeb.SettingsLive do
   # --- shared ------------------------------------------------------------
 
   defp assign_status(socket), do: assign(socket, :status, Setup.status())
-
-  # The service-credential rows, grouped for the panel. `source/1` is read here
-  # rather than in the component so the template stays free of storage lookups —
-  # and so a refresh after `clinch:changed` genuinely re-reads where each value is
-  # coming from, which is the column the panel exists to show.
-  defp app_keys do
-    AppKeys.all()
-    |> Enum.map(&Map.put(&1, :source, AppKeys.source(&1.name)))
-    |> Enum.group_by(& &1.group)
-    |> Enum.sort_by(fn {group, _keys} -> group end)
-  end
 
   defp button_outline,
     do:

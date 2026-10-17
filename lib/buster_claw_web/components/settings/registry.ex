@@ -18,8 +18,9 @@ defmodule BusterClawWeb.Settings.Registry do
 
   Configuration gathers independent features, and only one of them has to be right
   for the app to do anything at all: without an agent harness there is nothing
-  to run. Google Workspace, the profile and the credentials are all additions to
-  a working app. The 08-15 DMG review found first launch showing a fully
+  to run. Google Workspace and the credentials are additions to a working app.
+  (A Profile tab — name, organization, setup progress — sat here until 10-17,
+  never used; the setup re-run moved to About.) The 08-15 DMG review found first launch showing a fully
   disabled model picker with no explanation, which is the moment this ordering
   is for.
 
@@ -51,14 +52,9 @@ defmodule BusterClawWeb.Settings.Registry do
       blurb: "Connect Google accounts, check their health, pull mail and events."
     },
     %{
-      key: "profile",
-      label: "Profile",
-      blurb: "Your name and organization, and how far setup got."
-    },
-    %{
       key: "credentials",
       label: "Credentials",
-      blurb: "Service keys, stored sign-ins, and the recovery key."
+      blurb: "Stored sign-ins and the recovery key."
     },
     # Last on the rail on purpose: it is the tab you visit when something is
     # wrong, not one you configure. It is also where the update surface lands
