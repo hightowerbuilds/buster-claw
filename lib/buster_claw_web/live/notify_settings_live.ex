@@ -2,16 +2,23 @@ defmodule BusterClawWeb.NotifySettingsLive do
   @moduledoc """
   Settings → Notify: the notification sound board.
 
-  Manages the workspace sound library (`<workspace>/sounds/`) and the per-event
-  routing map — which sound plays for each notification source (chat, terminal,
-  email, manual) and kind (timer, alarm, reminder), with a default
-  underneath. Precedence when a notification fires: source → kind → default →
-  `notify.<ext>`/first file (see `Notifications.Sound`).
+  Manages the per-event routing map — which sound plays for each notification
+  source (chat, terminal, email, manual) and kind (timer, alarm, reminder),
+  with a default underneath, plus the agent's own noises — and the workspace
+  sound library (`<workspace>/sounds/`) behind it. Precedence when a
+  notification fires: source → kind → default → `notify.<ext>`/first file (see
+  `Notifications.Sound`).
 
-  Preview buttons play files client-side via the `SoundPreview` hook. The Test
-  button on each row creates a *real* immediate notification carrying that
-  row's kind/source, so the whole pipeline rings — scheduler, modal, and the
-  routed sound — exactly as a live fire would.
+  One screen (10-17): every route is a row — label, a sound select, ▶, Test —
+  in two columns of groups, with no page scroll. There is no library listing:
+  the sixteen bundled chimes are in every select, and only sounds the operator
+  added appear below the board, as chips with a delete. The select's inherit
+  entry names what the row resolves to, so "plays" is read in place.
+
+  ▶ plays the resolved file client-side via the `SoundPreview` hook. Test
+  creates a *real* immediate notification carrying that row's kind/source, so
+  the whole pipeline rings — scheduler, modal, and the routed sound — exactly
+  as a live fire would.
   """
   use BusterClawWeb, :live_view
 
@@ -47,6 +54,14 @@ defmodule BusterClawWeb.NotifySettingsLive do
     %{key: "boot", group: :playful, test: :ring}
   ]
 
+  # The board's two columns, each a list of groups in reading order. A group
+  # with no rows is not a group (an empty "Comms" header sat on the page for
+  # months before 10-17).
+  @columns [
+    [{:base, "Default"}, {:kind, "By kind"}, {:source, "By source"}],
+    [{:agent, "Agent attention"}, {:security, "Security"}, {:playful, "Chimes"}]
+  ]
+
   @impl true
   def mount(_params, _session, socket) do
     # `sounds/` is a drop zone — create it when the user is looking at the
@@ -59,6 +74,7 @@ defmodule BusterClawWeb.NotifySettingsLive do
      socket
      |> assign(:page_title, "Notify")
      |> assign(:rows, @rows)
+     |> assign(:columns, @columns)
      |> refresh()
      # `audio/*` rather than the extension list: LiveView's accept validation
      # rejects extensions the MIME lib doesn't know (`.ogg`). The real gate is
@@ -155,9 +171,17 @@ defmodule BusterClawWeb.NotifySettingsLive do
   end
 
   defp refresh(socket) do
+    sounds = Sound.list()
+    bundled = Sound.bundled_list()
+
     socket
-    |> assign(:sounds, Sound.list())
-    |> assign(:bundled, Sound.bundled_list())
+    |> assign(:sounds, sounds)
+    |> assign(:bundled, bundled)
+    # The operator's own files: what the chips below the board show, and the
+    # "Yours" group in every select. A workspace copy of a bundled chime is
+    # neither — it plays under the chime's own name, and deleting it would
+    # only restore the bundled one.
+    |> assign(:own, sounds -- bundled)
     |> assign(:map, Sound.sound_map())
     |> assign(:sound_on, Sound.enabled?())
     # The walk, MATERIALIZED. Calling @resolved[row.key] inline in the
@@ -169,197 +193,113 @@ defmodule BusterClawWeb.NotifySettingsLive do
     |> assign(:resolved, Map.new(Sound.route_keys(), &{&1, Sound.resolved(&1)}))
   end
 
-  # A collision-free destination basename: sanitized, and suffixed -2, -3, …
-  # rather than overwriting an existing library file.
+  # "boot.wav" -> "Boot". Row display comes from @resolved (materialized in
+  # refresh/1) — one walk, Sound's own, snapshotted into a tracked assign. See
+  # the note in refresh/1 for why calling Sound.resolved/1 inline cannot work.
   defp display_name(file), do: file |> Path.rootname() |> String.capitalize()
-
-  # Row display comes from @resolved (materialized in refresh/1) — one walk,
-  # Sound's own, snapshotted into a tracked assign. See the note in refresh/1
-  # for why calling Sound.resolved/1 inline in the template cannot work.
 
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} socket={@socket}>
-      <section class="space-y-6">
+    <%!-- One screen: `fit_viewport` clamps the shell, the board is a flex
+          column that scrolls inside itself if a window is ever too short. --%>
+    <Layouts.app flash={@flash} socket={@socket} fit_viewport>
+      <section class="flex min-h-0 flex-1 flex-col gap-4">
         <BusterClawWeb.SettingsTabs.tabs active={:notify} />
 
-        <div id="notify-sound-panel" phx-hook="SoundPreview" class="space-y-6">
-          <div class="ic-panel overflow-hidden">
-            <header class="border-b-2 border-base-content/20 px-5 py-4">
-              <p class="ic-eyebrow">Notify</p>
-              <h2 class="font-display text-2xl font-black uppercase tracking-tight">
-                Sound board
-              </h2>
-              <p class="mt-1 text-sm text-base-content/65">
-                Pick which sound each kind of notification plays. A <strong>source</strong>
-                match wins over a <strong>kind</strong>
-                match,
-                which wins over the default. <strong>Test</strong>
-                fires a real
-                notification through the full pipeline — modal and all.
-              </p>
-              <label class="mt-3 flex w-fit cursor-pointer items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={@sound_on}
-                  phx-click="toggle_sound"
-                  class="toggle toggle-primary toggle-sm"
-                />
-                <span class="text-sm font-semibold">
-                  {if @sound_on, do: "Sound on", else: "Sound off — everything is visual-only"}
-                </span>
-              </label>
-            </header>
+        <div
+          id="notify-sound-panel"
+          phx-hook="SoundPreview"
+          class="ic-panel flex min-h-0 flex-1 flex-col overflow-hidden"
+        >
+          <div class="ic-panel-h shrink-0">
+            <span>Sound board</span>
+            <label class="flex cursor-pointer items-center gap-2 font-sans normal-case tracking-normal">
+              <input
+                type="checkbox"
+                checked={@sound_on}
+                phx-click="toggle_sound"
+                class="toggle toggle-primary toggle-xs"
+              />
+              <span class="text-xs font-semibold">
+                {if @sound_on, do: "Sound on", else: "Sound off — everything is visual-only"}
+              </span>
+            </label>
+          </div>
 
-            <div class="divide-y divide-base-300 px-5">
-              <div
-                :for={group <- [:base, :kind, :source, :agent, :comms, :security, :playful]}
-                class="py-4"
-              >
-                <p class="ic-eyebrow mb-2">
-                  {case group do
-                    :base -> "Default"
-                    :kind -> "By kind"
-                    :source -> "By source"
-                    :agent -> "Agent attention"
-                    :comms -> "Comms"
-                    :security -> "Security"
-                    :playful -> "Chimes"
-                  end}
-                </p>
-                <div class="space-y-2">
-                  <div
-                    :for={row <- Enum.filter(@rows, &(&1.group == group))}
-                    class="flex flex-wrap items-center gap-3"
-                  >
-                    <span class="w-24 shrink-0 text-sm font-semibold">
-                      {Sound.route_label(row.key)}
-                    </span>
+          <div class="min-h-0 flex-1 overflow-y-auto p-4">
+            <p class="mb-3 text-[0.6875rem] leading-4 text-base-content/55">
+              A <strong>source</strong>
+              match beats a <strong>kind</strong>
+              match, which beats the default. ▶ plays the sound a row resolves to;
+              <strong>Test</strong>
+              fires the real thing, modal and all.
+            </p>
 
-                    <form id={"assign-#{row.key}"} phx-change="assign" class="contents">
-                      <input type="hidden" name="key" value={row.key} />
-                      <select
-                        name="sound"
-                        class="min-w-44 rounded border-2 border-base-300 bg-base-100 px-2 py-1 text-sm"
-                        aria-label={"Sound for #{Sound.route_label(row.key)}"}
-                      >
-                        <option value="" selected={is_nil(@map[row.key])}>
-                          {if row.key == "default",
-                            do: "Auto (notify.* or first file)",
-                            else: "— inherit —"}
-                        </option>
-                        <option value="silent" selected={@map[row.key] == "silent"}>
-                          Silent
-                        </option>
-                        <option
-                          :for={sound <- @sounds}
-                          value={sound}
-                          selected={@map[row.key] == sound}
-                        >
-                          {display_name(sound)}
-                        </option>
-                        <option
-                          :for={sound <- @bundled -- @sounds}
-                          value={sound}
-                          selected={@map[row.key] == sound}
-                        >
-                          Built-in: {display_name(sound)}
-                        </option>
-                      </select>
-                    </form>
-
-                    <span class="text-xs text-base-content/50">
-                      {case @resolved[row.key] do
-                        nil -> "plays: silent"
-                        name -> "plays: #{display_name(name)}"
-                      end}
-                    </span>
-
-                    <button
-                      :if={@resolved[row.key]}
-                      type="button"
-                      data-preview-url={~p"/notify/sound/#{@resolved[row.key]}"}
-                      class="btn btn-ghost btn-xs"
-                      aria-label={"Preview the #{Sound.route_label(row.key)} sound"}
-                    >
-                      <.icon name="hero-play" class="size-4" /> Preview
-                    </button>
-
-                    <button
-                      type="button"
-                      phx-click="test"
-                      phx-value-key={row.key}
-                      class="btn btn-outline btn-xs"
-                      aria-label={"Fire a test #{Sound.route_label(row.key)} notification"}
-                    >
-                      <.icon name="hero-bell-alert" class="size-4" /> Test
-                    </button>
+            <div class="grid gap-x-6 gap-y-4 lg:grid-cols-2">
+              <div :for={column <- @columns} class="space-y-4">
+                <div :for={{group, title} <- column}>
+                  <p class="ic-eyebrow mb-1.5">{title}</p>
+                  <div class="space-y-1.5">
+                    <.route_row
+                      :for={row <- Enum.filter(@rows, &(&1.group == group))}
+                      row={row}
+                      map={@map}
+                      resolved={@resolved[row.key]}
+                      bundled={@bundled}
+                      own={@own}
+                    />
                   </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <div class="ic-panel overflow-hidden">
-            <header class="border-b-2 border-base-content/20 px-5 py-4">
-              <p class="ic-eyebrow">Library</p>
-              <h2 class="font-display text-xl font-black uppercase tracking-tight">
-                Sounds on deck
-              </h2>
-              <p class="mt-1 text-sm text-base-content/65">
-                Files in <code class="text-xs">sounds/</code> in your workspace.
-                Add more below — MP3, WAV, OGG, M4A, or AAC.
-              </p>
-            </header>
-
-            <div class="px-5 py-4">
-              <p :if={@sounds == []} class="text-sm text-base-content/50">
-                No sounds yet. Add one below and it becomes pickable above.
-              </p>
-
-              <ul :if={@sounds != []} class="divide-y divide-base-300">
-                <li :for={sound <- @sounds} class="flex items-center gap-3 py-2">
-                  <.icon name="hero-musical-note" class="size-4 shrink-0 text-primary" />
-                  <span class="text-sm font-semibold">{display_name(sound)}</span>
-                  <span class="text-xs text-base-content/45">{sound}</span>
-                  <span class="grow" />
-                  <button
-                    type="button"
-                    data-preview-url={~p"/notify/sound/#{sound}"}
-                    class="btn btn-ghost btn-xs"
-                    aria-label={"Preview #{sound}"}
-                  >
-                    <.icon name="hero-play" class="size-4" /> Preview
-                  </button>
-                  <button
-                    type="button"
-                    phx-click="delete_sound"
-                    phx-value-name={sound}
-                    data-claw-confirm={"Delete #{sound}? Routings pointing at it reset to inherit."}
-                    class="btn btn-ghost btn-xs text-error"
-                    aria-label={"Delete #{sound}"}
-                  >
-                    <.icon name="hero-trash" class="size-4" />
-                  </button>
-                </li>
-              </ul>
+            <%!-- The library, reduced to what is the operator's: the bundled
+                  chimes are in every select already and need no list. --%>
+            <div class="mt-4 flex flex-wrap items-center gap-2 border-t-2 border-base-content/15 pt-3">
+              <p class="ic-eyebrow mr-1">Your sounds</p>
+              <span
+                :for={sound <- @own}
+                data-own-sound={sound}
+                class="inline-flex items-center gap-1 rounded border-2 border-base-content/20 py-0.5 pl-2 pr-0.5 text-xs font-semibold"
+                title={sound}
+              >
+                {display_name(sound)}
+                <button
+                  type="button"
+                  data-preview-url={~p"/notify/sound/#{sound}"}
+                  class="grid size-5 place-items-center rounded text-base-content/60 transition hover:text-primary"
+                  aria-label={"Preview #{sound}"}
+                >
+                  <.icon name="hero-play" class="size-3" />
+                </button>
+                <button
+                  type="button"
+                  phx-click="delete_sound"
+                  phx-value-name={sound}
+                  data-claw-confirm={"Delete #{sound}? Routings pointing at it reset to inherit."}
+                  class="grid size-5 place-items-center rounded text-base-content/60 transition hover:text-error"
+                  aria-label={"Delete #{sound}"}
+                >
+                  <.icon name="hero-x-mark" class="size-3" />
+                </button>
+              </span>
+              <span :if={@own == []} class="text-xs text-base-content/45">
+                None yet — the sixteen built-in chimes are in every menu.
+              </span>
 
               <form
                 id="sound-upload"
                 phx-submit="save_sound"
                 phx-change="validate_sound"
-                class="mt-4 flex flex-wrap items-center gap-3"
+                class="ml-auto flex flex-wrap items-center gap-2"
               >
                 <.live_file_input
                   upload={@uploads.sound}
-                  class="file-input file-input-bordered file-input-sm max-w-xs"
+                  class="file-input file-input-bordered file-input-xs max-w-56"
                 />
-                <button type="submit" class="btn btn-primary btn-sm">Add sound</button>
-                <p
-                  :for={err <- upload_errors(@uploads.sound)}
-                  class="text-xs text-error"
-                >
+                <button type="submit" class="btn btn-primary btn-xs">Add sound</button>
+                <p :for={err <- upload_errors(@uploads.sound)} class="text-xs text-error">
                   {case err do
                     :too_large -> "That file is too large (20 MB max)."
                     :not_accepted -> "Audio files only (MP3, WAV, OGG, M4A, AAC)."
@@ -374,4 +314,78 @@ defmodule BusterClawWeb.NotifySettingsLive do
     </Layouts.app>
     """
   end
+
+  # One route: label, the sound select, ▶ for what it resolves to, Test.
+  # `data-plays` is the resolved file (or "silent") so a test can read the walk
+  # without parsing prose; the inherit option says the same thing to a human.
+  attr :row, :map, required: true
+  attr :map, :map, required: true
+  attr :resolved, :any, required: true
+  attr :bundled, :list, required: true
+  attr :own, :list, required: true
+
+  defp route_row(assigns) do
+    ~H"""
+    <div
+      data-route={@row.key}
+      data-plays={@resolved || "silent"}
+      class="grid grid-cols-[5.5rem_minmax(0,1fr)_auto_auto] items-center gap-1.5"
+    >
+      <span class="truncate text-xs font-semibold">{Sound.route_label(@row.key)}</span>
+
+      <form id={"assign-#{@row.key}"} phx-change="assign" class="contents">
+        <input type="hidden" name="key" value={@row.key} />
+        <select
+          name="sound"
+          class="w-full min-w-0 rounded border-2 border-base-content/20 bg-base-100 px-1.5 py-1 text-xs"
+          aria-label={"Sound for #{Sound.route_label(@row.key)}"}
+        >
+          <option value="" selected={is_nil(@map[@row.key])}>
+            {inherit_label(@row.key, @resolved)}
+          </option>
+          <option value="silent" selected={@map[@row.key] == "silent"}>Silent</option>
+          <optgroup :if={@own != []} label="Yours">
+            <option :for={sound <- @own} value={sound} selected={@map[@row.key] == sound}>
+              {display_name(sound)}
+            </option>
+          </optgroup>
+          <optgroup label="Built-in">
+            <option :for={sound <- @bundled} value={sound} selected={@map[@row.key] == sound}>
+              {display_name(sound)}
+            </option>
+          </optgroup>
+        </select>
+      </form>
+
+      <button
+        type="button"
+        disabled={is_nil(@resolved)}
+        data-preview-url={@resolved && ~p"/notify/sound/#{@resolved}"}
+        class="grid size-7 place-items-center rounded border-2 border-base-content/20 text-base-content/70 transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-30"
+        aria-label={"Preview the #{Sound.route_label(@row.key)} sound"}
+        title={if @resolved, do: "Plays #{display_name(@resolved)}", else: "Silent"}
+      >
+        <.icon name="hero-play" class="size-3.5" />
+      </button>
+
+      <button
+        type="button"
+        phx-click="test"
+        phx-value-key={@row.key}
+        class="grid size-7 place-items-center rounded border-2 border-base-content/20 text-base-content/70 transition hover:border-primary hover:text-primary"
+        aria-label={"Fire a test #{Sound.route_label(@row.key)} notification"}
+        title="Test — fires the real thing"
+      >
+        <.icon name="hero-bell-alert" class="size-3.5" />
+      </button>
+    </div>
+    """
+  end
+
+  # The unset option says what the row would play, so the walk is read in the
+  # menu rather than in a sentence beside it.
+  defp inherit_label("default", nil), do: "Auto · silent"
+  defp inherit_label("default", resolved), do: "Auto · #{display_name(resolved)}"
+  defp inherit_label(_key, nil), do: "Inherit · silent"
+  defp inherit_label(_key, resolved), do: "Inherit · #{display_name(resolved)}"
 end

@@ -30,11 +30,34 @@ defmodule BusterClawWeb.NotifySettingsLiveTest do
     assert html =~ ~s(id="settings-tabs")
     assert html =~ ~s(id="settings-tab-notify")
     assert html =~ "Sound board"
-    # Library lists both seeded sounds; routing rows are present.
-    assert html =~ "bongos.wav"
-    assert html =~ "wilhelm.wav"
+    # Both seeded sounds are the operator's own: chips below the board, and an
+    # option in every route's menu. Routing rows are present.
+    assert html =~ ~s(data-own-sound="bongos.wav")
+    assert html =~ ~s(data-own-sound="wilhelm.wav")
+    assert html =~ ~s(value="wilhelm.wav")
     assert html =~ "Email"
     assert html =~ ~s(phx-hook="SoundPreview")
+  end
+
+  # One screen (10-17): no library listing of the bundled chimes, and every
+  # route row carries its own ▶ and Test.
+  test "the bundled chimes are in the menus, not listed as a library", %{conn: conn} do
+    {:ok, view, html} = live(conn, ~p"/notify-settings")
+
+    refute html =~ "Sounds on deck"
+    refute html =~ ~s(data-own-sound="boot.wav")
+    assert has_element?(view, "#assign-email option[value='boot.wav']")
+
+    for key <- Sound.route_keys() do
+      assert has_element?(view, "[data-route='#{key}'] select[name='sound']"),
+             "#{key} has no menu"
+
+      assert has_element?(view, "[data-route='#{key}'] button[phx-click='test']"),
+             "#{key} has no Test"
+
+      assert has_element?(view, "[data-route='#{key}'] button[data-preview-url]"),
+             "#{key} has no ▶"
+    end
   end
 
   test "assigning a sound to an event persists the routing", %{conn: conn} do
@@ -45,7 +68,8 @@ defmodule BusterClawWeb.NotifySettingsLiveTest do
     |> render_change()
 
     assert Sound.sound_map() == %{"email" => "wilhelm.wav"}
-    assert render(view) =~ "plays: Wilhelm"
+    assert has_element?(view, "[data-route='email'][data-plays='wilhelm.wav']")
+    assert has_element?(view, "[data-route='email'] option[value='wilhelm.wav'][selected]")
   end
 
   test "an invalid assignment is rejected", %{conn: conn} do
@@ -91,7 +115,6 @@ defmodule BusterClawWeb.NotifySettingsLiveTest do
             "Blocked",
             "Browser",
             "Order",
-            "Comms",
             "Security",
             "Chimes",
             "Boot"
@@ -109,7 +132,9 @@ defmodule BusterClawWeb.NotifySettingsLiveTest do
         |> render_change(%{"key" => "email", "sound" => "silent"})
 
       assert Sound.sound_map()["email"] == "silent"
-      assert html =~ "plays: silent"
+      assert html =~ ~s(data-route="email" data-plays="silent")
+      # No file to preview, so the ▶ is disabled rather than pointing at nothing.
+      assert has_element?(view, "[data-route='email'] button[disabled]:not([data-preview-url])")
       # And the resolution honors it end-to-end, not just the display.
       assert Sound.for_notification(%{kind: "reminder", source: "email"}) == nil
     end

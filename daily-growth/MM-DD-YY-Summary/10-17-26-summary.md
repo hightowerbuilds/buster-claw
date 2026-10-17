@@ -48,3 +48,11 @@ Work Area with a terminal slot over the background.
 | | |
 |---|---|
 | (third commit) | **The catalog went behind two buttons.** Under the Background preview: **Images** and **Shaders**, the one whose half is in use outlined. Each opens a modal (`Catalog.catalog_modal/1`, `@picker`) with its half of the catalog — thumbnails with names and the Add tile and upload on one side, `off` plus every shader three to a row on the other. A pick raises the same `assign_background` the rows always did and closes the modal; a refused pick leaves it open with the flash; removing an image keeps it open (housekeeping, not a choice). Escape, the backdrop and × close it. With the catalog gone from the page, the first column is the current background with its selectors and controls, and the Clock under it, as asked; Theme and Terminal theme are the middle column; the chat theme has the third, with its transcript preview whole again. Tests open the picker first; three modal tests added; the handoff test opens Shaders before it clicks. Two caps banked (catalog 349→460, live 513→530). |
+
+---
+
+## Morning — Notify on one screen
+
+| | |
+|---|---|
+| (fourth commit) | **The sound board tidied.** Every route is a row — label, sound menu, ▶, Test — in two columns of groups (Default, By kind, By source | Agent attention, Security, Chimes), with `fit_viewport` and no page scroll. The "Sounds on deck" library listing is gone: the sixteen bundled chimes are in every menu under a Built-in group, and only sounds the operator added appear, as chips with ▶ and × under the board, with the upload beside them. The menu's unset entry reads "Inherit · Bongos" (or "Auto · …" for Default), so what a row plays is read in the menu, not in a sentence beside it; `data-plays` carries the same for tests. A silent row's ▶ is disabled. The empty "Comms" group header that sat on the page for months is gone (`@columns` lists the groups that have rows). Tests: a new one asserts no library listing and a menu, ▶ and Test on every route; the others read `data-plays` and the selected option. |
