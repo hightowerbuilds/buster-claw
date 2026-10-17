@@ -182,6 +182,7 @@ defmodule BusterClawWeb.NotifySettingsLive do
     # neither — it plays under the chime's own name, and deleting it would
     # only restore the bundled one.
     |> assign(:own, sounds -- bundled)
+    |> assign(:own_files, Enum.map(sounds -- bundled, &file_row/1))
     |> assign(:map, Sound.sound_map())
     |> assign(:sound_on, Sound.enabled?())
     # The walk, MATERIALIZED. Calling @resolved[row.key] inline in the
@@ -192,6 +193,35 @@ defmodule BusterClawWeb.NotifySettingsLive do
     # reimplementation) and diffed like any other state.
     |> assign(:resolved, Map.new(Sound.route_keys(), &{&1, Sound.resolved(&1)}))
   end
+
+  # One row of the file list: what Finder would show, from one `File.stat`.
+  # A file that vanishes between `list/0` and here reads as 0 B with no date
+  # rather than crashing the page — the next refresh drops it.
+  defp file_row(name) do
+    stat =
+      case File.stat(Path.join(Sound.dir(), name), time: :local) do
+        {:ok, stat} -> stat
+        _ -> %File.Stat{size: 0, mtime: nil}
+      end
+
+    %{
+      name: name,
+      label: display_name(name),
+      kind: name |> Path.extname() |> String.trim_leading("."),
+      size: human_size(stat.size),
+      modified: local_stamp(stat.mtime)
+    }
+  end
+
+  defp human_size(bytes) when bytes < 1_024, do: "#{bytes} B"
+  defp human_size(bytes) when bytes < 1_048_576, do: "#{Float.round(bytes / 1_024, 1)} KB"
+  defp human_size(bytes), do: "#{Float.round(bytes / 1_048_576, 1)} MB"
+
+  defp local_stamp({{y, m, d}, {h, mi, _s}}) do
+    :io_lib.format("~4..0B-~2..0B-~2..0B ~2..0B:~2..0B", [y, m, d, h, mi]) |> to_string()
+  end
+
+  defp local_stamp(_), do: ""
 
   # "boot.wav" -> "Boot". Row display comes from @resolved (materialized in
   # refresh/1) — one walk, Sound's own, snapshotted into a tracked assign. See
@@ -228,7 +258,7 @@ defmodule BusterClawWeb.NotifySettingsLive do
           </div>
 
           <div class="min-h-0 flex-1 overflow-y-auto p-4">
-            <p class="mb-3 text-[0.6875rem] leading-4 text-base-content/55">
+            <p class="mb-2 text-[0.6875rem] leading-4 text-base-content/55">
               A <strong>source</strong>
               match beats a <strong>kind</strong>
               match, which beats the default. ▶ plays the sound a row resolves to;
@@ -236,8 +266,8 @@ defmodule BusterClawWeb.NotifySettingsLive do
               fires the real thing, modal and all.
             </p>
 
-            <div class="grid gap-x-6 gap-y-4 lg:grid-cols-2">
-              <div :for={column <- @columns} class="space-y-4">
+            <div class="grid gap-x-6 gap-y-3 lg:grid-cols-2">
+              <div :for={column <- @columns} class="space-y-3">
                 <div :for={{group, title} <- column}>
                   <p class="ic-eyebrow mb-1.5">{title}</p>
                   <div class="space-y-1.5">
@@ -255,58 +285,107 @@ defmodule BusterClawWeb.NotifySettingsLive do
             </div>
 
             <%!-- The library, reduced to what is the operator's: the bundled
-                  chimes are in every select already and need no list. --%>
-            <div class="mt-4 flex flex-wrap items-center gap-2 border-t-2 border-base-content/15 pt-3">
-              <p class="ic-eyebrow mr-1">Your sounds</p>
-              <span
-                :for={sound <- @own}
-                data-own-sound={sound}
-                class="inline-flex items-center gap-1 rounded border-2 border-base-content/20 py-0.5 pl-2 pr-0.5 text-xs font-semibold"
-                title={sound}
-              >
-                {display_name(sound)}
-                <button
-                  type="button"
-                  data-preview-url={~p"/notify/sound/#{sound}"}
-                  class="grid size-5 place-items-center rounded text-base-content/60 transition hover:text-primary"
-                  aria-label={"Preview #{sound}"}
-                >
-                  <.icon name="hero-play" class="size-3" />
-                </button>
-                <button
-                  type="button"
-                  phx-click="delete_sound"
-                  phx-value-name={sound}
-                  data-claw-confirm={"Delete #{sound}? Routings pointing at it reset to inherit."}
-                  class="grid size-5 place-items-center rounded text-base-content/60 transition hover:text-error"
-                  aria-label={"Delete #{sound}"}
-                >
-                  <.icon name="hero-x-mark" class="size-3" />
-                </button>
-              </span>
-              <span :if={@own == []} class="text-xs text-base-content/45">
-                None yet — the sixteen built-in chimes are in every menu.
-              </span>
+                  chimes are in every select already and need no list. What
+                  is left is their own files, as a file-explorer list — name,
+                  file, size, modified — in a box that scrolls on its own so
+                  a long folder never pushes the board off the screen. --%>
+            <div class="mt-3 space-y-2 border-t-2 border-base-content/15 pt-3">
+              <div class="flex flex-wrap items-center gap-2">
+                <p class="ic-eyebrow">Your sounds</p>
+                <span class="font-mono text-[0.625rem] text-base-content/45">
+                  {length(@own)} in <span class="normal-case">sounds/</span>
+                </span>
 
-              <form
-                id="sound-upload"
-                phx-submit="save_sound"
-                phx-change="validate_sound"
-                class="ml-auto flex flex-wrap items-center gap-2"
+                <form
+                  id="sound-upload"
+                  phx-submit="save_sound"
+                  phx-change="validate_sound"
+                  class="ml-auto flex flex-wrap items-center gap-2"
+                >
+                  <.live_file_input
+                    upload={@uploads.sound}
+                    class="file-input file-input-bordered file-input-xs max-w-56"
+                  />
+                  <button type="submit" class="btn btn-primary btn-xs">Add sound</button>
+                  <p :for={err <- upload_errors(@uploads.sound)} class="text-xs text-error">
+                    {case err do
+                      :too_large -> "That file is too large (20 MB max)."
+                      :not_accepted -> "Audio files only (MP3, WAV, OGG, M4A, AAC)."
+                      _ -> "Upload failed."
+                    end}
+                  </p>
+                </form>
+              </div>
+
+              <div
+                id="own-sounds"
+                class="max-h-36 overflow-y-auto rounded border-2 border-base-content/20"
               >
-                <.live_file_input
-                  upload={@uploads.sound}
-                  class="file-input file-input-bordered file-input-xs max-w-56"
-                />
-                <button type="submit" class="btn btn-primary btn-xs">Add sound</button>
-                <p :for={err <- upload_errors(@uploads.sound)} class="text-xs text-error">
-                  {case err do
-                    :too_large -> "That file is too large (20 MB max)."
-                    :not_accepted -> "Audio files only (MP3, WAV, OGG, M4A, AAC)."
-                    _ -> "Upload failed."
-                  end}
-                </p>
-              </form>
+                <table class="w-full table-fixed border-collapse text-xs">
+                  <thead class="sticky top-0 z-10 bg-base-100">
+                    <tr class="border-b-2 border-base-content/15 text-left">
+                      <th class="w-7 px-2 py-1.5"></th>
+                      <th class="ic-eyebrow px-2 py-1.5 font-semibold">Name</th>
+                      <th class="ic-eyebrow w-24 px-2 py-1.5 font-semibold">Kind</th>
+                      <th class="ic-eyebrow w-20 px-2 py-1.5 text-right font-semibold">Size</th>
+                      <th class="ic-eyebrow w-36 px-2 py-1.5 font-semibold">Modified</th>
+                      <th class="w-16 px-2 py-1.5"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      :for={file <- @own_files}
+                      data-own-sound={file.name}
+                      class="group border-b border-base-content/10 transition last:border-b-0 hover:bg-base-200/60"
+                    >
+                      <td class="px-2 py-1">
+                        <.icon name="hero-musical-note" class="size-3.5 text-primary" />
+                      </td>
+                      <td class="truncate px-2 py-1 font-semibold" title={file.name}>
+                        {file.label}
+                        <span class="ml-1 font-mono text-[0.625rem] font-normal text-base-content/45">
+                          {file.name}
+                        </span>
+                      </td>
+                      <td class="px-2 py-1 font-mono uppercase text-base-content/60">{file.kind}</td>
+                      <td class="px-2 py-1 text-right font-mono tabular-nums text-base-content/60">
+                        {file.size}
+                      </td>
+                      <td class="whitespace-nowrap px-2 py-1 font-mono tabular-nums text-base-content/60">
+                        {file.modified}
+                      </td>
+                      <td class="px-1 py-1">
+                        <span class="flex items-center justify-end gap-0.5">
+                          <button
+                            type="button"
+                            data-preview-url={~p"/notify/sound/#{file.name}"}
+                            class="grid size-6 place-items-center rounded text-base-content/60 transition hover:text-primary"
+                            aria-label={"Preview #{file.name}"}
+                          >
+                            <.icon name="hero-play" class="size-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            phx-click="delete_sound"
+                            phx-value-name={file.name}
+                            data-claw-confirm={"Delete #{file.name}? Routings pointing at it reset to inherit."}
+                            class="grid size-6 place-items-center rounded text-base-content/60 transition hover:text-error"
+                            aria-label={"Delete #{file.name}"}
+                          >
+                            <.icon name="hero-trash" class="size-3.5" />
+                          </button>
+                        </span>
+                      </td>
+                    </tr>
+                    <tr :if={@own == []}>
+                      <td colspan="6" class="px-3 py-3 text-center text-xs text-base-content/45">
+                        None yet — the sixteen built-in chimes are in every menu. Drop a file
+                        into <span class="font-mono">sounds/</span> or add one above.
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>

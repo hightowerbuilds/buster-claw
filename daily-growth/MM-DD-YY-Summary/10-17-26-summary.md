@@ -56,3 +56,11 @@ Work Area with a terminal slot over the background.
 | | |
 |---|---|
 | (fourth commit) | **The sound board tidied.** Every route is a row — label, sound menu, ▶, Test — in two columns of groups (Default, By kind, By source | Agent attention, Security, Chimes), with `fit_viewport` and no page scroll. The "Sounds on deck" library listing is gone: the sixteen bundled chimes are in every menu under a Built-in group, and only sounds the operator added appear, as chips with ▶ and × under the board, with the upload beside them. The menu's unset entry reads "Inherit · Bongos" (or "Auto · …" for Default), so what a row plays is read in the menu, not in a sentence beside it; `data-plays` carries the same for tests. A silent row's ▶ is disabled. The empty "Comms" group header that sat on the page for months is gone (`@columns` lists the groups that have rows). Tests: a new one asserts no library listing and a menu, ▶ and Test on every route; the others read `data-plays` and the selected option. |
+
+---
+
+## Morning — Your sounds as a file list
+
+| | |
+|---|---|
+| (fifth commit) | **The chips became a file-explorer list.** Under the board, the operator's own sounds are a table — Name (with the filename beside it), Kind, Size, Modified, then ▶ and delete — with a sticky header in a box that scrolls on its own, so a long `sounds/` folder never pushes the board off the screen. One `File.stat` per row, local time, a vanished file reads as 0 B rather than crashing. The count and the upload sit on the row above it. |
