@@ -34,13 +34,14 @@ dispose of one. Approving turns a sequence you keep running by hand into a
 named composition skill. Surface good ones to the operator rather than
 silently approving your own.
 
-## Shader patterns (homepage and terminal)
+## Shader patterns (the background and the clock)
 
 Backgrounds are live WebGPU **shader patterns**, chosen in Settings →
 Appearance **or by you, with `background_set`**. There is **one** catalog and
-**three** surfaces that can point at it — the homepage, the terminal, and the
-Time & Place card in the corner of the home header — and the same pattern may
-back all three at once. There are five shipped patterns. Four of them —
+**two** surfaces that can point at it — the background, which the whole Work
+Area sits on (the chat, the panels and every terminal; a terminal has no
+background of its own), and the Clock card in the corner widget — and the same
+pattern may back both at once. There are five shipped patterns. Four of them —
 **smoke, waves, mandel, weather** — share one uniform/binding contract
 (value-noise/fbm helpers, a 3-colour palette in `colA`/`colB`/`colC`, and a
 shared `bg_post` tonemap pass) and are coloured through the user's palette, so
@@ -95,8 +96,9 @@ what's there.
 
 ## Changing a background yourself
 
-Two verbs, and they are the only appearance commands that exist — there is no
-upload verb, no delete verb, and no palette verb.
+Two verbs choose a background, and there is no upload verb, no delete verb, and
+no palette verb. (Two more set how see-through the panels over it are — see
+"Panel transparency" below.)
 
 `background_list` reports every option both surfaces can show and what each is
 showing right now. **Each option carries `approved`** — whether you may
@@ -105,8 +107,8 @@ being refused first. Read it before you offer. Read it first: it is the only pla
 from, and it marks empty image slots as `filled: false` so you do not offer the
 operator a slot with nothing in it.
 
-`background_set` takes a `surface` — `terminal`, `home`, or `widget` (the
-Time & Place card) — and a `mode`:
+`background_set` takes a `surface` — `home` (the background) or `widget` (the
+Clock card) — and a `mode`:
 
 | `mode` | Effect |
 |---|---|
@@ -120,6 +122,21 @@ Time & Place card) — and a `mode`:
 back at all: that card's default is a sky called `daycycle` which is bundled but
 **offered in no catalog row**, so you cannot select it by name. Nothing is wrong
 if `background_list` never mentions it.
+
+### Panel transparency
+
+The Work Area's panels and sidebar are translucent over the background, with a
+blur behind them. How translucent is one number, 0 to 100 — `0` is a solid
+panel, `100` is no fill at all (the blur stays, so text keeps an edge). The
+default is `32`. It is the slider in Settings → Appearance → Panel transparency,
+and yours with:
+
+    ./buster-claw run panel_transparency_get
+    ./buster-claw run panel_transparency_set --json '{"percent":55}'
+
+It applies live. Higher shows more of the background and makes a busy one harder
+to read over, so pair it with the background you chose — and say what you
+changed.
 
 ```sh
 ./buster-claw run background_set --json '{"surface":"home","mode":"image:2+veil"}'

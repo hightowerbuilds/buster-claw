@@ -190,6 +190,39 @@ defmodule BusterClawWeb.AppearanceLiveTest do
     assert has_element?(view, "[data-bg-option='smoke'] span.truncate")
   end
 
+  describe "panel transparency" do
+    test "the slider shows the value in force and saves as it moves", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      assert has_element?(view, "#panel-transparency-range[value='32']")
+      assert has_element?(view, "#panel-transparency-value", "32%")
+
+      view
+      |> element("#panel-transparency-form")
+      |> render_change(%{"transparency" => "75"})
+
+      assert BusterClaw.PanelTransparency.get() == 75
+      assert has_element?(view, "#panel-transparency-value", "75%")
+    end
+
+    test "follows a change made elsewhere — the model, by command", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      {:ok, _} = BusterClaw.Commands.call("panel_transparency_set", %{"percent" => 10})
+
+      assert has_element?(view, "#panel-transparency-value", "10%")
+    end
+
+    test "a value the slider could not have sent is ignored", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      render_change(view, "set_panel_transparency", %{"transparency" => "500"})
+
+      assert BusterClaw.PanelTransparency.get() == 32
+      assert render(view)
+    end
+  end
+
   describe "the clock picker" do
     test "changes the clock through the same event a row does, and only the clock",
          %{conn: conn} do

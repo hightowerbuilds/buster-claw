@@ -52,6 +52,7 @@ defmodule BusterClawWeb.StatusLive do
       Phoenix.PubSub.subscribe(BusterClaw.PubSub, Appearance.home_topic())
       Phoenix.PubSub.subscribe(BusterClaw.PubSub, Appearance.topic(:widget))
       subscribe_chat_look()
+      BusterClaw.PanelTransparency.subscribe()
       Notifications.subscribe()
       # The corner widget's Contacts tab follows the contact list.
       BusterClaw.Contacts.subscribe()
@@ -71,6 +72,7 @@ defmodule BusterClawWeb.StatusLive do
      |> assign(:split_panes, split_panes)
      |> assign(:widget_bg, Appearance.background(:widget))
      |> assign_chat_look()
+     |> assign(:panel_transparency, BusterClaw.PanelTransparency.get())
      |> assign(status: Status.snapshot())
      |> assign(:setup_status, Setup.status())
      # Gate the composer proactively: discovering the missing CLI by typing into
@@ -481,6 +483,11 @@ defmodule BusterClawWeb.StatusLive do
   def handle_info({axis, value}, socket) when axis in [:chat_skin, :chat_text_size],
     do: {:noreply, apply_chat_look(socket, axis, value)}
 
+  # Panel transparency changed in Settings → Appearance or by command. The two
+  # fills ride on `#app-body`'s style, so this one assign restyles every pane.
+  def handle_info({:panel_transparency, value}, socket),
+    do: {:noreply, assign(socket, :panel_transparency, value)}
+
   # Periodic sky tick: keep the weather-shader background tracking real
   # conditions while the homepage sits open. Cheap no-op in any other mode.
   def handle_info(:sky_refresh, socket) do
@@ -565,7 +572,12 @@ defmodule BusterClawWeb.StatusLive do
       )
 
     ~H"""
-    <Layouts.app flash={@flash} socket={@socket} full_bleed>
+    <Layouts.app
+      flash={@flash}
+      socket={@socket}
+      full_bleed
+      panel_style={BusterClaw.PanelTransparency.style(@panel_transparency)}
+    >
       <section class="ic-home relative isolate flex min-h-0 flex-1 flex-col">
         <div
           :if={@home_bg.mode == "image" and not @field_shared?}

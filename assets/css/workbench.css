@@ -1,5 +1,9 @@
 /* One shared background, with translucent panes above it. Pane geometry is
    independent of DOM order so resizing never recreates an editor or terminal. */
+/* How translucent: `--panel-fill` and `--panel-fill-menu` are written on
+   `#app-body` by the Work Area from Settings → Appearance → Panel transparency
+   (`BusterClaw.PanelTransparency`). The fallbacks are the shipped look, so any
+   page that does not set them renders exactly as before. */
 .ic-app-body {
   display: flex;
   flex: 1;
@@ -8,7 +12,7 @@
   gap: 12px;
   padding: 14px;
   --workbench-line: color-mix(in oklab, var(--color-base-content) 14%, transparent);
-  --workbench-veil: color-mix(in oklab, var(--color-base-100) 68%, transparent);
+  --workbench-veil: color-mix(in oklab, var(--color-base-100) var(--panel-fill, 68%), transparent);
 }
 .ic-workbench {
   position: relative;
@@ -20,7 +24,7 @@
   gap: 0;
   padding: 0;
   --workbench-line: color-mix(in oklab, var(--color-base-content) 14%, transparent);
-  --workbench-veil: color-mix(in oklab, var(--color-base-100) 68%, transparent);
+  --workbench-veil: color-mix(in oklab, var(--color-base-100) var(--panel-fill, 68%), transparent);
 }
 .ic-workbench-menu {
   position: relative;
@@ -32,7 +36,7 @@
   padding: 16px 9px 10px;
   border: 1px solid var(--workbench-line);
   border-radius: 6px;
-  background: color-mix(in oklab, var(--color-base-100) 80%, transparent);
+  background: color-mix(in oklab, var(--color-base-100) var(--panel-fill-menu, 80%), transparent);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
   overflow-y: auto;

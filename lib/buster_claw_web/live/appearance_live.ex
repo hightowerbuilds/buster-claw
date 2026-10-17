@@ -50,6 +50,7 @@ defmodule BusterClawWeb.AppearanceLive do
 
   import BusterClawWeb.Appearance.Catalog
   import BusterClawWeb.Appearance.Look
+  import BusterClawWeb.Appearance.Panels
   import BusterClawWeb.Appearance.TerminalPalette
 
   # `phx-value-surface` arrives as a string. Resolve it through this table rather
@@ -62,6 +63,10 @@ defmodule BusterClawWeb.AppearanceLive do
     # so this is where that folder should come into existence.
     BusterClaw.Workspace.ensure_entry("shaders")
 
+    # The model can move the panel transparency while this page is open; the
+    # slider follows rather than showing a value that is no longer in force.
+    if connected?(socket), do: BusterClaw.PanelTransparency.subscribe()
+
     {:ok,
      socket
      |> assign(:page_title, "Appearance")
@@ -71,6 +76,7 @@ defmodule BusterClawWeb.AppearanceLive do
      |> assign(:chat_skin, ChatSkin.get())
      |> assign(:chat_text_sizes, ChatTextSize.sizes())
      |> assign(:chat_text_size, ChatTextSize.get())
+     |> assign(:panel_transparency, BusterClaw.PanelTransparency.get())
      |> assign_backgrounds()
      |> allow_upload(:background,
        accept: Appearance.accepted_extensions(),
@@ -142,6 +148,15 @@ defmodule BusterClawWeb.AppearanceLive do
     case ChatTextSize.set(size) do
       {:ok, key} -> {:noreply, assign(socket, :chat_text_size, key)}
       {:error, :invalid_size} -> {:noreply, socket}
+    end
+  end
+
+  # The slider, saved as it moves; an open Work Area follows over PubSub. A
+  # value the range input could not have sent is dropped, like the selects.
+  def handle_event("set_panel_transparency", %{"transparency" => value}, socket) do
+    case BusterClaw.PanelTransparency.set(value) do
+      {:ok, n} -> {:noreply, assign(socket, :panel_transparency, n)}
+      {:error, _reason} -> {:noreply, socket}
     end
   end
 
@@ -295,6 +310,10 @@ defmodule BusterClawWeb.AppearanceLive do
     end
   end
 
+  @impl true
+  def handle_info({:panel_transparency, n}, socket),
+    do: {:noreply, assign(socket, :panel_transparency, n)}
+
   # --- render --------------------------------------------------------------
 
   @impl true
@@ -350,8 +369,12 @@ defmodule BusterClawWeb.AppearanceLive do
             />
           </div>
 
-          <%!-- Column 3: the chat's look. --%>
+          <%!-- Column 3: how the panels sit on the background, and the chat's look. --%>
           <div class="-m-1 flex min-h-0 flex-col gap-4 overflow-y-auto p-1 [&>*]:shrink-0">
+            <.panel_transparency_panel
+              value={@panel_transparency}
+              image_url={@backgrounds.home.image_url}
+            />
             <.chat_look_panel
               chat_skins={@chat_skins}
               chat_skin={@chat_skin}

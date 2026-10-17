@@ -426,7 +426,9 @@ check lib/buster_claw_web/components/chat_panel/composer.ex  308 HELD
 # under the Background preview, so the catalog component carries the modal
 # shell plus both halves and the pickers; the LiveView gained the open/close
 # events and the modal mount. 349 -> 460 and 513 -> 530. Still one job each.
-check lib/buster_claw_web/live/appearance_live.ex             530 HELD
+# 10-17 (afternoon): Panel transparency — its mount assign, its event and the
+# PubSub follow live here; the panel's markup is `appearance/panels.ex`. 530 -> 545.
+check lib/buster_claw_web/live/appearance_live.ex             545 HELD
 check lib/buster_claw_web/components/appearance/catalog.ex    460 HELD
 check lib/buster_claw_web/components/appearance/look.ex       162 HELD
 check lib/buster_claw_web/components/appearance/terminal_palette.ex 280 HELD

@@ -31,6 +31,7 @@ command, outbound send, and untrusted fetch is recorded on the Security
 | Named folders of their media | `pocket_*` | Pockets |
 | Drawing a picture | none — you emit the SVG yourself | Drawing |
 | What's behind the surfaces | `background_list`, `background_set` | Shader patterns |
+| How see-through the panels are | `panel_transparency_get`, `panel_transparency_set` | Shader patterns |
 | Terminal colours | `terminal_theme_*` | What you can see and cannot drive |
 | Which model runs where | `model_policy` | What you can see and cannot drive |
 | Saved pages, visited pages | `bookmark_*`, `history_*` | Browsing the web |

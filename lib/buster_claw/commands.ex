@@ -595,6 +595,9 @@ defmodule BusterClaw.Commands do
   # past it to a Settings key.
   defdelegate background_list(args \\ %{}), to: BusterClaw.Commands.Appearance
   defdelegate background_set(args), to: BusterClaw.Commands.Appearance
+  # How see-through the Work Area's panels are (Settings → Appearance).
+  defdelegate panel_transparency_get(args \\ %{}), to: BusterClaw.Commands.PanelTransparency
+  defdelegate panel_transparency_set(args), to: BusterClaw.Commands.PanelTransparency
   # Google Workspace
   defdelegate google_account_list(args \\ %{}), to: BusterClaw.Commands.Google
   defdelegate google_account_get(args), to: BusterClaw.Commands.Google

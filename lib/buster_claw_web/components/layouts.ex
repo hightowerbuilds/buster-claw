@@ -77,6 +77,11 @@ defmodule BusterClawWeb.Layouts do
     doc:
       "clamp the shell to the window height (no page scroll) while keeping the centered max-width/padding — inner panes scroll themselves"
 
+  attr :panel_style, :string,
+    default: nil,
+    doc:
+      "inline custom properties for `#app-body` — the Work Area passes the panel fills (`BusterClaw.PanelTransparency.style/1`); every other page leaves the CSS fallbacks in force"
+
   attr :socket, :any,
     default: nil,
     doc:
@@ -159,7 +164,7 @@ defmodule BusterClawWeb.Layouts do
         <div id="app-icon-bridge" phx-hook="AppIconBridge" phx-update="ignore" hidden></div>
       </header>
 
-      <div id="app-body" class="ic-app-body">
+      <div id="app-body" class="ic-app-body" style={@panel_style}>
         <aside id="app-sidebar" class="ic-workbench-menu" aria-label="Application sidebar">
           {(@socket &&
               live_render(@socket, BusterClawWeb.DockNavLive, id: "bc-dock-nav", sticky: true)) ||

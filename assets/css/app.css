@@ -579,7 +579,7 @@ body { background-color: var(--color-base-100); }
 /* On the homepage, panels go translucent so the background photo reads
    through them (border + hard offset shadow are kept by .ic-panel). */
 .ic-home .ic-panel {
-  background: color-mix(in oklab, var(--color-base-100) 70%, transparent);
+  background: color-mix(in oklab, var(--color-base-100) var(--panel-fill, 70%), transparent);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }

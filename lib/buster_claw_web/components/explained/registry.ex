@@ -25,12 +25,12 @@ defmodule BusterClawWeb.Explained.Registry do
   # compares these against the live catalog and is the only reason the numbers
   # are trustworthy. Last measured 10-16, after the Studio's eleven verbs left.
   @command_stats %{
-    total: 164,
-    read: 68,
+    total: 166,
+    read: 69,
     trigger: 17,
-    mutate: 79,
-    safe: 73,
-    restricted: 91,
+    mutate: 80,
+    safe: 74,
+    restricted: 92,
     gated: 15
   }
 

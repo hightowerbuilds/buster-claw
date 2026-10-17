@@ -114,6 +114,19 @@ defmodule BusterClawWeb.WorkbenchNotesCalendarTest do
       assert has_element?(view, "#workbench-pane-chat:not([hidden])")
     end
 
+    # Panel transparency (10-17): the Work Area writes the two fills on
+    # `#app-body`, and follows a change live.
+    test "the Work Area carries the panel fills and follows a change", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, ~s(#app-body[style*="--panel-fill: 68%"]))
+
+      {:ok, _} = BusterClaw.PanelTransparency.set(50)
+
+      assert has_element?(view, ~s(#app-body[style*="--panel-fill: 50%"]))
+      assert has_element?(view, ~s(#app-body[style*="--panel-fill-menu: 62%"]))
+    end
+
     # The sidebar toggle (10-17). One id that moves: in the rail's header while
     # it is open, in the editor's header (or the empty state) while it is closed,
     # so it is always where the eye already is. The choice survives a reload.

@@ -23,6 +23,7 @@ defmodule BusterClaw.Commands.Catalog do
     Library,
     Notify,
     Orchestration,
+    PanelTransparency,
     Pocket,
     Sound,
     TerminalTheme,
@@ -44,5 +45,6 @@ defmodule BusterClaw.Commands.Catalog do
         Pocket.entries() ++
         TerminalTheme.entries() ++
         Appearance.entries() ++
+        PanelTransparency.entries() ++
         Orchestration.entries()
 end

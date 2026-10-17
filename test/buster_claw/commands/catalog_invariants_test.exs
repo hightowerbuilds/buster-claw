@@ -240,6 +240,7 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
       memory_search
       notify_get
       notify_list
+      panel_transparency_get
       pocket_describe
       pocket_list
       pocket_read
