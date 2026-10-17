@@ -15,6 +15,8 @@ import {installCaretKeys} from "./lib/caret_keys.js"
 import {renderAppTabChips} from "./lib/chrome_app_tabs.js"
 import {loadTabs, shortcutDestination} from "./lib/tabs.js"
 import {installBrowserNav} from "./lib/browser_nav.js"
+import {createBar} from "./lib/chrome_bar.js"
+import {createDownloads} from "./lib/chrome_downloads.js"
 
 installCaretKeys()
 
@@ -271,7 +273,7 @@ window.__menuShortcut = function (action) {
   if (action === "toggle_sidebar") return toggleSidebar()
   if (action === "reload") return inv("browser_reload", {tabId: activeId})
   if (action === "focus_address") { addr.focus(); addr.select(); return }
-  if (action === "find") return openFindBar()
+  if (action === "find") return bar.openFindBar()
   if (action === "zoom_in" || action === "zoom_out" || action === "zoom_reset") {
     const cur = zoomLevels[activeId] || 1
     const next = action === "zoom_reset"
@@ -292,217 +294,10 @@ window.__menuShortcut = function (action) {
   if (m) inv("browser_app_navigate", {path: shortcutDestination(Number(m[1]), loadTabs())})
 }
 
-// --- bookmark bar (persistent quick-access strip below the toolbar) ---
-// The bar has two modes: bookmarks (default) and omnibox suggestions (while
-// typing — see the suggestions block below). Bookmarks are cached so the bar
-// can swap back the moment suggest mode ends.
-let bookmarksCache = []
-
-function renderBookmarks(items) {
-  bookmarksCache = items || []
-  if (!suggestions.length && !findOpen) drawBookmarks()
-}
-
-function drawBookmarks() {
-  barEl.textContent = ""
-  if (!bookmarksCache.length) {
-    const hint = document.createElement("span")
-    hint.className = "hint"
-    hint.textContent = "Bookmarks you save appear here"
-    barEl.appendChild(hint)
-    return
-  }
-  bookmarksCache.forEach((b) => {
-    const el = document.createElement("button")
-    el.type = "button"
-    el.className = "bmk"
-    el.title = (b.folder ? b.folder + " / " : "") + (b.label || b.url) + "\n" + b.url
-    if (b.favicon_url) {
-      const img = document.createElement("img")
-      img.src = b.favicon_url; img.alt = ""; img.loading = "lazy"
-      el.appendChild(img)
-    }
-    const t = document.createElement("span")
-    t.className = "t"
-    t.textContent = b.label || b.url
-    el.appendChild(t)
-    el.onclick = () => inv("browser_navigate", {tabId: activeId, url: b.url})
-    barEl.appendChild(el)
-  })
-}
-
-function loadBookmarks() {
-  fetch(origin + "/browser/bookmarks", {headers: {accept: "application/json"}})
-    .then((r) => r.json())
-    .then(renderBookmarks)
-    .catch(function () {})
-}
-
-// --- omnibox suggestions (roadmap Phase 2.2) ---
-// The chrome's top block is a fixed 112px band (the content webview covers
-// everything under it), so a classic dropdown would be
-// clipped at its edge; while typing, suggestions take over the bookmark row
-// as chips instead. ↓/↑ (or Tab/⇧Tab) select, Enter opens, Esc restores the
-// bookmarks. Fed by /browser/suggest: bookmark matches + FTS history.
-let suggestions = []
-let suggestIndex = -1
-let suggestTimer
-let suggestSeq = 0
-
-function drawSuggestions() {
-  barEl.textContent = ""
-  suggestions.forEach((s, i) => {
-    const el = document.createElement("button")
-    el.type = "button"
-    el.className = "sug" + (i === suggestIndex ? " sel" : "")
-    el.title = s.url
-    const mark = document.createElement("span")
-    mark.className = "k"
-    mark.textContent = s.type === "bookmark" ? "★" : "⏱"
-    el.appendChild(mark)
-    const t = document.createElement("span")
-    t.className = "t"
-    t.textContent = s.label || s.url
-    el.appendChild(t)
-    // mousedown (not click) so the address bar's blur can't cancel the pick.
-    el.onmousedown = (e) => { e.preventDefault(); openSuggestion(s) }
-    barEl.appendChild(el)
-  })
-}
-
-function clearSuggestions() {
-  clearTimeout(suggestTimer)
-  suggestions = []
-  suggestIndex = -1
-  drawBookmarks()
-}
-
-function openSuggestion(s) {
-  addr.value = display(s.url)
-  clearSuggestions()
-  inv("browser_navigate", {tabId: activeId, url: s.url})
-}
-
-function requestSuggestions(q) {
-  const seq = ++suggestSeq
-  fetch(origin + "/browser/suggest?q=" + encodeURIComponent(q), {
-    headers: {accept: "application/json"}
-  })
-    .then((r) => r.json())
-    .then((items) => {
-      if (seq !== suggestSeq) return // a newer keystroke owns the bar
-      suggestions = Array.isArray(items) ? items : []
-      suggestIndex = -1
-      if (suggestions.length) drawSuggestions()
-      else drawBookmarks()
-    })
-    .catch(function () {})
-}
-
-addr.addEventListener("input", function () {
-  const v = addr.value.trim()
-  clearTimeout(suggestTimer)
-  // "/" is the workspace-browse prefix (handled by its own listener below).
-  if (v.length < 2 || v.startsWith("/")) { clearSuggestions(); return }
-  suggestTimer = setTimeout(function () { requestSuggestions(v) }, 150)
-})
-
-addr.addEventListener("keydown", function (e) {
-  if (!suggestions.length) return
-  if (e.key === "ArrowDown" || (e.key === "Tab" && !e.shiftKey)) {
-    e.preventDefault()
-    suggestIndex = (suggestIndex + 1) % suggestions.length
-    drawSuggestions()
-  } else if (e.key === "ArrowUp" || (e.key === "Tab" && e.shiftKey)) {
-    e.preventDefault()
-    suggestIndex = (suggestIndex - 1 + suggestions.length) % suggestions.length
-    drawSuggestions()
-  } else if (e.key === "Escape") {
-    e.preventDefault()
-    clearSuggestions()
-  }
-})
-
-addr.addEventListener("blur", function () { setTimeout(clearSuggestions, 150) })
-
-// --- find in page (⌘F; roadmap Phase 2.4) ---
-// The find bar takes over the bookmark row (same trick as suggestions — the
-// 112px top block can't host a floating panel; everything below it is covered
-// by the content webview). Enter steps forward, ⇧Enter
-// back, Esc closes. Matching runs in the content webview via browser_find
-// (WebKit window.find): selection + scroll with wraparound.
-let findOpen = false
-let findInput = null
-let findCount = null
-let findCountT = null
-
-function openFindBar() {
-  findOpen = true
-  drawFindBar()
-  if (findInput) { findInput.focus(); findInput.select() }
-}
-
-function closeFindBar() {
-  findOpen = false
-  findInput = null
-  findCount = null
-  if (findCountT) { clearTimeout(findCountT); findCountT = null }
-  drawBookmarks()
-}
-
-function findStep(backwards) {
-  const q = findInput && findInput.value.trim()
-  if (q) inv("browser_find", {tabId: activeId, query: q, backwards: !!backwards})
-}
-
-// Total-match label ("17 matches") next to the input, refreshed when the query
-// changes (not on next/prev steps — the total doesn't move). Debounced so fast
-// typing doesn't queue a count round-trip per keystroke; a stale reply (the
-// query changed while it was in flight) is dropped.
-function updateFindCount() {
-  if (findCountT) clearTimeout(findCountT)
-  findCountT = setTimeout(() => {
-    const q = findInput && findInput.value.trim()
-    if (!findCount) return
-    if (!q) { findCount.textContent = ""; findCount.classList.remove("none"); return }
-    inv("browser_find_count", {tabId: activeId, query: q}).then((n) => {
-      if (!findCount || !findInput || findInput.value.trim() !== q) return
-      if (typeof n !== "number") { findCount.textContent = ""; return }
-      findCount.textContent = n === 0 ? "No matches" : n === 1 ? "1 match" : n + " matches"
-      findCount.classList.toggle("none", n === 0)
-    }).catch(() => { if (findCount) findCount.textContent = "" })
-  }, 150)
-}
-
-function drawFindBar() {
-  barEl.textContent = ""
-  const wrap = document.createElement("div")
-  wrap.className = "findbar"
-  findInput = document.createElement("input")
-  findInput.id = "find"
-  findInput.type = "text"
-  findInput.placeholder = "Find in page…"
-  findInput.autocomplete = "off"
-  findInput.addEventListener("keydown", function (e) {
-    if (e.key === "Enter") { e.preventDefault(); findStep(e.shiftKey) }
-    else if (e.key === "Escape") { e.preventDefault(); closeFindBar() }
-  })
-  findInput.addEventListener("input", function () { findStep(false); updateFindCount() })
-  const mk = (label, title, fn) => {
-    const b = document.createElement("button")
-    b.type = "button"; b.className = "fbtn"; b.title = title; b.textContent = label
-    b.onclick = fn
-    return b
-  }
-  wrap.appendChild(findInput)
-  findCount = document.createElement("span")
-  findCount.className = "fcount"
-  wrap.appendChild(findCount)
-  wrap.appendChild(mk("‹", "Previous match (⇧↵)", () => findStep(true)))
-  wrap.appendChild(mk("›", "Next match (↵)", () => findStep(false)))
-  wrap.appendChild(mk("×", "Close (Esc)", closeFindBar))
-  barEl.appendChild(wrap)
-}
+// --- the bookmark row: bookmarks / omnibox suggestions / find bar ---
+// One strip, three modes, in lib/chrome_bar.js. The chrome hands it the
+// address bar, the Tauri bridge and a way to ask which tab is active.
+const bar = createBar({barEl, addr, inv, activeId: () => activeId, display, origin})
 
 function newTab(priv) {
   const id = String(nextId++)
@@ -670,68 +465,24 @@ window.__onContentNavigated = function (id, u, title, favicon) {
   // tab's page-load finish — the chrome is presentation only.
 }
 
-// --- downloads shelf (left cluster of the bottom row) ---
-// Rust's on_download hook (browser.rs) drives these: a chip with a spinner
-// while the file lands in ~/Downloads, then ✓ (click to reveal in Finder,
-// resolved by id — never by a page-supplied path) or ✕ on failure. Finished
-// chips fade out after 20s.
-const downloadsEl = document.getElementById("downloads")
-const downloads = [] // {id, name, state: "active" | "done" | "failed"}
-
-function renderDownloads() {
-  if (!downloadsEl) return
-  downloadsEl.textContent = ""
-  downloads.forEach((d) => {
-    const el = document.createElement("button")
-    el.type = "button"
-    el.className = "dl " + d.state
-    el.title = d.state === "done" ? "Reveal in Finder" : d.name
-    if (d.state === "active") {
-      const spin = document.createElement("span")
-      spin.className = "spin"
-      el.appendChild(spin)
-    } else {
-      const mark = document.createElement("span")
-      mark.textContent = d.state === "done" ? "✓" : "✕"
-      el.appendChild(mark)
-    }
-    const t = document.createElement("span")
-    t.className = "t"
-    t.textContent = d.name
-    el.appendChild(t)
-    if (d.state === "done") {
-      el.onclick = () => inv("browser_reveal_download", {downloadId: d.id})
-    }
-    downloadsEl.appendChild(el)
-  })
-}
-
-window.__onDownloadStarted = function (id, name) {
-  downloads.unshift({id, name, state: "active"})
+// --- downloads shelf (left cluster of the bottom row; lib/chrome_downloads.js) ---
+createDownloads({
+  el: document.getElementById("downloads"),
+  inv,
   // A download never fires page-load-finished, so the tab spinner would hang
   // for its full 20s safety net — clear it now that we know why it's spinning.
-  const t = activeTab()
-  if (t && t.loading) { clearTimeout(t.loadTimer); t.loading = false; renderTabs() }
-  renderDownloads()
-}
-
-window.__onDownloadFinished = function (id, success) {
-  const d = downloads.find((x) => x.id === id)
-  if (d) d.state = success ? "done" : "failed"
-  renderDownloads()
-  setTimeout(function () {
-    const i = downloads.findIndex((x) => x.id === id)
-    if (i >= 0) { downloads.splice(i, 1); renderDownloads() }
-  }, 20000)
-}
+  onStarted() {
+    const t = activeTab()
+    if (t && t.loading) { clearTimeout(t.loadTimer); t.loading = false; renderTabs() }
+  },
+})
 
 function go() {
   // Enter with a chip selected opens the suggestion; otherwise resolve as typed.
-  if (suggestIndex >= 0 && suggestions[suggestIndex]) {
-    return openSuggestion(suggestions[suggestIndex])
-  }
+  const picked = bar.selectedSuggestion()
+  if (picked) return bar.openSuggestion(picked)
   const url = resolve(addr.value)
-  clearSuggestions()
+  bar.clearSuggestions()
   if (url) inv("browser_navigate", {tabId: activeId, url})
 }
 
@@ -766,7 +517,7 @@ function bookmark() {
     .then(function () {
       btn.textContent = "Saved ✓"
       setTimeout(function () { btn.textContent = "+ Bookmark" }, 1500)
-      loadBookmarks()
+      bar.loadBookmarks()
     })
     .catch(function () {})
 }
@@ -849,6 +600,6 @@ if (sidebarCollapsed) inv("browser_set_sidebar", {collapsed: true})
 
 renderTabs()
 renderAppTabs()
-loadBookmarks()
+bar.loadBookmarks()
 restoreTabs()
 addr.focus()

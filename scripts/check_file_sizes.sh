@@ -1044,10 +1044,23 @@ check lib/buster_claw/appearance/migration.ex                 170 HELD
 # note that the next feature here takes the extraction. It did, the same day:
 # the app-tab row, and the close buttons it was missing, moved to
 # lib/chrome_app_tabs.js, and the cap ratchets down to what that left. FROZEN.
-check assets/js/chrome.js                                     859 FROZEN
+# 10-16 (CODE_QUALITY_SWEEP Phase 8): the extraction the freeze was waiting for.
+# The bar is lib/chrome_bar.js — one strip, one explicit `mode` (bookmarks /
+# suggestions / find) where there were two flags — and the downloads shelf is
+# lib/chrome_downloads.js. The chrome keeps the tab model, the Tauri bridge and
+# the toolbar wiring. 854 -> 605; the freeze lifts to HELD at +10%.
+check assets/js/chrome.js                                     665 HELD
+check assets/js/lib/chrome_bar.js                             272 HELD
+check assets/js/lib/chrome_downloads.js                        70 HELD
 # 664 -> 536 on 10-11: layout planning and native surface lifecycle moved to
 # tab_layout.js modules shared by manual controls and chat commands, with tests.
-check assets/js/hooks/tab_strip.js                            536 FROZEN
+# 10-16 (CODE_QUALITY_SWEEP Phase 8): the right-click menu is hooks/tab_menu.js
+# and the busy-terminal close confirm is hooks/tab_close_confirm.js, both
+# mixins in the TabRename shape. What is left is the strip: render, sync,
+# drag-to-reorder, shortcuts. 511 -> 307; the freeze lifts to HELD at +10%.
+check assets/js/hooks/tab_strip.js                            338 HELD
+check assets/js/hooks/tab_menu.js                             180 HELD
+check assets/js/hooks/tab_close_confirm.js                     72 HELD
 # note_editor.js is the opposite case and is capped as a regrowth alarm only:
 # all parsing and commands are already extracted and tested, and ~120 lines are
 # the design essay guarding against rebuilding the two editors that shipped
@@ -1066,8 +1079,16 @@ check assets/js/hooks/studio_menu_bar.js                       73 HELD
 # geometry.rs — asserted tauri-free); effects live in shells too dumb to be
 # wrong. The ACL lockstep test already covers all 40 commands. What none of it
 # covered was size.
-check desktop/tauri/src/browser/mod.rs                       1000 HELD
-check desktop/tauri/src/main.rs                               850 HELD
+# 10-16 (CODE_QUALITY_SWEEP Phase 8): the agent co-presence commands (read,
+# find, click, fill, wait, extract, screenshot, current, navigate/open-tab
+# active, the off-screen render) are browser/agent.rs with their field-name
+# characterization test; mod.rs keeps the chrome's tab lifecycle. 934 -> 570.
+# The two menu builders are menu.rs; main.rs keeps the release launcher and
+# the app setup. 837 -> 680.
+check desktop/tauri/src/browser/mod.rs                        627 HELD
+check desktop/tauri/src/browser/agent.rs                      434 HELD
+check desktop/tauri/src/main.rs                               748 HELD
+check desktop/tauri/src/menu.rs                               181 HELD
 # js.rs is the security-critical one: ~350 lines of injected payload and ~140 of
 # escaping tests, which is the ratio wanted. Growth here should mean a new
 # script WITH new tests in the same file, never a payload that skipped them.

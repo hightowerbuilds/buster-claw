@@ -1,8 +1,10 @@
-import {canonicalGroupKey, closeTabIn, loadTabs, saveTabs, labelForPath, requestNewTerminal, shortcutDestination, anyTerminalBusy, tabDestination} from "../lib/tabs.js"
+import {canonicalGroupKey, closeTabIn, loadTabs, saveTabs, labelForPath, requestNewTerminal, shortcutDestination, tabDestination} from "../lib/tabs.js"
 import {escapeHtml} from "../lib/html.js"
 import {TabRename} from "./tab_rename.js"
 import {dutyTabs} from "./duty_tab.js"
 import {TabLayout} from "./tab_layout.js"
+import {TabMenu} from "./tab_menu.js"
+import {TabCloseConfirm} from "./tab_close_confirm.js"
 import {recoverRetiredRoute} from "../lib/retired_tabs.js"
 
 // Browser-style tab strip. Open routes are persisted client-side in
@@ -11,6 +13,8 @@ import {recoverRetiredRoute} from "../lib/retired_tabs.js"
 export const TabStrip = {
   ...TabRename,
   ...TabLayout,
+  ...TabMenu,
+  ...TabCloseConfirm,
   mounted() {
     this.labels = this.parseLabels()
     this.el.addEventListener("click", (e) => this.onClick(e))
@@ -253,158 +257,6 @@ export const TabStrip = {
     this.save(tabs)
     this.render()
   },
-  // ----- Right-click context menu -----
-  // Primary trigger in WebKit: right-button mousedown fires even on draggable
-  // tabs, where `contextmenu` does not.
-  onRightMouseDown(e) {
-    if (e.button !== 2) return
-    const tab = e.target.closest("[data-path]")
-    if (!tab) return
-    e.preventDefault()
-    this.menuViaMouseDown = true
-    this.openMenu(tab.getAttribute("data-path"), e.clientX, e.clientY)
-  },
-  onContextMenu(e) {
-    const tab = e.target.closest("[data-path]")
-    if (!tab) return
-    // Always suppress the native menu over a tab.
-    e.preventDefault()
-    // mousedown already opened it (WebKit path) — don't reopen on the
-    // contextmenu that may follow in other browsers.
-    if (this.menuViaMouseDown) {
-      this.menuViaMouseDown = false
-      return
-    }
-    this.openMenu(tab.getAttribute("data-path"), e.clientX, e.clientY)
-  },
-  openMenu(path, x, _y) {
-    this.closeMenu()
-    this.menuPath = path
-    const menu = document.createElement("div")
-    // A horizontal flyout that lives in the tab-strip band and unfurls to the
-    // right. The native browser webview is painted over the page area BELOW the
-    // strip and always sits above HTML, so a normal dropdown falling into that
-    // area gets clipped behind it. Staying inside the strip's own vertical band
-    // keeps the menu fully visible. It scrolls horizontally if it overflows.
-    menu.className =
-      "fixed z-50 flex items-stretch gap-1 overflow-x-auto rounded-md border " +
-      "border-base-300 bg-base-100 px-1 text-sm shadow-lg"
-    menu.addEventListener("click", (e) => this.onMenuClick(e))
-    menu.addEventListener("contextmenu", (e) => e.preventDefault())
-    document.body.appendChild(menu)
-    this.menuEl = menu
-    this.renderMenu()
-
-    // Pin to the tab strip's band; start at the clicked tab's right edge (so the
-    // tab stays visible) and unfurl rightward, clamped to the viewport width.
-    const strip = this.el.getBoundingClientRect()
-    const sel = window.CSS && CSS.escape ? CSS.escape(path) : path
-    const tabEl = this.el.querySelector(`[data-path="${sel}"]`)
-    const anchorLeft = tabEl ? tabEl.getBoundingClientRect().right + 4 : x
-    const left = Math.max(8, Math.min(anchorLeft, window.innerWidth - 120))
-    menu.style.top = `${strip.top}px`
-    menu.style.height = `${strip.height}px`
-    menu.style.left = `${left}px`
-    menu.style.maxWidth = `${Math.max(120, window.innerWidth - left - 8)}px`
-
-    // Dismiss on outside click / Escape (deferred so the opening event doesn't close it).
-    this.onDocClick = (ev) => {
-      if (this.menuEl && !this.menuEl.contains(ev.target)) this.closeMenu()
-    }
-    this.onMenuKey = (ev) => {
-      if (ev.key === "Escape") this.closeMenu()
-    }
-    setTimeout(() => {
-      document.addEventListener("click", this.onDocClick)
-      document.addEventListener("keydown", this.onMenuKey)
-    }, 0)
-  },
-  // One horizontal row of actions. A /split tab gets Swap/Separate; any other
-  // tab gets a "Join with" label followed by a chip per joinable tab — flat, no
-  // submenu, since the bar has room to the right.
-  renderMenu() {
-    const isSplit = (this.menuPath || "").split("?")[0] === "/split"
-    const btn =
-      "flex shrink-0 items-center rounded px-3 whitespace-nowrap hover:bg-base-200"
-    const lbl =
-      "flex shrink-0 items-center px-2 text-xs font-semibold uppercase " +
-      "tracking-wide text-base-content/50 whitespace-nowrap"
-    // Rename is offered for every tab, joined or not.
-    const rename = `<button type="button" data-menu="rename" class="${btn}">Rename</button>`
-    if (isSplit) {
-      this.menuEl.innerHTML =
-        rename +
-        `<button type="button" data-menu="swap" class="${btn}">Swap sides</button>` +
-        `<button type="button" data-menu="separate" class="${btn}">Separate tabs</button>`
-      return
-    }
-    const candidates = this.load().filter(
-      (t) => t.path !== this.menuPath && !t.path.startsWith("/split")
-    )
-    if (candidates.length === 0) {
-      this.menuEl.innerHTML = rename + `<span class="${lbl}">No other tabs to join</span>`
-      return
-    }
-    const chips = candidates
-      .map(
-        (t) =>
-          `<button type="button" data-jointarget="${escapeHtml(t.path)}" ` +
-          `class="${btn} max-w-[12rem] truncate">${escapeHtml(t.label)}</button>`
-      )
-      .join("")
-    this.menuEl.innerHTML = rename + `<span class="${lbl}">Join with</span>` + chips
-  },
-  onMenuClick(e) {
-    const rename = e.target.closest("[data-menu='rename']")
-    if (rename) {
-      e.stopPropagation()
-      const source = this.menuPath
-      this.closeMenu()
-      // Reuse the existing inline-edit path: render() focuses the input, and
-      // Enter/blur commits through commitRename → saveTabs.
-      this.editingPath = source
-      this.render()
-      return
-    }
-    const swap = e.target.closest("[data-menu='swap']")
-    if (swap) {
-      e.stopPropagation()
-      const source = this.menuPath
-      this.closeMenu()
-      this.swapSides(source)
-      return
-    }
-    const separate = e.target.closest("[data-menu='separate']")
-    if (separate) {
-      e.stopPropagation()
-      const source = this.menuPath
-      this.closeMenu()
-      this.separateTabs(source)
-      return
-    }
-    const target = e.target.closest("[data-jointarget]")
-    if (target) {
-      e.stopPropagation()
-      const source = this.menuPath
-      this.closeMenu()
-      this.joinTabs(source, target.getAttribute("data-jointarget"))
-    }
-  },
-  closeMenu() {
-    if (this.onDocClick) {
-      document.removeEventListener("click", this.onDocClick)
-      this.onDocClick = null
-    }
-    if (this.onMenuKey) {
-      document.removeEventListener("keydown", this.onMenuKey)
-      this.onMenuKey = null
-    }
-    if (this.menuEl) {
-      this.menuEl.remove()
-      this.menuEl = null
-    }
-    this.menuPath = null
-  },
   async closeTab(path) {
     // Which tab goes and which takes the screen is shared with the browser
     // chrome's close buttons (`closeTabIn`), so the two strips cannot disagree.
@@ -451,61 +303,5 @@ export const TabStrip = {
   // and ⌘W are guarded.
   closeCurrentTab() {
     this.closeTab(this.currentKey())
-  },
-  // Resolve true to proceed with a close, false to abort. When the active tab's
-  // terminal is running a foreground process, ask first; idle terminals and
-  // non-terminal tabs resolve true immediately (no prompt).
-  async confirmCloseBusyTerminal() {
-    if (!(await anyTerminalBusy())) return true
-    return this.showCloseConfirm()
-  },
-  // Minimal Industrial Claw confirm modal (brutalist 2px borders, app color
-  // tokens). Resolves true on Close, false on Cancel / Escape / backdrop click.
-  showCloseConfirm() {
-    return new Promise((resolve) => {
-      const overlay = document.createElement("div")
-      overlay.className = "fixed inset-0 z-[100] grid place-items-center bg-black/50"
-      overlay.innerHTML =
-        `<div role="dialog" aria-modal="true" ` +
-        `class="w-80 max-w-[90vw] border-2 border-base-content bg-base-100 p-5 text-base-content shadow-lg">` +
-        `<p class="text-sm">This terminal is running something. Close it anyway?</p>` +
-        `<div class="mt-5 flex justify-end gap-2">` +
-        `<button type="button" data-confirm-cancel ` +
-        `class="border-2 border-base-content px-3 py-1 text-sm font-medium hover:bg-base-200">Cancel</button>` +
-        `<button type="button" data-confirm-close ` +
-        `class="border-2 border-primary bg-primary px-3 py-1 text-sm font-medium text-primary-content hover:opacity-90">Close</button>` +
-        `</div></div>`
-
-      const finish = (result) => {
-        document.removeEventListener("keydown", onKey, true)
-        overlay.remove()
-        resolve(result)
-      }
-      const onKey = (e) => {
-        if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); finish(false) }
-        else if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); finish(true) }
-      }
-      overlay.addEventListener("click", (e) => {
-        if (e.target === overlay || e.target.closest("[data-confirm-cancel]")) finish(false)
-        else if (e.target.closest("[data-confirm-close]")) finish(true)
-      })
-      document.addEventListener("keydown", onKey, true)
-      document.body.appendChild(overlay)
-      overlay.querySelector("[data-confirm-close]")?.focus()
-    })
-  },
-  // Defined for completeness but intentionally unreachable from the ⌘W path:
-  // ⌘W must never quit the app (see closeCurrentTab).
-  closeWindow() {
-    try {
-      const appWindow = window.__TAURI__?.window?.getCurrentWindow?.()
-      if (appWindow) {
-        appWindow.close()
-        return
-      }
-    } catch (_e) {
-      /* not in the desktop shell — fall through */
-    }
-    window.close()
   },
 }
