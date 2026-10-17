@@ -139,24 +139,7 @@ defmodule BusterClawWeb.WorkbenchStateTest do
     assert State.arrange(state, "columns").tree["axis"] == "horizontal"
   end
 
-  test "terminal slots: the lowest free slot is reused, a fifth is refused, a gap restores" do
-    {:ok, one} = State.open_terminal(State.new())
-    assert State.leaves(one.tree) == ["chat", "terminal"]
-    assert one.active == "terminal"
-    {:ok, two} = State.open_terminal(one)
-    {:ok, three} = State.open_terminal(two)
-    assert State.leaves(three.tree) == ["chat", "terminal", "terminal-2", "terminal-3"]
-    assert State.terminal_count(three) == 3
-
-    {:ok, reopened} = three |> State.close("terminal-2") |> State.open_terminal()
-    assert State.leaves(reopened.tree) == ["chat", "terminal", "terminal-3", "terminal-2"]
-
-    {:ok, four} = State.open_terminal(three)
-    assert State.terminal_count(four) == 4
-    assert State.open_terminal(four) == {:error, :limit}
-    assert State.payload(four).terminal_count == 4
-    assert State.payload(four).terminal_limit == 4
-
+  test "terminal instance keys restore with stable shell identities" do
     gap = %{
       "tree" => %{
         "axis" => "horizontal",
@@ -167,7 +150,8 @@ defmodule BusterClawWeb.WorkbenchStateTest do
     }
 
     assert State.leaves(State.restore(gap).tree) == ["chat", "terminal-3"]
-    assert State.restore(%{"tree" => "terminal-5"}) == State.new()
+    assert State.restore(%{"tree" => "terminal-5"}).tree == "terminal-5"
+    assert State.restore(%{"tree" => "terminal-invalid"}) == State.new()
 
     assert State.session_key("terminal") == "workbench"
     assert State.session_key("terminal-4") == "workbench-4"

@@ -1,3 +1,4 @@
+import {areaIdForPath} from "./work_areas.js"
 import {labelForPath, tabDestination} from "./tabs.js"
 import {recoverRetiredRoute} from "./retired_tabs.js"
 
@@ -102,6 +103,7 @@ export function planTabLayout(action, args, tabs, current, options) {
     }
     const sources = selectors.map(selector => resolve(tabs, selector, current, labels, joinable, true))
     if (sources[0].path === sources[1].path) fail("Choose two different tabs to join.")
+    if (sources.every(tab => areaIdForPath(tabDestination(tab)))) fail("Two Work Areas cannot be joined. Switch between their tabs instead.")
     const used = new Set()
     const panes = sources.map(tab => asPane(tab, options, used))
     const joined = joinedTab(panes)

@@ -17,6 +17,9 @@ import {isTypingContext} from "../lib/keys.js"
 // alive, and remounting reattaches and replays the server-buffered scrollback.
 export const TerminalView = {
   async mounted() {
+    this.disposed = false
+    this.sessionClosed = false
+    registerTerminal(this)
     this.sessionKey = this.el.dataset.sessionKey || null
     this.storageKey = this.sessionKey ? `bc:term:${this.sessionKey}` : null
     this.startupCommand = (this.el.dataset.startupCommand || "").trim()
@@ -65,6 +68,7 @@ export const TerminalView = {
       // characters out of their cells (most visible on long TUI lines). Guard
       // with a timeout so a font that never resolves can't hang the terminal.
       await this.fontsReady()
+      if (this.disposed || this.sessionClosed) return
 
       // Color palette comes from Settings → Appearance (Terminal theme); the
       // default "industrial" derives from the app's CSS tokens.
@@ -114,6 +118,7 @@ export const TerminalView = {
         openedNewSession = true
       }
 
+      if (await this.abortMount(invoke)) return
       this.unlistenData = await listen(`terminal:data:${this.id}`, (ev) => this.writeTerminal(ev.payload))
       this.unlistenExit = await listen(`terminal:exit:${this.id}`, () => {
         term.write("\r\n[process exited]\r\n")
@@ -121,6 +126,7 @@ export const TerminalView = {
         this.id = null
         this.setStatus("Exited")
       })
+      if (await this.abortMount(invoke)) return
       term.onData((data) => this.id && invoke("terminal_input", {id: this.id, data}))
       // Let the TabStrip check this terminal before closing its tab, so a
       // running build/command/agent session prompts for confirmation.
@@ -135,6 +141,7 @@ export const TerminalView = {
         if (this.resizeRaf) cancelAnimationFrame(this.resizeRaf)
         this.resizeRaf = requestAnimationFrame(() => {
           this.resizeRaf = null
+          if (!this.el.clientWidth || !this.el.clientHeight) return
           try { fit.fit() } catch (_e) { return }
           if (this.id) invoke("terminal_resize", {id: this.id, cols: term.cols, rows: term.rows})
         })
@@ -147,7 +154,8 @@ export const TerminalView = {
       // the operator may be mid-sentence in the chat composer — and a terminal
       // that grabs focus then swallows the rest of the sentence. (10-15)
       const typingElsewhere = isTypingContext(document.activeElement) && !this.el.contains(document.activeElement)
-      if (!typingElsewhere) term.focus()
+      const pane = this.el.closest("[data-workbench-pane]")
+      if (!typingElsewhere && this.el.clientWidth > 0 && (!pane || pane.dataset.active === "true")) term.focus()
       if (openedNewSession) await this.runStartupCommand(invoke)
     } catch (e) {
       this.setStatus("Error")
@@ -160,6 +168,18 @@ export const TerminalView = {
       }
       console.error("Buster Claw terminal failed to open", e)
     }
+  },
+  async abortMount(invoke) {
+    if (!this.disposed && !this.sessionClosed) return false
+    this.unlistenData?.()
+    this.unlistenExit?.()
+    this.term?.dispose()
+    if (this.sessionClosed && this.id) {
+      await invoke("terminal_close", {id: this.id}).catch(() => {})
+      if (this.storageKey) localStorage.removeItem(this.storageKey)
+      this.id = null
+    }
+    return true
   },
   // Resolve once the monospace web font is ready, but never block the terminal
   // for more than ~600ms if the FontFaceSet stalls.
@@ -260,9 +280,11 @@ export const TerminalView = {
   // or a torn-down session reads as not-busy so it never blocks closing.
   async isBusy() {
     const invoke = window.__TAURI__?.core?.invoke
-    if (!this.id || !invoke) return false
+    if (!invoke) return false
+    const id = this.id || (this.storageKey && localStorage.getItem(this.storageKey))
+    if (!id) return false
     try {
-      return await invoke("terminal_busy", {id: this.id})
+      return await invoke("terminal_busy", {id})
     } catch (_e) {
       return false
     }
@@ -273,8 +295,9 @@ export const TerminalView = {
   // reattach to it), so without this the next terminal opened in the same slot
   // would wake up inside the shell the user just closed.
   async closeSession() {
+    this.sessionClosed = true
     const invoke = window.__TAURI__?.core?.invoke
-    const id = this.id
+    const id = this.id || (this.storageKey && localStorage.getItem(this.storageKey))
     this.id = null
     if (this.storageKey) localStorage.removeItem(this.storageKey)
     if (id && invoke) {
@@ -282,6 +305,7 @@ export const TerminalView = {
     }
   },
   destroyed() {
+    this.disposed = true
     unregisterTerminal(this)
     this.resizeObserver?.disconnect()
     if (this.resizeRaf) cancelAnimationFrame(this.resizeRaf)

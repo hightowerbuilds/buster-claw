@@ -12,12 +12,9 @@ defmodule BusterClawWeb.WorkbenchState do
     %{key: "activity", label: "Activity", icon: "hero-bolt"},
     %{key: "clock", label: "Clock", icon: "hero-clock"}
   ]
-  # Up to four terminals, each a slot with its own key, shell and label
-  # (TERMINAL_PANELS D1/D2). The first keeps the name "terminal" and the
-  # "workbench" session key so a layout and a shell from before the slots
-  # existed survive untouched. The limit is this list's length — nothing counts.
-  @terminal_slots ["terminal", "terminal-2", "terminal-3", "terminal-4"]
-  @keys Enum.map(@panels, & &1.key) ++ tl(@terminal_slots)
+  # Legacy terminal keys remain valid for saved layouts and session reattachment.
+  # New terminal instances are allocated across areas by WorkAreas.
+  @keys Enum.map(@panels, & &1.key) ++ ["terminal-2", "terminal-3", "terminal-4"]
   # Four arrangements. Side by side and Stacked are for up to three panels —
   # four in a row or four stacked "all the way up" is not a layout anyone wants
   # (operator, 10-15) — so at four the work area moves to Paired columns on its
@@ -33,9 +30,17 @@ defmodule BusterClawWeb.WorkbenchState do
 
   def panels, do: @panels
   def keys, do: @keys
-  def terminal_slots, do: @terminal_slots
-  def terminal_limit, do: length(@terminal_slots)
-  def terminal_slot?(key), do: key in @terminal_slots
+  def terminal_slot?("terminal"), do: true
+
+  def terminal_slot?("terminal-" <> n) do
+    case Integer.parse(n) do
+      {number, ""} -> number >= 2 and number <= 1_000_000 and Integer.to_string(number) == n
+      _ -> false
+    end
+  end
+
+  def terminal_slot?(_key), do: false
+  def valid_key?(key), do: key in @keys or terminal_slot?(key)
   def terminal_count(state), do: Enum.count(leaves(state.tree), &terminal_slot?/1)
 
   @doc "The PTY session key a terminal slot attaches to (persisted client-side)."
@@ -46,20 +51,13 @@ defmodule BusterClawWeb.WorkbenchState do
   def label("terminal-" <> n), do: "Terminal " <> n
   def label(key), do: Enum.find_value(@panels, fn panel -> panel.key == key && panel.label end)
 
-  @doc """
-  Open the lowest free terminal slot (laid into the current arrangement, and
-  focused), or `{:error, :limit}` with the state untouched when all four are open.
-  """
-  def open_terminal(state) do
-    case Enum.find(@terminal_slots, &(&1 not in leaves(state.tree))) do
-      nil -> {:error, :limit}
-      slot -> {:ok, open(state, slot)}
-    end
-  end
-
   def new, do: %{tree: "chat", active: "chat", zoom: nil, preset: "columns"}
 
-  def open(state, key) when key in @keys do
+  def open(state, key) do
+    if valid_key?(key), do: open_panel(state, key), else: state
+  end
+
+  defp open_panel(state, key) do
     keys = leaves(state.tree)
 
     if key in keys do
@@ -70,8 +68,6 @@ defmodule BusterClawWeb.WorkbenchState do
       %{state | tree: layout(keys, preset), active: key, zoom: nil, preset: preset}
     end
   end
-
-  def open(state, _key), do: state
 
   def close(state, key) do
     tree = remove(state.tree, key)
@@ -123,7 +119,6 @@ defmodule BusterClawWeb.WorkbenchState do
     state
     |> Map.put(:layouts, layouts)
     |> Map.put(:terminal_count, terminal_count(state))
-    |> Map.put(:terminal_limit, terminal_limit())
   end
 
   @doc """
@@ -293,7 +288,10 @@ defmodule BusterClawWeb.WorkbenchState do
 
   defp validate(_node, depth) when depth >= length(@keys), do: :error
   defp validate(nil, 0), do: {:ok, nil}
-  defp validate(key, _depth) when key in @keys, do: {:ok, key}
+
+  defp validate(key, _depth) when is_binary(key) do
+    if valid_key?(key), do: {:ok, key}, else: :error
+  end
 
   defp validate(%{"axis" => axis, "ratio" => ratio, "first" => a, "second" => b}, depth)
        when axis in ["horizontal", "vertical"] and is_number(ratio) do

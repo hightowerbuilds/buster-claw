@@ -90,6 +90,10 @@ defmodule BusterClawWeb.SplitLive do
     end
   end
 
+  defp pane_child_session("/", path, _url, _side) do
+    %{"workbench_area" => pane_params(path)["area"] || "area-1"}
+  end
+
   defp pane_child_session("/settings", path, _url, side) do
     %{
       "settings_tab" => pane_params(path)["tab"],

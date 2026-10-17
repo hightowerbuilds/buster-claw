@@ -1,5 +1,7 @@
 // Tab-strip model: client-side persistence of open routes plus the path/label
 // helpers shared by the TabStrip, SplitResizer, and TerminalView hooks.
+import {areaIdForPath, areaPath, areaLabel, lastAreaPath, reconcileAreaTabs} from "./work_areas.js"
+import {readLayout} from "./workbench.js"
 import {recoverRetiredRoute, recoverRetiredTabs} from "./retired_tabs.js"
 
 // The Settings section presents several routes behind one in-page tab bar. In
@@ -29,8 +31,10 @@ const TAB_GROUPS = [
 // Canonical top-tab path for a route: the owning group's key if the route is in
 // a collapsed group, else null.
 export function canonicalGroupKey(path) {
-  if (path === "/") return "/"
-  for (const g of TAB_GROUPS) if (g.paths.has(path)) return g.key
+  const area = areaIdForPath(path)
+  if (area) return areaPath(area)
+  const pathname = String(path || "").split(/[?#]/)[0]
+  for (const g of TAB_GROUPS) if (g.paths.has(pathname)) return g.key
   return null
 }
 
@@ -38,6 +42,7 @@ export function canonicalGroupKey(path) {
 // Validate it against today's group before links and keyboard shortcuts use it.
 export function tabDestination(tab) {
   if (!tab) return undefined
+  if (areaIdForPath(tab.path)) return areaPath(areaIdForPath(tab.path))
   if (tab.path.split(/[?#]/)[0] === "/voice") return recoverRetiredRoute(tab.path)
   const group = canonicalGroupKey(tab.path)
   if (group && tab.href) {
@@ -61,9 +66,9 @@ function splitPathQuery(fullPath) {
 export function loadTabs() {
   try {
     const saved = JSON.parse(localStorage.getItem(TAB_STORAGE_KEY)) || []
-    const tabs = recoverRetiredTabs(saved).map(tab =>
-      tab.path === "/" && tab.label === "Home" ? {...tab, label: "Work area"} : tab
-    )
+    const tabs = reconcileAreaTabs(recoverRetiredTabs(saved).map(tab =>
+      tab.path === "/" && tab.label === "Home" ? {...tab, label: "Work Area"} : tab
+    ), readLayout(localStorage))
     if (JSON.stringify(tabs) !== JSON.stringify(saved)) {
       try { saveTabs(tabs) } catch (_e) { /* Still recover when storage is full. */ }
     }
@@ -83,6 +88,8 @@ function terminalLabelFromQuery(query, labels = {}) {
 export function labelForPath(fullPath, labels = {}) {
   if (!fullPath) return "?"
   const [path, query] = splitPathQuery(fullPath)
+  const area = areaIdForPath(fullPath)
+  if (area) return areaLabel(area)
   if (path === "/terminal") return terminalLabelFromQuery(query, labels)
   if (path === "/split") {
     const params = new URLSearchParams(query || "")
@@ -117,7 +124,7 @@ export function requestNewTerminal(now = Date.now()) {
   if (route === "open") window.dispatchEvent(new CustomEvent("bc:terminal-new"))
   if (route === "navigate") {
     try { sessionStorage.setItem(TERMINAL_NEW_FLAG, "1") } catch (_e) { /* the deep link still ensures one */ }
-    window.location.href = "/?panel=terminal"
+    window.location.href = lastAreaPath()
   }
   return route
 }
@@ -135,7 +142,7 @@ export function takeTerminalNewFlag() {
 // first open browser tab; anything else is not a shortcut.
 export function shortcutDestination(n, tabs) {
   const list = Array.isArray(tabs) ? tabs : []
-  if (n === 1) return "/"
+  if (n === 1) return lastAreaPath()
   if (n === 2) return tabDestination(list.find((t) => t && t.path === "/settings")) || "/appearance"
   if (n === 3) {
     const browser = list.find((t) => t && typeof t.path === "string" && t.path.split("?")[0] === "/browse")
@@ -153,7 +160,7 @@ export function shortcutDestination(n, tabs) {
 // `/duty` follows the shift, not the operator, so it never closes.
 export function closeTabIn(tabs, path) {
   const list = Array.isArray(tabs) ? tabs : []
-  const idx = path === "/duty" ? -1 : list.findIndex((t) => t && t.path === path)
+  const idx = path === "/duty" || areaIdForPath(path) === "area-1" ? -1 : list.findIndex((t) => t && t.path === path)
   if (idx === -1) return {tabs: list, closed: false, next: null}
   const remaining = list.slice(0, idx).concat(list.slice(idx + 1))
   return {tabs: remaining, closed: true, next: remaining[idx] || remaining[idx - 1] || null}
@@ -194,14 +201,16 @@ export function browserAppTab(sid) {
 // terminal in the other pane could not be asked about first.
 export function chromeChips(savedTabs, currentPath) {
   const saved = (Array.isArray(savedTabs) ? savedTabs : []).filter(
-    (t) => t && typeof t.path === "string" && t.path.startsWith("/") && t.path.split("?")[0] !== "/"
+    (t) => t && typeof t.path === "string" && t.path.startsWith("/") && areaIdForPath(t.path) !== "area-1"
   )
-  return [{path: "/", label: "Work area"}].concat(saved).map((t) => {
+  const first = (Array.isArray(savedTabs) ? savedTabs : []).find(t => t?.path === "/")
+  const label = first?.label && !["Home", "Work area"].includes(first.label) ? first.label : "Work Area"
+  return [{path: "/", label}].concat(saved).map((t) => {
     const base = t.path.split("?")[0]
     const current = currentPath
       ? t.path === currentPath
       : base === "/browse" || (base === "/split" && t.path.includes("%2Fbrowse"))
-    const closable = base !== "/" && t.path !== "/duty" && !(current && base === "/split")
+    const closable = areaIdForPath(t.path) !== "area-1" && t.path !== "/duty" && !(current && base === "/split")
     return {...t, current, closable}
   })
 }
@@ -209,9 +218,9 @@ export function chromeChips(savedTabs, currentPath) {
 // ---- Live terminal registry ------------------------------------------------
 // Mounted TerminalView hooks register here so the TabStrip can ask, before a
 // tab close, whether a terminal is running a foreground process (a build, a
-// long command, or a live agent session) and would lose work if killed. Only
-// the active route is mounted, so the registry only ever holds the terminal(s)
-// of the tab being closed.
+// long command, or a live agent session) and would lose work if killed. Work
+// Areas retain inactive terminals too; area closes filter this registry through
+// their pane containers rather than querying every mounted terminal.
 const liveTerminals = new Set()
 
 export function registerTerminal(hook) {

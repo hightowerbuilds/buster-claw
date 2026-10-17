@@ -1,5 +1,7 @@
 import {canonicalGroupKey, closeTabIn, loadTabs, saveTabs, labelForPath, requestNewTerminal, shortcutDestination, tabDestination} from "../lib/tabs.js"
 import {escapeHtml} from "../lib/html.js"
+import {TabWorkAreas} from "./tab_work_areas.js"
+import {areaIdForPath} from "../lib/work_areas.js"
 import {TabRename} from "./tab_rename.js"
 import {dutyTabs} from "./duty_tab.js"
 import {TabLayout} from "./tab_layout.js"
@@ -12,6 +14,7 @@ import {recoverRetiredRoute} from "../lib/retired_tabs.js"
 // routes, and each open route shows up here as a tab with a close (×) button.
 export const TabStrip = {
   ...TabRename,
+  ...TabWorkAreas,
   ...TabLayout,
   ...TabMenu,
   ...TabCloseConfirm,
@@ -61,6 +64,7 @@ export const TabStrip = {
     // webview. The menu owns the bound keys regardless of focus, so this is
     // how ⌘T/⌘W/⌘1-9 keep driving app tabs outside the browser.
     window.__bcMenuShortcut = (action) => this.menuShortcut(action)
+    this.setupWorkAreas()
     this.sync()
     this.render()
     // Heal any native browser surface left stuck by a prior full-page reload.
@@ -69,6 +73,7 @@ export const TabStrip = {
   },
   reconnected() { this.onTabsFocus() },
   destroyed() {
+    window.removeEventListener("bc:workbench-state", this.onAreaState)
     window.removeEventListener("focus", this.onTabsFocus)
     window.removeEventListener("bc:duty-changed", this.onDuty)
     this.closeMenu()
@@ -88,7 +93,7 @@ export const TabStrip = {
       if (tabs.length < 2) return
       const i = tabs.findIndex((t) => t.path === this.currentKey())
       const n = action === "next_tab" ? (i + 1) % tabs.length : (i - 1 + tabs.length) % tabs.length
-      window.location.href = this.navTarget(tabs[n])
+      this.navigateTab(this.navTarget(tabs[n]))
       return
     }
     const m = /^tab_([1-3])$/.exec(action)
@@ -103,7 +108,7 @@ export const TabStrip = {
   save(tabs) { saveTabs(tabs) },
   // Full paths distinguish browser tabs; Settings routes share one tab.
   currentKey() {
-    const group = canonicalGroupKey(window.location.pathname)
+    const group = canonicalGroupKey(window.location.pathname + window.location.search)
     if (group) return group
     return recoverRetiredRoute(window.location.pathname + window.location.search)
   },
@@ -128,7 +133,7 @@ export const TabStrip = {
     // canonical default. The tab stays keyed by the group path (one tab, one
     // highlight); `href` only steers navigation.
     const subRoute =
-      canonicalGroupKey(window.location.pathname) &&
+      window.location.pathname !== "/" && canonicalGroupKey(window.location.pathname + window.location.search) &&
       window.location.pathname + window.location.search
     const existing = pruned.find((t) => t.path === key)
     if (!existing) {
@@ -210,11 +215,12 @@ export const TabStrip = {
         `<span class="size-2 rounded-full bg-primary animate-pulse" aria-hidden="true"></span>` +
         `<a id="duty-tab" href="/duty" data-phx-link="redirect" data-phx-link-state="push">On duty</a></span>`
     }
+    const area = areaIdForPath(tab.path)
+    const linkType = area && window.location.pathname === "/" ? "patch" : "redirect"
+    const close = area === "area-1" ? "" : `<button type="button" data-close="${path}" aria-label="Close ${label}" class="grid size-4 shrink-0 place-items-center rounded text-base-content/40 hover:bg-base-300 hover:text-base-content">&times;</button>`
     return `<span class="${wrap}" data-path="${path}" draggable="true">` +
-      `<a href="${href}" draggable="false" data-phx-link="redirect" data-phx-link-state="push" class="max-w-[12rem] truncate">${label}</a>` +
-      `<button type="button" data-close="${path}" aria-label="Close ${label}" ` +
-      `class="grid size-4 shrink-0 place-items-center rounded text-base-content/40 hover:bg-base-300 hover:text-base-content">&times;</button>` +
-      `</span>`
+      `<a href="${href}" draggable="false" data-phx-link="${linkType}" data-phx-link-state="push" class="max-w-[12rem] truncate">${label}</a>` +
+      close + `</span>`
   },
   onClick(e) {
     const closeBtn = e.target.closest("[data-close]")
@@ -258,6 +264,7 @@ export const TabStrip = {
     this.render()
   },
   async closeTab(path) {
+    if (this.closeWorkArea(path)) return
     // Which tab goes and which takes the screen is shared with the browser
     // chrome's close buttons (`closeTabIn`), so the two strips cannot disagree.
     const {tabs, closed, next} = closeTabIn(this.load(), path)
@@ -294,7 +301,7 @@ export const TabStrip = {
   // when there's no tab at that slot.
   jumpTo(n) {
     const dest = shortcutDestination(n, this.load())
-    if (dest) window.location.href = dest
+    if (dest) this.navigateTab(dest)
   },
   // ⌘W only ever closes the active tab. Closing the last remaining tab navigates
   // to "/" (which re-seeds the strip with a fresh home tab on the next page

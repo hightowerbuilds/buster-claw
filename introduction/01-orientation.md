@@ -86,7 +86,7 @@ The **dock** across the bottom of the window has five tabs:
 
 | Dock tab | What is on it |
 |---|---|
-| **Work area** | Panels you open from the sidebar, as many as fit: **Chat** · **Workspace** (the file tree over the folders above) · **Notes** · **Calendar** · **Terminal** (up to four) · **Pockets** · **Explained** · **Activity** · **Clock** |
+| **Work area** | Four panels per area, with Grid or freely positioned Overlap mode. A fifth opens Work Area 2, then Work Area 3: **Chat** · **Workspace** (the file tree over the folders above) · **Notes** · **Calendar** · **Terminal** · **Pockets** · **Explained** · **Activity** · **Clock** |
 | **Browser** | The in-app browser, and where an Agent Mode run is mirrored live |
 | **Settings** | Tabs: **Appearance** · **Notify** · **Agents & models** · **Google Workspace** · **Credentials** · **Speech** · **Security** |
 

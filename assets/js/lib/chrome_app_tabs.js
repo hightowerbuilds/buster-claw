@@ -15,6 +15,7 @@
 //
 // Extracted from chrome.js, which is FROZEN at its size cap: a new feature there
 // either fits or takes an extraction, and this row was the separable part.
+import {areaIdForPath, areaPath} from "./work_areas.js"
 import {browserAppTab, chromeChips, closeTabIn, loadTabs, saveTabs, tabDestination} from "./tabs.js"
 
 export function renderAppTabChips(el, sid, inv) {
@@ -59,6 +60,11 @@ function chipElement(chip, sid, inv, rerender) {
 }
 
 function closeAppTab(chip, sid, inv, rerender) {
+  const area = areaIdForPath(chip.path)
+  if (area) {
+    if (area !== "area-1") inv("browser_app_navigate", {path: `${areaPath(area)}&close_area=${encodeURIComponent(area)}`})
+    return
+  }
   const {tabs, closed, next} = closeTabIn(loadTabs(), chip.path)
   if (!closed) return
   saveTabs(tabs)

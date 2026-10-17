@@ -4,6 +4,11 @@
 persistent panels that shipped hours earlier (`4716c83`). Nothing here touches
 the PTY plumbing in Rust; everything is the layout above it.
 
+> **Extended 10-17:** [Work Area grid and overlap](WORK_AREA_LAYOUT_ROADMAP.md)
+> adds free positioning and four-panel areas with automatic overflow tabs.
+> It replaces the fixed four-terminal pool and arrangements for five or more
+> panels in one area described here. Native desktop acceptance remains open.
+
 > ### What shipped (10-15, uncommitted at the time of writing)
 >
 > - Phases 0–4 as written, with Q1–Q3 answered by their defaults. `mix precommit`

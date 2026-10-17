@@ -32,21 +32,17 @@ stops the polling you can see; it does not end the shift.
 
 ## What's in the app
 
-The dock at the bottom switches between five surfaces:
+The sidebar opens panels in your Work Area, with Browser and Settings as separate tabs:
 
 - **Work area** — the main screen: panels you open from the sidebar and
   arrange as you like. **Chat** (talk to your agent), **Workspace** (the file
-  browser), **Notes**, **Calendar**, **Terminal** (up to four), **Pockets**
+  browser), **Notes**, **Calendar**, **Terminal**, **Pockets**
   (your own folders of media — the background pool, the dock icon),
   **Explained** (guided tours of each feature), and **Activity** (the one log
   of what your agent did).
-- **Workspace** — the file browser for everything Buster Claw keeps (your
-  trusted-senders list, the jobs roster, the Library archive).
 - **Browser** — a real browser your agent can drive, not just a reader. It works
   the tab you are looking at, and Agent Mode runs longer errands in their own
   window with a payment gate that stops before money moves.
-- **Terminal** — your agent's shell, inside the app. Each click of the dock
-  button opens a new one.
 - **Settings** — seven tabs: **Appearance**, **Notify**, **Agents & models**,
   **Google Workspace**, **Credentials**, **Speech**, and **Security**. Which model
   runs where is on **Agents & models**; connecting Google is on **Google
@@ -59,11 +55,25 @@ audit feed**: every command that changes something, every outbound send, and
 every untrusted fetch is logged there. Plain reads are not, so the feed stays
 legible.
 
-One surface has no dock button at all: the **Studio** (`/studio`), where you cut
-and arrange recorded sounds in **Mix**.
+Choose **Grid** to arrange panels in tiles, or **Overlap** to move them freely
+by their headers. Clicking a covered panel brings it forward. Each mode keeps
+its arrangement, and each Work Area remembers its own mode. On a narrow screen,
+panels stack vertically until there is room to move them again.
 
-Every one of these opens as a tab across the top. Drag one tab onto another to
-join them into a side-by-side split — a terminal beside the browser, say.
+Each Work Area holds **four panels**. Opening another creates and selects
+**Work Area 2**, then **Work Area 3**, and so on. Selecting an already open
+panel returns to its area. The Terminal button or **Command-T** creates another
+terminal; in Browser, Command-T creates a browser tab. **Command-1** returns to
+your last Work Area, **Command-2** to Settings, and **Command-3** to Browser.
+
+In Overlap, focus a panel heading and use the arrow keys to move it, Enter to
+save, or Escape to cancel. **Reset positions** restores the starting arrangement.
+Closing a secondary Work Area closes its terminals, asking first if work is
+running. The first Work Area stays available.
+
+Tabs appear across the top. Drag to reorder; hold Alt while dropping one tab
+onto another to join them into a side-by-side split. Two Work Areas cannot be
+joined together.
 
 Everything the agent creates lives under your **workspace folder**: `library/`
 (archived docs), `memory/`, `jobs/` (the jobs it can run), and `Dispatch.md` —

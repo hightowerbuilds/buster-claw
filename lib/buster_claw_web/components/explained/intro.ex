@@ -41,11 +41,11 @@ defmodule BusterClawWeb.Explained.Intro do
             no others — no "dock", no "sub-tab", no "corner widget". --%>
       <p id="explained-intro-geography" class="text-sm leading-relaxed text-base-content/80">
         <span class="font-semibold text-base-content">Where things are.</span>
-        The sidebar on the left lists the work-area panels — Chat, Workspace,
-        Notes, Calendar, up to four Terminals, Pockets, this Explained panel,
-        Activity and Clock — and two destinations that open as tabs of their own,
-        Browser and Settings. Panels sit side by side in the work area; ⌘1, ⌘2
-        and ⌘3 jump to the work area, Settings and the Browser. The
+        The sidebar opens Chat, Workspace, Notes, Calendar, Terminals, Pockets, Explained, Activity and Clock.
+        Browser and Settings open as separate tabs. Choose Grid for tiles or
+        Overlap to drag panels by their headers. Each area holds four panels;
+        the next opens Work Area 2, then Work Area 3. ⌘1 returns to your last area;
+        ⌘2 and ⌘3 open Settings and Browser. The
         <span class="font-semibold text-base-content">Clock panel</span>
         carries three tabs: Time &amp; Place, Contacts, and Notify. The
         <span class="font-semibold text-base-content">duty dock</span>

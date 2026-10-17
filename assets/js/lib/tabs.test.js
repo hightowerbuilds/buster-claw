@@ -52,7 +52,7 @@ describe("chromeChips", () => {
 
   test("Work area comes first, exactly once, and is never closable", () => {
     const chips = chromeChips(saved, "/browse?t=a")
-    expect(chips[0]).toMatchObject({path: "/", label: "Work area", current: false, closable: false})
+    expect(chips[0]).toMatchObject({path: "/", label: "Work Area", current: false, closable: false})
     expect(chips.filter((c) => c.path === "/").length).toBe(1)
   })
 
@@ -136,7 +136,7 @@ describe("canonicalGroupKey", () => {
 
   test("work-area panel links stay in the Home tab", () => {
     expect(canonicalGroupKey("/")).toBe("/")
-    expect(tabDestination({path: "/", href: "/?panel=clock"})).toBe("/?panel=clock")
+    expect(tabDestination({path: "/", href: "/?panel=clock"})).toBe("/")
   })
 })
 

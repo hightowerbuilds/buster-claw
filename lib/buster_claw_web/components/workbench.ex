@@ -5,6 +5,8 @@ defmodule BusterClawWeb.Workbench do
 
   attr :state, :map, required: true
   attr :mounted, :any, required: true
+  attr :terminals, :any, required: true
+  slot :terminal, required: true
 
   slot :panel, required: true do
     attr :key, :string, required: true
@@ -21,11 +23,13 @@ defmodule BusterClawWeb.Workbench do
         id="workbench-controller"
         phx-hook="Workbench"
         phx-update="ignore"
-        data-state={Jason.encode!(State.payload(@state))}
+        data-state={Jason.encode!(@state)}
         hidden
       >
       </div>
       <div class="ic-workbench-main">
+        <p id="workbench-notice" class="ic-workbench-notice" role="status" phx-update="ignore" hidden>
+        </p>
         <%!-- The Workbench hook lays the panes out with inline custom
               properties (and marks a narrow canvas `data-stacked`). The server
               renders neither, so without these, any patch — a chat token, a
@@ -34,81 +38,28 @@ defmodule BusterClawWeb.Workbench do
         <div
           id="workbench-canvas"
           class="ic-workbench-canvas"
-          phx-mounted={JS.ignore_attributes(["data-stacked"])}
+          phx-mounted={JS.ignore_attributes(["data-stacked", "data-mode"])}
         >
-          <section
+          <BusterClawWeb.WorkbenchPane.pane
             :for={panel <- @panel}
             id={"workbench-pane-#{panel.key}"}
-            data-workbench-pane={panel.key}
-            data-active={to_string(@state.active == panel.key)}
-            phx-mounted={JS.ignore_attributes(["style", "class"])}
-            aria-labelledby={"workbench-title-#{panel.key}"}
-            hidden={
-              not MapSet.member?(@open, panel.key) or
-                (@state.zoom != nil and @state.zoom != panel.key)
-            }
-            class="ic-workbench-pane"
+            key={panel.key}
+            state={@state}
+            open={@open}
           >
-            <header class="ic-workbench-pane-header">
-              <span class="ic-workbench-pane-mark" aria-hidden="true"></span>
-              <h2 id={"workbench-title-#{panel.key}"} tabindex="-1">{State.label(panel.key)}</h2>
-              <div class="ml-auto flex items-center gap-0.5">
-                <button
-                  id={"workbench-zoom-#{panel.key}"}
-                  type="button"
-                  phx-click="workbench_zoom"
-                  phx-value-key={panel.key}
-                  aria-label={
-                    if(@state.zoom == panel.key,
-                      do: "Restore panels",
-                      else: "Maximize #{State.label(panel.key)}"
-                    )
-                  }
-                  title={if(@state.zoom == panel.key, do: "Restore panels", else: "Maximize panel")}
-                  class="ic-workbench-pane-action"
-                >
-                  <.icon
-                    name={
-                      if(@state.zoom == panel.key,
-                        do: "hero-arrows-pointing-in",
-                        else: "hero-arrows-pointing-out"
-                      )
-                    }
-                    class="size-3.5"
-                  />
-                </button>
-                <%!-- A terminal's × CLOSES its shell (TERMINAL_PANELS D4), so the
-                      Workbench hook owns that click: busy check, confirm, end the
-                      PTY, then `workbench_close`. Every other pane just hides. --%>
-                <button
-                  :if={State.terminal_slot?(panel.key)}
-                  id={"workbench-close-#{panel.key}"}
-                  type="button"
-                  data-workbench-close-terminal={panel.key}
-                  aria-label={"Close #{State.label(panel.key)}"}
-                  title="Close terminal"
-                  class="ic-workbench-pane-action"
-                >
-                  <.icon name="hero-x-mark" class="size-3.5" />
-                </button>
-                <button
-                  :if={not State.terminal_slot?(panel.key)}
-                  id={"workbench-close-#{panel.key}"}
-                  type="button"
-                  phx-click="workbench_close"
-                  phx-value-key={panel.key}
-                  aria-label={"Hide #{State.label(panel.key)}"}
-                  title="Hide panel"
-                  class="ic-workbench-pane-action"
-                >
-                  <.icon name="hero-x-mark" class="size-3.5" />
-                </button>
-              </div>
-            </header>
-            <div class="ic-workbench-pane-body">
-              {MapSet.member?(@mounted, panel.key) && render_slot(panel)}
-            </div>
-          </section>
+            {MapSet.member?(@mounted, panel.key) && render_slot(panel)}
+          </BusterClawWeb.WorkbenchPane.pane>
+          <div id="workbench-terminals" phx-update="stream" class="contents">
+            <BusterClawWeb.WorkbenchPane.pane
+              :for={{id, terminal} <- @terminals}
+              id={id}
+              key={terminal.id}
+              state={@state}
+              open={@open}
+            >
+              {render_slot(@terminal, terminal.id)}
+            </BusterClawWeb.WorkbenchPane.pane>
+          </div>
           <div id="workbench-dividers" phx-update="ignore"></div>
           <div :if={MapSet.size(@open) == 0} id="workbench-empty" class="ic-workbench-empty">
             <.icon name="hero-view-columns" class="size-8 text-primary/65" />
@@ -140,19 +91,39 @@ defmodule BusterClawWeb.Workbench do
       role="group"
       aria-label="Panel arrangement"
     >
-      <button
-        :for={layout <- State.payload(State.new()).layouts}
-        id={"workbench-layout-#{layout.key}"}
-        type="button"
-        data-workbench-layout={layout.key}
-        aria-label={layout.label}
-        aria-pressed="false"
-        title={layout.label}
-        disabled
-        class="ic-workbench-layout"
-      >
-        <span class="ic-workbench-layout-dots" aria-hidden="true"></span>
+      <div class="ic-workbench-modes" role="group" aria-label="Layout mode">
+        <button
+          :for={mode <- ["grid", "overlap"]}
+          id={"workbench-mode-#{mode}"}
+          type="button"
+          data-workbench-mode={mode}
+          aria-pressed="false"
+          disabled
+        >
+          {String.capitalize(mode)}
+        </button>
+      </div>
+      <div data-workbench-presets class="ic-workbench-presets">
+        <button
+          :for={layout <- State.payload(State.new()).layouts}
+          id={"workbench-layout-#{layout.key}"}
+          type="button"
+          data-workbench-layout={layout.key}
+          aria-label={layout.label}
+          aria-pressed="false"
+          title={layout.label}
+          disabled
+          class="ic-workbench-layout"
+        >
+          <span class="ic-workbench-layout-dots" aria-hidden="true"></span>
+        </button>
+      </div>
+      <button id="workbench-reset-positions" type="button" data-workbench-reset hidden>
+        Reset positions
       </button>
+      <span data-workbench-narrow-hint class="ic-workbench-layout-hint" hidden>
+        Widen the work area to move panels.
+      </span>
     </div>
     """
   end
@@ -172,7 +143,7 @@ defmodule BusterClawWeb.Workbench do
       </div>
       <nav class="ic-workbench-launcher" aria-label="Panels">
         <%!-- Terminal always CREATES (TERMINAL_PANELS D3): the hook routes the
-              click to the next free slot, up to four, and paints the count. The
+              click to the next terminal instance and paints the count. The
               href is the fallback — and the deep link, which only ensures one. --%>
         <.link
           :for={panel <- @panels}

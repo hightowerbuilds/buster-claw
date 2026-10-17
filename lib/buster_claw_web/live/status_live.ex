@@ -122,7 +122,7 @@ defmodule BusterClawWeb.StatusLive do
        progress: &handle_attach_progress/3
      )
      |> then(fn s -> if connected?(s), do: mount_weather(s), else: s end)
-     |> BusterClawWeb.WorkbenchHook.mount(params)
+     |> BusterClawWeb.WorkbenchHook.mount(params, session)
      |> stage_page_ask(params)}
   end
 
@@ -595,6 +595,7 @@ defmodule BusterClawWeb.StatusLive do
         <BusterClawWeb.Workbench.shell
           state={@workbench}
           mounted={@workbench_mounted}
+          terminals={@streams.workbench_terminals}
         >
           <:panel key="chat">
             <div class="flex h-full min-h-0 flex-col gap-2">
@@ -647,7 +648,7 @@ defmodule BusterClawWeb.StatusLive do
               />
             </div>
           </:panel>
-          <:panel :for={slot <- BusterClawWeb.WorkbenchState.terminal_slots()} key={slot}>
+          <:terminal :let={slot}>
             {live_render(@socket, BusterClawWeb.TerminalLive,
               id: "workbench-#{slot}",
               session: %{
@@ -657,7 +658,7 @@ defmodule BusterClawWeb.StatusLive do
                 "terminal_label" => BusterClawWeb.WorkbenchState.label(slot)
               }
             )}
-          </:panel>
+          </:terminal>
           <:panel key="pockets">
             <.live_component module={BusterClawWeb.PocketsPanel} id="home-pockets" />
           </:panel>

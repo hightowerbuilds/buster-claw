@@ -41,6 +41,8 @@ defmodule BusterClawWeb.WorkbenchLiveTest do
     # canvas — the terminal covered the chat the moment the chat streamed.
     {:ok, view, _} = live(conn, ~p"/")
 
+    render_click(view, "workbench_terminal_new", %{})
+
     for key <- ["chat", "terminal", "clock"] do
       assert has_element?(
                view,
@@ -110,7 +112,9 @@ defmodule BusterClawWeb.WorkbenchLiveTest do
     assert has_element?(view, "#workbench-pane-chat:not([hidden]) #home-agent-chat")
   end
 
-  test "the sidebar's Terminal opens up to four shells and refuses a fifth", %{conn: conn} do
+  test "the sidebar opens terminals across work areas while retaining hidden shells", %{
+    conn: conn
+  } do
     {:ok, view, _} = live(conn, ~p"/")
 
     assert has_element?(
@@ -121,7 +125,7 @@ defmodule BusterClawWeb.WorkbenchLiveTest do
     for _ <- 1..4, do: render_click(view, "workbench_terminal_new", %{})
 
     for slot <- ["terminal", "terminal-2", "terminal-3", "terminal-4"] do
-      assert has_element?(view, "#workbench-pane-#{slot}:not([hidden])")
+      assert has_element?(view, "#workbench-pane-#{slot}")
       key = BusterClawWeb.WorkbenchState.session_key(slot)
       child = find_live_child(view, "workbench-#{slot}")
       assert has_element?(child, "[phx-hook='TerminalView'][data-session-key='#{key}']")
@@ -139,11 +143,12 @@ defmodule BusterClawWeb.WorkbenchLiveTest do
     assert has_element?(view, "#workbench-close-chat[phx-click='workbench_close']")
 
     render_click(view, "workbench_terminal_new", %{})
-    assert_push_event(view, "workbench:limit", %{limit: 4})
-    refute has_element?(view, "#workbench-pane-terminal-5")
+    assert_push_event(view, "workbench:sync", %{active_area_id: "area-2"})
+    assert has_element?(view, "#workbench-pane-terminal-5:not([hidden])")
+    assert has_element?(view, "#workbench-pane-terminal[hidden]")
   end
 
-  test "closing a terminal unmounts its shell and frees the slot for the next one", %{
+  test "closing a terminal unmounts its shell and the next one gets a fresh identity", %{
     conn: conn
   } do
     {:ok, view, _} = live(conn, ~p"/")
@@ -158,10 +163,10 @@ defmodule BusterClawWeb.WorkbenchLiveTest do
 
     assert has_element?(
              view,
-             "#workbench-pane-terminal-2:not([hidden]) [phx-hook='TerminalView']"
+             "#workbench-pane-terminal-4:not([hidden]) [phx-hook='TerminalView']"
            )
 
-    assert find_live_child(view, "workbench-terminal-2").pid != second.pid
+    assert find_live_child(view, "workbench-terminal-4").pid != second.pid
   end
 
   test "the terminal deep link ensures one shell rather than minting another", %{conn: conn} do

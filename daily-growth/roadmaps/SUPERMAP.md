@@ -290,6 +290,7 @@ and zero issues in the verdict. Budget hours per release, not minutes
 | **The macOS Dock icon** | `Pockets.AppIcon`, `app_icon_set` | **BUILT 08-15** — drop an image in `pockets/app-icon/` and apply it; keyed to the file's bytes, so replacing it reverts to the shipped icon. The bundle icon stays sealed by the signature. **The native half is unwalked** — see [`QA_BACKLOG`](platform/QA_BACKLOG.md) | archived 08-17 · the unwalked native half is [`QA_BACKLOG`](platform/QA_BACKLOG.md)'s |
 | Terminal themes | `TerminalTheme` | SHIPPED · operator walk open | archived 08-17 · the walk is [`RELEASE_GATE`](platform/RELEASE_GATE_ROADMAP.md)'s, gate `G-40` |
 | Terminal paint — the agent recolours itself | — | **SCOPED** | [`TERMINAL_PAINT`](shell/TERMINAL_PAINT_ROADMAP.md) |
+| Work Area layouts and overflow tabs | `WorkAreas`, `WorkbenchHook`, `TabStrip` | **BUILT 10-17** — Grid / Overlap toggle, freely movable panels, four panels per area, then Work Area 2 and onward. Native desktop acceptance walk open | [`WORK_AREA_LAYOUT`](shell/WORK_AREA_LAYOUT_ROADMAP.md) |
 | Terminal panels — up to four shells in the work area | `WorkbenchState`, `TerminalLive` | **BUILT 10-15** — sidebar button and ⌘T create, × closes the shell, split and copy-key buttons gone; ⌘1/2/3 = Work Area / Settings / Browser; Paired columns preset (four → 2×2, five → 3 columns, two stacked); drag a panel by its header to reorder. Phase 5 desktop walk open | [`TERMINAL_PANELS`](shell/TERMINAL_PANELS_ROADMAP.md) |
 
 ---

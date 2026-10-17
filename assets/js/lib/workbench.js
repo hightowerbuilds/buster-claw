@@ -1,6 +1,8 @@
 // Geometry only. The LiveView owns the validated tree; flat, stable pane hosts
 // preserve editors, streamed messages, and PTYs while their rectangles change.
-export const WORKBENCH_STORAGE_KEY = "bc:workbench:v1"
+export const WORKBENCH_STORAGE_KEY = "bc:workbench:v2"
+const LEGACY_STORAGE_KEY = "bc:workbench:v1"
+let memoryLayout = null
 
 export function panelGeometry(tree, width, height, zoom = null) {
   const panes = {}
@@ -48,11 +50,14 @@ export function layoutDots(tree) {
 }
 
 export function readLayout(storage) {
-  try { return JSON.parse(storage.getItem(WORKBENCH_STORAGE_KEY)) } catch { return null }
+  try {
+    return JSON.parse(storage.getItem(WORKBENCH_STORAGE_KEY) || storage.getItem(LEGACY_STORAGE_KEY)) || memoryLayout
+  } catch { return memoryLayout }
 }
 
 export function saveLayout(storage, state) {
-  try { storage.setItem(WORKBENCH_STORAGE_KEY, JSON.stringify(state)) } catch { /* A full store must not disable panes. */ }
+  memoryLayout = state
+  try { storage.setItem(WORKBENCH_STORAGE_KEY, JSON.stringify(state)); return true } catch { return false }
 }
 
 // ---- Reordering -----------------------------------------------------------
@@ -60,10 +65,11 @@ export function saveLayout(storage, state) {
 // only on the count and the preset, so moving a panel is relabelling the
 // tree's leaves in a new order — which is why the drag can preview locally and
 // only the drop talks to the server.
-export function leavesOf(tree) {
-  if (!tree) return []
+export function leavesOf(tree, depth = 0) {
+  if (depth >= 12 || !tree) return []
   if (typeof tree === "string") return [tree]
-  return leavesOf(tree.first).concat(leavesOf(tree.second))
+  if (typeof tree !== "object") return []
+  return leavesOf(tree.first, depth + 1).concat(leavesOf(tree.second, depth + 1))
 }
 
 export function relabelTree(tree, order) {

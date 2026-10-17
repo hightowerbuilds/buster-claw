@@ -34,9 +34,10 @@ describe("work-area geometry", () => {
     }
   })
   test("unavailable or malformed storage cannot prevent the work area from opening", () => {
-    expect(readLayout({getItem: () => "broken"})).toBeNull()
-    expect(readLayout(undefined)).toBeNull()
-    expect(() => saveLayout(undefined, {tree: "chat"})).not.toThrow()
+    const state = {tree: "chat"}
+    expect(saveLayout(undefined, state)).toBe(false)
+    expect(readLayout({getItem: () => "broken"})).toEqual(state)
+    expect(readLayout(undefined)).toEqual(state)
   })
   test("picker dots mark each panel's center, including a pane beside two stacked panes", () => {
     const dots = layoutDots(split)
