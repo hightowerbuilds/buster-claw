@@ -2,14 +2,15 @@ defmodule BusterClawWeb.AppearanceLive do
   @moduledoc """
   Appearance settings (Settings → Appearance sub-tab).
 
-  Backgrounds are **one catalog, shown once**: `off`, every shader (built-in and
-  workspace), and the shared image pool. It is the left column and the picker
-  for THE background — click a row and the Work Area, with every terminal in
-  it, is on it. The middle column is the app's look: the theme buttons and the
-  terminal palette. The right column holds the two surfaces that have a
-  background — the Background panel, previewing what is running, and the Clock
-  panel, a widget with a sky of its own and so its own picker over the same
-  catalog (`Catalog.clock_picker/1`) — with the chat's look under them. The
+  Backgrounds are **one catalog, shown on demand**: `off`, every shader
+  (built-in and workspace), and the shared image pool, behind two buttons —
+  Images and Shaders — under the Background preview. Each opens a modal
+  (`Catalog.catalog_modal/1`, `@picker`) with its half; click a row and the
+  Work Area, with every terminal in it, is on it, and the modal closes. The
+  left column is therefore the background itself and the Clock, a widget with
+  a sky of its own and so its own picker over the same catalog
+  (`Catalog.clock_picker/1`). The middle column is the app's look — the theme
+  buttons and the terminal palette — and the right column the chat's. The
   whole page fits one screen (`Layouts.app fit_viewport`); a column scrolls
   inside itself rather than the page scrolling.
 
@@ -64,6 +65,7 @@ defmodule BusterClawWeb.AppearanceLive do
     {:ok,
      socket
      |> assign(:page_title, "Appearance")
+     |> assign(:picker, nil)
      |> assign_terminal_themes()
      |> assign(:chat_skins, ChatSkin.skins())
      |> assign(:chat_skin, ChatSkin.get())
@@ -77,12 +79,28 @@ defmodule BusterClawWeb.AppearanceLive do
      )}
   end
 
+  # --- the pickers ---------------------------------------------------------
+
+  # `kind` arrives as a string from `phx-value-kind`; the two words are the
+  # allowlist, so a crafted value opens nothing.
+  @impl true
+  def handle_event("open_picker", %{"kind" => "images"}, socket),
+    do: {:noreply, assign(socket, :picker, :images)}
+
+  def handle_event("open_picker", %{"kind" => "shaders"}, socket),
+    do: {:noreply, assign(socket, :picker, :shaders)}
+
+  def handle_event("open_picker", _params, socket), do: {:noreply, socket}
+
+  def handle_event("close_picker", _params, socket), do: {:noreply, assign(socket, :picker, nil)}
+
   # --- assignment ----------------------------------------------------------
 
-  # One event, two senders: a catalog row (`phx-click`, surface=home) and the
-  # Clock picker (`phx-change`, surface=widget). The form's `_target` rides
-  # along unread.
-  @impl true
+  # One event, two senders: a catalog row in the modal (`phx-click`,
+  # surface=home) and the Clock picker (`phx-change`, surface=widget). The
+  # form's `_target` rides along unread. A successful pick closes the modal —
+  # the operator came to choose, chose, and the preview behind it is the
+  # proof; a refused pick leaves it open with the flash.
   def handle_event("assign_background", %{"surface" => surface, "option" => option}, socket) do
     case surface_param(surface) do
       nil ->
@@ -96,6 +114,7 @@ defmodule BusterClawWeb.AppearanceLive do
             {:noreply,
              socket
              |> assign_backgrounds()
+             |> assign(:picker, nil)
              |> put_flash(:info, "#{Appearance.surface_label(s)} background updated.")}
 
           {:error, :empty_slot} ->
@@ -294,20 +313,30 @@ defmodule BusterClawWeb.AppearanceLive do
           id="backgrounds"
           class="grid min-h-0 flex-1 gap-4 overflow-y-auto lg:grid-cols-3 lg:grid-rows-[minmax(0,1fr)] lg:overflow-visible"
         >
-          <%!-- Column 1: the catalog — images on top, shaders under. --%>
-          <.backgrounds_catalog
-            image_options={@image_options}
-            shader_options={@shader_options}
-            background={@backgrounds.home}
-            upload={@uploads.background}
-            pool_full={@pool_full}
-          />
+          <%!-- Column 1: the background — what it is, and the two buttons that
+                change it — then the clock. The `p-1 -m-1` keeps the panels'
+                hard shadows inside the scroll box instead of clipped at its
+                edge, and `shrink-0` on the children keeps a bounded flex
+                column from squashing a panel's preview to nothing — it did,
+                before the column scrolled. --%>
+          <div class="-m-1 flex min-h-0 flex-col gap-4 overflow-y-auto p-1 [&>*]:shrink-0">
+            <BusterClawWeb.SurfacePanel.surface_target
+              surface={:home}
+              bg={@backgrounds.home}
+              overlays={@overlays}
+            >
+              <.background_pickers background={@backgrounds.home} />
+            </BusterClawWeb.SurfacePanel.surface_target>
+            <BusterClawWeb.SurfacePanel.surface_target
+              surface={:widget}
+              bg={@backgrounds.widget}
+              overlays={@overlays}
+            >
+              <.clock_picker bg={@backgrounds.widget} options={@clock_options} />
+            </BusterClawWeb.SurfacePanel.surface_target>
+          </div>
 
-          <%!-- Column 2: the app's look — theme, then the terminal's. The
-                `p-1 -m-1` keeps the panels' hard shadows inside the scroll
-                box instead of clipped at its edge, and `shrink-0` on the
-                children keeps a bounded flex column from squashing a panel's
-                preview to nothing — it did, before the column scrolled. --%>
+          <%!-- Column 2: the app's look — theme, then the terminal's. --%>
           <div class="-m-1 flex min-h-0 flex-col gap-4 overflow-y-auto p-1 [&>*]:shrink-0">
             <.theme_panel />
             <.terminal_theme_panel
@@ -321,20 +350,8 @@ defmodule BusterClawWeb.AppearanceLive do
             />
           </div>
 
-          <%!-- Column 3: what the two surfaces are running, and the chat. --%>
+          <%!-- Column 3: the chat's look. --%>
           <div class="-m-1 flex min-h-0 flex-col gap-4 overflow-y-auto p-1 [&>*]:shrink-0">
-            <BusterClawWeb.SurfacePanel.surface_target
-              surface={:home}
-              bg={@backgrounds.home}
-              overlays={@overlays}
-            />
-            <BusterClawWeb.SurfacePanel.surface_target
-              surface={:widget}
-              bg={@backgrounds.widget}
-              overlays={@overlays}
-            >
-              <.clock_picker bg={@backgrounds.widget} options={@clock_options} />
-            </BusterClawWeb.SurfacePanel.surface_target>
             <.chat_look_panel
               chat_skins={@chat_skins}
               chat_skin={@chat_skin}
@@ -343,6 +360,16 @@ defmodule BusterClawWeb.AppearanceLive do
             />
           </div>
         </div>
+
+        <.catalog_modal
+          :if={@picker}
+          kind={@picker}
+          image_options={@image_options}
+          shader_options={@shader_options}
+          background={@backgrounds.home}
+          upload={@uploads.background}
+          pool_full={@pool_full}
+        />
       </section>
     </Layouts.app>
     """

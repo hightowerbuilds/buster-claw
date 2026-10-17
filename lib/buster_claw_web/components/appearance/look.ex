@@ -61,10 +61,10 @@ defmodule BusterClawWeb.Appearance.Look do
 
   def chat_look_panel(assigns) do
     ~H"""
-    <%!-- Compact by design: this lives in a third of the page under the two
-          surface panels (one screen, 10-17). The two dropdowns share a row,
-          the copy is one line, and the preview takes the width it is given —
-          a transcript is narrow anyway, so a narrow column shows it honestly. --%>
+    <%!-- Compact by design: this is a column of its own on a one-screen page
+          (10-17). The two dropdowns share a row, the copy is one line, and the
+          preview takes the width it is given — a transcript is narrow anyway,
+          so a narrow column shows it honestly. --%>
     <section class="ic-panel space-y-2 p-4" aria-labelledby="chat-skin-heading">
       <div class="flex items-baseline justify-between gap-2">
         <h2 id="chat-skin-heading" class="ic-eyebrow">Chat theme</h2>
@@ -119,10 +119,7 @@ defmodule BusterClawWeb.Appearance.Look do
         {skin.blurb} Text size scales what you read, not the buttons.
       </p>
 
-      <%!-- Clipped with a fade rather than scrolled: the first exchange is
-            enough to show the skin and the size, and the whole transcript is
-            what put this page past one screen. --%>
-      <div class="max-h-24 overflow-hidden rounded border-2 border-base-content/20 bg-base-100 [mask-image:linear-gradient(to_bottom,black_70%,transparent)]">
+      <div class="rounded border-2 border-base-content/20 bg-base-100">
         <BusterClawWeb.ChatPanel.transcript_preview
           skin={@chat_skin}
           text_size={@chat_text_size}

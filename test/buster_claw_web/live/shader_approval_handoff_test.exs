@@ -69,6 +69,8 @@ defmodule BusterClawWeb.ShaderApprovalHandoffTest do
 
     # 3. The operator clicks it on the Appearance page.
     {:ok, view, _html} = live(conn, "/appearance")
+    # The catalog is behind the Shaders button since 10-17.
+    render_click(view, "open_picker", %{"kind" => "shaders"})
 
     view
     |> element("[data-bg-option='nebula'] button[phx-value-surface='home']")
@@ -88,6 +90,8 @@ defmodule BusterClawWeb.ShaderApprovalHandoffTest do
     write_shader(root, "nebula")
 
     {:ok, view, _html} = live(conn, "/appearance")
+    # The catalog is behind the Shaders button since 10-17.
+    render_click(view, "open_picker", %{"kind" => "shaders"})
 
     view
     |> element("[data-bg-option='nebula'] button[phx-value-surface='home']")
@@ -112,6 +116,8 @@ defmodule BusterClawWeb.ShaderApprovalHandoffTest do
     write_shader(root, "stranger")
 
     {:ok, view, _html} = live(conn, "/appearance")
+    # The catalog is behind the Shaders button since 10-17.
+    render_click(view, "open_picker", %{"kind" => "shaders"})
 
     view
     |> element("[data-bg-option='nebula'] button[phx-value-surface='home']")

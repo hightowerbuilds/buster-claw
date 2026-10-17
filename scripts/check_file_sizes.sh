@@ -422,8 +422,12 @@ check lib/buster_claw_web/components/chat_panel/composer.ex  308 HELD
 # is the layout and three calls; the catalog, the two look-and-feel panels and
 # the terminal palette are `components/appearance/`. 1,064 -> 466. The mode
 # grammar's third copy (`workspace_shader/1`) stays with the events that use it.
-check lib/buster_claw_web/live/appearance_live.ex             513 HELD
-check lib/buster_claw_web/components/appearance/catalog.ex    349 HELD
+# 10-17: the backgrounds became two buttons and two modals (Images, Shaders)
+# under the Background preview, so the catalog component carries the modal
+# shell plus both halves and the pickers; the LiveView gained the open/close
+# events and the modal mount. 349 -> 460 and 513 -> 530. Still one job each.
+check lib/buster_claw_web/live/appearance_live.ex             530 HELD
+check lib/buster_claw_web/components/appearance/catalog.ex    460 HELD
 check lib/buster_claw_web/components/appearance/look.ex       162 HELD
 check lib/buster_claw_web/components/appearance/terminal_palette.ex 280 HELD
 # 36 -> 99 on 10-16: the three trust verbs (add-and-trust, drop an orphan

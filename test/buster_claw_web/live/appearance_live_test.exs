@@ -45,6 +45,11 @@ defmodule BusterClawWeb.AppearanceLiveTest do
     )
   end
 
+  # The catalog lives behind two buttons under the Background preview (10-17);
+  # a test that reaches for a row opens the half it is in first.
+  defp open_images(view), do: render_click(view, "open_picker", %{"kind" => "images"})
+  defp open_shaders(view), do: render_click(view, "open_picker", %{"kind" => "shaders"})
+
   defp add_image do
     src = Path.join(System.tmp_dir!(), "bc_lv_#{System.unique_integer([:positive])}.png")
     File.write!(src, "img-bytes")
@@ -54,7 +59,8 @@ defmodule BusterClawWeb.AppearanceLiveTest do
 
   # --- the page's shape ----------------------------------------------------
 
-  test "renders both surface panels and a single shared catalog", %{conn: conn} do
+  test "renders both surface panels, two picker buttons, and no catalog until asked",
+       %{conn: conn} do
     {:ok, view, _html} = live(conn, "/appearance")
 
     assert has_element?(view, "#backgrounds")
@@ -66,14 +72,75 @@ defmodule BusterClawWeb.AppearanceLiveTest do
     refute has_element?(view, "#surface-terminal")
     refute has_element?(view, "button[phx-value-surface='terminal']")
 
-    # One row per option, and each built-in shader appears exactly once — the
-    # whole point of the redesign is that the catalog isn't duplicated per surface.
+    # The catalog is two buttons in the Background panel until one is pressed.
+    assert has_element?(view, "#surface-home #open-images")
+    assert has_element?(view, "#surface-home #open-shaders")
+    refute has_element?(view, "#catalog-modal")
+    refute has_element?(view, "[data-bg-option]")
+
+    open_shaders(view)
+    assert has_element?(view, "#catalog-modal[data-picker='shaders'][role='dialog']")
+
+    # One row per option, and each built-in shader appears exactly once.
     for shader <- Appearance.builtin_shaders() do
       assert view |> element("[data-bg-option='#{shader}']") |> has_element?()
     end
 
     assert has_element?(view, "[data-bg-option='off']")
+    refute has_element?(view, "#background-upload-form")
+
+    open_images(view)
+    assert has_element?(view, "#catalog-modal[data-picker='images']")
     assert has_element?(view, "#background-upload-form")
+    refute has_element?(view, "[data-bg-option='smoke']")
+  end
+
+  describe "the picker modal" do
+    test "closes from its × and from Escape, and ignores a crafted kind", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      open_shaders(view)
+      view |> element("#catalog-modal button[aria-label='Close']", "×") |> render_click()
+      refute has_element?(view, "#catalog-modal")
+
+      open_images(view)
+      render_keydown(view, "close_picker", %{"key" => "Escape"})
+      refute has_element?(view, "#catalog-modal")
+
+      render_click(view, "open_picker", %{"kind" => "everything"})
+      refute has_element?(view, "#catalog-modal")
+    end
+
+    test "picking a background closes it; a refused pick leaves it open", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      open_shaders(view)
+      view |> element("[data-bg-option='waves'] button") |> render_click()
+
+      assert Appearance.background(:home).shader == "waves"
+      refute has_element?(view, "#catalog-modal")
+
+      open_images(view)
+
+      html =
+        render_click(view, "assign_background", %{"surface" => "home", "option" => "image:5"})
+
+      assert html =~ "That slot is empty."
+      assert has_element?(view, "#catalog-modal[data-picker='images']")
+    end
+
+    test "the Images button is outlined when an image is up, Shaders otherwise", %{conn: conn} do
+      slot = add_image()
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      assert has_element?(view, "#open-shaders.border-primary")
+      refute has_element?(view, "#open-images.border-primary")
+
+      render_click(view, "assign_background", %{"surface" => "home", "option" => "image:#{slot}"})
+
+      assert has_element?(view, "#open-images.border-primary")
+      refute has_element?(view, "#open-shaders.border-primary")
+    end
   end
 
   # Redesigned 10-17: a catalog row IS the background button, and the clock
@@ -84,24 +151,33 @@ defmodule BusterClawWeb.AppearanceLiveTest do
     slot = add_image()
     {:ok, view, _html} = live(conn, "/appearance")
 
-    for opt <- ["off", "smoke", "image:#{slot}"] do
+    open_shaders(view)
+
+    for opt <- ["off", "smoke"] do
       assert has_element?(view, "[data-bg-option='#{opt}'] button[phx-value-surface='home']"),
              "#{opt} is not a background button"
+    end
 
+    # And no row carries a button per surface any more: one click, one meaning.
+    refute has_element?(view, "[data-bg-option='smoke'] button[phx-value-surface='widget']")
+
+    open_images(view)
+    assert has_element?(view, "[data-bg-option='image:#{slot}'] button[phx-value-surface='home']")
+
+    # Slot 8 is empty — not a tile, not something you can send anywhere.
+    refute has_element?(view, "[data-bg-option='image:8']")
+
+    for opt <- ["off", "smoke", "image:#{slot}"] do
       assert has_element?(view, "#clock-background option[value='#{opt}']"),
              "#{opt} is not offered to the clock"
     end
 
-    # Slot 8 is empty — a placeholder, not something you can send anywhere.
-    refute has_element?(view, "[data-bg-option='image:8'] button")
     refute has_element?(view, "#clock-background option[value='image:8']")
-
-    # And no row carries a button per surface any more: one click, one meaning.
-    refute has_element?(view, "[data-bg-option='smoke'] button[phx-value-surface='widget']")
   end
 
   test "a row says what it does to a screen reader, and its name yields", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/appearance")
+    open_shaders(view)
 
     assert has_element?(
              view,
@@ -145,6 +221,7 @@ defmodule BusterClawWeb.AppearanceLiveTest do
     test "the clock's choice does not mark a catalog row as in use", %{conn: conn} do
       {:ok, _} = Appearance.set_background(:widget, "waves")
       {:ok, view, _html} = live(conn, "/appearance")
+      open_shaders(view)
 
       # The catalog badges THE background only; the clock reports through its
       # own panel. Two tiles claiming one word would be worse than none.
@@ -158,9 +235,12 @@ defmodule BusterClawWeb.AppearanceLiveTest do
     {:ok, view, _html} = live(conn, "/appearance")
 
     # The thumbnail box is the aspect-video preview. A shader has none — the only
-    # honest preview of a shader is the shader, running in the surface panels.
+    # honest preview of a shader is the shader, running in the Background panel.
+    open_shaders(view)
     refute has_element?(view, "[data-bg-option='smoke'] .aspect-video")
     refute has_element?(view, "[data-bg-option='off'] .aspect-video")
+
+    open_images(view)
     assert has_element?(view, "[data-bg-option='image:#{slot}'] .aspect-video")
   end
 
@@ -168,6 +248,7 @@ defmodule BusterClawWeb.AppearanceLiveTest do
     write_custom_shader(root, "aurora")
 
     {:ok, view, _html} = live(conn, "/appearance")
+    open_shaders(view)
 
     assert has_element?(view, "[data-bg-option='aurora']")
   end
@@ -197,6 +278,7 @@ defmodule BusterClawWeb.AppearanceLiveTest do
 
   test "a row button assigns through the same server event", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/appearance")
+    open_shaders(view)
 
     view
     |> element("[data-bg-option='mandel'] button[phx-value-surface='home']")
@@ -281,12 +363,17 @@ defmodule BusterClawWeb.AppearanceLiveTest do
 
     assert Appearance.background(:widget).kind == :image
 
+    # A successful pick closed the modal; the remove control is in it.
+    open_images(view)
+
     view
     |> element("[data-bg-option='image:#{slot}'] button[phx-value-slot='#{slot}']")
     |> render_click()
 
     assert Appearance.background(:widget).shader == "daycycle"
     assert Appearance.image_url(slot) == nil
+    # Removing is pool housekeeping, not a choice: the modal stays open.
+    assert has_element?(view, "#catalog-modal[data-picker='images']")
   end
 
   test "a crafted remove_image slot value is a no-op, not a crash", %{conn: conn} do
@@ -780,7 +867,8 @@ defmodule BusterClawWeb.AppearanceLiveTest do
     test "the image tile still reads as in use once an overlay is added", %{conn: conn} do
       slot = add_image()
       {:ok, _} = Appearance.set_background(:home, "image:#{slot}")
-      {:ok, view, html} = live(conn, "/appearance")
+      {:ok, view, _html} = live(conn, "/appearance")
+      html = open_images(view)
 
       # Scoped to THIS tile via data-bg-option, not a substring over the page:
       # the default background badges its own row, so a page-wide match would
@@ -882,6 +970,7 @@ defmodule BusterClawWeb.AppearanceLiveTest do
       refute Appearance.shader_approved?("nebula")
 
       {:ok, view, _html} = live(conn, "/appearance")
+      open_shaders(view)
 
       view
       |> element("[data-bg-option='nebula'] button[phx-value-surface='home']")
@@ -924,6 +1013,7 @@ defmodule BusterClawWeb.AppearanceLiveTest do
       write_custom_shader(root, "veil")
 
       {:ok, view, _html} = live(conn, "/appearance")
+      open_shaders(view)
 
       view
       |> element("[data-bg-option='veil'] button[phx-value-surface='home']")
@@ -940,6 +1030,7 @@ defmodule BusterClawWeb.AppearanceLiveTest do
       slot = add_image()
 
       {:ok, view, _html} = live(conn, "/appearance")
+      open_images(view)
 
       view
       |> element("[data-bg-option='image:#{slot}'] button[phx-value-surface='home']")
@@ -954,7 +1045,8 @@ defmodule BusterClawWeb.AppearanceLiveTest do
     # part about editing — otherwise an edited shader going back to refused reads
     # as the feature breaking.
     test "the picker discloses what applying a shader grants", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/appearance")
+      {:ok, view, _html} = live(conn, "/appearance")
+      html = open_shaders(view)
 
       assert html =~ "lets commands re-apply"
       assert html =~ "Edit the file"

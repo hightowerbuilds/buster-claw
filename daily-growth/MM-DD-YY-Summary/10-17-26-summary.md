@@ -40,3 +40,11 @@ Work Area with a terminal slot over the background.
 | | |
 |---|---|
 | (second commit) | **The page fits the window.** `Layouts.app fit_viewport` clamps the shell; the grid row is `minmax(0,1fr)` so three columns get exactly the room left, and each scrolls inside itself (`shrink-0` on the children, or a bounded flex column squashes a preview to nothing — it did). Column 1 is the catalog: filled images as small tiles four to a row with one "Add" tile standing for every free slot (the count says how many), then the shaders two to a row. Column 2 is Theme, then Terminal theme, both tightened. Column 3 is the Background and Clock previews (shorter — the preview is proof the setting took, not a wallpaper viewer) and the chat theme, whose transcript preview is clipped with a fade rather than shown whole. Empty image slots no longer render as placeholder tiles; the catalog description says the picker counts them instead. |
+
+---
+
+## Morning — two buttons, two modals
+
+| | |
+|---|---|
+| (third commit) | **The catalog went behind two buttons.** Under the Background preview: **Images** and **Shaders**, the one whose half is in use outlined. Each opens a modal (`Catalog.catalog_modal/1`, `@picker`) with its half of the catalog — thumbnails with names and the Add tile and upload on one side, `off` plus every shader three to a row on the other. A pick raises the same `assign_background` the rows always did and closes the modal; a refused pick leaves it open with the flash; removing an image keeps it open (housekeeping, not a choice). Escape, the backdrop and × close it. With the catalog gone from the page, the first column is the current background with its selectors and controls, and the Clock under it, as asked; Theme and Terminal theme are the middle column; the chat theme has the third, with its transcript preview whole again. Tests open the picker first; three modal tests added; the handoff test opens Shaders before it clicks. Two caps banked (catalog 349→460, live 513→530). |
