@@ -3,12 +3,17 @@ defmodule BusterClawWeb.AppearanceLive do
   Appearance settings (Settings → Appearance sub-tab).
 
   Backgrounds are **one catalog, shown once**: `off`, every shader (built-in and
-  workspace), and the shared image pool. It scrolls in the left column; the two
-  surfaces that have a background — Homepage and Terminal — sit in the right
-  column, each showing a live preview of what it is actually running. Every
-  catalog row carries a Home and a Terminal button, and that is the whole
-  interaction: one plain click, no drag. The same option can back both surfaces
-  at once, which is why the catalog is a catalog and not two pickers.
+  workspace), and the shared image pool. It scrolls in the left column and it is
+  the picker for THE background — click a row and the Work Area, with every
+  terminal in it, is on it. The right column holds the two surfaces that have a
+  background: the Background panel, previewing what is running, and the Clock
+  panel, which is a widget with a sky of its own and so carries its own picker
+  over the same catalog (`Catalog.clock_picker/1`). The same option can back
+  both at once.
+
+  Redesigned 10-17. Until then there were three surfaces (the terminal had its
+  own background) and every row carried a button per surface. A terminal is
+  transparent over the app background now, so one click means one thing.
 
   Only the two surface containers animate. A live WebGPU canvas per catalog row
   would mean a GPU device per row (`createSmoke` requests its own adapter and
@@ -46,7 +51,7 @@ defmodule BusterClawWeb.AppearanceLive do
 
   # `phx-value-surface` arrives as a string. Resolve it through this table rather
   # than String.to_atom on user input.
-  @surface_params %{"home" => :home, "terminal" => :terminal}
+  @surface_params %{"home" => :home, "widget" => :widget}
 
   @impl true
   def mount(_params, _session, socket) do
@@ -58,7 +63,6 @@ defmodule BusterClawWeb.AppearanceLive do
      socket
      |> assign(:page_title, "Appearance")
      |> assign_terminal_themes()
-     |> assign(:surfaces, Appearance.surfaces())
      |> assign(:chat_skins, ChatSkin.skins())
      |> assign(:chat_skin, ChatSkin.get())
      |> assign(:chat_text_sizes, ChatTextSize.sizes())
@@ -73,6 +77,9 @@ defmodule BusterClawWeb.AppearanceLive do
 
   # --- assignment ----------------------------------------------------------
 
+  # One event, two senders: a catalog row (`phx-click`, surface=home) and the
+  # Clock picker (`phx-change`, surface=widget). The form's `_target` rides
+  # along unread.
   @impl true
   def handle_event("assign_background", %{"surface" => surface, "option" => option}, socket) do
     case surface_param(surface) do
@@ -241,7 +248,7 @@ defmodule BusterClawWeb.AppearanceLive do
         [{:ok, _slot}] ->
           socket
           |> assign_backgrounds()
-          |> put_flash(:info, "Image added — use its Home or Term button to apply it.")
+          |> put_flash(:info, "Image added — click it to use it.")
 
         [{:error, :pool_full}] ->
           put_flash(socket, :error, "All #{Appearance.max_images()} slots are full.")
@@ -283,18 +290,24 @@ defmodule BusterClawWeb.AppearanceLive do
           <.backgrounds_catalog
             image_options={@image_options}
             shader_options={@shader_options}
-            backgrounds={@backgrounds}
+            background={@backgrounds.home}
             upload={@uploads.background}
             pool_full={@pool_full}
           />
 
           <div class="space-y-6">
             <BusterClawWeb.SurfacePanel.surface_target
-              :for={surface <- @surfaces}
-              surface={surface}
-              bg={@backgrounds[surface]}
+              surface={:home}
+              bg={@backgrounds.home}
               overlays={@overlays}
             />
+            <BusterClawWeb.SurfacePanel.surface_target
+              surface={:widget}
+              bg={@backgrounds.widget}
+              overlays={@overlays}
+            >
+              <.clock_picker bg={@backgrounds.widget} options={@clock_options} />
+            </BusterClawWeb.SurfacePanel.surface_target>
           </div>
         </div>
 
@@ -386,6 +399,9 @@ defmodule BusterClawWeb.AppearanceLive do
     |> assign(:backgrounds, backgrounds)
     |> assign(:shader_options, shader_options)
     |> assign(:image_options, image_options)
+    # The Clock's select: everything selectable, in catalog order. An empty slot
+    # is a placeholder in the grid and nothing in a select.
+    |> assign(:clock_options, Enum.filter(shader_options ++ image_options, & &1.filled))
     # Recomputed with the rest rather than only at mount: writing a workspace
     # shader that samples the image should make it offerable without a restart.
     |> assign(:overlays, Appearance.image_shader_options())

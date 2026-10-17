@@ -1,8 +1,7 @@
 defmodule BusterClaw.Commands.Appearance do
   @moduledoc """
   The `background_*` command surface — the model changes what is *behind* the
-  terminal it is speaking from, and behind the homepage (DMG review B1, the
-  sibling of the `terminal_theme_*` palette work).
+  Work Area it speaks from, and the clock's sky (DMG review B1).
 
   Two verbs and no more: read what exists and what each surface is showing, then
   point one surface at one option. `BusterClaw.Appearance` owns the catalog, the
@@ -12,11 +11,12 @@ defmodule BusterClaw.Commands.Appearance do
   ## One verb, not a family, because the surfaces are a table
 
   `Appearance` is written against a `@surfaces` table rather than per-surface, so
-  `home` and `terminal` differ only by configuration. A `terminal_background_set`
-  plus a `home_background_set` would re-introduce per-surface code at the one
-  layer that had none, and a third surface would need a third verb. `surface` is
-  an argument, and `Appearance.surfaces/0` is what it is checked against — so a
-  surface added there is reachable here the same day, with no edit.
+  `home` (the app background) and `widget` (the clock card) differ only by
+  configuration. A `clock_background_set` plus a `background_set` would
+  re-introduce per-surface code at the one layer that had none. `surface` is an
+  argument, and `Appearance.surfaces/0` is what it is checked against — so a
+  surface added there is reachable here the same day, with no edit. (The
+  terminal left the table on 10-17 and nothing here changed.)
 
   ## Everything goes through `set_background/2`
 
@@ -46,9 +46,9 @@ defmodule BusterClaw.Commands.Appearance do
   `terminal_theme_*` has to announce every write, because the selected palette
   lives in the operator's browser and the server never knows it. A background
   does not work that way: it is stored server-side, and `set_background/2`
-  broadcasts on the surface's topic itself, so open terminals and the homepage
-  re-render live off the write. A second push from here would be a second way to
-  say the same thing, and the two could disagree.
+  broadcasts on the surface's topic itself, so the Work Area, its terminals and
+  the clock re-render live off the write. A second push from here would be a
+  second way to say the same thing, and the two could disagree.
 
   ## What this surface cannot do
 
@@ -381,7 +381,7 @@ defmodule BusterClaw.Commands.Appearance do
   end
 
   defp missing_args do
-    "background_set needs a surface and a mode, both strings — e.g. surface: terminal, " <>
+    "background_set needs a surface and a mode, both strings — e.g. surface: home, " <>
       "mode: veil. Surfaces: " <>
       Enum.map_join(Appearance.surfaces(), ", ", &Atom.to_string/1) <>
       ". " <> available_keys_sentence()

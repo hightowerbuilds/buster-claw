@@ -137,9 +137,9 @@
 /* Make LiveView wrapper divs transparent for layout */
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
-/* xterm.css gives the internal viewport a hard black background. Image-backed
-   terminals need every xterm layer transparent so the selected background can
-   show through the emulator surface. */
+/* xterm.css gives the internal viewport a hard black background. A terminal
+   sits on the app background, so every xterm layer goes transparent whenever
+   that background is on (or something else paints the field behind it). */
 .bc-terminal-bg-active .xterm,
 .bc-terminal-bg-active .xterm .xterm-viewport,
 .bc-terminal-bg-active .xterm .xterm-screen,
@@ -150,10 +150,6 @@
 [data-terminal-bg-active="true"] .xterm .xterm-screen canvas {
   background: transparent !important;
   background-color: transparent !important;
-}
-
-.bc-split-terminal-bg-active [data-split-pane][data-terminal-bg-active="true"] {
-  background: transparent;
 }
 
 /* Resizable joined view (/split): the left pane's width is driven by the

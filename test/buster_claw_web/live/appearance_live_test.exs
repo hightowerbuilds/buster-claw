@@ -59,7 +59,12 @@ defmodule BusterClawWeb.AppearanceLiveTest do
 
     assert has_element?(view, "#backgrounds")
     assert has_element?(view, "#surface-home")
-    assert has_element?(view, "#surface-terminal")
+    assert has_element?(view, "#surface-widget")
+    # The clock's picker lives inside the Clock panel, not on every row.
+    assert has_element?(view, "#surface-widget #clock-picker select#clock-background")
+    # The terminal stopped being a surface on 10-17.
+    refute has_element?(view, "#surface-terminal")
+    refute has_element?(view, "button[phx-value-surface='terminal']")
 
     # One row per option, and each built-in shader appears exactly once — the
     # whole point of the redesign is that the catalog isn't duplicated per surface.
@@ -71,52 +76,81 @@ defmodule BusterClawWeb.AppearanceLiveTest do
     assert has_element?(view, "#background-upload-form")
   end
 
-  # Derived from `Appearance.surfaces/0`, not a literal pair — the buttons are
-  # rendered by a `:for` over that list, so a surface added there arrives here
-  # with no edit and this must be what notices. It went from two to three on
-  # 08-15 (WIDGET_BACKGROUND Phase 1).
-  test "every filled option offers a button per surface; an empty slot offers none",
+  # Redesigned 10-17: a catalog row IS the background button, and the clock
+  # picks from the same rows through its own select. Every filled option has to
+  # be reachable both ways; an empty slot is a placeholder and reachable neither.
+  test "every filled option is a background button and a clock choice; an empty slot is neither",
        %{conn: conn} do
     slot = add_image()
     {:ok, view, _html} = live(conn, "/appearance")
 
-    for opt <- ["off", "smoke", "image:#{slot}"], surface <- Appearance.surfaces() do
-      assert has_element?(
-               view,
-               "[data-bg-option='#{opt}'] button[phx-value-surface='#{surface}']"
-             ),
-             "#{opt} offers no button for #{surface}"
+    for opt <- ["off", "smoke", "image:#{slot}"] do
+      assert has_element?(view, "[data-bg-option='#{opt}'] button[phx-value-surface='home']"),
+             "#{opt} is not a background button"
+
+      assert has_element?(view, "#clock-background option[value='#{opt}']"),
+             "#{opt} is not offered to the clock"
     end
 
     # Slot 8 is empty — a placeholder, not something you can send anywhere.
-    refute has_element?(view, "[data-bg-option='image:8'] button[phx-value-surface='home']")
+    refute has_element?(view, "[data-bg-option='image:8'] button")
+    refute has_element?(view, "#clock-background option[value='image:8']")
+
+    # And no row carries a button per surface any more: one click, one meaning.
+    refute has_element?(view, "[data-bg-option='smoke'] button[phx-value-surface='widget']")
   end
 
-  # WIDGET_BACKGROUND Phase 3. Three buttons per row is denser than the design
-  # was drawn for, and the two failures that density causes are both silent: a
-  # button whose short label means nothing on its own, and a long option name
-  # that pushes the buttons out of the row instead of ellipsing.
-  test "a three-button row still says which surface is which, and yields to them",
-       %{conn: conn} do
+  test "a row says what it does to a screen reader, and its name yields", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/appearance")
 
-    # "Home", "Term", "Clock" are abbreviations. Each one's accessible name
-    # carries the surface's FULL label, so the row needs no legend and a screen
-    # reader is not handed three mystery words.
-    for surface <- Appearance.surfaces() do
-      label = Appearance.surface_label(surface)
-
-      assert has_element?(
-               view,
-               ~s([data-bg-option='smoke'] button[phx-value-surface='#{surface}'][aria-label*="#{label}"])
-             ),
-             "the #{surface} button does not name #{label} to a screen reader"
-    end
+    assert has_element?(
+             view,
+             ~s([data-bg-option='smoke'] button[phx-value-surface='home'][aria-label*="background"])
+           )
 
     # The label is the item that gives way. Flex children do not shrink below
     # their content by default, so without this a long name overflows the row
-    # rather than truncating — and the third button is what made that reachable.
+    # rather than truncating.
     assert has_element?(view, "[data-bg-option='smoke'] span.truncate")
+  end
+
+  describe "the clock picker" do
+    test "changes the clock through the same event a row does, and only the clock",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      view
+      |> element("#clock-picker")
+      |> render_change(%{"surface" => "widget", "option" => "waves"})
+
+      assert Appearance.background(:widget).shader == "waves"
+      assert Appearance.background(:home).mode == "smoke"
+      assert has_element?(view, "#clock-background option[value='waves'][selected]")
+    end
+
+    test "its first entry is the shipped sky, which no row offers", %{conn: conn} do
+      {:ok, _} = Appearance.set_background(:widget, "waves")
+      {:ok, view, _html} = live(conn, "/appearance")
+      refute has_element?(view, "#clock-background option[value='default'][selected]")
+
+      view
+      |> element("#clock-picker")
+      |> render_change(%{"surface" => "widget", "option" => "default"})
+
+      assert Appearance.background(:widget).shader == "daycycle"
+      assert has_element?(view, "#clock-background option[value='default'][selected]")
+      refute has_element?(view, "[data-bg-option='daycycle']")
+    end
+
+    test "the clock's choice does not mark a catalog row as in use", %{conn: conn} do
+      {:ok, _} = Appearance.set_background(:widget, "waves")
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      # The catalog badges THE background only; the clock reports through its
+      # own panel. Two tiles claiming one word would be worse than none.
+      refute has_element?(view, "[data-bg-option='waves'] [data-assigned]")
+      assert has_element?(view, "[data-bg-option='smoke'] [data-assigned]")
+    end
   end
 
   test "shader options carry no thumbnail; images do", %{conn: conn} do
@@ -143,9 +177,9 @@ defmodule BusterClawWeb.AppearanceLiveTest do
   test "assigning an option touches that surface only", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/appearance")
 
-    render_click(view, "assign_background", %{"surface" => "terminal", "option" => "waves"})
+    render_click(view, "assign_background", %{"surface" => "widget", "option" => "waves"})
 
-    assert Appearance.background(:terminal).shader == "waves"
+    assert Appearance.background(:widget).shader == "waves"
     assert Appearance.background(:home).mode == "smoke"
   end
 
@@ -153,12 +187,12 @@ defmodule BusterClawWeb.AppearanceLiveTest do
     slot = add_image()
     {:ok, view, _html} = live(conn, "/appearance")
 
-    for surface <- ["home", "terminal"] do
+    for surface <- ["home", "widget"] do
       render_click(view, "assign_background", %{"surface" => surface, "option" => "image:#{slot}"})
     end
 
     assert Appearance.background(:home).slot == slot
-    assert Appearance.background(:terminal).slot == slot
+    assert Appearance.background(:widget).slot == slot
   end
 
   test "a row button assigns through the same server event", %{conn: conn} do
@@ -187,11 +221,11 @@ defmodule BusterClawWeb.AppearanceLiveTest do
     {:ok, view, _html} = live(conn, "/appearance")
 
     render_click(view, "assign_background", %{
-      "surface" => "terminal",
+      "surface" => "widget",
       "option" => "image:#{slot}"
     })
 
-    refute has_element?(view, "#surface-terminal [phx-hook='ShaderPreview']")
+    refute has_element?(view, "#surface-widget [phx-hook='ShaderPreview']")
     assert render(view) =~ Appearance.image_url(slot)
   end
 
@@ -212,7 +246,17 @@ defmodule BusterClawWeb.AppearanceLiveTest do
     render_click(view, "assign_background", %{"surface" => "elsewhere", "option" => "waves"})
 
     assert Appearance.background(:home).mode == "smoke"
-    assert Appearance.background(:terminal).kind == :none
+    assert Appearance.background(:widget).shader == "daycycle"
+  end
+
+  test "the terminal is no longer a surface a crafted event can reach", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/appearance")
+
+    render_click(view, "assign_background", %{"surface" => "terminal", "option" => "waves"})
+
+    assert Appearance.background(:home).mode == "smoke"
+    assert Appearance.background(:widget).shader == "daycycle"
+    assert render(view)
   end
 
   test "assigning an empty slot is refused without crashing", %{conn: conn} do
@@ -231,17 +275,17 @@ defmodule BusterClawWeb.AppearanceLiveTest do
     {:ok, view, _html} = live(conn, "/appearance")
 
     render_click(view, "assign_background", %{
-      "surface" => "terminal",
+      "surface" => "widget",
       "option" => "image:#{slot}"
     })
 
-    assert Appearance.background(:terminal).kind == :image
+    assert Appearance.background(:widget).kind == :image
 
     view
     |> element("[data-bg-option='image:#{slot}'] button[phx-value-slot='#{slot}']")
     |> render_click()
 
-    assert Appearance.background(:terminal).kind == :none
+    assert Appearance.background(:widget).shader == "daycycle"
     assert Appearance.image_url(slot) == nil
   end
 
@@ -259,42 +303,42 @@ defmodule BusterClawWeb.AppearanceLiveTest do
     {:ok, view, _html} = live(conn, "/appearance")
 
     render_click(view, "assign_background", %{"surface" => "home", "option" => "waves"})
-    render_click(view, "assign_background", %{"surface" => "terminal", "option" => "waves"})
+    render_click(view, "assign_background", %{"surface" => "widget", "option" => "waves"})
 
     view
     |> element("#surface-home input[type='checkbox'][phx-value-surface='home']")
     |> render_click()
 
     assert Appearance.custom?(:home)
-    refute Appearance.custom?(:terminal)
+    refute Appearance.custom?(:widget)
   end
 
   test "color inputs are namespaced per surface so each preview reads its own", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/appearance")
 
-    render_click(view, "assign_background", %{"surface" => "terminal", "option" => "waves"})
-    render_click(view, "toggle_custom", %{"surface" => "terminal"})
+    render_click(view, "assign_background", %{"surface" => "widget", "option" => "waves"})
+    render_click(view, "toggle_custom", %{"surface" => "widget"})
 
-    assert has_element?(view, "#terminal-color-1")
-    assert has_element?(view, "#surface-terminal [data-color-prefix='terminal-color-']")
+    assert has_element?(view, "#widget-color-1")
+    assert has_element?(view, "#surface-widget [data-color-prefix='widget-color-']")
   end
 
   test "setting colors writes only that surface's palette", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/appearance")
 
-    render_click(view, "assign_background", %{"surface" => "terminal", "option" => "waves"})
-    render_click(view, "toggle_custom", %{"surface" => "terminal"})
+    render_click(view, "assign_background", %{"surface" => "widget", "option" => "waves"})
+    render_click(view, "toggle_custom", %{"surface" => "widget"})
 
     view
-    |> element("#surface-terminal form[phx-change='set_colors']")
+    |> element("#surface-widget form[phx-change='set_colors']")
     |> render_change(%{
-      "surface" => "terminal",
+      "surface" => "widget",
       "c1" => "#112233",
       "c2" => "#445566",
       "c3" => "#778899"
     })
 
-    assert Appearance.colors(:terminal) == ["#112233", "#445566", "#778899"]
+    assert Appearance.colors(:widget) == ["#112233", "#445566", "#778899"]
     assert Appearance.colors(:home) == ["#0e0e0e", "#ff4d1c", "#f4f1ea"]
   end
 
@@ -715,7 +759,7 @@ defmodule BusterClawWeb.AppearanceLiveTest do
 
       assert has_element?(view, "#home-overlay")
       # ...and only for the surface that is showing one.
-      refute has_element?(view, "#terminal-overlay")
+      refute has_element?(view, "#widget-overlay")
     end
 
     test "choosing one puts the shader over the image", %{conn: conn} do
@@ -736,12 +780,12 @@ defmodule BusterClawWeb.AppearanceLiveTest do
     # unit test on catalog_key/1 cannot see this — only rendering the grid can.
     test "the image tile still reads as in use once an overlay is added", %{conn: conn} do
       slot = add_image()
-      {:ok, _} = Appearance.set_background(:terminal, "image:#{slot}")
+      {:ok, _} = Appearance.set_background(:home, "image:#{slot}")
       {:ok, view, html} = live(conn, "/appearance")
 
       # Scoped to THIS tile via data-bg-option, not a substring over the page:
-      # every tile carries a "Term" assign button, so `html =~ "Term"` would
-      # pass with no badge rendered anywhere.
+      # the default background badges its own row, so a page-wide match would
+      # pass with this tile badging nothing.
       badge = ~s([data-bg-option="image:#{slot}"] [data-assigned])
 
       assert has_element?(view, badge),
@@ -750,14 +794,14 @@ defmodule BusterClawWeb.AppearanceLiveTest do
       assert html =~ "data-assigned"
 
       view
-      |> element("#surface-terminal form[phx-change='set_overlay']")
-      |> render_change(%{"surface" => "terminal", "shader" => "veil"})
+      |> element("#surface-home form[phx-change='set_overlay']")
+      |> render_change(%{"surface" => "home", "shader" => "veil"})
 
-      assert %{kind: :image_shader, slot: ^slot} = Appearance.background(:terminal)
+      assert %{kind: :image_shader, slot: ^slot} = Appearance.background(:home)
 
       assert has_element?(view, badge),
              "the image tile lost its in-use badge once an overlay was applied — " <>
-               "assigned_to/2 is matching on option_key/1 again instead of catalog_key/1"
+               "in_use?/2 is matching on option_key/1 again instead of catalog_key/1"
     end
 
     test "choosing None takes it off again without losing the image", %{conn: conn} do

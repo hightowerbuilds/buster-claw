@@ -126,20 +126,19 @@ defmodule BusterClaw.Commands.AppearanceTest do
 
     # A review-forcing snapshot rather than scenery: a surface added to
     # `Appearance.surfaces/0` is reachable from this command with no edit, so
-    # this list is the only thing that makes a fourth one a decision. It went
-    # red when the widget arrived (WIDGET_BACKGROUND Phase 1), which is the job.
-    assert Enum.map(result.surfaces, & &1.surface) == ["home", "terminal", "widget"]
+    # this list is the only thing that makes a third one a decision. It went
+    # red when the widget arrived (WIDGET_BACKGROUND Phase 1) and again when the
+    # terminal left (10-17), which is the job.
+    assert Enum.map(result.surfaces, & &1.surface) == ["home", "widget"]
 
-    # The defaults, resolved: the homepage drifts because an empty homepage
-    # reads as broken, and the terminal is plain because an empty one does not.
-    assert %{mode: "smoke", kind: "shader", label: "Homepage"} = surface(result, "home")
-    assert %{mode: "off", kind: "none", label: "Terminal"} = surface(result, "terminal")
+    # The default, resolved: the background drifts because an empty Work Area
+    # reads as broken.
+    assert %{mode: "smoke", kind: "shader", label: "Background"} = surface(result, "home")
 
-    # The widget's default is a shader NOTHING can select — `daycycle` is
+    # The clock's default is a shader NOTHING can select — `daycycle` is
     # bundled but never offered (D2), so it reaches the panel through
     # `classify_default/1` and appears in no catalog row below.
-    assert %{mode: "daycycle", kind: "shader", label: "Time & Place"} =
-             surface(result, "widget")
+    assert %{mode: "daycycle", kind: "shader", label: "Clock"} = surface(result, "widget")
 
     refute "daycycle" in Enum.map(result.options, & &1.key),
            "daycycle must be renderable and unofferable — a picker row would make it selectable"
@@ -170,27 +169,27 @@ defmodule BusterClaw.Commands.AppearanceTest do
     # can go stale under you — but as of 08-15 a command may not apply one, so
     # routing this through `background_set` would be testing the refusal by
     # accident. This is the page's path: a human clicked.
-    assert {:ok, "aurora"} = Appearance.set_background(:terminal, "aurora")
+    assert {:ok, "aurora"} = Appearance.set_background(:widget, "aurora")
 
     assert {:ok, before} = Commands.call("background_list", %{})
-    assert %{mode: "aurora", kind: "shader"} = surface(before, "terminal")
+    assert %{mode: "aurora", kind: "shader"} = surface(before, "widget")
 
     # The operator deletes the shader file out from under the stored mode.
     File.rm!(Path.join([root, "shaders", "aurora.wgsl"]))
 
     assert {:ok, after_delete} = Commands.call("background_list", %{})
 
-    assert %{mode: "off", kind: "none"} = surface(after_delete, "terminal"),
+    assert %{mode: "daycycle", kind: "shader"} = surface(after_delete, "widget"),
            "a stale mode must report what would actually render, not what is in the store"
   end
 
   # --- background_set, the happy paths ------------------------------------
 
-  test "background_set points the terminal at a shader and every open surface hears it" do
+  test "background_set points the clock at a shader and every open surface hears it" do
     assert {:ok, result} =
-             Commands.call("background_set", %{"surface" => "terminal", "mode" => "waves"})
+             Commands.call("background_set", %{"surface" => "widget", "mode" => "waves"})
 
-    assert result.surface == "terminal"
+    assert result.surface == "widget"
     assert result.mode == "waves"
     assert result.kind == "shader"
     assert result.shader == "waves"
@@ -199,14 +198,14 @@ defmodule BusterClaw.Commands.AppearanceTest do
     # No announce step, unlike the palette verbs: `set_background/2` broadcasts
     # the resolved background itself, and a second push from the command would
     # be a second way to say the same thing.
-    assert_receive {:terminal_background, %{kind: :shader, shader: "waves"}}
+    assert_receive {:widget_background, %{kind: :shader, shader: "waves"}}
 
-    assert background_mode(:terminal) == "waves"
+    assert background_mode(:widget) == "waves"
     # The other surface is untouched — one call, one surface.
     assert background_mode(:home) == "smoke"
   end
 
-  test "background_set turns the homepage off — the same verb, the other surface" do
+  test "background_set turns the background off — the same verb, the other surface" do
     assert {:ok, result} =
              Commands.call("background_set", %{"surface" => "home", "mode" => "off"})
 
@@ -222,14 +221,14 @@ defmodule BusterClaw.Commands.AppearanceTest do
     assert {:ok, 1} = Appearance.put_image(fake_image(), "a.png")
 
     assert {:ok, image} =
-             Commands.call("background_set", %{"surface" => "terminal", "mode" => "image:1"})
+             Commands.call("background_set", %{"surface" => "widget", "mode" => "image:1"})
 
     assert image.kind == "image"
     assert image.slot == 1
     assert image.image_url =~ "/appearance/image/1"
 
     assert {:ok, both} =
-             Commands.call("background_set", %{"surface" => "terminal", "mode" => "image:1+veil"})
+             Commands.call("background_set", %{"surface" => "widget", "mode" => "image:1+veil"})
 
     # BOTH halves render, so both are reported — and the mode round-trips whole,
     # which is why the reply carries `option_key/1` and not the tile key.
@@ -237,14 +236,14 @@ defmodule BusterClaw.Commands.AppearanceTest do
     assert both.shader == "veil"
     assert both.slot == 1
     assert both.mode == "image:1+veil"
-    assert background_mode(:terminal) == "image:1+veil"
+    assert background_mode(:widget) == "image:1+veil"
   end
 
   # --- background_set, every refusal Appearance can return ----------------
 
   test "an empty slot is refused with the slots that are filled named" do
     assert {:error, message} =
-             Commands.call("background_set", %{"surface" => "terminal", "mode" => "image:3"})
+             Commands.call("background_set", %{"surface" => "widget", "mode" => "image:3"})
 
     assert is_binary(message)
     assert message =~ "image slot 3"
@@ -253,8 +252,8 @@ defmodule BusterClaw.Commands.AppearanceTest do
     assert message =~ "pool is empty"
     refute message =~ ":empty_slot"
 
-    assert background_mode(:terminal) == "off"
-    refute_receive {:terminal_background, _background}
+    assert background_mode(:widget) == "daycycle"
+    refute_receive {:widget_background, _background}
   end
 
   test "an empty slot names the slots that DO hold an image, once any do" do
@@ -271,7 +270,7 @@ defmodule BusterClaw.Commands.AppearanceTest do
     assert {:ok, 1} = Appearance.put_image(fake_image(), "a.png")
 
     assert {:error, message} =
-             Commands.call("background_set", %{"surface" => "terminal", "mode" => "image:1+waves"})
+             Commands.call("background_set", %{"surface" => "widget", "mode" => "image:1+waves"})
 
     assert message =~ "waves"
     assert message =~ "veil"
@@ -279,13 +278,13 @@ defmodule BusterClaw.Commands.AppearanceTest do
     assert message =~ "image:1"
     refute message =~ ":not_image_reactive"
 
-    assert background_mode(:terminal) == "off"
-    refute_receive {:terminal_background, _background}
+    assert background_mode(:widget) == "daycycle"
+    refute_receive {:widget_background, _background}
   end
 
   test "an unknown mode is refused with the grammar and the keys that exist" do
     assert {:error, message} =
-             Commands.call("background_set", %{"surface" => "terminal", "mode" => "dracula"})
+             Commands.call("background_set", %{"surface" => "widget", "mode" => "dracula"})
 
     assert message =~ ~s("dracula")
     assert message =~ "image:<slot>+<shader>"
@@ -295,7 +294,7 @@ defmodule BusterClaw.Commands.AppearanceTest do
     end
 
     refute message =~ ":invalid_mode"
-    assert background_mode(:terminal) == "off"
+    assert background_mode(:widget) == "daycycle"
   end
 
   # The D1 property, as an attack rather than an assertion.
@@ -340,12 +339,12 @@ defmodule BusterClaw.Commands.AppearanceTest do
 
     assert {:error, message} =
              Commands.call("background_set", %{
-               "surface" => "terminal",
+               "surface" => "widget",
                "mode" => "image:#{slot}+veiled"
              })
 
     assert message =~ "workspace"
-    assert background_mode(:terminal) == "off"
+    assert background_mode(:widget) == "daycycle"
   end
 
   test "built-in designs and the operator's own images stay selectable" do
@@ -383,7 +382,7 @@ defmodule BusterClaw.Commands.AppearanceTest do
 
     assert {:ok, result} =
              Commands.call("background_set", %{
-               "surface" => "terminal",
+               "surface" => "widget",
                "mode" => "image:#{slot}+veiled"
              })
 
@@ -413,17 +412,17 @@ defmodule BusterClaw.Commands.AppearanceTest do
     refute Appearance.shader_approved?("nebula")
 
     assert {:error, message} =
-             Commands.call("background_set", %{"surface" => "terminal", "mode" => "nebula"})
+             Commands.call("background_set", %{"surface" => "widget", "mode" => "nebula"})
 
     assert message =~ "Settings → Appearance"
-    assert background_mode(:terminal) == "off"
+    assert background_mode(:widget) == "daycycle"
 
     # And a re-approval of the NEW bytes lets it through again, so the gate
     # re-arms rather than latching shut.
     assert {:ok, _hash} = Appearance.approve_shader("nebula")
 
     assert {:ok, _result} =
-             Commands.call("background_set", %{"surface" => "terminal", "mode" => "nebula"})
+             Commands.call("background_set", %{"surface" => "widget", "mode" => "nebula"})
   end
 
   test "approving one shader does not approve another", %{root: root} do
@@ -435,10 +434,10 @@ defmodule BusterClaw.Commands.AppearanceTest do
              Commands.call("background_set", %{"surface" => "home", "mode" => "blessed"})
 
     assert {:error, message} =
-             Commands.call("background_set", %{"surface" => "terminal", "mode" => "stranger"})
+             Commands.call("background_set", %{"surface" => "widget", "mode" => "stranger"})
 
     assert message =~ "stranger"
-    assert background_mode(:terminal) == "off"
+    assert background_mode(:widget) == "daycycle"
     # The approved one is still up: refusing the stranger changed nothing else.
     assert background_mode(:home) == "blessed"
   end
@@ -480,25 +479,27 @@ defmodule BusterClaw.Commands.AppearanceTest do
 
     assert message =~ ~s("sidebar")
     assert message =~ "home"
-    assert message =~ "terminal"
+    assert message =~ "widget"
+    # The terminal left on 10-17 and must not be offered as a surface.
+    refute message =~ "terminal"
 
     # Nothing was written anywhere while working out that the surface was wrong.
     assert background_mode(:home) == "smoke"
-    assert background_mode(:terminal) == "off"
+    assert background_mode(:widget) == "daycycle"
     refute_receive {:home_background, _background}
-    refute_receive {:terminal_background, _background}
+    refute_receive {:widget_background, _background}
   end
 
   test "a missing or non-string argument explains what it wanted" do
     for args <- [
           %{},
-          %{"surface" => "terminal"},
+          %{"surface" => "widget"},
           %{"mode" => "off"},
-          %{"surface" => "terminal", "mode" => 3}
+          %{"surface" => "widget", "mode" => 3}
         ] do
       assert {:error, message} = Commands.call("background_set", args)
       assert message =~ "needs a surface and a mode"
-      assert message =~ "terminal"
+      assert message =~ "widget"
       assert message =~ "off"
     end
   end
@@ -533,12 +534,12 @@ defmodule BusterClaw.Commands.AppearanceTest do
       assert {:ok, _result} = Commands.call("background_list", %{}, caller: :mcp)
 
       assert {:error, :requires_confirmation} =
-               Commands.call("background_set", %{"surface" => "terminal", "mode" => "waves"},
+               Commands.call("background_set", %{"surface" => "widget", "mode" => "waves"},
                  caller: :mcp
                )
 
-      assert background_mode(:terminal) == "off"
-      refute_receive {:terminal_background, _background}
+      assert background_mode(:widget) == "daycycle"
+      refute_receive {:widget_background, _background}
     end
 
     test "every argument the handler reads is declared in the catalog, and vice versa" do

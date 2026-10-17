@@ -55,82 +55,72 @@ defmodule BusterClawWeb.SplitLiveTest do
     assert html =~ ~s(data-terminal-label="Beta")
   end
 
-  test "two joined terminals share one continuous background", %{conn: conn} do
-    put_terminal_background()
+  # A terminal has no background of its own (it did until 10-17). It sits on
+  # the app background, so a terminal in the join brings that field with it
+  # exactly as the Home pane does: painted once across the split, every pane a
+  # veil over it, the xterm transparent with no host image.
+  test "two joined terminals share the app background across the split", %{conn: conn} do
+    put_home_background()
 
     {:ok, view, _html} = live(conn, "/split?left=/terminal&right=/terminal")
 
-    assert has_element?(
-             view,
-             "#split-root[data-split-terminal-bg-active='true'][data-terminal-bg-active='true']"
-           )
+    assert has_element?(view, "#split-root.ic-home[data-split-bg-field='home']")
+
+    for side <- ["left", "right"] do
+      assert has_element?(
+               view,
+               "[data-split-pane='#{side}'][data-split-pane-terminal='true'][data-split-pane-veiled='true']"
+             )
+    end
+
+    # The split paints the one image; neither terminal paints a copy on its host.
+    assert render(view) =~ BusterClaw.Appearance.background(:home).image_url
+
+    refute has_element?(view, "[id^='terminal-root'][data-terminal-bg-source='host']")
 
     assert has_element?(
              view,
-             "[data-split-pane='left'][data-split-pane-terminal='true'][data-terminal-bg-active='true']"
-           )
-
-    assert has_element?(
-             view,
-             "[data-split-pane='right'][data-split-pane-terminal='true'][data-terminal-bg-active='true']"
-           )
-
-    # Each terminal self-paints the image on its own host; continuity comes from
-    # the JS anchoring it to the viewport (background-attachment: fixed).
-    assert has_element?(
-             view,
-             "[id^='terminal-root'][data-terminal-embedded='true'][data-terminal-bg-source='host'][data-terminal-bg-image='#{BusterClaw.Appearance.background(:terminal).image_url}']"
+             "[id^='terminal-root'][data-terminal-embedded='true'][data-terminal-bg-active='true'][data-terminal-bg-source='shared'][data-terminal-bg-image='']"
            )
   end
 
-  test "mixed terminal splits keep non terminal panes opaque", %{conn: conn} do
-    put_terminal_background()
+  test "a terminal beside another pane brings the app background with it", %{conn: conn} do
+    put_home_background()
 
     {:ok, view, _html} = live(conn, "/split?left=/terminal&right=/browse")
 
-    # Regression: the joined terminal paints its own background image even next to
-    # a non-terminal pane — it no longer depends on the shared container showing
-    # through (which the opaque neighbor would block).
+    assert has_element?(view, "#split-root[data-split-bg-field='home']")
+
     assert has_element?(
              view,
-             "[id^='terminal-root'][data-terminal-embedded='true'][data-terminal-bg-source='host'][data-terminal-bg-image='#{BusterClaw.Appearance.background(:terminal).image_url}']"
+             "[data-split-pane='left'][data-split-pane-terminal='true'][data-split-pane-veiled='true']"
            )
 
     assert has_element?(
              view,
-             "#split-root[data-split-terminal-bg-active='true'][data-terminal-bg-active='true']"
+             "[data-split-pane='right'][data-split-pane-terminal='false'][data-split-pane-veiled='true']"
            )
 
     assert has_element?(
              view,
-             "[data-split-pane='left'][data-split-pane-terminal='true'][data-terminal-bg-active='true']"
-           )
-
-    assert has_element?(
-             view,
-             "[data-split-pane='right'][data-split-pane-terminal='false'][data-terminal-bg-active='false']"
+             "[id^='terminal-root'][data-terminal-embedded='true'][data-terminal-bg-source='shared']"
            )
   end
 
-  test "non terminal splits do not paint the terminal background", %{conn: conn} do
-    put_terminal_background()
+  test "a join with neither Home nor a terminal is plain", %{conn: conn} do
+    put_home_background()
 
     {:ok, view, _html} = live(conn, "/split?left=/browse&right=/calendar")
 
-    assert has_element?(
-             view,
-             "#split-root[data-split-terminal-bg-active='false'][data-terminal-bg-active='false']"
-           )
+    assert has_element?(view, "#split-root[data-split-bg-field='none']")
+    refute has_element?(view, "#split-root.ic-home")
 
-    assert has_element?(
-             view,
-             "[data-split-pane='left'][data-split-pane-terminal='false'][data-terminal-bg-active='false']"
-           )
-
-    assert has_element?(
-             view,
-             "[data-split-pane='right'][data-split-pane-terminal='false'][data-terminal-bg-active='false']"
-           )
+    for side <- ["left", "right"] do
+      assert has_element?(
+               view,
+               "[data-split-pane='#{side}'][data-split-pane-terminal='false'][data-split-pane-veiled='false']"
+             )
+    end
   end
 
   # A join that includes Home: the homepage background is the one thing the
@@ -167,23 +157,6 @@ defmodule BusterClawWeb.SplitLiveTest do
     assert has_element?(view, "#split-root[data-split-bg-field='home']")
     assert has_element?(view, "[data-split-pane='left'][data-split-pane-veiled='true']")
     assert has_element?(view, "[data-split-pane='right'][data-split-pane-veiled='false']")
-  end
-
-  test "an active terminal background outranks the home field", %{conn: conn} do
-    put_terminal_background()
-
-    {:ok, view, _html} = live(conn, "/split?left=/&right=/terminal")
-
-    assert has_element?(view, "#split-root[data-split-bg-field='terminal']")
-    refute has_element?(view, "#split-root.ic-home")
-    # Home keeps its own canvas and its normal, opaque pane.
-    assert has_element?(view, "[data-split-pane='left'] [id^='home-shader-']")
-    assert has_element?(view, "[data-split-pane='left'][data-split-pane-veiled='false']")
-
-    assert has_element?(
-             view,
-             "[id^='terminal-root'][data-terminal-embedded='true'][data-terminal-bg-source='host']"
-           )
   end
 
   test "a home background set to off leaves the split plain", %{conn: conn} do
@@ -339,7 +312,7 @@ defmodule BusterClawWeb.SplitLiveTest do
     assert has_element?(view, "#home-corner-widget")
   end
 
-  defp put_terminal_background do
+  defp put_home_background do
     # A real file in a tmp workspace: slot URLs are stamped from the file's
     # mtime (and require it to exist) since the shared-DataZone cache fix.
     root = Path.join(System.tmp_dir!(), "bc_termbg_#{System.unique_integer([:positive])}")
@@ -355,7 +328,7 @@ defmodule BusterClawWeb.SplitLiveTest do
 
     Settings.put("background_image_1_path", "pockets/backgrounds/test.png")
     Settings.put("background_image_1_updated_at", "123")
-    Settings.put("terminal_background_mode", "image:1")
+    Settings.put("home_background_mode", "image:1")
   end
 
   defp occurrences(haystack, needle), do: length(String.split(haystack, needle)) - 1

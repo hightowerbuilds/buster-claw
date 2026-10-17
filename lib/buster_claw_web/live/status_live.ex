@@ -51,7 +51,6 @@ defmodule BusterClawWeb.StatusLive do
     if connected?(socket) do
       Phoenix.PubSub.subscribe(BusterClaw.PubSub, Appearance.home_topic())
       Phoenix.PubSub.subscribe(BusterClaw.PubSub, Appearance.topic(:widget))
-      if split_panes, do: Phoenix.PubSub.subscribe(BusterClaw.PubSub, Appearance.topic(:terminal))
       subscribe_chat_look()
       Notifications.subscribe()
       # The corner widget's Contacts tab follows the contact list.
@@ -69,7 +68,6 @@ defmodule BusterClawWeb.StatusLive do
      socket
      |> assign(:page_title, "Work area")
      |> assign(:home_bg, Appearance.home_background_state())
-     |> assign(:terminal_bg, Appearance.terminal_background())
      |> assign(:split_panes, split_panes)
      |> assign(:widget_bg, Appearance.background(:widget))
      |> assign_chat_look()
@@ -455,22 +453,15 @@ defmodule BusterClawWeb.StatusLive do
   def handle_info({:agent_chat, conv_id, payload}, socket),
     do: {:noreply, apply_chat(socket, conv_id, payload)}
 
-  # The homepage background changed in settings — re-render it live. Switching
-  # onto the weather shader also feeds it the real sky right away (from the
-  # already-loaded conditions, or a fresh fetch).
-  # The corner widget's Time & Place panel. Its own topic and its own assign —
-  # the homepage's background and the card's are two surfaces that happen to
-  # share a page.
+  # The corner widget's Clock panel. Its own topic and its own assign — the app
+  # background and the card's are two surfaces that happen to share a page.
   def handle_info({:widget_background, state}, socket) do
     {:noreply, assign(socket, :widget_bg, state)}
   end
 
-  # Only subscribed inside a join (see mount): a terminal background appearing
-  # takes the field away from the homepage, and this pane paints its own again.
-  def handle_info({:terminal_background, state}, socket) do
-    {:noreply, assign(socket, :terminal_bg, state)}
-  end
-
+  # The app background changed in settings — re-render it live. Switching onto
+  # the weather shader also feeds it the real sky right away (from the
+  # already-loaded conditions, or a fresh fetch).
   def handle_info({:home_background, state}, socket) do
     socket = assign(socket, :home_bg, state)
 
@@ -570,11 +561,7 @@ defmodule BusterClawWeb.StatusLive do
         assigns,
         :field_shared?,
         BusterClawWeb.ChromeHook.embedded?() and
-          BusterClawWeb.SplitField.home_field?(
-            assigns.split_panes,
-            assigns.terminal_bg,
-            assigns.home_bg
-          )
+          BusterClawWeb.SplitField.home_field?(assigns.split_panes, assigns.home_bg)
       )
 
     ~H"""

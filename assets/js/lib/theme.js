@@ -56,9 +56,9 @@ function termThemePalette(key) {
   }
 }
 
-// xterm theme palette, made see-through when a terminal background image is
-// active so the image shows behind the text (the `__bcBgActive` flag is set per
-// terminal by the TerminalView hook).
+// xterm theme palette, made see-through when the app background shows through
+// the terminal, so the image or shader shows behind the text (the `__bcBgActive`
+// flag is set per terminal by the TerminalView hook).
 export function termThemeWithBackground(bgActive) {
   const palette = termThemePalette(currentTermTheme())
   return bgActive ? {...palette, background: "rgba(0,0,0,0)"} : palette

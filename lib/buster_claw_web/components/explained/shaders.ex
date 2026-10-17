@@ -28,10 +28,12 @@ defmodule BusterClawWeb.Explained.Shaders do
   Two things here disagreed with the code before this was written, and both are
   now taken from the implementation rather than from the older prose:
 
-  - The catalog is **click**, not drag. Every row carries one button per surface
-    (`AppearanceLive.option_chip/1` → `assign_button`). `Appearance`'s own
-    moduledoc still said "drags an option onto the target" — corrected in the
-    same commit as this file.
+  - The catalog is **click**, not drag. Every row IS the button, and it sets the
+    one app background (`Appearance.Catalog.option_chip/1`); the Clock picks
+    from the same rows through its own select. `Appearance`'s own moduledoc
+    still said "drags an option onto the target" — corrected in the same commit
+    as this file. (Until 10-17 each row carried a button per surface, because
+    the terminal had a background of its own.)
   - There is **no palette-coloured fallback** when WebGPU is missing. The shader
     layer simply does not paint (`.ic-home-bg` has no background of its own), so
     the surface reads as solid — which is what the Appearance page itself says.
@@ -68,16 +70,18 @@ defmodule BusterClawWeb.Explained.Shaders do
         <p>
           That drift behind this page is not a video and not a GIF. It is a real
           WGSL shader, compiled in the webview and rendered on the GPU every frame.
-          Three surfaces in the app can carry one — the <span class="font-semibold text-base-content">homepage</span>,
-          the <span class="font-semibold text-base-content">terminal</span>,
-          and the <span class="font-semibold text-base-content">Time & Place card</span>
-          — and they draw from a single shared catalog you can add to.
+          Two surfaces in the app can carry one — the
+          <span class="font-semibold text-base-content">background</span>
+          itself, which the Work Area and every terminal in it sit on, and the
+          <span class="font-semibold text-base-content">clock</span>
+          card, a widget with a sky of its own — and they draw from a single
+          shared catalog you can add to.
         </p>
         <p class="border-l-2 border-primary pl-3">
           <span class="font-semibold text-base-content">An agent can change your
             background. It cannot put GPU code you have never looked at on your screen.</span>
           Ask for <code>background_set</code>
-          and it will point any of those surfaces at a built-in design, at an
+          and it will point either surface at a built-in design, at an
           image you uploaded, or at a workspace shader <span class="italic">you have already applied yourself</span>. Ask it to
           apply the <code>.wgsl</code>
           it just wrote for you and it is refused, by name: the file exists, and it
@@ -100,31 +104,33 @@ defmodule BusterClawWeb.Explained.Shaders do
 
       <section class="flex flex-col gap-3" id="explained-shader-catalog">
         <h3 class="font-display text-base font-black uppercase tracking-wide">
-          One catalog, three targets
+          One catalog, two targets
         </h3>
         <p class="text-sm leading-relaxed text-base-content/80">
           <.link navigate="/appearance" class="font-semibold text-primary hover:opacity-80">
             Settings → Appearance
           </.link>
-          shows the catalog once, on the left, and every surface on the right,
-          each previewing what it is actually running. There are three: the
-          homepage, the terminal, and the
-          <span class="font-semibold text-base-content">Time & Place card</span>
-          on the Clock panel. Every catalog
-          row has one button per surface, so pointing something at one is
-          a single click, and the same option can back all three at once —
-          which is exactly why it is one catalog and not three pickers.
+          shows the catalog once, on the left, and both surfaces on the right,
+          each previewing what it is actually running. There are two: the
+          <span class="font-semibold text-base-content">background</span>
+          — one for the whole Work Area, with the chat, the panels and every
+          terminal on it; a terminal is transparent and has none of its own —
+          and the <span class="font-semibold text-base-content">clock</span>
+          card. Clicking a catalog row is a single click and sets the
+          background; the Clock panel has a picker over the same rows, and the
+          same option can back both at once — which is why it is one catalog
+          and not two.
         </p>
         <ul class="ic-unfold" style="list-style: none; padding-left: 0;">
           <li>
             <span class="font-mono font-bold text-base-content">Off</span>
-            — no background. The terminal ships this way; a bare terminal reads as
-            plain, where a bare homepage reads as broken.
+            — no background: the Work Area goes solid and the terminals sit on
+            that. The clock cannot be made bare, only given a different sky.
           </li>
           <li>
             <span class="font-mono font-bold text-base-content">Built-in shaders</span>
             — {Enum.join(@builtins, ", ")}. Bundled with the app, so they need no
-            files and no fetch. The homepage ships on <code>smoke</code>. Weather is
+            files and no fetch. The background ships on <code>smoke</code>. Weather is
             the odd one: it is fed your location's real conditions and time of day,
             so it rains on screen when it rains outside.
           </li>
@@ -154,7 +160,7 @@ defmodule BusterClawWeb.Explained.Shaders do
         needs="A browser or desktop webview with WebGPU available. The built-ins ship with the app."
         touches="One setting per surface. Changes nothing on disk and nothing outside the app's own appearance."
         confirm="None, and none is needed: it is your click, it is instant, and it is reversible by clicking something else."
-        result="The homepage redraws immediately — the shader layer remounts on any change. Where WebGPU is unavailable the layer simply does not paint and the surface stays solid; the app over it is unaffected."
+        result="The Work Area redraws immediately, terminals included — the shader layer remounts on any change. Where WebGPU is unavailable the layer simply does not paint and the surface stays solid; the app over it is unaffected."
       >
         <ol class="ic-unfold">
           <li>
@@ -166,9 +172,9 @@ defmodule BusterClawWeb.Explained.Shaders do
             or <code>mandel</code>.
           </li>
           <li>
-            Click that row's <span class="font-semibold text-base-content">Home</span>
-            button. The homepage panel on the right starts running it, and so does
-            the page behind you.
+            Click the row. The Background panel on the right starts running it,
+            and so does the page behind you — every terminal in the Work Area
+            is on it too.
           </li>
           <li>
             With a shader on a surface, that surface offers
@@ -189,22 +195,24 @@ defmodule BusterClawWeb.Explained.Shaders do
 
       <.example
         n={2}
-        title="Give the terminal its own"
+        title="Give the clock its own sky"
         want="Two surfaces, independently set, from the one list."
-        needs="The desktop app for the in-app terminal, with WebGPU for shaders. An image target also needs an image in the pool."
-        touches="The terminal's own background setting, stored separately from the homepage's."
-        confirm="None. Open terminals re-render live when it changes — no restart, no reopen."
-        result="The terminal panel previews it immediately. Clear a pool slot that a surface is using and that surface falls back to its own default rather than jumping to some other image you didn't pick."
+        needs="WebGPU for shaders. An image needs an image in the pool."
+        touches="The clock card's own background setting, stored separately from the background's."
+        confirm="None. The clock re-renders live when it changes — no restart, no reopen."
+        result="The Clock panel previews it immediately. Clear a pool slot that a surface is using and that surface falls back to its own default rather than jumping to some other image you didn't pick."
       >
         <ol class="ic-unfold">
           <li>
-            Same catalog rows, the <span class="font-semibold text-base-content">Terminal</span>
-            button instead. A row already in use is marked, so you can see at a
-            glance what is driving what.
+            The <span class="font-semibold text-base-content">Clock</span>
+            panel on the right has a <span class="italic">Sky</span>
+            picker over the same catalog. It ships on a day cycle — sun by day,
+            stars by night — which no catalog row offers, so the picker's first
+            entry is the only way back to it (by command, that is <code>default</code>).
           </li>
           <li>
             Palettes are per surface too: the same shader can run warm behind the
-            homepage and cold behind the terminal.
+            Work Area and cold behind the clock.
           </li>
           <li>
             Images work the same way once uploaded — but note that a background image
@@ -284,10 +292,8 @@ defmodule BusterClawWeb.Explained.Shaders do
           </li>
           <li>
             Open Appearance. <code>Deep Tide</code>
-            is now a row in the Shaders list. Click
-            <span class="font-semibold text-base-content">Home</span>
-            and it starts drifting — fetched by name, prelude prepended, compiled in
-            place.
+            is now a row in the Shaders list. Click it and it starts drifting —
+            fetched by name, prelude prepended, compiled in place.
           </li>
           <li>
             Iterate in the same breath: "make the crests sharper" rewrites the file,

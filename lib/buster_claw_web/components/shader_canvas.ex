@@ -2,12 +2,12 @@ defmodule BusterClawWeb.ShaderCanvas do
   @moduledoc """
   The hook-owned WebGPU canvas that draws a surface's background.
 
-  One component for the three surfaces that render one — the homepage
-  (`StatusLive`), a standalone terminal (`TerminalLive`) and a split
-  (`SplitLive`). All three had the same thirteen lines of `phx-hook` +
-  `data-*` markup copied out, differing only in an id prefix and a class, and
-  the copies had already drifted: the homepage keyed its `data-shader` off
-  `bg.mode` while the other two used `bg.shader`.
+  One component for the three mounts that render one — the Work Area
+  (`StatusLive`), a standalone terminal (`TerminalLive`, painting the app
+  background since 10-17) and a split (`SplitLive`). All three had the same
+  thirteen lines of `phx-hook` + `data-*` markup copied out, differing only in
+  an id prefix and a class, and the copies had already drifted: the homepage
+  keyed its `data-shader` off `bg.mode` while the other two used `bg.shader`.
 
   It exists because `IMAGE_SHADER_ROADMAP` Phase 3 had to add one attribute to
   all three, and both homepage files sit at their size cap — so the honest move

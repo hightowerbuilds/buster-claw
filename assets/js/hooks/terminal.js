@@ -27,9 +27,10 @@ export const TerminalView = {
     this.statusEl = document.getElementById(this.el.dataset.statusId || "")
     this.setStatus("Connecting")
 
-    // Terminal background image (Settings → Appearance). When active, the xterm
-    // palette goes transparent; standalone terminals paint the image on their
-    // own host, while split panes leave it to the shared split container.
+    // The app background, showing through the terminal (Settings → Appearance).
+    // When active, the xterm palette goes transparent; a standalone terminal
+    // paints the image on its own host, while an embedded pane leaves it to
+    // whatever paints the field behind it (the Work Area, a split).
     this.transparentBgFilterState = {pending: ""}
     this.bgActive = false
     this.bgSource = "none"

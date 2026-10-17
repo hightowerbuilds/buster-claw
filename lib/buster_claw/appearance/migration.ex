@@ -86,7 +86,8 @@ defmodule BusterClaw.Appearance.Migration do
   numbers.
 
   `slot_keys` is `[{n, path_key, stamp_key}]` for the slots to carry over. The
-  mode becomes an explicit `"image:<n>"` pointing at whichever slot was active.
+  terminal's choice of which slot was active is NOT carried: the terminal
+  stopped being a surface on 10-17, so nothing is left to point at the slot.
   """
   def migrate_terminal_slots(slot_keys) when is_list(slot_keys) do
     Enum.each(slot_keys, fn {n, path_key, stamp_key} ->
@@ -103,16 +104,24 @@ defmodule BusterClaw.Appearance.Migration do
       Settings.delete("terminal_background_#{n}_updated_at")
     end)
 
-    active = present(Settings.get("terminal_background_active"))
-    mode = present(Settings.get("terminal_background_mode"))
-
-    # An unset mode meant "image" when a slot was active (the pre-shader
-    # behavior), so infer it rather than dropping the user's background.
-    if mode in [nil, "image"] and active,
-      do: Settings.put("terminal_background_mode", "image:#{active}")
-
     Settings.delete("terminal_background_active")
   end
+
+  # The terminal surface's own three keys. Literals here and nowhere else:
+  # `Appearance` no longer has a table row to mint them from.
+  @terminal_surface_keys ~w(
+    terminal_background_mode
+    terminal_background_custom
+    terminal_background_colors
+  )
+
+  @doc """
+  Forget the terminal's background choice. The terminal was a surface of its
+  own until 10-17; now it is transparent over the app background, and a stored
+  mode nothing reads is a row that misleads whoever next opens the store.
+  Idempotent, and cheap enough to run every boot.
+  """
+  def drop_terminal_surface, do: Enum.each(@terminal_surface_keys, &Settings.delete/1)
 
   @doc """
   Move the old standalone homepage image into `slot`, which the caller resolves

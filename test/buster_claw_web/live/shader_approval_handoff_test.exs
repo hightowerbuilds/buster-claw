@@ -49,7 +49,7 @@ defmodule BusterClawWeb.ShaderApprovalHandoffTest do
   end
 
   defp apply_by_command(mode) do
-    Commands.call("background_set", %{"surface" => "terminal", "mode" => mode})
+    Commands.call("background_set", %{"surface" => "widget", "mode" => mode})
   end
 
   test "the operator clicks once, and the model can apply it from then on",
@@ -60,7 +60,7 @@ defmodule BusterClawWeb.ShaderApprovalHandoffTest do
     #    roadmap requires: it names the fix rather than just saying no.
     assert {:error, message} = apply_by_command("nebula")
     assert message =~ "Settings → Appearance"
-    assert Appearance.background(:terminal).shader != "nebula"
+    assert Appearance.background(:widget).shader != "nebula"
 
     # 2. background_list says so in advance, so a model never has to discover
     #    the boundary by being refused (VI.2).
@@ -78,7 +78,7 @@ defmodule BusterClawWeb.ShaderApprovalHandoffTest do
     #    keyed by shader rather than by surface (VI.3). A per-surface store
     #    would pass every test above and fail here.
     assert {:ok, _result} = apply_by_command("nebula")
-    assert Appearance.background(:terminal).shader == "nebula"
+    assert Appearance.background(:widget).shader == "nebula"
 
     assert {:ok, listing} = Commands.call("background_list", %{})
     assert option(listing, "nebula").approved == true

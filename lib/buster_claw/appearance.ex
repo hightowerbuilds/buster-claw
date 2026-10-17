@@ -1,34 +1,43 @@
 defmodule BusterClaw.Appearance do
   @moduledoc """
-  Backgrounds for the two surfaces that have one — the **homepage** and the
-  **terminal** — drawn from a single shared catalog.
+  The app's **one background**, and the clock card's own — drawn from a single
+  shared catalog.
+
+  Two surfaces carry a background, and they are named by what they are rather
+  than where they sit. `:home` is the background: the Work Area paints it edge
+  to edge, and everything in the Work Area — the chat, the panels, the terminal
+  slots — sits on it. A terminal has no background of its own any more (it had
+  one until 10-17): it is transparent, and what shows through is this. `:widget`
+  is the Clock card in the corner widget, which is a widget with a sky behind a
+  clock face and so wants its own.
 
   There is one pool of options (`options/0`): `off`, the built-in WebGPU shader
   designs, any workspace `shaders/*.wgsl` the user has written, and up to
-  `max_images/0` uploaded images living in `<workspace>/backgrounds/` (writable in
-  both dev and the packaged release, unlike the read-only `priv/static` bundle).
-  Each surface independently points at one option. In Settings → Appearance the
-  catalog is shown **once**, and every catalog row carries one button per surface
-  — a plain click, no drag (see `AppearanceLive`, which owns the interaction).
-  The same option may back both surfaces at the same time, which is why this is
-  one catalog rather than two pickers.
+  `max_images/0` uploaded images living in `<workspace>/pockets/backgrounds/`
+  (writable in both dev and the packaged release, unlike the read-only
+  `priv/static` bundle). In Settings → Appearance the catalog is the background
+  picker — click a row and the background changes — and the Clock has a picker
+  of its own over the same catalog (see `AppearanceLive`, which owns the
+  interaction). The same option may back both at the same time.
 
   ## Storage
 
   Per surface, `Settings` holds a mode, a custom-palette flag, and the palette.
-  The mode is `"off"`, a shader name, or `"image:<slot>"` — one grammar for both
-  surfaces. The image pool is separate from either surface: each slot stores a
-  workspace-relative path plus an `updated_at` stamp, so deleting an image is a
-  pool operation that both surfaces then degrade away from.
+  The mode is `"off"`, a shader name, `"image:<slot>"`, or
+  `"image:<slot>+<shader>"` — one grammar for both surfaces. The image pool is
+  separate from either surface: each slot stores a workspace-relative path plus
+  an `updated_at` stamp, so deleting an image is a pool operation that both
+  surfaces then degrade away from.
 
   Images were once stored per surface (five terminal slots plus a single,
   separate homepage file). `ensure/0` migrates that layout into the shared pool
   in place — it rewrites `Settings` keys only and never touches the files, so an
-  older on-disk name keeps working under its new slot.
+  older on-disk name keeps working under its new slot. The terminal's own
+  stored choice is dropped by the same pass, since no surface reads it now.
 
-  A change broadcasts on the surface's topic (`topic/1`) so open terminals and
-  the homepage re-render live. `BusterClawWeb.AppearanceController` streams a
-  slot's bytes back to the webview.
+  A change broadcasts on the surface's topic (`topic/1`) so the Work Area, open
+  terminals and the clock re-render live. `BusterClawWeb.AppearanceController`
+  streams a slot's bytes back to the webview.
   """
 
   require Logger
@@ -61,9 +70,9 @@ defmodule BusterClaw.Appearance do
   # Bundled in the JS, and deliberately NOT offered (WIDGET_BACKGROUND D2). A
   # surface may name one of these as its `default`; nobody may select one.
   #
-  # `daycycle` is the widget's sky. Operator's call: it stays the Time & Place
-  # default and appears in no picker, so the homepage and the terminal never
-  # offer a shader that only makes sense over a clock.
+  # `daycycle` is the clock's sky. Operator's call: it stays the Clock default
+  # and appears in no picker, so the background never offers a shader that only
+  # makes sense over a clock face.
   #
   # The two lists exist because `@builtin_shaders` was doing two jobs. "Is this
   # bundled in the JS?" decides whether a name needs a `/shaders/` URL and counts
@@ -118,6 +127,11 @@ defmodule BusterClaw.Appearance do
 
   # The two surfaces that carry a background. Everything below is written against
   # this table rather than per-surface: one code path, two configurations.
+  #
+  # The keys are `:home` and `:widget` and the labels are "Background" and
+  # "Clock". The atoms are older than the labels (the `Settings` keys and the
+  # PubSub messages carry them) and renaming them would be churn for no new
+  # behaviour; the labels are what a human reads.
   @surfaces %{
     home: %{
       mode_key: "home_background_mode",
@@ -125,9 +139,9 @@ defmodule BusterClaw.Appearance do
       colors_key: "home_background_colors",
       topic: "appearance:home_background",
       message: :home_background,
-      label: "Homepage",
-      # The homepage has always drifted by default; an empty homepage reads as
-      # broken, where an empty terminal reads as plain.
+      label: "Background",
+      # The background has always drifted by default; an empty Work Area reads
+      # as broken.
       default: "smoke"
     },
     widget: %{
@@ -136,20 +150,10 @@ defmodule BusterClaw.Appearance do
       colors_key: "widget_background_colors",
       topic: "appearance:widget_background",
       message: :widget_background,
-      label: "Time & Place",
-      # A `@default_only_shaders` name: renderable, never offered. The panel is
-      # a clock over a sky, so an empty one reads as broken in a way the terminal
-      # does not.
+      label: "Clock",
+      # A `@default_only_shaders` name: renderable, never offered. The card is
+      # a clock over a sky, so an empty one reads as broken.
       default: "daycycle"
-    },
-    terminal: %{
-      mode_key: "terminal_background_mode",
-      custom_key: "terminal_background_custom",
-      colors_key: "terminal_background_colors",
-      topic: "appearance:terminal_background",
-      message: :terminal_background,
-      label: "Terminal",
-      default: "off"
     }
   }
 
@@ -165,18 +169,15 @@ defmodule BusterClaw.Appearance do
   @migrated_key "appearance_image_pool_migrated"
 
   @doc "The surfaces that have a background, in display order."
-  def surfaces, do: [:home, :terminal, :widget]
+  def surfaces, do: [:home, :widget]
 
-  @doc "Human label for a surface (`:home` -> \"Homepage\")."
+  @doc "Human label for a surface: Background for `:home`, Clock for `:widget`."
   def surface_label(surface), do: config(surface).label
 
   @doc "PubSub topic broadcast when `surface`'s background changes."
   def topic(surface), do: config(surface).topic
 
-  @doc "PubSub topic for the terminal background (legacy alias of `topic(:terminal)`)."
-  def topic, do: topic(:terminal)
-
-  @doc "PubSub topic for the homepage background (legacy alias of `topic(:home)`)."
+  @doc "PubSub topic for the app background (legacy alias of `topic(:home)`)."
   def home_topic, do: topic(:home)
 
   @doc "How many images the shared pool holds."
@@ -389,8 +390,9 @@ defmodule BusterClaw.Appearance do
   BOTH `shader` and `image_url` because both render. `source_url`
   (`/shaders/<name>`) is set only for a workspace shader — built-ins are bundled
   and need no fetch. `custom`/`colors` carry the optional palette and are
-  meaningful only for a shader. This is the single source of truth the terminal
-  and homepage render from, and the payload broadcast on `topic/1`.
+  meaningful only for a shader. This is the single source of truth the Work
+  Area, the terminals and the clock render from, and the payload broadcast on
+  `topic/1`.
 
   A stale stored mode (a shader file since deleted, an image slot since cleared)
   degrades to the surface's default rather than rendering nothing.
@@ -452,10 +454,7 @@ defmodule BusterClaw.Appearance do
     Map.merge(base, palette)
   end
 
-  @doc "The resolved terminal background (legacy alias of `background(:terminal)`)."
-  def terminal_background, do: background(:terminal)
-
-  @doc "The resolved homepage background (legacy alias of `background(:home)`)."
+  @doc "The resolved app background (legacy alias of `background(:home)`)."
   def home_background_state, do: background(:home)
 
   @doc """
@@ -478,7 +477,7 @@ defmodule BusterClaw.Appearance do
   overlay stripped — so a tile can tell whether a surface is using it.
 
   An overlay is a modifier applied *to* a catalog option, not an option of its
-  own: a terminal running `image:5+veil` is using image 5, and its tile has to
+  own: a background running `image:5+veil` is using image 5, and its tile has to
   say so. Matching on `option_key/1` instead meant an image with an overlay
   matched no tile at all, so the grid showed nothing in use while the surface
   panel said "Image 5 + veil" (found by walking the app, 08-14).
@@ -494,7 +493,7 @@ defmodule BusterClaw.Appearance do
   # Resolve the stored mode against what actually exists right now. Anything
   # stale (a removed shader file, a cleared image slot, an unparseable value)
   # falls back to the surface's default — and the default itself is verified, so
-  # a home default of "smoke" can't resolve to a shader that isn't there.
+  # a default of "smoke" can't resolve to a shader that isn't there.
   defp resolve_mode(surface) do
     stored = present(Settings.get(config(surface).mode_key))
 
@@ -507,8 +506,8 @@ defmodule BusterClaw.Appearance do
   # A surface's default is resolved through a WIDER gate than a stored mode: it
   # may name a `@default_only_shaders` entry, which `classify/1` would call
   # `:unknown` because nothing may select it. Without this the widget's default
-  # falls through to `:off` and the Time & Place panel renders nothing at all —
-  # a blank card, with no error anywhere.
+  # falls through to `:off` and the Clock card renders nothing at all — a blank
+  # card, with no error anywhere.
   defp classify_default(surface) do
     default = config(surface).default
 
@@ -673,8 +672,8 @@ defmodule BusterClaw.Appearance do
   file (e.g. a LiveView upload temp path); `client_name` supplies the extension.
   Returns `{:ok, slot}`, `{:error, :unsupported_type}`, or `{:error, :pool_full}`.
 
-  Adding an image never changes what either surface is showing — the user drags
-  it onto a target to use it.
+  Adding an image never changes what either surface is showing — the user
+  clicks it to use it.
   """
   def put_image(src_path, client_name) do
     ext = client_name |> Path.extname() |> String.downcase()
@@ -741,6 +740,11 @@ defmodule BusterClaw.Appearance do
     # slot — which would land a second image on an occupied one.
     Migration.rewrite_renamed_dir(migratable_keys(), @subdir)
 
+    # The terminal stopped being a surface on 10-17. Its stored choice is
+    # dropped every boot rather than once: it is three keys, the delete is
+    # idempotent, and a marker for it would outlive the keys it marks.
+    Migration.drop_terminal_surface()
+
     if Settings.get(@migrated_key) in [nil, ""] do
       Migration.migrate_terminal_slots(legacy_slot_keys())
 
@@ -773,7 +777,8 @@ defmodule BusterClaw.Appearance do
   end
 
   # The five pre-pool terminal slots keep their numbers in the pool, so each
-  # carries the pool key pair it migrates into.
+  # carries the pool key pair it migrates into. The pool outlived the terminal
+  # surface: the images were always the operator's, whatever showed them.
   defp legacy_slot_keys, do: Enum.map(1..5, &{&1, path_key(&1), stamp_key(&1)})
 
   # Give the pool's Pocket a manifest so it appears in the Pockets tab as

@@ -77,8 +77,11 @@ defmodule BusterClawWeb.TerminalLiveTest do
     assert has_element?(view, "[data-terminal-toolbar][data-terminal-label='Alpha']")
   end
 
-  test "standalone terminal paints its own configured background", %{conn: conn} do
-    put_terminal_background()
+  # A terminal has no background of its own (it did until 10-17): it sits on
+  # the app background. A standalone tab is the one place nothing else paints
+  # that field, so the terminal paints it itself.
+  test "a standalone terminal paints the app background itself", %{conn: conn} do
+    put_home_background()
 
     {:ok, view, _html} = live(conn, ~p"/terminal")
 
@@ -89,8 +92,38 @@ defmodule BusterClawWeb.TerminalLiveTest do
 
     assert has_element?(
              view,
-             "[id^='terminal-root'][data-terminal-embedded='false'][data-terminal-bg-active='true'][data-terminal-bg-source='host'][data-terminal-bg-image='#{BusterClaw.Appearance.background(:terminal).image_url}']"
+             "[id^='terminal-root'][data-terminal-embedded='false'][data-terminal-bg-active='true'][data-terminal-bg-source='host'][data-terminal-bg-image='#{BusterClaw.Appearance.background(:home).image_url}']"
            )
+  end
+
+  test "a standalone terminal runs the background's shader on its own canvas", %{conn: conn} do
+    {:ok, _} = BusterClaw.Appearance.set_background(:home, "waves")
+
+    {:ok, view, _html} = live(conn, ~p"/terminal")
+
+    assert has_element?(view, "[id^='terminal-shader-waves']")
+    assert has_element?(view, "[id^='terminal-root'][data-terminal-bg-source='shader']")
+  end
+
+  test "a standalone terminal with the background off is opaque", %{conn: conn} do
+    {:ok, _} = BusterClaw.Appearance.set_background(:home, "off")
+
+    {:ok, view, _html} = live(conn, ~p"/terminal")
+
+    assert has_element?(
+             view,
+             "[id^='terminal-root'][data-terminal-bg-active='false'][data-terminal-bg-source='none']"
+           )
+  end
+
+  test "the terminal follows a background change live", %{conn: conn} do
+    {:ok, _} = BusterClaw.Appearance.set_background(:home, "off")
+    {:ok, view, _html} = live(conn, ~p"/terminal")
+    refute has_element?(view, "[id^='terminal-shader-']")
+
+    {:ok, _} = BusterClaw.Appearance.set_background(:home, "mandel")
+
+    assert has_element?(view, "[id^='terminal-shader-mandel']")
   end
 
   test "renders the mailman startup profile as a fixed terminal command", %{conn: conn} do
@@ -126,7 +159,7 @@ defmodule BusterClawWeb.TerminalLiveTest do
     refute has_element?(view, "#app-dock a[href='/terminal']")
   end
 
-  defp put_terminal_background do
+  defp put_home_background do
     # A real file in a tmp workspace: slot URLs are stamped from the file's
     # mtime (and require it to exist) since the shared-DataZone cache fix.
     root = Path.join(System.tmp_dir!(), "bc_termbg_#{System.unique_integer([:positive])}")
@@ -142,7 +175,7 @@ defmodule BusterClawWeb.TerminalLiveTest do
 
     Settings.put("background_image_1_path", "pockets/backgrounds/test.png")
     Settings.put("background_image_1_updated_at", "123")
-    Settings.put("terminal_background_mode", "image:1")
+    Settings.put("home_background_mode", "image:1")
   end
 
   test "terminal commands button is not rendered outside terminal routes", %{conn: conn} do

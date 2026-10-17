@@ -34,7 +34,7 @@ Buster Claw has no built-in LLM and needs no API keys: the intelligence is an ag
 - `BusterClaw.Notifications`: timers, alarms, reminders, and the SoundBoard chime routing.
 - `BusterClaw.Voice.Speech`: prepares chat replies for native macOS read-aloud, stripping code fences and URLs before `say(1)` reads them. Voice and rate controls live in Settings → Configuration → Speech. Notification WAV playback is an independent audio path.
 - `BusterClaw.SvgViewer`: the chat's SVG channel — the model emits a fenced ` ```svg ` block, `extract/1` lifts it out of the reply, `sanitize/1` strips scripts/handlers/`<foreignObject>`/external refs, and it renders as a real SVG. This, not a canvas, is how the model draws.
-- `BusterClaw.Appearance` (+ `BusterClaw.Shaders`): one background catalog — built-in WGSL shaders, workspace `shaders/*.wgsl`, and uploaded images — shared by the homepage and the terminal.
+- `BusterClaw.Appearance` (+ `BusterClaw.Shaders`): one background catalog — built-in WGSL shaders, workspace `shaders/*.wgsl`, and uploaded images — shared by the app background (which every terminal sits on) and the Clock card.
 - `BusterClaw.Memory`: `Memory.RunSummary` rows capturing each headless run, full-text searched by `memory_search`.
 - `BusterClaw.Settings`: app settings.
 

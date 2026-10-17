@@ -4,6 +4,10 @@ defmodule BusterClawWeb.SurfacePanel do
   right now, live, plus the controls that only make sense for what it is running
   — the custom palette for a shader, and the overlay picker for an image.
 
+  Two of these render, one per `Appearance.surfaces/0`: the Background and the
+  Clock. The Clock's carries its picker in the `inner_block` slot, because the
+  catalog beside it picks for the background only (10-17).
+
   Extracted from `AppearanceLive` by `IMAGE_SHADER_ROADMAP` Phase 3, which is the
   cut that file's size-cap comment had already named. The events it raises
   (`toggle_custom`, `set_colors`, `set_overlay`) are still handled by
@@ -24,12 +28,13 @@ defmodule BusterClawWeb.SurfacePanel do
   attr :surface, :atom, required: true
   attr :bg, :map, required: true
   attr :overlays, :list, default: []
+  slot :inner_block, doc: "controls that belong to this surface alone, rendered under the preview"
 
   def surface_target(assigns) do
     ~H"""
     <section
       id={"surface-#{@surface}"}
-      aria-label={"#{Appearance.surface_label(@surface)} background"}
+      aria-label={"#{Appearance.surface_label(@surface)} surface"}
       class="ic-panel flex flex-col overflow-hidden"
     >
       <div class="ic-panel-h">
@@ -77,6 +82,8 @@ defmodule BusterClawWeb.SurfacePanel do
             </div>
         <% end %>
       </div>
+
+      {render_slot(@inner_block)}
 
       <%!-- The overlay picker. Only an image can carry one, so this appears
             exactly when the surface is showing one — with or without an overlay
@@ -155,5 +162,5 @@ defmodule BusterClawWeb.SurfacePanel do
   defp current_label(%{kind: :none}), do: "Off"
   defp current_label(%{kind: :image, slot: slot}), do: "Image #{slot}"
   defp current_label(%{kind: :image_shader, slot: slot, shader: s}), do: "Image #{slot} + #{s}"
-  defp current_label(%{kind: :shader, shader: shader}), do: shader
+  defp current_label(%{kind: :shader, shader: shader}), do: Appearance.shader_label(shader)
 end

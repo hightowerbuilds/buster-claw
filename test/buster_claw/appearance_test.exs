@@ -179,25 +179,25 @@ defmodule BusterClaw.AppearanceTest do
       url = Appearance.image_url(1)
 
       assert {:ok, "image:1"} = Appearance.set_background(:home, "image:1")
-      assert {:ok, "image:1"} = Appearance.set_background(:terminal, "image:1")
+      assert {:ok, "image:1"} = Appearance.set_background(:widget, "image:1")
 
       assert %{kind: :image, image_url: ^url, slot: 1} = Appearance.background(:home)
-      assert %{kind: :image, image_url: ^url, slot: 1} = Appearance.background(:terminal)
+      assert %{kind: :image, image_url: ^url, slot: 1} = Appearance.background(:widget)
     end
 
     test "the surfaces are independent" do
       {:ok, 1} = Appearance.put_image(fake_image(), "a.png")
 
       {:ok, _} = Appearance.set_background(:home, "image:1")
-      {:ok, _} = Appearance.set_background(:terminal, "mandel")
+      {:ok, _} = Appearance.set_background(:widget, "mandel")
 
       assert Appearance.background(:home).kind == :image
-      assert Appearance.background(:terminal).kind == :shader
+      assert Appearance.background(:widget).shader == "mandel"
     end
 
     test "an empty image slot is refused and reported as such" do
       assert {:error, :empty_slot} = Appearance.set_background(:home, "image:4")
-      assert {:error, :empty_slot} = Appearance.set_background(:terminal, "image:99")
+      assert {:error, :empty_slot} = Appearance.set_background(:widget, "image:99")
     end
 
     test "a non-existent name and a bad surface are refused" do
@@ -218,21 +218,36 @@ defmodule BusterClaw.AppearanceTest do
   # --- degradation ---------------------------------------------------------
 
   describe "a stale mode degrades to the surface default" do
-    test "the homepage falls back to smoke, the terminal to off", %{root: root} do
+    test "the background falls back to smoke, the clock to its sky", %{root: root} do
       write_custom_shader(root, "aurora")
       {:ok, _} = Appearance.set_background(:home, "aurora")
-      {:ok, _} = Appearance.set_background(:terminal, "aurora")
+      {:ok, _} = Appearance.set_background(:widget, "aurora")
 
       File.rm!(Path.join([root, "shaders", "aurora.wgsl"]))
 
       assert Appearance.background(:home).mode == "smoke"
-      assert Appearance.background(:terminal).kind == :none
+      assert Appearance.background(:widget).shader == "daycycle"
     end
 
-    test "nothing configured at all: smoke for home, off for the terminal" do
+    test "nothing configured at all: smoke for the background, the day cycle for the clock" do
       assert Appearance.background(:home).mode == "smoke"
-      assert Appearance.background(:terminal).kind == :none
-      assert Appearance.background(:terminal).image_url == nil
+      assert Appearance.background(:widget).shader == "daycycle"
+      assert Appearance.background(:widget).image_url == nil
+    end
+  end
+
+  # The surfaces, as a review-forcing snapshot: a third one (the terminal had
+  # its own background until 10-17) is a decision, not a table edit.
+  describe "surfaces/0" do
+    test "is the background and the clock, in that order, and nothing else" do
+      assert Appearance.surfaces() == [:home, :widget]
+      assert Appearance.surface_label(:home) == "Background"
+      assert Appearance.surface_label(:widget) == "Clock"
+    end
+
+    test "the terminal is not a surface" do
+      assert {:error, :invalid_mode} = Appearance.set_background(:terminal, "smoke")
+      assert_raise FunctionClauseError, fn -> Appearance.background(:terminal) end
     end
   end
 
@@ -242,23 +257,23 @@ defmodule BusterClaw.AppearanceTest do
       {:ok, 2} = Appearance.put_image(fake_image(), "b.png")
 
       {:ok, _} = Appearance.set_background(:home, "image:1")
-      {:ok, _} = Appearance.set_background(:terminal, "image:2")
+      {:ok, _} = Appearance.set_background(:widget, "image:2")
 
       assert :ok = Appearance.clear_image(1)
 
       assert Appearance.background(:home).mode == "smoke"
-      assert Appearance.background(:terminal).slot == 2
+      assert Appearance.background(:widget).slot == 2
     end
 
     test "clears both surfaces when both used it" do
       {:ok, 1} = Appearance.put_image(fake_image(), "a.png")
       {:ok, _} = Appearance.set_background(:home, "image:1")
-      {:ok, _} = Appearance.set_background(:terminal, "image:1")
+      {:ok, _} = Appearance.set_background(:widget, "image:1")
 
       assert :ok = Appearance.clear_image(1)
 
       assert Appearance.background(:home).kind != :image
-      assert Appearance.background(:terminal).kind == :none
+      assert Appearance.background(:widget).shader == "daycycle"
     end
 
     test "removes the file and frees the slot" do
@@ -274,10 +289,10 @@ defmodule BusterClaw.AppearanceTest do
 
     test "a surface on a shader is untouched by a pool removal" do
       {:ok, 1} = Appearance.put_image(fake_image(), "a.png")
-      {:ok, _} = Appearance.set_background(:terminal, "waves")
+      {:ok, _} = Appearance.set_background(:widget, "waves")
 
       assert :ok = Appearance.clear_image(1)
-      assert Appearance.background(:terminal).shader == "waves"
+      assert Appearance.background(:widget).shader == "waves"
     end
   end
 
@@ -292,27 +307,27 @@ defmodule BusterClaw.AppearanceTest do
     end
 
     test "ride along on the resolved shader background" do
-      {:ok, _} = Appearance.set_background(:terminal, "waves")
-      :ok = Appearance.set_custom(:terminal, true)
-      {:ok, _} = Appearance.set_colors(:terminal, ["#112233", "#445566", "#778899"])
+      {:ok, _} = Appearance.set_background(:widget, "waves")
+      :ok = Appearance.set_custom(:widget, true)
+      {:ok, _} = Appearance.set_colors(:widget, ["#112233", "#445566", "#778899"])
 
       assert %{kind: :shader, custom: true, colors: ["#112233", "#445566", "#778899"]} =
-               Appearance.background(:terminal)
+               Appearance.background(:widget)
     end
 
     test "are independent per surface" do
-      {:ok, _} = Appearance.set_colors(:terminal, ["#111111", "#222222", "#333333"])
+      {:ok, _} = Appearance.set_colors(:widget, ["#111111", "#222222", "#333333"])
       {:ok, _} = Appearance.set_colors(:home, ["#aaaaaa", "#bbbbbb", "#cccccc"])
 
-      assert Appearance.colors(:terminal) == ["#111111", "#222222", "#333333"]
+      assert Appearance.colors(:widget) == ["#111111", "#222222", "#333333"]
       assert Appearance.colors(:home) == ["#aaaaaa", "#bbbbbb", "#cccccc"]
     end
 
     test "bad hex values fall back to black; a wrong count is rejected" do
-      {:ok, cleaned} = Appearance.set_colors(:terminal, ["#zzzzzz", "not-a-color", "#00ff00"])
+      {:ok, cleaned} = Appearance.set_colors(:widget, ["#zzzzzz", "not-a-color", "#00ff00"])
       assert cleaned == ["#000000", "#000000", "#00ff00"]
 
-      assert {:error, :invalid} = Appearance.set_colors(:terminal, ["#111111", "#222222"])
+      assert {:error, :invalid} = Appearance.set_colors(:widget, ["#111111", "#222222"])
     end
   end
 
@@ -356,32 +371,45 @@ defmodule BusterClaw.AppearanceTest do
       if mode = opts[:home_mode], do: Settings.put("home_background_mode", mode)
     end
 
-    test "terminal slots keep their numbers and the active one becomes the mode", %{root: root} do
+    # The terminal stopped being a surface on 10-17. Its images were always the
+    # operator's, so they still join the pool; its CHOICE of which to show has
+    # nothing left to point at, so it is dropped rather than carried.
+    test "terminal slots keep their numbers; the terminal's own choice is dropped", %{root: root} do
       seed_legacy(root, terminal_slots: [1, 2], active: 2, terminal_mode: "image")
 
       assert :ok = Appearance.ensure()
 
       assert Appearance.image_path(1) |> File.read!() == "slot-1-bytes"
       assert Appearance.image_path(2) |> File.read!() == "slot-2-bytes"
-      assert Appearance.background(:terminal).slot == 2
-      assert background_mode(:terminal) == "image:2"
+      assert Settings.get("terminal_background_mode") == nil
+      assert Settings.get("terminal_background_active") == nil
+      # And the background did not inherit it: the operator never chose it there.
+      assert Appearance.background(:home).mode == "smoke"
     end
 
-    test "an unset terminal mode with an active slot still means image", %{root: root} do
-      # The pre-shader install: no mode row at all, an active slot implied image.
-      seed_legacy(root, terminal_slots: [1], active: 1)
-
-      assert :ok = Appearance.ensure()
-      assert Appearance.background(:terminal).kind == :image
-    end
-
-    test "a terminal on a shader keeps its shader, and its images still migrate", %{root: root} do
+    test "a terminal that was on a shader still donates its images", %{root: root} do
       seed_legacy(root, terminal_slots: [1], active: 1, terminal_mode: "waves")
 
       assert :ok = Appearance.ensure()
 
-      assert Appearance.background(:terminal).shader == "waves"
+      assert Settings.get("terminal_background_mode") == nil
       assert Appearance.image_path(1) |> File.regular?()
+    end
+
+    test "the terminal surface's keys are dropped on every boot, not just the first" do
+      # Already-migrated install: the marker is back, so only the per-boot
+      # pass runs. The three keys the old surface stored must still go.
+      Settings.put("appearance_image_pool_migrated", "1")
+      Settings.put("terminal_background_mode", "waves")
+      Settings.put("terminal_background_custom", "true")
+      Settings.put("terminal_background_colors", "#111111,#222222,#333333")
+
+      assert :ok = Appearance.ensure()
+
+      for key <-
+            ~w(terminal_background_mode terminal_background_custom terminal_background_colors) do
+        assert Settings.get(key) == nil, "#{key} survived ensure/0"
+      end
     end
 
     test "the homepage image lands in the first free slot and keeps being used", %{root: root} do
@@ -397,8 +425,9 @@ defmodule BusterClaw.AppearanceTest do
 
       assert Appearance.background(:home).slot == 3
       assert Appearance.image_path(3) |> File.read!() == "home-bytes"
-      # And the terminal is unaffected by where the homepage image landed.
-      assert Appearance.background(:terminal).slot == 1
+      # The terminal's images took slots 1 and 2 first, so the homepage image
+      # could not land on top of one.
+      assert Appearance.image_path(1) |> File.read!() == "slot-1-bytes"
     end
 
     test "an uploaded-but-unused homepage image joins the pool without being applied",
@@ -417,7 +446,7 @@ defmodule BusterClaw.AppearanceTest do
       assert :ok = Appearance.ensure()
       assert :ok = Appearance.ensure()
 
-      assert Appearance.background(:terminal).slot == 1
+      assert Appearance.image_path(1) |> File.regular?()
       assert Settings.get("terminal_background_active") == nil
       assert Settings.get("terminal_background_1_path") == nil
       assert Settings.get("home_background_image_path") == nil
@@ -428,38 +457,32 @@ defmodule BusterClaw.AppearanceTest do
 
       assert Enum.all?(Appearance.images(), &(&1.filled == false))
       assert Appearance.background(:home).mode == "smoke"
-      assert Appearance.background(:terminal).kind == :none
+      assert Appearance.background(:widget).shader == "daycycle"
     end
   end
 
   # --- the shims the rest of the app still calls ---------------------------
 
   describe "legacy aliases" do
-    test "terminal_background/0 and home_background_state/0 keep their shape" do
-      {:ok, 1} = Appearance.put_image(fake_image(), "a.png")
-      {:ok, _} = Appearance.set_background(:terminal, "image:1")
+    test "home_background_state/0 keeps its shape" do
       {:ok, _} = Appearance.set_background(:home, "waves")
-
-      assert %{kind: :image, image_url: url, custom: false, colors: [_, _, _]} =
-               Appearance.terminal_background()
-
-      assert url == Appearance.background(:terminal).image_url
 
       assert %{mode: "waves", custom_shader: false, source_url: nil, image_url: nil} =
                Appearance.home_background_state()
+
+      assert Appearance.home_background_state() == Appearance.background(:home)
     end
 
     test "the two surfaces broadcast on distinct topics" do
-      assert Appearance.topic(:terminal) == Appearance.topic()
       assert Appearance.topic(:home) == Appearance.home_topic()
-      refute Appearance.topic(:home) == Appearance.topic(:terminal)
+      refute Appearance.topic(:home) == Appearance.topic(:widget)
     end
 
     test "a change broadcasts the resolved background to subscribers" do
-      Phoenix.PubSub.subscribe(BusterClaw.PubSub, Appearance.topic(:terminal))
-      {:ok, _} = Appearance.set_background(:terminal, "waves")
+      Phoenix.PubSub.subscribe(BusterClaw.PubSub, Appearance.topic(:home))
+      {:ok, _} = Appearance.set_background(:home, "waves")
 
-      assert_receive {:terminal_background, %{kind: :shader, shader: "waves"}}
+      assert_receive {:home_background, %{kind: :shader, shader: "waves"}}
     end
   end
 
@@ -503,7 +526,7 @@ defmodule BusterClaw.AppearanceTest do
       write_image_shader(root, "veiled")
       {:ok, 2} = seed_two_slots()
 
-      {:ok, key} = Appearance.set_background(:terminal, "image:2+veiled")
+      {:ok, key} = Appearance.set_background(:widget, "image:2+veiled")
       assert key == "image:2+veiled"
       # option_key/1 is the stated inverse of set_background/2, so it carries
       # the whole mode including the overlay.
@@ -513,8 +536,8 @@ defmodule BusterClaw.AppearanceTest do
       # so the grid marked NOTHING while the surface panel read "Image 2 +
       # veiled". Found by walking the app 08-14. Tile matching is
       # `catalog_key/1` — asserted below.
-      assert Appearance.option_key(Appearance.background(:terminal)) == key
-      assert background_mode(:terminal) == key
+      assert Appearance.option_key(Appearance.background(:widget)) == key
+      assert background_mode(:widget) == key
     end
 
     test "catalog_key strips the overlay, so the IMAGE tile still reads as in use",
@@ -522,20 +545,20 @@ defmodule BusterClaw.AppearanceTest do
       write_image_shader(root, "veiled")
       {:ok, 2} = seed_two_slots()
 
-      {:ok, _key} = Appearance.set_background(:terminal, "image:2+veiled")
+      {:ok, _key} = Appearance.set_background(:home, "image:2+veiled")
 
       # The catalog mints "image:2" for that tile (never "image:2+veiled"), so
-      # this is the comparison AppearanceLive.assigned_to/2 makes. An overlay is
+      # this is the comparison Appearance.Catalog.in_use?/2 makes. An overlay is
       # a modifier applied TO an option, not an option of its own.
-      assert Appearance.catalog_key(Appearance.background(:terminal)) == "image:2"
+      assert Appearance.catalog_key(Appearance.background(:home)) == "image:2"
 
       tile_keys = Enum.map(Appearance.options(), & &1.key)
       assert "image:2" in tile_keys
       refute "image:2+veiled" in tile_keys
 
       # Without an overlay the two agree — catalog_key only ever removes.
-      {:ok, _} = Appearance.set_background(:terminal, "image:2")
-      background = Appearance.background(:terminal)
+      {:ok, _} = Appearance.set_background(:home, "image:2")
+      background = Appearance.background(:home)
       assert Appearance.catalog_key(background) == Appearance.option_key(background)
     end
 
@@ -684,12 +707,6 @@ defmodule BusterClaw.AppearanceTest do
       for surface <- Appearance.surfaces() do
         assert {:error, :invalid_mode} = Appearance.set_background(surface, "daycycle")
       end
-    end
-
-    test "a default that is neither offered nor default-only still degrades to off" do
-      # The guard rail on the mechanism itself: widening `classify_default/1`
-      # must not turn every unknown default into a rendered shader.
-      assert Appearance.background(:terminal).kind == :none
     end
   end
 

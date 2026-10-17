@@ -20,23 +20,21 @@ defmodule BusterClawWeb.TerminalLive do
     dom_id = "terminal-root-#{System.unique_integer([:positive])}"
 
     # Set only when mounted inside a joined tab (SplitLive): who else is in the
-    # join, so the terminal can tell when the homepage background is the shared
+    # join, so the terminal can tell when the app background is the shared
     # field it should go transparent over (SplitField).
     split_panes = session["split_panes"]
 
+    # A terminal has no background of its own (it did until 10-17). It sits on
+    # the app background: transparent when something else paints that field —
+    # the Work Area, a split — and painting it itself only as a standalone tab.
     if connected?(socket) do
-      Phoenix.PubSub.subscribe(BusterClaw.PubSub, BusterClaw.Appearance.topic())
-
-      if split_panes,
-        do: Phoenix.PubSub.subscribe(BusterClaw.PubSub, BusterClaw.Appearance.topic(:home))
-
+      Phoenix.PubSub.subscribe(BusterClaw.PubSub, BusterClaw.Appearance.topic(:home))
       BusterClaw.TerminalCommands.subscribe()
     end
 
     {:ok,
      socket
      |> assign(:page_title, terminal_label)
-     |> assign(:terminal_bg, BusterClaw.Appearance.terminal_background())
      |> assign(:home_bg, BusterClaw.Appearance.home_background_state())
      |> assign(:split_panes, split_panes)
      |> assign(:terminal_session_key, terminal_session_key)
@@ -70,23 +68,24 @@ defmodule BusterClawWeb.TerminalLive do
         id={"#{@dom_id}-session"}
         data-terminal-session-shell
         data-terminal-embedded={to_string(@embedded?)}
-        data-terminal-bg-active={to_string(bg_active?(@terminal_bg) or @shared_home? or @workbench?)}
+        data-terminal-bg-active={to_string(bg_active?(@home_bg) or @shared_home?)}
         class={[
           "relative isolate flex min-h-0 flex-col overflow-hidden",
-          if(@embedded? and (bg_active?(@terminal_bg) or @shared_home? or @workbench?),
+          if(@embedded? and (bg_active?(@home_bg) or @shared_home?),
             do: "bg-transparent",
             else: "bg-base-100"
           ),
           if(@embedded?, do: "h-full", else: "ic-panel -mt-6 h-[calc(100dvh-8rem)]")
         ]}
       >
-        <%!-- Shader background (Appearance → Terminal): a hook-owned WebGPU canvas
-              behind the transparent terminal. Standalone only — a split renders
-              one shader across the shared container (see SplitLive), so an embedded
-              pane stays transparent and lets that show through. Keyed by shader
-              name so switching designs remounts the hook. --%>
+        <%!-- The app background, as a standalone tab paints it: a hook-owned
+              WebGPU canvas behind the transparent terminal. Standalone only —
+              embedded, something else paints the field (the Work Area, or a
+              split's shared container) and this pane stays transparent and
+              lets it show through. Keyed by shader name so switching designs
+              remounts the hook. --%>
         <BusterClawWeb.ShaderCanvas.shader_canvas
-          bg={@terminal_bg}
+          bg={@home_bg}
           prefix="terminal"
           render?={not @embedded?}
         />
@@ -157,14 +156,12 @@ defmodule BusterClawWeb.TerminalLive do
           data-toolbar-id={@toolbar_id}
           data-status-id={@status_id}
           data-terminal-embedded={to_string(@embedded?)}
-          data-terminal-bg-active={
-            to_string(bg_active?(@terminal_bg) or @shared_home? or @workbench?)
-          }
-          data-terminal-bg-source={bg_source(@terminal_bg, @embedded?, @shared_home?)}
-          data-terminal-bg-image={bg_image(@terminal_bg, @embedded?, @shared_home?)}
+          data-terminal-bg-active={to_string(bg_active?(@home_bg) or @shared_home?)}
+          data-terminal-bg-source={bg_source(@home_bg, @embedded?, @shared_home?)}
+          data-terminal-bg-image={bg_image(@home_bg, @embedded?, @shared_home?)}
           class={[
             "relative z-10 min-h-0 flex-1 overflow-hidden p-3",
-            if(bg_active?(@terminal_bg) or @shared_home? or @workbench?,
+            if(bg_active?(@home_bg) or @shared_home?,
               do: "bg-transparent",
               else: "bg-base-100"
             ),
@@ -297,34 +294,33 @@ defmodule BusterClawWeb.TerminalLive do
     {:noreply, assign(socket, :terminal_command_roles, BusterClaw.TerminalCommands.menu_roles())}
   end
 
-  def handle_info({:terminal_background, bg}, socket) do
-    {:noreply, socket |> assign(:terminal_bg, bg) |> assign_shared_home() |> push_background()}
-  end
-
-  # Only subscribed inside a join (see mount): the homepage background changing
-  # can start or stop being this terminal's shared field.
+  # The app background changed: a standalone tab repaints, an embedded pane may
+  # start or stop having a shared field to be transparent over.
   def handle_info({:home_background, bg}, socket) do
     {:noreply, socket |> assign(:home_bg, bg) |> assign_shared_home() |> push_background()}
   end
 
-  # Whether this terminal sits over the homepage background as the join's shared
-  # field (SplitField) — transparent, painting nothing of its own.
+  # Whether something else paints the app background behind this terminal, so
+  # it is transparent and paints nothing of its own: the Work Area, for one of
+  # its terminal slots, or a split whose field is the app background
+  # (SplitField). The Work Area case holds even with the background off — the
+  # slot is a panel on that page, and a panel is not opaque.
   defp assign_shared_home(socket) do
-    %{embedded?: embedded?, split_panes: panes, terminal_bg: terminal_bg, home_bg: home_bg} =
+    %{embedded?: embedded?, split_panes: panes, home_bg: home_bg, workbench?: workbench?} =
       socket.assigns
 
     assign(
       socket,
       :shared_home?,
-      embedded? and BusterClawWeb.SplitField.home_field?(panes, terminal_bg, home_bg)
+      embedded? and (workbench? or BusterClawWeb.SplitField.home_field?(panes, home_bg))
     )
   end
 
   defp push_background(socket) do
-    %{terminal_bg: bg, embedded?: embedded?, shared_home?: shared?} = socket.assigns
+    %{home_bg: bg, embedded?: embedded?, shared_home?: shared?} = socket.assigns
 
     push_event(socket, "terminal-background", %{
-      active: bg_active?(bg) or shared? or socket.assigns.workbench?,
+      active: bg_active?(bg) or shared?,
       source: bg_source(bg, embedded?, shared?),
       image: bg_image(bg, embedded?, shared?)
     })
@@ -340,10 +336,9 @@ defmodule BusterClawWeb.TerminalLive do
   defp bg_active?(_bg), do: true
 
   # Only an image is painted on the terminal host (the xterm canvas reveals its
-  # host's background, not ancestors). The JS anchors it to the viewport
-  # (`background-attachment: fixed`), so two joined terminals reveal adjacent
-  # slices of the same picture — one continuous image across the split. A shader
-  # is a separate hook-owned canvas layer, so the host paints nothing.
+  # host's background, not ancestors), and only by a standalone tab — embedded,
+  # the field is shared and the host paints nothing. A shader is a separate
+  # hook-owned canvas layer, so the host paints nothing for one either.
   defp terminal_host_background(%{kind: :image, image_url: url}, _embedded?) when is_binary(url),
     do: url
 
