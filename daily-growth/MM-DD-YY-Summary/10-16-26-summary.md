@@ -72,3 +72,12 @@ Every phase ended with `mix precommit` green and the dev app booted.
 Every phase ended with `mix precommit` green and the dev app serving. Still
 open from the map: `Agent.Chat`'s split (measure clause ownership first) and
 Q6 (`AgentBackend.plausible_model?/2`: wire or delete).
+
+---
+
+## Evening — the Studio, deleted
+
+| | |
+|---|---|
+| (two commits) | Operator: *"i think we want to delete that actually. we don't need that feature."* **`STUDIO_REMOVAL_ROADMAP`** written first: the Mix editor and arranger at `/studio`, five editing verbs, four microphone verbs and the music player inside its catalog — roughly 13,000 lines behind a route nothing had linked to since 09-05, in a workspace that had never held a studio file. Three decisions, all taken as defaulted on "go": music playback goes (the Studio was its only surface), the microphone verbs go, `sound_probe` goes header-only. **Built in one commit:** `lib/buster_claw/studio/` whole, the web surface, eight hooks and three libs, `Music` and its controller, the Explained Studio tab, eleven verbs (catalog 184 → 172), `RangeResponse`, the chime library's orphaned rename family. What stays: the sixteen bundled chimes, the Notify settings, and five verbs — `sound_list`, `sound_routes`, `sound_probe`, `sound_apply` (now routes a library sound), `sound_restore_defaults`. The TCC test now names the embedded browser as the standing microphone path. Every seed registry entry checked statically; precommit green. |
+

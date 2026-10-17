@@ -1,7 +1,26 @@
 # The Studio, removed
 
-**Scoped 10-16-26, evening.** Operator: *"let's look at the buster claw studio. i
-think we want to delete that actually. we don't need that feature."*
+**Scoped and BUILT 10-16-26, evening.** Operator: *"let's look at the buster claw
+studio. i think we want to delete that actually. we don't need that feature."*
+Then: *"go, take all three defaults."*
+
+> ### What shipped
+>
+> One commit, all four phases. Every file in Part I deleted; the three
+> decisions taken as defaulted (music playback, the microphone verbs and the
+> decoded probe facts all went). `Commands.Sound` is one module again with
+> five verbs; `sound_apply` now routes a **library** sound (workspace file or
+> bundled default) rather than installing a studio source, since there is no
+> studio source to install; `sound_probe` reads the header through
+> `Notifications.Sound.probe/1` (the `afinfo` call, moved from the editor).
+> `sound_delete` went too — it only ever deleted studio sources. `RangeResponse`
+> had no caller left and went. The chime library lost its orphaned rename
+> family (`rename/2`, `renamed_to/2`, `rename_file/5`). Catalog 184 → 172
+> (`@command_stats` re-measured). The TCC lockstep test now names the embedded
+> browser as the standing microphone path, so the usage string stays. The size
+> gate lost 18 rows; `check_cycles` still 2. The seed registry was checked
+> statically (every `seed: {mod, fun}` resolves); a second boot of the dev app
+> was not done because the dev app is in use.
 
 > ### The one-sentence version
 >

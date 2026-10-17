@@ -282,7 +282,7 @@ and zero issues in the verdict. Budget hours per release, not minutes
 | Section | Where | State | Map |
 |---|---|---|---|
 | Dock navigation | `DockNavLive` | SHIPPED | — |
-| Dock strip (chips, sticky player) | `DockLive`, `MusicPlayerLive` | SHIPPED | — |
+| Dock strip (chips) | `DockLive` | SHIPPED · the sticky music player went with the Studio 10-16 | — |
 | **The visible brake** | `DutyLive`, `Orchestration.stand_down/1` | **SHIPPED 08-16 — `G-30`, promoted R2 → R1.** A fourth sticky dock LiveView: invisible when idle, a **Stand down** button whenever a shift runs. Stops new work at once; a run in flight finishes, and the surface says so | [`TRUST_AND_SUPPORT`](platform/TRUST_AND_SUPPORT_ROADMAP.md) `G-30` |
 | First-run onboarding | `SetupLive` `/setup` | SHIPPED | [`FRONT_DOOR`](distribution/FRONT_DOOR_ROADMAP.md) — the wizard is one of four surfaces that must agree |
 | Appearance — skins, text size, backgrounds | `AppearanceLive` `/appearance` | SHIPPED | — |
@@ -297,8 +297,8 @@ and zero issues in the verdict. Budget hours per release, not minutes
 
 `StatusLive` at `/`. **Seven** sub-tabs plus a corner widget with three of its own.
 
-> **The Studio left Home on 08-16** and is its own route now (`StudioLive` at
-> `/studio`), so its three tabs moved to Part II-b below. This heading said
+> **The Studio left Home on 08-16** and was its own route until 10-16, when it
+> was deleted whole (Part II-b below). This heading said
 > "eight sub-tabs" and listed Studio here for most of a day after that stopped
 > being true — the drift a route change makes, found while filing the Sketch Pad
 > rather than by reading.
@@ -334,11 +334,17 @@ cut-up engine.)*
 
 ## Part II-b — The Studio
 
-`StudioLive` at `/studio`. One tab, Mix, and so no rail. Moved out of Home on 08-16.
+**DELETED 10-16-26** (operator: *"we don't need that feature"*), whole:
+`StudioLive` at `/studio`, the Mix editor and arranger, the five editing verbs,
+the four microphone verbs, the music player that lived in its catalog, and
+`lib/buster_claw/studio/`. Shipped and never used — the dev workspace never
+held a studio file. The chime library and `sound_list` / `sound_routes` /
+`sound_probe` / `sound_apply` / `sound_restore_defaults` stay. Map:
+[`STUDIO_REMOVAL`](surfaces/STUDIO_REMOVAL_ROADMAP.md). Don't rebuild.
 
 | Section | Where | State | Map |
 |---|---|---|---|
-| **Studio → Mix** | `SoundStudioComponent` | SHIPPED | — (`commands/sound.ex`'s owed split was retired 09-19 by deleting the third it would have extracted) |
+| ~~Studio → Mix~~ | — | **DELETED 10-16** with the whole Studio | [`STUDIO_REMOVAL`](surfaces/STUDIO_REMOVAL_ROADMAP.md) |
 | ~~Studio → Voice Library~~ | — | **DELETED 09-19** with the cut-up engine, its 18 verbs and the `sound-cutup` skill | [`CUTUP_DELETION`](../archive/CUTUP_DELETION_ROADMAP.md) |
 
 The Studio had a third tab until 09-05 — the Sketch Pad, built and never
@@ -357,7 +363,7 @@ coming, which is the honest end for a surface nobody reached for. Its map is
 | Split view | `SplitLive` `/split` | SHIPPED | — |
 | Terminal | `TerminalLive` `/terminal`, work-area panels ×4 | SHIPPED · four slots BUILT 10-15, desktop walk open | [`TERMINAL_PANELS`](shell/TERMINAL_PANELS_ROADMAP.md) |
 | The Manual | `UserGuideLive` `/manual` | SHIPPED | [`LEFTOVERS_SURFACES`](surfaces/LEFTOVERS_SURFACES.md) — no test, worst drift of any surface |
-| Music library | `MusicComponent` (inside Studio → Mix) | SHIPPED | [`LEFTOVERS_SURFACES`](surfaces/LEFTOVERS_SURFACES.md) · gate `G-35` — `nosniff`, **HIGH** |
+| ~~Music library~~ | — | **DELETED 10-16** with the Studio (its only surface); `G-35` closed by deletion | [`STUDIO_REMOVAL`](surfaces/STUDIO_REMOVAL_ROADMAP.md) |
 
 ---
 
