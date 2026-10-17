@@ -59,6 +59,16 @@ The dev app was left running throughout; nothing here touched :4000.
 |---|---|
 | (five commits) | **Phase 1** the leftovers: the contact-faces stack whole (forward migration dropping two columns, `Pockets.Faces`, `Shaders.face?`, the approval reject, `face.wgsl.js`, `keypad.wgsl.js`, the keypad palette), `StudioMix.clear_effects`, the dead `portfolio_recorder_enabled`, four `ic-` classes nothing used, fourteen digested fonts that were tracked in git plus the ignore rule that let them in, `lib/buster_claw.ex` as a real map of the contexts. **Phase 2** five functions with zero callers anywhere, and `scripts/refs_scan.py` so the number is re-checkable. **Phases 3–4** `BusterClaw.CLI.Format` — ten formatters that were `@doc false` publics so a test could reach them are now a module with an interface; four test-only publics deleted with their tests; the two remaining duplicate bodies unified (`Sound.rename_file/5`, `BusterClaw.FTS.match/1`). **Phase 5** five web-layer disk writes moved into their contexts and a lockstep test that fails on any `File` write or `System.cmd` under `lib/buster_claw_web`, broken once on purpose. **Phase 6** two partitions, both mechanical from a helper-ownership map: `Commands.Sound` into Library / Edit / Shared behind a facade, and `Commands.Web` into Tab / Checks / Bookmarks / Secrets / Fetch behind a facade — the first FROZEN file lifted by extraction rather than by raising a cap. Two things the scan got wrong and the build caught: `day_cell` is used as `<.day_cell>` in its own file (a dot-blind count), and the "268-line `normalize_args`" was the CRUD macro's indentation. |
 
-Every phase ended with `mix precommit` green and the dev app booted. Still
-open: `Agent.Chat`'s split, render decomposition (Phase 7), the JS and Rust
-frozen files (8), test hygiene (9), the `Notifications → Studio` rename (10).
+Every phase ended with `mix precommit` green and the dev app booted.
+
+---
+
+## Evening — the sweep, Phases 7–10 built
+
+| | |
+|---|---|
+| (four commits) | **Phase 7, render decomposition** by the purity rule — markup and the helpers only the markup reads leave as function components, the events and state stay, `import` keeps every call site: `AppearanceLive` 1,064 → 466 (the extraction owed since 08-15), `SetupLive` 684 → 350 (one component per step), `ModelsComponent` 463 → 232, `BrowseLive` 455 → 299, `ChatPanel` 1,001 → 481 (the bubble family and the composer, the cut its cap note named; the skin contract now holds by the compiler), and the browser chrome's 270-line heredoc became a HEEx document. Every LiveView test's assertions unchanged; three source-reading lockstep tests repointed. Walked in Chrome. **Phase 8, the frozen JS and the Rust:** `chrome.js` 854 → 605 — the bookmark row is one module with one explicit mode (bookmarks / suggestions / find) where there were two flags — and `tab_strip.js` 511 → 307; both freezes lifted to HELD. `browser/agent.rs` takes the eleven agent co-presence commands out of `mod.rs`; `menu.rs` takes the menus out of `main.rs`. The dev app rebuilt itself on the new Rust and kept running. **Phase 9, test hygiene:** `status_live_test` (2,044) is four files on one case template; `StatusLive`'s Contacts and Notify seams have hosts; `Process.sleep`/`alive?` 44 → 25, the rest each kept with a reason in the map (a poll on a side effect nothing can sync on, fake slow work, or a real-Chromium test this machine does not run). **Phase 10, the rename (Q2 = yes):** the Sound Studio is `BusterClaw.Studio.{Editor, Mix, Catalog, Capture, Effects, Render}` under `lib/buster_claw/studio/`; the chimes stay in `Notifications`. 35 files, no behaviour, cycles still 2. |
+
+Every phase ended with `mix precommit` green and the dev app serving. Still
+open from the map: `Agent.Chat`'s split (measure clause ownership first) and
+Q6 (`AgentBackend.plausible_model?/2`: wire or delete).

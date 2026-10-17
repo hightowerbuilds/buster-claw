@@ -1,6 +1,6 @@
 # Code quality sweep — 2026-10-16
 
-**Scoped 10-16-26; Phases 1–6 BUILT the same day** (five commits, `c01c713` → Phase 6). Operator's ask: *"run an entire sweep of the entire app for
+**Scoped 10-16-26; all ten phases BUILT the same day** (nine commits, `c01c713` → Phase 10). Operator's ask: *"run an entire sweep of the entire app for
 code quality — pick out sections we can modularize to be stronger, more
 structurally integral code, and remove all the dead, orphan and suppressed code
 or anything related to features that no longer exist. Write a map, then follow
@@ -43,8 +43,57 @@ Scan output: `scratchpad/refs.txt` (session), reproduced in the Appendix.
 > The "268-line `normalize_args`" was a scan artifact of the CRUD macro's
 > indentation; the function is eight lines, so no `Commands.Args`.
 > `AgentBackend.plausible_model?/2` has no production caller — wire it into the
-> model picker or delete it (added to Q6). **Still open:** `Agent.Chat`'s split
-> (Phase 6, measure first), Phases 7–10.
+> model picker or delete it (added to Q6).
+>
+> **Phases 7–10, built in the evening** (`0e35821`, `d5530f2`, `3a32719`, and
+> the Phase 10 commit). **Phase 7:** six page-sized renders became function
+> components by the purity rule — `AppearanceLive` (1,064 → 466; the
+> EXTRACTION OWED since 08-15 paid: `components/appearance/{catalog, look,
+> terminal_palette}`), `SetupLive` (684 → 350; `components/setup/steps.ex`, one
+> component per step), `Settings.ModelsComponent` (463 → 232;
+> `components/settings/models.ex`), `BrowseLive` (455 → 299;
+> `browser/agent_watch.ex`, the activity bar into `activity_graph.ex`),
+> `ChatPanel` (1,001 → 481; `chat_panel/{bubbles, composer}.ex` — the cut its
+> own cap note named, with the skin contract now held by the compiler), and
+> `BrowserChromeController.page/3` (a 270-line heredoc → `browser/chrome_page.ex`,
+> HEEx, for the reason `Browser.Layout` gives). Every LiveView test's
+> assertions unchanged; three source-reading lockstep tests repointed at the
+> file the text moved to. **Phase 8:** `chrome.js` 854 → 605 (`lib/chrome_bar.js`,
+> one strip with one explicit mode where there were two flags, and
+> `lib/chrome_downloads.js`), `tab_strip.js` 511 → 307 (`hooks/tab_menu.js`,
+> `hooks/tab_close_confirm.js`); both freezes lifted to HELD. Rust:
+> `browser/agent.rs` (the eleven co-presence commands, 934 → 570 in `mod.rs`),
+> `menu.rs` (837 → 680 in `main.rs`). `note_editor.js` kept on purpose — its cap
+> note says the logic is already out and the essay is load-bearing. The
+> packaged smoke of the chrome was not run; the dev app rebuilt on the new Rust
+> and the bar's three modes were walked in Chrome. **Phase 9:**
+> `status_live_test.exs` 2,044 → four files on `test/support/home_case.ex`
+> (shell · chat · Explained · Notify); `StatusLive`'s two widget seams took
+> their hosts (`status/comms.ex` gained the three trust verbs,
+> `status/notify.ex` is new; 773 → 696). `Process.sleep`/`Process.alive?` **44
+> → 25**, not 0: the 19 rewritten had an honest equivalent (`:sys.get_state`
+> where "alive" meant "answering", a monitor + DOWN where a session must be
+> gone, `render/1` where a view must be up, three `alive?(self())`
+> tautologies, a dead poller, two cleanup guards that were already no-ops).
+> The 25 that stay each poll a side effect nothing can sync on — a Task's
+> database write (`dispatcher_test`, `model_policy_wiring_test`), an OS
+> process's pid file or JSONL line (`agent_runner_test`,
+> `chat_attachment_wiring_test`), a DOWN a server receives concurrently
+> (`bridge_test`, `pool_test`), an mtime boundary (`dispatch_projector_test`)
+> — or are fake slow work (`swarm_test`, `capture_test`), or live in the
+> `:browser_engine`-tagged real-Chromium tests this machine does not run
+> (`window_placement`, `screencast`, `page_targeting`, `pool_live`). The gate
+> in Part V said 0; this is the corrected number and its reasons. Three
+> pre-existing test-compile warnings fixed. **Phase 10 (Q2 = yes):**
+> `BusterClaw.Studio.{Editor, Mix, Catalog, Capture, Effects, Render}` under
+> `lib/buster_claw/studio/` (was `Notifications.{SoundStudio, StudioMix,
+> StudioCatalog, Capture, Studio.*}`); `Notifications.Sound`, `SoundGen` and
+> `SoundBoard` stay, because they are the chimes. 35 files, no behaviour,
+> cycles still 2. `Studio.Mix` shadows Elixir's `Mix` inside the files that
+> alias it; none of them touch build tooling and a collision is a loud
+> compile error, so the honest name won. **Still open:** `Agent.Chat`'s split
+> (measure clause ownership first), Q6, and the 09-05 review's Phases 3–7 as
+> re-measured here.
 
 > ### The one-sentence version
 >
