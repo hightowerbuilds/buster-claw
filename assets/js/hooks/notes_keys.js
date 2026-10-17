@@ -1,4 +1,4 @@
-// Notes keyboard paths: ⌘P to jump, ⌘N to start writing, arrows and Enter
+// Notes keyboard paths: ⌘P to jump, ⌘N to start writing, ⌘\ for the sidebar, arrows and Enter
 // inside the switcher, Escape to back out.
 //
 // Mounted on the Notes panel root, which only exists while that tab is open —
@@ -58,6 +58,8 @@ export const NotesKeys = {
         // on a narrow window; focus lands in `updated()` once that has rendered.
         this.pendingFocus = "#new-note-title"
         return this.pushEventTo(this.el, "new_note", {})
+      case "rail":
+        return this.pushEventTo(this.el, "toggle_rail", {})
       case "close":
         return this.pushEventTo(this.el, "close_switcher", {})
       case "select":

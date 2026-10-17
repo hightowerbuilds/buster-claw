@@ -198,10 +198,13 @@
    save path reads — is untouched either way, and a cold line's spans still
    participate in selection when you drag across them. */
 
+/* Mono at the chat Minimal skin's size since 10-17: the Notes panel was
+   restyled to read like the chat beside it, and a sans body in a mono frame
+   read as two apps. */
 .ic-note-surface {
-  font-family: var(--font-sans);
-  font-size: 1rem;
-  line-height: 1.7;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.65;
   white-space: pre-wrap;
   word-break: break-word;
   tab-size: 2;
@@ -209,7 +212,7 @@
 
 /* One line, one block. `min-height` keeps an empty paragraph clickable. */
 .ic-note-surface .nl {
-  min-height: 1.7em;
+  min-height: 1.65em;
   padding-block: 0.05rem;
 }
 
@@ -230,17 +233,19 @@
 
 /* ---- blocks ----------------------------------------------------------- */
 
+/* Headings stay headings — bigger and bolder — but in the same mono, a step
+   apart rather than a shout. */
 .ic-note-surface .nl[data-block="heading"] {
-  font-family: var(--font-display);
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  line-height: 1.25;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: normal;
+  line-height: 1.3;
   margin-block-start: 0.9em;
 }
-.ic-note-surface .nl[data-block="heading"][data-level="1"] { font-size: 2rem; font-weight: 900; }
-.ic-note-surface .nl[data-block="heading"][data-level="2"] { font-size: 1.55rem; }
-.ic-note-surface .nl[data-block="heading"][data-level="3"] { font-size: 1.25rem; }
-.ic-note-surface .nl[data-block="heading"][data-level="4"] { font-size: 1.1rem; }
+.ic-note-surface .nl[data-block="heading"][data-level="1"] { font-size: 1.35rem; }
+.ic-note-surface .nl[data-block="heading"][data-level="2"] { font-size: 1.15rem; }
+.ic-note-surface .nl[data-block="heading"][data-level="3"] { font-size: 1.05rem; }
+.ic-note-surface .nl[data-block="heading"][data-level="4"] { font-size: 1rem; }
 .ic-note-surface .nl[data-block="heading"][data-level="5"],
 .ic-note-surface .nl[data-block="heading"][data-level="6"] {
   font-size: 1rem;
@@ -323,13 +328,13 @@
 .ic-note-surface .nl[data-block="fence"],
 .ic-note-surface .nl[data-block="code"] {
   font-family: var(--font-mono);
-  font-size: 0.875em;
+  font-size: 1em;
   background-color: color-mix(in oklab, var(--color-base-content) 6%, transparent);
   padding-inline: 0.6rem;
 }
 .ic-note-surface .nl[data-block="fence"] .nm {
   /* A fence line is all marker; hiding it would collapse the block's own edge. */
-  font-size: 0.875em;
+  font-size: 1em;
   font-family: var(--font-mono);
   color: color-mix(in oklab, var(--color-base-content) 45%, transparent);
 }
@@ -344,7 +349,7 @@
 }
 .ic-note-surface span.n-code {
   font-family: var(--font-mono);
-  font-size: 0.875em;
+  font-size: 1em;
   background-color: color-mix(in oklab, var(--color-base-content) 8%, transparent);
   border-radius: 3px;
   padding-inline: 0.25em;

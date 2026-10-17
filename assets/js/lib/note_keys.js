@@ -22,6 +22,7 @@ export function isSaveChord(event) {
 //
 //   "switcher"  open the ⌘P jump list
 //   "new"       start a new note (⌘N)
+//   "rail"      show or hide the sidebar (⌘\)
 //   "close"     close the switcher
 //   "up"/"down" move the switcher's selection
 //   "select"    open the highlighted result
@@ -44,6 +45,9 @@ export function notesIntent(event, {switcherOpen} = {}) {
 
   if (mod && key === "p") return "switcher"
   if (mod && key === "n") return "new"
+  // ⌘\ shows and hides the notes sidebar — the chord editors with a file
+  // sidebar already use for it.
+  if (mod && key === "\\") return "rail"
 
   if (!switcherOpen) return null
 

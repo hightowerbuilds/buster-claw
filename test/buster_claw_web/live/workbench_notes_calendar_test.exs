@@ -102,7 +102,7 @@ defmodule BusterClawWeb.WorkbenchNotesCalendarTest do
       render_click(view, "select_home_tab", %{"tab" => "calendar"})
 
       assert has_element?(view, "#workbench-pane-calendar:not([hidden]) #calendar-grid")
-      # The event form lives in a modal now — closed until Add Events opens it.
+      # The event form lives in a modal now — closed until "+ Add" opens it.
       assert has_element?(view, "#calendar-add-events")
       refute has_element?(view, "#event-form")
       assert has_element?(view, "#workbench-pane-calendar[data-active='true']")
@@ -112,6 +112,45 @@ defmodule BusterClawWeb.WorkbenchNotesCalendarTest do
       view |> element("#workbench-close-calendar") |> render_click()
       assert has_element?(view, "#workbench-pane-calendar[hidden]")
       assert has_element?(view, "#workbench-pane-chat:not([hidden])")
+    end
+
+    # The sidebar toggle (10-17). One id that moves: in the rail's header while
+    # it is open, in the editor's header (or the empty state) while it is closed,
+    # so it is always where the eye already is. The choice survives a reload.
+    test "the Notes sidebar hides and shows, and remembers", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "notes"})
+
+      assert has_element?(view, "#notes-rail #notes-rail-toggle[aria-expanded='true']")
+      refute has_element?(view, "#notes-rail.hidden")
+
+      view |> element("#notes-rail-toggle") |> render_click()
+
+      assert has_element?(view, "#notes-rail.hidden")
+      assert has_element?(view, "#workbench-notes[data-rail-open='false']")
+      # The toggle left the hidden rail for the empty state, so it can still be
+      # reached, and the empty state is no longer narrow-only.
+      assert has_element?(view, "#notes-empty-state #notes-rail-toggle[aria-expanded='false']")
+      refute has_element?(view, "#notes-rail #notes-rail-toggle")
+
+      # A fresh mount reads the stored choice.
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "notes"})
+      assert has_element?(view, "#notes-rail.hidden")
+
+      # With a note open, the toggle rides in the editor's header.
+      view
+      |> form("#new-note-form", %{"note" => %{"title" => "Toggle check"}})
+      |> render_submit()
+
+      assert has_element?(view, "#notes-editor-pane #notes-rail-toggle")
+
+      view |> element("#notes-rail-toggle") |> render_click()
+      # Open again: with a note open that is `hidden md:flex` — the narrow-window
+      # two-step — rather than the operator's plain `hidden`.
+      assert has_element?(view, "#notes-rail[class*='md:flex']")
+      assert has_element?(view, "#notes-rail #notes-rail-toggle[aria-expanded='true']")
+      assert BusterClaw.Settings.get("notes_rail_open") == nil
     end
 
     test "the Notes panel creates, edits, and saves a Markdown file",

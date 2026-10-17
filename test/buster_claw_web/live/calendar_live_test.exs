@@ -14,10 +14,10 @@ defmodule BusterClawWeb.CalendarLiveTest do
     month_name = Elixir.Calendar.strftime(today, "%B %Y")
     assert html =~ month_name
 
-    # The form lives in a modal now: absent until Add Events opens it.
+    # The form lives in a modal now: absent until "+ Add" opens it.
     refute html =~ "event-form"
     html = view |> element("#calendar-add-events") |> render_click()
-    assert html =~ "Add Event"
+    assert html =~ "Add event"
 
     # Create
     html =
@@ -48,7 +48,7 @@ defmodule BusterClawWeb.CalendarLiveTest do
       |> element("button[phx-click='edit'][phx-value-id='#{event.id}']")
       |> render_click()
 
-    assert html =~ "Edit Event"
+    assert html =~ "Edit event"
 
     html =
       view
@@ -87,7 +87,7 @@ defmodule BusterClawWeb.CalendarLiveTest do
     date = Date.to_iso8601(Date.beginning_of_month(today))
     html = view |> element("button[phx-value-date='#{date}']") |> render_click()
 
-    assert html =~ "Add Event"
+    assert html =~ "Add event"
     assert html =~ ~s(value="#{date}")
 
     # Cancel closes and abandons the draft; a later open starts clean.

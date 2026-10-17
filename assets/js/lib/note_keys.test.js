@@ -46,6 +46,12 @@ describe("shouldAnnounceDirty", () => {
 })
 
 describe("notesIntent", () => {
+  test("⌘\\ and Ctrl+\\ toggle the sidebar, a bare backslash types one", () => {
+    expect(notesIntent({key: "\\", metaKey: true})).toBe("rail")
+    expect(notesIntent({key: "\\", ctrlKey: true})).toBe("rail")
+    expect(notesIntent({key: "\\"})).toBeNull()
+  })
+
   const key = (k, extra = {}) => ({key: k, ...extra})
 
   test("⌘P opens the switcher and ⌘N starts a note, open or not", () => {

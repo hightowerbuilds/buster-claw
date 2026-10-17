@@ -8,8 +8,10 @@ defmodule BusterClawWeb.CalendarColors do
   falls back to the brand primary. Class strings are full literals (never
   interpolated) so Tailwind's source scanner picks them up.
 
-  The one consumer today is `CalendarComponent`, which uses `cell_wash/1`,
-  `chip/1` and `swatch/1`. This module was written for two surfaces — it used to
+  The one consumer today is `CalendarComponent`, which uses `bar/1` and
+  `swatch/1` since its Minimal restyle (10-17). The filled treatments it used
+  before — `chip/1` (a tinted pill) and `cell_wash/1` (a tinted day cell) — were
+  deleted with it, by the rule below. This module was written for two surfaces — it used to
   claim the home corner-widget month grid as the second — but `HomeWidget` never
   referenced it, and the two treatments only that grid would have needed
   (a strong whole-cell fill, and a text-only hue) were deleted on 08-09 rather
@@ -17,30 +19,19 @@ defmodule BusterClawWeb.CalendarColors do
   surface asks for it; the shape is four lines.
   """
 
-  # Faint whole-cell wash — the full calendar's tall cells: a subtle "busy" tint
-  # that sits under the event chips so a day reads colored at a glance.
-  @cell_wash %{
-    "neutral" => "bg-base-content/5",
-    "work" => "bg-info/10",
-    "personal" => "bg-secondary/10",
-    "social" => "bg-accent/10",
-    "travel" => "bg-warning/10",
-    "health" => "bg-success/10",
-    "holiday" => "bg-error/10"
+  # Left bar — the Minimal treatment (10-17): an event is a line of text with
+  # its category as a 2px rule on the left, the way the chat's Minimal skin
+  # marks a prompt. Paired with `border-l-2` in the markup.
+  @bar %{
+    "neutral" => "border-base-content/40",
+    "work" => "border-info",
+    "personal" => "border-secondary",
+    "social" => "border-accent",
+    "travel" => "border-warning",
+    "health" => "border-success",
+    "holiday" => "border-error"
   }
-  def cell_wash(color), do: Map.get(@cell_wash, color, "bg-primary/10")
-
-  # Event chip — a tinted pill with matching text, used inside cells and lists.
-  @chip %{
-    "neutral" => "bg-base-content/15 text-base-content",
-    "work" => "bg-info/25 text-info",
-    "personal" => "bg-secondary/25 text-secondary",
-    "social" => "bg-accent/25 text-accent",
-    "travel" => "bg-warning/25 text-warning",
-    "health" => "bg-success/25 text-success",
-    "holiday" => "bg-error/25 text-error"
-  }
-  def chip(color), do: Map.get(@chip, color, "bg-primary/25 text-primary")
+  def bar(color), do: Map.get(@bar, color, "border-primary")
 
   # Solid swatch dot.
   @swatch %{

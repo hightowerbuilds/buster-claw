@@ -285,9 +285,12 @@ defmodule BusterClawWeb.CalendarComponent do
   @impl true
   def render(assigns) do
     ~H"""
-    <div>
-      <section class="space-y-6">
-        <p :if={@result} class="ic-panel px-4 py-3 text-sm">
+    <%!-- Styled after the chat's Minimal skin (10-17): mono, hairlines, text
+          controls, no nested panels or scanlines — the frame around the
+          component is the only box. --%>
+    <div class="flex min-h-full flex-1 flex-col font-mono">
+      <section class="flex min-h-0 flex-1 flex-col gap-2">
+        <p :if={@result} class="border-l-2 border-primary px-2 py-0.5 text-xs text-base-content/80">
           {@result}
         </p>
 
@@ -295,70 +298,78 @@ defmodule BusterClawWeb.CalendarComponent do
           id="calendar-grid"
           phx-hook="CalendarDrag"
           phx-target={@myself}
-          class="ic-panel overflow-hidden"
+          class="flex min-h-0 flex-1 flex-col overflow-hidden"
         >
-          <header class="ic-scanlines relative flex flex-wrap items-center justify-between gap-3 border-b-2 border-base-content/20 px-4 py-3">
-            <div class="relative z-[2]">
-              <p class="ic-eyebrow">Calendar</p>
-              <h2 class="font-display text-xl font-black uppercase tracking-tight">
+          <header class="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-base-content/15 pb-1.5">
+            <h2 class="min-w-0 flex-1 truncate text-sm">
+              <%!-- The global `h1, h2, h3` rule is unlayered and beats a font
+                    utility on the heading, so the span carries it. --%>
+              <span class="font-mono font-semibold tracking-normal">
                 {header_label(@view, @anchor)}
-              </h2>
-            </div>
-            <div class="relative z-[2] flex flex-wrap gap-2">
+              </span>
+            </h2>
+
+            <nav
+              aria-label="Calendar view"
+              class="flex items-center gap-2 text-[0.625rem] uppercase tracking-[0.08em]"
+            >
               <button
-                id="calendar-add-events"
+                :for={view <- [:month, :week, :day]}
                 type="button"
-                phx-click="open_form"
+                phx-click="set_view"
+                phx-value-view={Atom.to_string(view)}
                 phx-target={@myself}
-                class="rounded-xs bg-primary px-3 py-1.5 font-display text-xs font-bold uppercase tracking-wide text-primary-content transition hover:opacity-85"
+                aria-pressed={to_string(@view == view)}
+                class={[
+                  "border-b pb-px transition",
+                  if(@view == view,
+                    do: "border-primary font-semibold text-primary",
+                    else: "border-transparent text-base-content/50 hover:text-base-content"
+                  )
+                ]}
               >
-                Add Events
+                {view}
               </button>
-              <div class="flex gap-0.5 border-2 border-base-content/20 p-0.5">
-                <button
-                  :for={view <- [:month, :week, :day]}
-                  type="button"
-                  phx-click="set_view"
-                  phx-value-view={Atom.to_string(view)}
-                  phx-target={@myself}
-                  class={[
-                    "rounded-xs px-3 py-1 font-mono text-xs font-bold uppercase tracking-wide transition",
-                    if(@view == view,
-                      do: "bg-primary text-primary-content",
-                      else: "text-base-content/60 hover:bg-base-content/10"
-                    )
-                  ]}
-                >
-                  {view}
-                </button>
-              </div>
-              <div class="flex gap-1">
-                <button
-                  type="button"
-                  class="border-2 border-base-content/20 px-3 py-1.5 font-mono text-sm transition hover:border-primary hover:text-primary"
-                  phx-click="prev"
-                  phx-target={@myself}
-                >
-                  ←
-                </button>
-                <button
-                  type="button"
-                  class="border-2 border-base-content/20 px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide transition hover:border-primary hover:text-primary"
-                  phx-click="today"
-                  phx-target={@myself}
-                >
-                  Today
-                </button>
-                <button
-                  type="button"
-                  class="border-2 border-base-content/20 px-3 py-1.5 font-mono text-sm transition hover:border-primary hover:text-primary"
-                  phx-click="next"
-                  phx-target={@myself}
-                >
-                  →
-                </button>
-              </div>
+            </nav>
+
+            <div class="flex items-center gap-1 text-xs">
+              <button
+                type="button"
+                aria-label="Previous"
+                class="px-1 text-base-content/55 transition hover:text-primary"
+                phx-click="prev"
+                phx-target={@myself}
+              >
+                ‹
+              </button>
+              <button
+                type="button"
+                class="px-1 text-[0.625rem] uppercase tracking-[0.08em] text-base-content/55 transition hover:text-primary"
+                phx-click="today"
+                phx-target={@myself}
+              >
+                today
+              </button>
+              <button
+                type="button"
+                aria-label="Next"
+                class="px-1 text-base-content/55 transition hover:text-primary"
+                phx-click="next"
+                phx-target={@myself}
+              >
+                ›
+              </button>
             </div>
+
+            <button
+              id="calendar-add-events"
+              type="button"
+              phx-click="open_form"
+              phx-target={@myself}
+              class={primary_btn()}
+            >
+              + Add
+            </button>
           </header>
 
           <.month_view
@@ -380,37 +391,36 @@ defmodule BusterClawWeb.CalendarComponent do
 
         <div
           :if={@viewing_event}
-          class="ic-panel p-5"
+          id="calendar-event-inspect"
+          class={["border-l-2 px-3 py-1.5 text-xs", CalendarColors.bar(@viewing_event.color)]}
         >
           <div class="flex flex-wrap items-start justify-between gap-3">
-            <div class="min-w-0 space-y-1">
-              <div class="flex items-center gap-2">
-                <span class={[
-                  "inline-block size-3 rounded-xs",
-                  CalendarColors.swatch(@viewing_event.color)
-                ]} />
-                <h3 class="text-lg font-semibold">{@viewing_event.title}</h3>
+            <div class="min-w-0 space-y-0.5">
+              <div class="flex items-baseline gap-2">
+                <h3 class="text-sm">
+                  <span class="font-mono font-semibold tracking-normal">{@viewing_event.title}</span>
+                </h3>
                 <span
                   :if={@viewing_event.frequency}
-                  class="rounded-full bg-base-200 px-2 py-0.5 text-xs font-semibold text-base-content/70"
+                  class="text-[0.625rem] uppercase tracking-[0.08em] text-base-content/50"
                 >
-                  Repeats {@viewing_event.frequency}
+                  repeats {@viewing_event.frequency}
                 </span>
               </div>
-              <p class="text-sm text-base-content/70">
+              <p class="text-base-content/60">
                 {format_event_when(@viewing_event)}
               </p>
               <p
                 :if={@viewing_event.notes && @viewing_event.notes != ""}
-                class="mt-2 whitespace-pre-wrap text-sm"
+                class="mt-1 whitespace-pre-wrap text-base-content/80"
               >
                 {@viewing_event.notes}
               </p>
             </div>
-            <div class="flex gap-2">
+            <div class="flex gap-1.5">
               <button
                 type="button"
-                class="rounded-xs border-2 border-base-content/20 px-3 py-1.5 font-mono text-sm transition hover:border-primary hover:text-primary"
+                class={quiet_btn()}
                 phx-click="edit"
                 phx-value-id={@viewing_event.id}
                 phx-target={@myself}
@@ -419,7 +429,7 @@ defmodule BusterClawWeb.CalendarComponent do
               </button>
               <button
                 type="button"
-                class="rounded-xs border-2 border-error/40 px-3 py-1.5 font-mono text-sm text-error transition hover:border-error"
+                class="border border-error/50 px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-[0.08em] text-error transition hover:bg-error/10"
                 phx-click="delete"
                 phx-value-id={@viewing_event.id}
                 phx-target={@myself}
@@ -429,11 +439,12 @@ defmodule BusterClawWeb.CalendarComponent do
               </button>
               <button
                 type="button"
-                class="rounded-xs px-3 py-1.5 font-mono text-sm text-base-content/60 transition hover:bg-base-content/10"
+                aria-label="Close"
+                class="px-1.5 text-base-content/50 transition hover:text-primary"
                 phx-click="close_inspect"
                 phx-target={@myself}
               >
-                Close
+                ×
               </button>
             </div>
           </div>
@@ -451,6 +462,16 @@ defmodule BusterClawWeb.CalendarComponent do
     </div>
     """
   end
+
+  # The chat Minimal skin's two button weights: the primary action outlined in
+  # the brand colour, everything else a quiet outline.
+  defp primary_btn,
+    do:
+      "border border-primary px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-[0.08em] text-primary transition hover:bg-primary hover:text-primary-content"
+
+  defp quiet_btn,
+    do:
+      "border border-base-content/25 px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-[0.08em] text-base-content/70 transition hover:border-primary hover:text-primary"
 
   # ---- View rebuild ----
 

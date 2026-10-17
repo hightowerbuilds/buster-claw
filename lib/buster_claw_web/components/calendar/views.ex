@@ -40,18 +40,18 @@ defmodule BusterClawWeb.Calendar.Views do
   @doc "The six-week month grid, out-of-month days dimmed."
   def month_view(assigns) do
     ~H"""
-    <div class="grid grid-cols-7 border-b border-base-content/15 text-center font-mono text-[0.625rem] font-bold uppercase tracking-wide text-base-content/45">
-      <div :for={label <- @weekday_labels} class="px-2 py-2">{label}</div>
+    <div class="grid grid-cols-7 text-right font-mono text-[0.5625rem] font-semibold uppercase tracking-[0.12em] text-base-content/40">
+      <div :for={label <- @weekday_labels} class="px-1.5 py-1">{label}</div>
     </div>
 
-    <div class="grid grid-cols-7 border-l border-t border-base-content/10">
+    <div class="grid flex-1 auto-rows-fr grid-cols-7 border-t border-base-content/10">
       <.day_cell
         :for={day <- @grid_days}
         day={day}
         today={@today}
         target={@target}
         dim_other_month={true}
-        min_height="min-h-28"
+        min_height="min-h-20"
       />
     </div>
     """
@@ -65,14 +65,11 @@ defmodule BusterClawWeb.Calendar.Views do
   @doc "Seven taller cells, each headed with its own date."
   def week_view(assigns) do
     ~H"""
-    <div class="grid grid-cols-7 border-b border-base-content/15 text-center font-mono text-[0.625rem] font-bold uppercase tracking-wide text-base-content/45">
-      <div :for={{label, day} <- Enum.zip(@weekday_labels, @grid_days)} class="px-2 py-2">
-        <div>{label}</div>
-        <div class="mt-1 font-mono text-sm text-base-content/80">{day.date.day}</div>
-      </div>
+    <div class="grid grid-cols-7 text-right font-mono text-[0.5625rem] font-semibold uppercase tracking-[0.12em] text-base-content/40">
+      <div :for={label <- @weekday_labels} class="px-1.5 py-1">{label}</div>
     </div>
 
-    <div class="grid grid-cols-7 border-l border-t border-base-content/10">
+    <div class="grid flex-1 grid-cols-7 border-t border-base-content/10">
       <.day_cell
         :for={day <- @grid_days}
         day={day}
@@ -96,39 +93,39 @@ defmodule BusterClawWeb.Calendar.Views do
   """
   def day_view(assigns) do
     ~H"""
-    <div class="border-b border-base-content/15 px-4 py-3 text-sm">
+    <div class="py-1.5 font-mono text-xs">
       <span class="font-semibold">{Elixir.Calendar.strftime(@day.date, "%A")}</span>
-      <span class="ml-2 text-base-content/60">
+      <span class="ml-2 text-base-content/50">
         {Elixir.Calendar.strftime(@day.date, "%B %-d, %Y")}
       </span>
     </div>
-    <div class="p-4">
-      <ul :if={@day.events != []} class="space-y-2">
+    <div class="border-t border-base-content/10 py-2 font-mono">
+      <ul :if={@day.events != []} class="space-y-1">
         <li
           :for={event <- @day.events}
           phx-click="inspect"
           phx-value-id={event.id}
           phx-target={@target}
           class={[
-            "flex cursor-pointer items-baseline gap-3 rounded-xs px-3 py-2 text-sm",
-            CalendarColors.chip(event.color)
+            "flex cursor-pointer items-baseline gap-3 border-l-2 px-2 py-0.5 text-xs transition hover:bg-base-content/5",
+            CalendarColors.bar(event.color)
           ]}
         >
-          <span :if={event.start_time} class="w-16 font-mono text-xs opacity-75">
+          <span :if={event.start_time} class="w-24 shrink-0 text-base-content/50">
             {format_time(event.start_time)}<span :if={event.end_time}>–{format_time(event.end_time)}</span>
           </span>
-          <span :if={!event.start_time} class="w-16 font-mono text-xs opacity-75">All day</span>
-          <span class="truncate font-semibold">{event.title}</span>
+          <span :if={!event.start_time} class="w-24 shrink-0 text-base-content/50">all day</span>
+          <span class="truncate">{event.title}</span>
           <span
             :if={event.frequency}
-            class="ml-auto rounded-xs bg-base-100/60 px-2 py-0.5 font-mono text-[0.625rem] uppercase tracking-wide text-base-content/70"
+            class="ml-auto text-[0.625rem] uppercase tracking-[0.08em] text-base-content/45"
           >
             {event.frequency}
           </span>
         </li>
       </ul>
-      <p :if={@day.events == []} class="text-center text-sm text-base-content/60">
-        Nothing on the schedule.
+      <p :if={@day.events == []} class="px-2 text-xs text-base-content/45">
+        <span class="text-primary">&gt;</span> Nothing on the schedule.
       </p>
     </div>
     """
@@ -150,20 +147,23 @@ defmodule BusterClawWeb.Calendar.Views do
       phx-target={@target}
       data-drop-date={Date.to_iso8601(@day.date)}
       class={[
-        "relative flex flex-col items-stretch border-b border-r border-base-content/10 p-2 text-left text-xs transition hover:bg-base-content/5",
+        "relative flex flex-col items-stretch border-b border-r border-base-content/10 p-1 text-left font-mono text-xs transition last:border-r-0 hover:bg-base-content/5 [&:nth-child(7n)]:border-r-0",
         @min_height,
-        cell_treatment(@day, @today, @dim_other_month)
+        cell_treatment(@day, @today)
       ]}
     >
       <span class={[
-        "relative z-[2] self-end font-mono font-semibold",
-        @day.date == @today && "rounded-xs bg-primary px-1.5 py-0.5 text-primary-content",
-        (@dim_other_month and not @day.in_month?) && @day.date != @today && "text-base-content/40"
+        "self-end px-0.5 text-[0.6875rem]",
+        cond do
+          @day.date == @today -> "border-b border-primary font-semibold text-primary"
+          @dim_other_month and not @day.in_month? -> "text-base-content/30"
+          true -> "text-base-content/60"
+        end
       ]}>
         {@day.date.day}
       </span>
 
-      <ul class="relative z-[2] mt-1 flex flex-col gap-1">
+      <ul class="mt-0.5 flex flex-col gap-0.5">
         <li
           :for={event <- @day.events}
           phx-click="inspect"
@@ -172,12 +172,12 @@ defmodule BusterClawWeb.Calendar.Views do
           draggable="true"
           data-event-id={event.id}
           class={[
-            "flex cursor-grab items-baseline gap-1 truncate rounded-xs px-1.5 py-0.5 font-mono text-[0.625rem] active:cursor-grabbing",
-            CalendarColors.chip(event.color)
+            "flex cursor-grab items-baseline gap-1 truncate border-l-2 pl-1 text-[0.625rem] text-base-content/80 transition hover:text-base-content active:cursor-grabbing",
+            CalendarColors.bar(event.color)
           ]}
           title={event.title}
         >
-          <span :if={event.start_time} class="opacity-75">
+          <span :if={event.start_time} class="text-base-content/45">
             {format_time(event.start_time)}
           </span>
           <span class="truncate">{event.title}</span>
@@ -221,20 +221,19 @@ defmodule BusterClawWeb.Calendar.Views do
       >
       </button>
       <div class="pointer-events-none absolute inset-0 grid place-items-center overflow-y-auto p-4">
-        <div class="pointer-events-auto w-full max-w-xl border-2 border-base-content/30 bg-base-100 shadow-2xl">
-          <header class="ic-scanlines relative flex items-center justify-between border-b-2 border-base-content/20 px-5 py-3">
-            <div class="relative z-[2]">
-              <p class="ic-eyebrow">Calendar</p>
-              <h3 class="font-display text-lg font-black uppercase tracking-tight">
-                {if @editing_event, do: "Edit Event", else: "Add Event"}
-              </h3>
-            </div>
+        <div class="pointer-events-auto w-full max-w-xl border border-base-content/30 bg-base-100 font-mono shadow-2xl">
+          <header class="flex items-center justify-between border-b border-base-content/15 px-4 py-2">
+            <h3 class="text-sm">
+              <span class="font-mono font-semibold tracking-normal">
+                {if @editing_event, do: "Edit event", else: "Add event"}
+              </span>
+            </h3>
             <button
               type="button"
               phx-click="close_form"
               phx-target={@myself}
               aria-label="Close event form"
-              class="relative z-[2] grid size-8 place-items-center border-2 border-base-content/30 text-lg leading-none transition hover:border-primary hover:text-primary"
+              class="px-1.5 text-base text-base-content/50 transition hover:text-primary"
             >
               ×
             </button>
@@ -246,7 +245,7 @@ defmodule BusterClawWeb.Calendar.Views do
             phx-change="validate"
             phx-submit="save"
             phx-target={@myself}
-            class="grid gap-3 p-5 sm:grid-cols-2"
+            class="grid gap-3 p-4 sm:grid-cols-2"
           >
             <div class="sm:col-span-2">
               <.input field={@form[:title]} label="Title" />
@@ -266,12 +265,12 @@ defmodule BusterClawWeb.Calendar.Views do
               <.input field={@form[:notes]} label="Notes" type="textarea" />
             </div>
             <div class="flex flex-wrap gap-2 sm:col-span-2">
-              <button class="rounded-xs bg-primary px-4 py-2 font-display text-sm font-bold uppercase tracking-wide text-primary-content transition hover:opacity-85">
+              <button class="border border-primary px-3 py-1 text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-primary transition hover:bg-primary hover:text-primary-content">
                 {if @editing_event, do: "Update", else: "Add"}
               </button>
               <button
                 type="button"
-                class="rounded-xs border-2 border-base-content/20 px-4 py-2 font-mono text-sm transition hover:border-base-content/40"
+                class="border border-base-content/25 px-3 py-1 text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-base-content/70 transition hover:border-primary hover:text-primary"
                 phx-click="close_form"
                 phx-target={@myself}
               >
@@ -280,7 +279,7 @@ defmodule BusterClawWeb.Calendar.Views do
               <button
                 :if={@editing_event}
                 type="button"
-                class="rounded-xs border-2 border-error/40 px-4 py-2 font-mono text-sm text-error transition hover:border-error"
+                class="border border-error/50 px-3 py-1 text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-error transition hover:bg-error/10"
                 phx-click="delete"
                 phx-value-id={@editing_event.id}
                 phx-target={@myself}
@@ -296,15 +295,10 @@ defmodule BusterClawWeb.Calendar.Views do
     """
   end
 
-  # Treatment for a month/week day cell: today is a primary wash; a day with
-  # events gets a faint wash of its first event's color (chips sit on top); empty
-  # cells carry the scanline texture (chrome), dimmed when out of month.
-  defp cell_treatment(day, today, dim) do
-    cond do
-      day.date == today -> "bg-primary/10"
-      day.events != [] -> CalendarColors.cell_wash(hd(day.events).color)
-      dim and not day.in_month? -> "ic-scanlines bg-base-200/20"
-      true -> "ic-scanlines"
-    end
+  # Treatment for a month/week day cell. Minimal (10-17): no scanlines and no
+  # per-event washes — the events' own left bars carry the colour, and today is
+  # its underlined date over the faintest primary tint.
+  defp cell_treatment(day, today) do
+    if day.date == today, do: "bg-primary/5", else: nil
   end
 end

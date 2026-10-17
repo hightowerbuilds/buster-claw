@@ -455,8 +455,12 @@ check lib/buster_claw_web/live/status/weather.ex              97 HELD
 
 
 check lib/buster_claw_web/live/notes_component.ex              744 HELD
-check lib/buster_claw_web/components/notes/editor.ex           300 HELD
-check lib/buster_claw_web/components/notes/rail.ex             250 HELD
+# 10-17: Notes restyled after the chat's Minimal skin. The rail now owns the
+# sidebar toggle (`rail_toggle/1`, rendered by the editor and the empty state
+# too) and the shared left-bar input class; the editor gained its two button
+# weights. 300 -> 320 and 250 -> 310.
+check lib/buster_claw_web/components/notes/editor.ex           320 HELD
+check lib/buster_claw_web/components/notes/rail.ex             310 HELD
 check lib/buster_claw_web/components/notes/switcher.ex         134 HELD
 
 # --- FROZEN: named by an unstarted phase; capped at today's size -------------

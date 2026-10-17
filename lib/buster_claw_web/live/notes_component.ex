@@ -22,7 +22,11 @@ defmodule BusterClawWeb.NotesComponent do
 
   Two panes — rail and editor — collapsing to a two-step rail → editor below
   `md`. The collapse is class-only; the panes are one DOM and one set of ids at
-  every width.
+  every width. The operator can also close the rail outright (`toggle_rail`,
+  the button or ⌘\\), and that choice is kept in `Settings`.
+
+  Styled after the chat's Minimal skin since 10-17: mono, hairlines, left-bar
+  inputs, no nested panels — the panel frame around it is the only box.
 
   The editor renders its own Markdown (`daily-growth/archive/08-09-26-notes-editor.md` Phase 1), so there
   is no preview pane and this module holds no rendered HTML. Its only remaining
@@ -37,6 +41,12 @@ defmodule BusterClawWeb.NotesComponent do
   import BusterClawWeb.Notes.Switcher
 
   alias BusterClaw.Notes
+  alias BusterClaw.Settings
+
+  # The sidebar toggle survives a reload and a restart. One key for every host:
+  # there is one Notes panel in the app, and an operator who hid the list once
+  # does not want it back on the next launch.
+  @rail_key "notes_rail_open"
 
   # The switcher is a jump list, not a search results page: past a screenful,
   # more rows are noise. The count of what was left out is shown rather than
@@ -71,6 +81,7 @@ defmodule BusterClawWeb.NotesComponent do
      |> assign(:switcher_total, 0)
      |> assign(:switcher_index, 0)
      |> assign(:loaded, false)
+     |> assign(:rail_open, true)
      |> stream(:notes, [])}
   end
 
@@ -86,6 +97,7 @@ defmodule BusterClawWeb.NotesComponent do
 
         socket
         |> assign(:loaded, true)
+        |> assign(:rail_open, Settings.get(@rail_key) != "false")
         |> load_folders()
         |> reload_notes()
         |> refresh_open_note()
@@ -123,6 +135,15 @@ defmodule BusterClawWeb.NotesComponent do
         {:noreply,
          assign(socket, :new_note_form, form_error(params, :note, create_error(reason)))}
     end
+  end
+
+  # The sidebar toggle (the button, or ⌘\ through `NotesKeys`). Open is the
+  # absence of the setting, so a fresh install and a re-opened rail are the
+  # same state.
+  def handle_event("toggle_rail", _params, socket) do
+    open = not socket.assigns.rail_open
+    if open, do: Settings.delete(@rail_key), else: Settings.put(@rail_key, "false")
+    {:noreply, assign(socket, :rail_open, open)}
   end
 
   def handle_event("toggle_folder_form", _params, socket) do
@@ -616,7 +637,8 @@ defmodule BusterClawWeb.NotesComponent do
       phx-hook="NotesKeys"
       phx-target={@myself}
       data-switcher-open={to_string(@switcher_open)}
-      class="flex min-h-0 flex-1 gap-3 lg:gap-4"
+      data-rail-open={to_string(@rail_open)}
+      class="flex min-h-0 flex-1 gap-3 font-mono"
     >
       <.switcher
         target={@myself}
@@ -633,6 +655,7 @@ defmodule BusterClawWeb.NotesComponent do
         selected={@selected}
         search_form={@search_form}
         query={@query}
+        open={@rail_open}
         collapsed={!is_nil(@selected) or !is_nil(@unsupported)}
         folders={@folders}
         folder_options={folder_options(@folders)}
@@ -641,21 +664,24 @@ defmodule BusterClawWeb.NotesComponent do
         folder_form_open={@folder_form_open}
       />
 
+      <%!-- Shown on a narrow window only when the rail is closed — there the
+            rail IS the empty state, and hiding both would leave nothing. --%>
       <section
         :if={is_nil(@selected) and is_nil(@unsupported)}
         id="notes-empty-state"
-        class="ic-panel ic-scanlines hidden min-h-0 flex-1 items-center justify-center p-8 text-center md:flex"
+        class={[
+          "min-h-0 flex-1 flex-col text-xs",
+          if(@rail_open, do: "hidden md:flex", else: "flex")
+        ]}
       >
-        <div class="max-w-sm">
-          <div class="mx-auto flex size-12 items-center justify-center rounded-full border-2 border-base-content/15 bg-base-content/5">
-            <.icon name="hero-pencil-square" class="size-6 text-primary" />
-          </div>
-          <h2 class="mt-4 font-display text-xl font-black uppercase tracking-tight">
-            Your Markdown notebook
-          </h2>
-          <p class="mt-2 font-mono text-xs leading-relaxed text-base-content/55">
-            Create a note to start writing. Every page is saved as a plain Markdown file in
-            your workspace.
+        <div class="flex items-center pb-1.5">
+          <BusterClawWeb.Notes.Rail.rail_toggle :if={!@rail_open} target={@myself} open={false} />
+        </div>
+        <div class="border-l-2 border-base-content/15 px-4 py-2 leading-relaxed text-base-content/50">
+          <p><span class="text-primary">&gt;</span> No note open.</p>
+          <p class="mt-1 text-base-content/40">
+            Pick one from the list, or type a title under "new note" and press Enter.
+            Every note is a plain Markdown file in your workspace. ⌘P jumps, ⌘N starts one.
           </p>
         </div>
       </section>
@@ -663,24 +689,25 @@ defmodule BusterClawWeb.NotesComponent do
       <section
         :if={@unsupported}
         id="notes-unsupported"
-        class="ic-panel flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center"
+        class="flex min-h-0 flex-1 flex-col gap-2 text-xs"
       >
-        <.icon name="hero-lock-closed" class="size-8 text-base-content/35" />
-        <h2 class="font-display text-lg font-black uppercase tracking-tight">
-          Not editable here
-        </h2>
-        <p class="max-w-sm font-mono text-xs leading-relaxed text-base-content/60">
-          {unsupported_text(@unsupported)}
-        </p>
-        <p class="font-mono text-[10px] uppercase tracking-wide text-base-content/40">
-          {@unsupported.path}
-        </p>
+        <div class="flex items-center gap-1.5 border-b border-base-content/15 pb-1.5">
+          <BusterClawWeb.Notes.Rail.rail_toggle :if={!@rail_open} target={@myself} open={false} />
+          <span class="truncate text-sm font-semibold">{Path.basename(@unsupported.path)}</span>
+          <span class="text-[0.625rem] font-semibold uppercase tracking-[0.08em] text-base-content/45">
+            not editable here
+          </span>
+        </div>
+        <div class="border-l-2 border-base-content/15 px-4 py-2 leading-relaxed text-base-content/60">
+          <p>{unsupported_text(@unsupported)}</p>
+          <p class="mt-1 text-[0.625rem] text-base-content/40">{@unsupported.path}</p>
+        </div>
         <button
           id="unsupported-back-button"
           type="button"
           phx-click="close_note"
           phx-target={@myself}
-          class="rounded-xs border-2 border-base-content/25 px-3 py-1.5 font-mono text-[11px] font-bold uppercase transition hover:border-primary hover:text-primary"
+          class="self-start border border-base-content/25 px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-[0.08em] text-base-content/70 transition hover:border-primary hover:text-primary"
         >
           Back to notes
         </button>
@@ -697,6 +724,7 @@ defmodule BusterClawWeb.NotesComponent do
         folder_options={folder_options(@folders)}
         editor_form={@editor_form}
         backlinks={@backlinks}
+        rail_open={@rail_open}
       />
     </div>
     """

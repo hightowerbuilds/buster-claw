@@ -39,6 +39,7 @@ defmodule BusterClawWeb.Notes.Editor do
   use BusterClawWeb, :html
 
   import BusterClawWeb.Notes.Toolbar
+  import BusterClawWeb.Notes.Rail, only: [rail_toggle: 1]
 
   attr :target, :any, required: true, doc: "the owning LiveComponent's @myself"
   attr :selected, :string, default: nil
@@ -50,6 +51,7 @@ defmodule BusterClawWeb.Notes.Editor do
   attr :folder_options, :list, required: true
   attr :editor_form, :any, required: true
   attr :backlinks, :list, required: true
+  attr :rail_open, :boolean, default: true, doc: "carries the sidebar toggle when false"
 
   @doc "The Notes editor pane."
   def editor(assigns) do
@@ -61,19 +63,20 @@ defmodule BusterClawWeb.Notes.Editor do
       phx-target={@target}
       data-save-state={@save_status}
       data-note-path={@selected}
-      class="flex min-h-0 min-w-0 flex-1 flex-col gap-2"
+      class="flex min-h-0 min-w-0 flex-1 flex-col gap-1.5 font-mono"
     >
-      <header class="flex flex-wrap items-center justify-between gap-2 border-b-2 border-base-content/15 pb-2">
-        <div class="flex min-w-0 items-center gap-2">
+      <header class="flex flex-wrap items-center justify-between gap-2 border-b border-base-content/15 pb-1.5">
+        <div class="flex min-w-0 items-center gap-1.5">
+          <.rail_toggle :if={!@rail_open} target={@target} open={false} />
           <button
             id="close-note-button"
             type="button"
             phx-click="close_note"
             phx-target={@target}
             aria-label="Back to all notes"
-            class="rounded-xs border-2 border-base-content/25 p-1.5 text-base-content/70 transition hover:border-primary hover:text-primary md:hidden"
+            class="grid size-6 place-items-center text-base-content/50 transition hover:text-primary md:hidden"
           >
-            <.icon name="hero-arrow-left" class="size-4" />
+            <.icon name="hero-arrow-left" class="size-3.5" />
           </button>
           <div class="min-w-0">
             <%!-- The title IS the rename control (W1). `tabindex` + the
@@ -88,18 +91,20 @@ defmodule BusterClawWeb.Notes.Editor do
               tabindex="0"
               aria-keyshortcuts="F2"
               title="Double-click to rename or move this note (Enter or F2 when focused)"
-              class="cursor-pointer select-none truncate font-display text-lg font-black uppercase tracking-tight focus-visible:outline-2 focus-visible:outline-primary"
+              class="cursor-pointer select-none truncate text-sm focus-visible:outline-2 focus-visible:outline-primary"
             >
-              {Path.basename(@selected)}
+              <%!-- The span carries the font: the global `h1, h2, h3` rule is
+                    unlayered, so it beats a utility on the heading itself. --%>
+              <span class="font-mono font-semibold tracking-normal">{Path.basename(@selected)}</span>
             </h2>
-            <p class="truncate font-mono text-[10px] text-base-content/45">{@selected}</p>
+            <p class="truncate text-[0.625rem] text-base-content/40">{@selected}</p>
           </div>
         </div>
         <p
           id="note-save-status"
           data-state={@save_status}
           class={[
-            "rounded-full border px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-wide",
+            "text-[0.625rem] font-semibold uppercase tracking-[0.08em]",
             status_class(@save_status)
           ]}
         >
@@ -114,7 +119,7 @@ defmodule BusterClawWeb.Notes.Editor do
         id="rename-note-form"
         phx-submit="rename_note"
         phx-target={@target}
-        class="flex flex-wrap items-end gap-2 border-2 border-base-content/20 bg-base-content/4 px-3 py-2"
+        class="flex flex-wrap items-end gap-2 border-l-2 border-primary px-3 py-1"
       >
         <div class="min-w-40 flex-1">
           <%!-- The gesture that opens this form does not focus anything by
@@ -129,7 +134,7 @@ defmodule BusterClawWeb.Notes.Editor do
             label="Name"
             autocomplete="off"
             phx-mounted={JS.focus()}
-            class="w-full rounded-xs border-2 border-base-content/20 bg-transparent px-2 py-1.5 font-mono text-xs focus:border-primary focus:outline-none"
+            class="w-full border-0 border-l-2 border-base-content/20 bg-transparent px-2 py-1 font-mono text-xs focus:border-primary focus:outline-none"
           />
         </div>
         <div class="min-w-36">
@@ -139,14 +144,14 @@ defmodule BusterClawWeb.Notes.Editor do
             type="select"
             label="Folder"
             options={@folder_options}
-            class="w-full rounded-xs border-2 border-base-content/20 bg-transparent px-2 py-1.5 font-mono text-[11px] focus:border-primary focus:outline-none"
+            class="w-full border-0 border-l-2 border-base-content/20 bg-transparent px-2 py-1 font-mono text-[0.6875rem] focus:border-primary focus:outline-none"
           />
         </div>
         <div class="mb-2 flex gap-2">
           <button
             id="rename-note-submit"
             type="submit"
-            class="rounded-xs bg-primary px-3 py-1.5 font-mono text-[11px] font-bold uppercase text-primary-content transition hover:-translate-y-0.5 active:translate-y-0"
+            class={primary_btn()}
           >
             Move
           </button>
@@ -155,7 +160,7 @@ defmodule BusterClawWeb.Notes.Editor do
             type="button"
             phx-click="toggle_rename"
             phx-target={@target}
-            class="rounded-xs border-2 border-base-content/25 px-3 py-1.5 font-mono text-[11px] font-bold uppercase transition hover:border-primary hover:text-primary"
+            class={quiet_btn()}
           >
             Cancel
           </button>
@@ -166,9 +171,9 @@ defmodule BusterClawWeb.Notes.Editor do
         :if={@save_status == :conflict}
         id="note-conflict"
         role="alert"
-        class="flex flex-wrap items-center justify-between gap-3 border-2 border-warning/40 bg-warning/10 px-3 py-2"
+        class="flex flex-wrap items-center justify-between gap-3 border-l-2 border-warning bg-warning/5 px-3 py-1.5"
       >
-        <p class="font-mono text-xs text-base-content/80">
+        <p class="text-xs text-base-content/80">
           This file changed outside the editor. Autosave has stopped, and your draft is still
           here and has not been overwritten.
         </p>
@@ -177,7 +182,7 @@ defmodule BusterClawWeb.Notes.Editor do
             id="copy-draft-button"
             type="button"
             data-note-copy-draft
-            class="rounded-xs border-2 border-base-content/25 px-2.5 py-1 font-mono text-[10px] font-bold uppercase transition hover:bg-base-content/8"
+            class={quiet_btn()}
           >
             Copy my draft
           </button>
@@ -186,7 +191,7 @@ defmodule BusterClawWeb.Notes.Editor do
             type="button"
             phx-click="reload_conflict"
             phx-target={@target}
-            class="rounded-xs border-2 border-base-content/25 px-2.5 py-1 font-mono text-[10px] font-bold uppercase transition hover:bg-base-content/8"
+            class={quiet_btn()}
           >
             Reload disk version
           </button>
@@ -196,14 +201,14 @@ defmodule BusterClawWeb.Notes.Editor do
             phx-click="overwrite_conflict"
             phx-target={@target}
             data-claw-confirm="Overwrite the newer disk version with your draft?"
-            class="rounded-xs border-2 border-warning/50 px-2.5 py-1 font-mono text-[10px] font-bold uppercase text-warning transition hover:bg-warning/10"
+            class="border border-warning/60 px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-[0.08em] text-warning transition hover:bg-warning/10"
           >
             Overwrite
           </button>
         </div>
       </div>
 
-      <p :if={@save_error} id="note-save-error" role="alert" class="font-mono text-xs text-error">
+      <p :if={@save_error} id="note-save-error" role="alert" class="text-xs text-error">
         {@save_error}
       </p>
 
@@ -242,7 +247,7 @@ defmodule BusterClawWeb.Notes.Editor do
           aria-multiline="true"
           aria-label="Markdown note editor"
           spellcheck="true"
-          class="ic-panel ic-note-surface min-h-72 w-full flex-1 overflow-y-auto p-6 focus:border-primary focus:outline-none"
+          class="ic-note-surface min-h-72 w-full flex-1 overflow-y-auto border-l-2 border-base-content/15 bg-transparent px-4 py-2 focus:border-primary focus:outline-none"
         >
         </div>
 
@@ -250,26 +255,26 @@ defmodule BusterClawWeb.Notes.Editor do
           :if={String.trim(@body) == ""}
           id="note-placeholder"
           aria-hidden="true"
-          class="pointer-events-none absolute left-6 top-6 font-mono text-sm text-base-content/30"
+          class="pointer-events-none absolute left-[1.125rem] top-2 text-sm text-base-content/30"
         >
           Start writing… ⌘S saves now.
         </p>
       </.form>
 
       <section :if={@backlinks != []} id="note-backlinks" class="shrink-0">
-        <h3 class="font-mono text-[10px] font-bold uppercase tracking-wide text-base-content/45">
+        <h3 class="text-[0.5625rem] font-semibold uppercase tracking-[0.12em] text-base-content/40">
           Linked from
         </h3>
-        <ul class="mt-1.5 flex flex-wrap gap-1.5">
+        <ul class="mt-1 flex flex-wrap gap-x-3 gap-y-1">
           <li :for={note <- @backlinks}>
             <button
               type="button"
               phx-click="select_note"
               phx-value-path={note.path}
               phx-target={@target}
-              class="flex items-center gap-1.5 rounded-xs border-2 border-base-content/15 px-2 py-1 text-left font-mono text-xs text-base-content/70 transition hover:border-primary hover:text-base-content"
+              class="flex items-center gap-1 text-left text-xs text-base-content/60 transition hover:text-primary"
             >
-              <.icon name="hero-arrow-uturn-left" class="size-3 shrink-0 opacity-55" />
+              <span aria-hidden="true" class="text-base-content/35">↩</span>
               <span class="truncate">{note.path}</span>
             </button>
           </li>
@@ -285,8 +290,18 @@ defmodule BusterClawWeb.Notes.Editor do
   defp status_text(:conflict), do: "Conflict"
   defp status_text(:error), do: "Save failed"
 
-  defp status_class(:conflict), do: "border-warning/40 bg-warning/10 text-warning"
-  defp status_class(:error), do: "border-error/40 bg-error/10 text-error"
-  defp status_class(:unsaved), do: "border-base-content/25 bg-base-content/5 text-base-content/70"
-  defp status_class(_status), do: "border-success/30 bg-success/8 text-success"
+  # Text only, no pill — the Minimal skin's restraint. Colour still carries the
+  # state, and the word says it for anyone who cannot see colour.
+  defp status_class(:conflict), do: "text-warning"
+  defp status_class(:error), do: "text-error"
+  defp status_class(:unsaved), do: "text-base-content/60"
+  defp status_class(_status), do: "text-success/80"
+
+  defp primary_btn,
+    do:
+      "border border-primary px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-[0.08em] text-primary transition hover:bg-primary hover:text-primary-content"
+
+  defp quiet_btn,
+    do:
+      "border border-base-content/25 px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-[0.08em] text-base-content/70 transition hover:border-primary hover:text-primary"
 end

@@ -84,13 +84,13 @@ defmodule BusterClawWeb.Notes.Toolbar do
       role="toolbar"
       aria-label="Formatting"
       aria-controls="note-surface"
-      class="flex flex-wrap items-center gap-1 border-b-2 border-base-content/15 pb-2"
+      class="flex flex-wrap items-center gap-0.5 border-b border-base-content/15 pb-1.5"
     >
       <div :for={{group, index} <- Enum.with_index(@groups)} class="flex items-center gap-0.5">
         <span
           :if={index > 0}
           aria-hidden="true"
-          class="mx-1 h-4 w-px shrink-0 bg-base-content/15"
+          class="mx-1 h-3.5 w-px shrink-0 bg-base-content/15"
         >
         </span>
         <button
@@ -102,14 +102,14 @@ defmodule BusterClawWeb.Notes.Toolbar do
           aria-pressed="false"
           title={label_for(command)}
           class={[
-            "flex size-7 items-center justify-center rounded-xs border-2 border-transparent",
-            "font-mono text-[11px] font-bold uppercase text-base-content/65 transition",
-            "hover:border-base-content/25 hover:text-base-content",
+            "flex size-6 items-center justify-center border border-transparent",
+            "font-mono text-[0.625rem] font-semibold uppercase text-base-content/55 transition",
+            "hover:text-base-content",
             "data-[active]:border-primary data-[active]:text-primary",
             Map.get(command, :class)
           ]}
         >
-          <.icon :if={command[:icon]} name={command.icon} class="size-4" />
+          <.icon :if={command[:icon]} name={command.icon} class="size-3.5" />
           <span :if={command[:text]}>{command.text}</span>
         </button>
       </div>
