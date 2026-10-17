@@ -801,8 +801,6 @@ check lib/buster_claw/google/gmail_attachments.ex             300 HELD
 # would demand deleting working code today to satisfy a number nobody
 # measured. This is the honest post-cut cap with a little room, and it still
 # ratchets 60 below the 560 the review would have opened at.
-check lib/buster_claw/integrations.ex                         500 HELD
-check lib/buster_claw/integrations/github.ex                  500 HELD
 
 # The cut-up pipeline. The review read all twelve stages and found them
 # correct — one stage per module, a test file each — so these are regrowth

@@ -1,7 +1,7 @@
 defmodule BusterClawWeb.SettingsTabs do
   @moduledoc """
   The Settings section's shared header: the wordmark and the nav bar of links to
-  each settings sub-tab (Appearance, Notify, Integrations, Configuration,
+  each settings sub-tab (Appearance, Notify, Configuration,
   Security), with the active one highlighted. (Get Started's 3-step
   onboarding moved to the home Explained tab's Intro, 08-02.)
 
@@ -13,7 +13,6 @@ defmodule BusterClawWeb.SettingsTabs do
   @tabs [
     %{key: :appearance, label: "Appearance", path: "/appearance"},
     %{key: :notify, label: "Notify", path: "/notify-settings"},
-    %{key: :integrations, label: "Integrations", path: "/integrations"},
     %{key: :configuration, label: "Configuration", path: "/settings"},
     %{key: :security, label: "Security", path: "/security"}
   ]

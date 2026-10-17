@@ -16,7 +16,7 @@ defmodule BusterClaw do
   * **The operator's things** — `Workspace` (the folder and its seeds),
     `Library`, `Notes`, `Pages`, `Pockets`, `Contacts`, `TrustedSenders`,
     `Calendar`, `Notifications`, `Bookmarks`.
-  * **Outside services** — `Google.*`, `Integrations`, `Finance`, `Ingest`,
+  * **Outside services** — `Google.*`, `Finance`, `Ingest`,
     `Search`, `Weather`, `Messages` (the iMessage probe).
   * **The browser** — `Browser` (the in-app tab and its bridge),
     `BrowserControl` (the engine: flows, checks, Agent Mode, commerce, egress),

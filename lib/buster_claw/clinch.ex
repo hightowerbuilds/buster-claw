@@ -32,27 +32,28 @@ defmodule BusterClaw.Clinch do
     value, not even one just written. Phase 2 moves the write path behind the
     desktop shell so a remote session cannot reach it.
 
-  A remote session may *use* credentials — agent runs and integration polls
-  should all keep working when you are away from the Mac — and may never
+  A remote session may *use* credentials — agent runs should keep working when
+  you are away from the Mac — and may never
   *manage* them. A stolen key then buys a working Buster Claw, not the
   operator's accounts.
 
   ## What is behind the door today
 
-  `:sign_in` is fully managed here. `:oauth` and `:service_key` are **listed
-  read-only** from the stores that already own them (`google_accounts`,
-  `integrations`) — the roadmap's call was that the chokepoint is the point, not
-  the table, and moving Google's account structure into a generic credential
-  table would be a lot of churn for no security gain. Phase 3 gives
-  `:service_key` a writable home when the env-var credentials move in.
+  `:sign_in` is fully managed here. `:oauth` is **listed read-only** from the
+  store that already owns it (`google_accounts`) — the roadmap's call was that
+  the chokepoint is the point, not the table, and moving Google's account
+  structure into a generic credential table would be a lot of churn for no
+  security gain. `:service_key` has no store at all since the Integrations
+  feature was deleted on 10-17 (it listed GitHub tokens read-only); Phase 3
+  gives it a writable home when the env-var credentials move in.
 
-  One honest gap, deferred to Phase 3 with a reason: `Integrations` and
-  `Google.Account` do not call `resolve/2` per field. Their secrets are typed
-  `BusterClaw.Encrypted`, so decryption happens transparently at *Ecto load* —
-  there is no resolve moment to hook until those rows move, and forcing one would
-  mean un-typing the columns and rewriting every caller for no security gain
-  today. Their crypto still passes through `Clinch.Vault`, which is the property
-  the chokepoint test actually enforces.
+  One honest gap, deferred to Phase 3 with a reason: `Google.Account` does not
+  call `resolve/2` per field. Its secrets are typed `BusterClaw.Encrypted`, so
+  decryption happens transparently at *Ecto load* — there is no resolve moment
+  to hook until those rows move, and forcing one would mean un-typing the
+  columns and rewriting every caller for no security gain today. Its crypto
+  still passes through `Clinch.Vault`, which is the property the chokepoint
+  test actually enforces.
 
   ## The audit
 
@@ -208,23 +209,12 @@ defmodule BusterClaw.Clinch do
     )
   end
 
-  # An integration's token, owned by the `integrations` table and managed on the
-  # Integrations screen. The Clinch lists it so the operator can see everything in
-  # one place, but never writes it — deleting from here would leave the
-  # integration row behind with no token. App-owned keys are `:app_key`.
-  def list(:service_key) do
-    "integrations"
-    |> where([i], not is_nil(i.token))
-    |> select([i], %{name: i.name, note: i.service_type, updated_at: i.updated_at})
-    |> order_by([i], asc: i.name)
-    |> Repo.all()
-    |> Enum.map(&Map.merge(&1, %{kind: :service_key, managed?: managed?(:service_key)}))
-  end
-
-  # The Keychain holds the loopback tokens and paired device keys do not exist
-  # yet (Phase 6). Neither is readable from here, and listing a name the operator
-  # cannot act on would be a promise the screen does not keep.
-  def list(kind) when kind in [:loopback_token, :device_key], do: []
+  # The Keychain holds the loopback tokens, paired device keys do not exist yet
+  # (Phase 6), and a `:service_key` has had no store since the Integrations
+  # feature (GitHub tokens, listed here read-only) was deleted on 10-17. None is
+  # readable from here, and listing a name the operator cannot act on would be
+  # a promise the screen does not keep. App-owned keys are `:app_key`.
+  def list(kind) when kind in [:loopback_token, :device_key, :service_key], do: []
 
   @doc "True if the ref is stored. Used to explain an unknown reference."
   @spec known?(ref()) :: boolean()

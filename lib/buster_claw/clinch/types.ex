@@ -22,7 +22,7 @@ defmodule BusterClaw.Clinch.Types do
   | Kind | What it is | Backing store today |
   |---|---|---|
   | `:sign_in` | a value an Agent Mode run types into a form as `$secret.<name>` | `browser_secrets`, managed by `Clinch` |
-  | `:service_key` | an API key for a third-party service (Twilio, Supabase, Finnhub) | **nowhere** — env vars until Phase 3; integration rows are listed read-only |
+  | `:service_key` | an API key for a third-party service (Twilio, Supabase, Finnhub) | **nowhere** — env vars until Phase 3 |
   | `:oauth` | a Google account's client secret / refresh / access tokens | `google_accounts`, listed read-only |
   | `:loopback_token` | the api/mcp/agent token family | the macOS Keychain, via the shell |
   | `:device_key` | a paired remote device's public SSH key | **nowhere** — Phase 6 |
@@ -92,9 +92,10 @@ defmodule BusterClaw.Clinch.Types do
 
   The distinction is the one this module already draws — a kind decides **where it
   lives and who may manage it**. An `:app_key` lives in the Clinch and the Clinch
-  can rotate it. A `:service_key` is a row in `integrations`, owned and managed by
-  the Integrations screen; deleting it from here would leave the integration
-  behind with no token. Different store, different manager, different kind.
+  can rotate it. A `:service_key` lived in the `integrations` table, owned and
+  managed by the Integrations screen, until that feature was deleted on 10-17;
+  the kind stays because the enum is the contract. Different store, different
+  manager, different kind.
   """
   @spec managed_kinds() :: [kind()]
   def managed_kinds, do: [:sign_in, :app_key]

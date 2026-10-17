@@ -162,19 +162,13 @@ defmodule BusterClaw.ClinchTest do
                  "client_secret" => "client-secret"
                })
 
-      assert {:ok, _} =
-               BusterClaw.Integrations.create_integration(%{
-                 name: "managed-check",
-                 service_type: "github",
-                 token: "a-token"
-               })
-
       entries = Clinch.list()
       listed_kinds = entries |> Enum.map(& &1.kind) |> Enum.uniq()
 
       assert :sign_in in listed_kinds
       assert :oauth in listed_kinds
-      assert :service_key in listed_kinds
+      # `:service_key` has had no store since Integrations was deleted (10-17).
+      refute :service_key in listed_kinds
 
       for entry <- entries do
         assert entry.managed? == entry.kind in Types.managed_kinds(),
@@ -292,24 +286,16 @@ defmodule BusterClaw.ClinchTest do
       assert {:ok, "sign-in-value"} = Clinch.resolve({:sign_in, "collide"})
     end
 
-    test "lists separately from an integration's token, which stays unmanaged" do
+    test "is not a service key, which has no store at all" do
       assert {:ok, _} = Clinch.put(@app_ref, "sk-live-abc")
-
-      assert {:ok, _} =
-               BusterClaw.Integrations.create_integration(%{
-                 name: "some-integration",
-                 service_type: "github",
-                 token: "gh-token"
-               })
 
       assert [app] = Clinch.list(:app_key)
       assert app.name == "twilio_auth_token"
       assert app.managed?
 
-      assert [integration] = Clinch.list(:service_key)
-      assert integration.name == "some-integration"
-      # The Integrations screen owns it; deleting from here would strand the row.
-      refute integration.managed?
+      # The Integrations screen that owned `:service_key` rows was deleted on
+      # 10-17; the kind stays in the enum with nothing behind it.
+      assert Clinch.list(:service_key) == []
     end
 
     test "an unmanaged kind still refuses writes" do

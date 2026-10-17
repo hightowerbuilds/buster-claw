@@ -15,7 +15,7 @@ defmodule BusterClaw.Encrypted do
   mismatch, or a tampered/corrupt blob) is NOT treated as plaintext — that would
   hand the raw ciphertext bytes back as if they were the secret. Instead it fails
   closed: the failure is logged loudly and the field loads as `nil` (absent), so
-  the affected integration reads as unconfigured rather than acting on garbage.
+  the affected account reads as unconfigured rather than acting on garbage.
   """
 
   use Ecto.Type

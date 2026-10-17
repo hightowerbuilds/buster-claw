@@ -376,7 +376,7 @@ The native speech picker moved from the retired Vox surface into Configuration �
 | Appearance | `AppearanceLive` | SHIPPED | — |
 | Native speech controls | Configuration → Speech | **SHIPPED 10-11**; audible walkthrough open | [`VOX_REMOVAL`](surfaces/VOX_REMOVAL_ROADMAP.md) |
 | Notify | `NotifySettingsLive` | SHIPPED | — |
-| Integrations | `IntegrationsLive` | SHIPPED | — |
+| Integrations | ~~`IntegrationsLive`~~ | **DELETED 10-17** — GitHub polling into Library snapshots plus its webhook, never used in months of daily use; MCP is the direction instead. Context, adapter, LiveView, webhook controller, 8 commands (catalog 172 → 164), both tables dropped. Don't rebuild | — |
 | Configuration | `SettingsLive` | SHIPPED | — |
 | Cmd List | `CmdListLive` | SHIPPED | — |
 | Security | `SecurityLive` | SHIPPED, **buried** | [`TRUST_AND_SUPPORT`](platform/TRUST_AND_SUPPORT_ROADMAP.md) `G-32` |

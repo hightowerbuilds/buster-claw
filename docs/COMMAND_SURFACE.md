@@ -32,7 +32,6 @@ Command List renders the same counts from a contract test:
 - Workspace document library
 - The operator's Notes vault (`note_*`) and the Activity record (`journal_*`)
 - Calendar events (the app's own, distinct from Google's)
-- Third-party integrations and integration runs
 - Finance (SEC EDGAR + Finnhub read surface)
 - Google Workspace accounts, Gmail, Calendar, Drive, Docs, Sheets, Slides,
   Tasks, and Contacts
@@ -122,8 +121,8 @@ These older command-surface areas were removed or retired:
   `ModelPolicy.backend_for/1`'s detection. Do not read this line as saying
   headless runs don't exist; they do.
 - Delivery destinations, Webhooks, Hooks, and Scheduler jobs — retired as unused.
-  Integrations (their one live consumer) is kept and now polls manually or via
-  `POST /integrations/:name/webhook`.
+  Integrations, their one live consumer, outlived them until 10-17, when it was
+  deleted whole (GitHub polling and its webhook).
 - The *old DB-backed Memory* was retired, but **`BusterClaw.Memory` is live
   again** in a different shape: `Memory.RunSummary` rows written per headless
   run, full-text searched by the catalogued `memory_search`.

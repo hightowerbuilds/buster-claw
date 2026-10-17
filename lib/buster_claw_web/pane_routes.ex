@@ -6,7 +6,6 @@ defmodule BusterClawWeb.PaneRoutes do
     "/calendar" => {BusterClawWeb.CalendarLive, "Calendar"},
     "/terminal" => {BusterClawWeb.TerminalLive, "Terminal"},
     "/workspace" => {BusterClawWeb.WorkspaceLive, "Workspace"},
-    "/integrations" => {BusterClawWeb.IntegrationsLive, "Integrations"},
     "/security" => {BusterClawWeb.SecurityLive, "Security"},
     "/settings" => {BusterClawWeb.SettingsLive, "Settings"},
     "/appearance" => {BusterClawWeb.AppearanceLive, "Appearance"},

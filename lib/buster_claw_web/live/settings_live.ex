@@ -32,7 +32,7 @@ defmodule BusterClawWeb.SettingsLive do
   reason, on the row where it bites.
 
   Google Workspace used to live on its own `/gws` sub-tab; it was folded in here
-  so "Configuration" owns everything that isn't Appearance / Integrations /
+  so "Configuration" owns everything that isn't Appearance / Notify /
   Security. The connect flow (bundled one-click + the Advanced BYO form on the
   Setup wizard) and the Gmail/Calendar panels are unchanged — reused from
   `BusterClaw.Google` + `BusterClawWeb.GoogleOAuth` + `BusterClawWeb.GwsPanels`.

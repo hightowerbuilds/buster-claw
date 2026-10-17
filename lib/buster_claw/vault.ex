@@ -1,7 +1,7 @@
 defmodule BusterClaw.Vault do
   @moduledoc """
   App-wide AES-256-GCM vault for secrets stored at rest (provider API keys,
-  integration tokens, webhook secrets, delivery tokens).
+  Google tokens, `$secret` values).
 
   The wire format is `<<version, iv::12, tag::16, ciphertext>>`. The key is
   derived from `secret_key_base`.

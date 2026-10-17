@@ -22,7 +22,6 @@ Buster Claw has no built-in LLM and needs no API keys: the intelligence is an ag
 - `BusterClaw.Search`: web search.
 - `BusterClaw.Google`: Google OAuth, Gmail, and Calendar sync (tokens in `BusterClaw.Google.Vault`).
 - `BusterClaw.Calendar`: durable calendar events.
-- `BusterClaw.Integrations`: GitHub / Sentry / Umami polling (manual or webhook-triggered via `POST /integrations/:name/webhook`).
 - `BusterClaw.Finance`: read-only SEC EDGAR + Finnhub research (backs the Financial Informant page).
 - `BusterClaw.Dispatch` (+ `BusterClaw.DispatchProjector`): the durable SQLite pull-queue and its projection to workspace markdown (`Dispatch.md`) that a terminal agent works.
 - `BusterClaw.Orchestration`: the unattended, indefinite "shift" — `Orchestrator` (a supervised kill-switch janitor), `Uptime`, and the `shifts` / `shift_assignments` schemas.

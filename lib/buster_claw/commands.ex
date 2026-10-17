@@ -23,7 +23,6 @@ defmodule BusterClaw.Commands do
 
   alias BusterClaw.{
     Calendar,
-    Integrations,
     PolicyEngine,
     Skills
   }
@@ -499,8 +498,7 @@ defmodule BusterClaw.Commands do
   # -----------------------------------------------------------------------
 
   for {prefix, context, ctx_singular, ctx_plural} <- [
-        {:event, Calendar, :event, :events},
-        {:integration, Integrations, :integration, :integrations}
+        {:event, Calendar, :event, :events}
       ] do
     # These atoms are minted at COMPILE time (the `for` runs over a hardcoded
     # literal list during module compilation), so no runtime input can reach
@@ -557,10 +555,6 @@ defmodule BusterClaw.Commands do
   defdelegate note_create(args), to: BusterClaw.Commands.Notes
   defdelegate note_save(args), to: BusterClaw.Commands.Notes
   defdelegate note_search(args), to: BusterClaw.Commands.Notes
-  # Integrations (extras; CRUD comes from the auto-loop above)
-  defdelegate integration_poll(args), to: BusterClaw.Commands.Integrations
-  defdelegate integration_poll_all(args \\ %{}), to: BusterClaw.Commands.Integrations
-  defdelegate integration_run_list(args), to: BusterClaw.Commands.Integrations
   # Notify (timers, alarms, reminders)
   defdelegate notify_list(args \\ %{}), to: BusterClaw.Commands.Notify
   defdelegate notify_get(args), to: BusterClaw.Commands.Notify

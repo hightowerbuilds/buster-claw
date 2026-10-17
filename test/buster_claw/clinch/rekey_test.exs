@@ -1,7 +1,7 @@
 defmodule BusterClaw.Clinch.RekeyTest do
   @moduledoc """
-  Phase 4's acceptance: *rotating the recovery key preserves every integration,
-  `$secret`, and Google account.*
+  Phase 4's acceptance: *rotating the recovery key preserves every `$secret`,
+  app_key and Google account.*
 
   The property under test is end-to-end and deliberately not mocked — write real
   credentials under one key, rotate, then read them back through the ordinary
@@ -13,7 +13,6 @@ defmodule BusterClaw.Clinch.RekeyTest do
   alias BusterClaw.Clinch
   alias BusterClaw.Clinch.Rekey
   alias BusterClaw.Google
-  alias BusterClaw.Integrations
 
   @old_base "old-secret-key-base-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   @new_base "new-secret-key-base-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
@@ -38,18 +37,10 @@ defmodule BusterClaw.Clinch.RekeyTest do
   defp live_key(base), do: Application.put_env(:buster_claw, :secret_key_base, base)
 
   describe "the acceptance criterion" do
-    test "rotating preserves every integration, $secret, app_key and Google account" do
+    test "rotating preserves every $secret, app_key and Google account" do
       # Written under the OLD key, through the ordinary write paths.
       assert {:ok, _} = Clinch.put({:sign_in, "acme"}, "sign-in-value")
       assert {:ok, _} = Clinch.put({:app_key, "finnhub_api_key"}, "app-key-value")
-
-      assert {:ok, integration} =
-               Integrations.create_integration(%{
-                 name: "gh",
-                 service_type: "github",
-                 token: "gh-token",
-                 webhook_secret: "hook-secret"
-               })
 
       assert {:ok, account} =
                Google.create_account(%{
@@ -60,7 +51,7 @@ defmodule BusterClaw.Clinch.RekeyTest do
 
       assert {:ok, report} = Rekey.run(@old_base, @new_base)
       assert report.unreadable == 0
-      assert report.rekeyed >= 5
+      assert report.rekeyed >= 3
 
       # The new key goes live only AFTER the data moved — the order the module
       # documents, and the order the shell must follow.
@@ -68,10 +59,6 @@ defmodule BusterClaw.Clinch.RekeyTest do
 
       assert {:ok, "sign-in-value"} = Clinch.resolve({:sign_in, "acme"})
       assert {:ok, "app-key-value"} = Clinch.resolve({:app_key, "finnhub_api_key"})
-
-      reloaded = Repo.get!(Integrations.Integration, integration.id)
-      assert reloaded.token == "gh-token"
-      assert reloaded.webhook_secret == "hook-secret"
 
       account = Repo.get!(Google.Account, account.id)
       assert {:ok, "client-secret"} = Google.Account.decrypt(account, :client_secret)
@@ -153,8 +140,7 @@ defmodule BusterClaw.Clinch.RekeyTest do
 
       actual =
         for {schema, source} <- [
-              {BusterClaw.Clinch.Secret, "browser_secrets"},
-              {BusterClaw.Integrations.Integration, "integrations"}
+              {BusterClaw.Clinch.Secret, "browser_secrets"}
             ],
             field <- schema.__schema__(:fields),
             schema.__schema__(:type, field) == BusterClaw.Encrypted,
@@ -193,13 +179,7 @@ defmodule BusterClaw.Clinch.RekeyTest do
 
     test "counts values written under a different key, and names their stores" do
       assert {:ok, _} = Clinch.put({:sign_in, "acme"}, "value")
-
-      assert {:ok, _} =
-               Integrations.create_integration(%{
-                 name: "gh",
-                 service_type: "github",
-                 token: "gh-token"
-               })
+      assert {:ok, _} = Clinch.put({:app_key, "finnhub_api_key"}, "app-key-value")
 
       # The key changes and nothing is rotated — the exact situation.
       live_key(@new_base)
@@ -207,7 +187,7 @@ defmodule BusterClaw.Clinch.RekeyTest do
       report = Rekey.unreadable()
 
       assert report.count == 2
-      assert report.stores == ["browser_secrets", "integrations"]
+      assert report.stores == ["browser_secrets"]
     end
 
     test "a rotation clears it" do

@@ -10,7 +10,7 @@ defmodule BusterClawWeb.ClinchPanels do
 
   A credential typed into a LiveView form travels as a `phx-change` payload,
   lands in the socket's assigns and appears in the rendered diff. That is how
-  integration tokens still round-trip to the browser in cleartext today (Clinch
+  Google tokens still round-trip to the browser in cleartext today (Clinch
   finding #5), and it is a leak that no amount of `type="password"` prevents.
 
   So the inputs here are plain DOM. The `ClinchManager` hook reads them, hands
@@ -237,7 +237,7 @@ defmodule BusterClawWeb.ClinchPanels do
       <h2 class="ic-eyebrow">Recovery key</h2>
       <p class="text-sm text-base-content/70">
         This key encrypts every credential Buster Claw stores — Google tokens,
-        integration secrets. It lives in your system keychain. Back it up to move
+        Google secrets. It lives in your system keychain. Back it up to move
         Buster Claw to another machine; anyone with it can decrypt your data, so
         keep it somewhere safe.
       </p>

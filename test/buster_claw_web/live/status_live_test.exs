@@ -56,7 +56,7 @@ defmodule BusterClawWeb.StatusLiveTest do
     # Configuration tab (/settings) + /setup.
     refute response =~ ~s(id="home-google-workspace-login")
     refute response =~ ~s(id="home-recent-emails")
-    # Advanced was retired; its surviving feature (Integrations) lives under Settings.
+    # Advanced was retired; Integrations outlived it under Settings until 10-17.
     refute response =~ ~s(href="/advanced")
     refute response =~ ~s(href="/webhooks")
     refute response =~ ~s(href="/mcp")

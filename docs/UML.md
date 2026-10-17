@@ -28,7 +28,6 @@ flowchart TB
         CLI["CLI escript<br/>(cli.ex)"]
         WebUI["LiveView UI"]
         HTTP["HTTP API<br/>(api_controller)"]
-        Webhooks_in["Inbound integration webhooks<br/>(integration_webhook)"]
     end
 
     subgraph Surface["Unified Command Surface"]
@@ -39,7 +38,7 @@ flowchart TB
 
     subgraph Contexts["Domain Contexts"]
         Library & Browser & BrowserControl & Search & Calendar
-        Google & Integrations & Dispatch & Workspace & Jobs
+        Google & Dispatch & Workspace & Jobs
         Finance & Telephony2["Clinch"] & Notes & BrowserControl2["AgentRuns"]
         Telephony & Notifications & Music & Contacts
         Orchestration & Sentinel & Settings & Voice
@@ -54,14 +53,12 @@ flowchart TB
     subgraph External["External services"]
         TermAgent["Agent CLI<br/>(claude / codex / opencode)"]
         GoogleAPI["Google Workspace<br/>(Gmail / Calendar)"]
-        Integr["GitHub / Sentry / Umami"]
         FinanceAPI["SEC EDGAR / Finnhub"]
     end
 
     CLI -->|HTTP /api/run| HTTP
     WebUI --> Contexts
     HTTP --> Commands
-    Webhooks_in --> Integrations
     TermAgent -->|reads fridge, dispatch CLI| Dispatch
 
     Commands --> Schema
@@ -73,7 +70,6 @@ flowchart TB
     Contexts --> PubSub
     Google --> Vault
     Google --> GoogleAPI
-    Integrations --> Integr
     Finance --> FinanceAPI
 
     PubSub -.live updates.-> WebUI
@@ -155,20 +151,6 @@ classDiagram
         +string status
         +string excerpt
     }
-    class Integration {
-        +string name
-        +string service_type
-        +string base_url
-        +string token
-        +string webhook_secret
-        +int polling_interval_minutes
-        +string last_status
-    }
-    class IntegrationRun {
-        +string trigger
-        +string status
-        +int records_fetched
-    }
     class Shift {
         +utc started_at
         +string status
@@ -200,7 +182,6 @@ classDiagram
         +string outcome
     }
 
-    Integration "1" --> "*" IntegrationRun : has
     Shift "1" --> "*" ShiftAssignment : has
     Shift "1" --> "*" DispatchItem : scopes
     ShiftAssignment "1" --> "*" DispatchItem : claims
@@ -348,7 +329,7 @@ From `lib/buster_claw_web/router.ex`.
 ```mermaid
 flowchart LR
     subgraph browser["pipe :browser (session, CSRF, LiveView)"]
-        R1["/ , /browse, /split, /terminal, /calendar,<br/>/integrations, /security, /settings,<br/>/appearance, /notify-settings,<br/>/workspace, /manual, /setup"]
+        R1["/ , /browse, /split, /terminal, /calendar,<br/>/security, /settings,<br/>/appearance, /notify-settings,<br/>/workspace, /manual, /setup"]
         R2["/google/oauth/callback"]
         R3["/voice → /settings?tab=speech (legacy redirect)"]
     end
@@ -359,7 +340,6 @@ flowchart LR
     end
     subgraph api["pipe :api (unauthenticated)"]
         H1["GET /_health"]
-        H2["POST /integrations/:name/webhook<br/>(secret verified)"]
         H4["GET /api/commands (catalog metadata)"]
     end
     subgraph auth["pipe :api_authenticated (Bearer token → caller tier)"]

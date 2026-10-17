@@ -15,7 +15,7 @@ defmodule BusterClawWeb.ClinchController do
 
   A credential typed into a LiveView form travels as a `phx-change`/`phx-submit`
   payload, lands in the socket's assigns, and appears in the rendered diff. That
-  is how integration tokens still round-trip to the browser in cleartext today
+  is how Google tokens still round-trip to the browser in cleartext today
   (Clinch finding #5). Routing the write through the shell means the value goes
   from a plain DOM input straight to Tauri and then here — never through the
   LiveView channel, never into an assign, never into a diff. The leak class is

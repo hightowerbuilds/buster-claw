@@ -329,7 +329,7 @@ export const WorkbenchMenu = {
         : "Open a terminal"
     }
     this.root.querySelector("#workbench-browser").dataset.active = String(location.pathname === "/browse")
-    this.root.querySelector("#workbench-settings").dataset.active = String(["/appearance", "/settings", "/notify-settings", "/integrations", "/security"].includes(location.pathname))
+    this.root.querySelector("#workbench-settings").dataset.active = String(["/appearance", "/settings", "/notify-settings", "/security"].includes(location.pathname))
     for (const layout of this.state?.layouts || this.defaultLayouts) {
       const button = this.root.querySelector(`#workbench-layout-${layout.key}`)
       button.disabled = !onWorkArea || !layout.enabled

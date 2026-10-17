@@ -214,7 +214,6 @@ other_findings = [
   {"lib/buster_claw/browser.ex", :pattern_match_cov},
   {"lib/buster_claw/browser.ex", :pattern_match},
   {"lib/buster_claw/cli.ex", :no_return},
-  {"lib/buster_claw/integrations/github.ex", :pattern_match_cov},
   {"lib/buster_claw/system_browser.ex", :pattern_match_cov},
   {"lib/buster_claw/terminal_commands.ex", :pattern_match_cov},
   {"lib/buster_claw_web/controllers/browser_home_controller.ex", :pattern_match}

@@ -10,8 +10,7 @@ defmodule BusterClaw.Runtime.Status do
     %{key: :terminal, label: "Terminal", path: "/terminal"},
     %{key: :workspace, label: "Workspace", path: "/workspace"},
     %{key: :browse, label: "Browser", path: "/browse"},
-    %{key: :calendar, label: "Calendar", path: "/calendar"},
-    %{key: :integrations, label: "Integrations", path: "/integrations"}
+    %{key: :calendar, label: "Calendar", path: "/calendar"}
   ]
 
   @services [
@@ -20,7 +19,6 @@ defmodule BusterClaw.Runtime.Status do
     "Endpoint",
     "Library",
     "Google Workspace",
-    "Integrations",
     "Calendar"
   ]
 

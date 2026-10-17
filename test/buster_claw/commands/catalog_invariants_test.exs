@@ -234,11 +234,6 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
       google_calendar_sync
       history_recent
       history_search
-      integration_get
-      integration_list
-      integration_poll
-      integration_poll_all
-      integration_run_list
       job_list
       job_show
       journal_read

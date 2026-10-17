@@ -83,7 +83,6 @@ defmodule BusterClawWeb.Router do
       live "/split", SplitLive, :index
       live "/terminal", TerminalLive, :index
       live "/calendar", CalendarLive, :index
-      live "/integrations", IntegrationsLive, :index
       live "/security", SecurityLive, :index
       live "/settings", SettingsLive, :index
       live "/appearance", AppearanceLive, :index
@@ -202,11 +201,6 @@ defmodule BusterClawWeb.Router do
     pipe_through :api
 
     get "/_health", HealthController, :show
-
-    # Public by necessity: external senders (GitHub) can't carry our API
-    # token. Authentication is per-adapter webhook-signature verification, which
-    # fails CLOSED when no secret is configured (see Integrations.*.verify_webhook).
-    post "/integrations/:name/webhook", IntegrationWebhookController, :trigger
   end
 
   scope "/api", BusterClawWeb do

@@ -6,7 +6,7 @@ defmodule BusterClaw.Commands.Catalog do
   Split out of `BusterClaw.Commands` so the facade carries dispatch/policy logic
   while the catalog carries the large, declarative data. The entries themselves
   live in per-domain modules under `BusterClaw.Commands.Catalog.*` (Library,
-  Integrations, Google, …); `entries/0` concatenates them in the
+  Google, …); `entries/0` concatenates them in the
   original catalog order. `entries/0` is rebuilt on each call;
   `BusterClaw.Commands` memoizes it in `:persistent_term`, so this stays a
   plain function (a module attribute can't call local functions at compile
@@ -20,7 +20,6 @@ defmodule BusterClaw.Commands.Catalog do
     Google,
     GoogleContacts,
     GoogleFiles,
-    Integrations,
     Library,
     Notify,
     Orchestration,
@@ -35,7 +34,6 @@ defmodule BusterClaw.Commands.Catalog do
     do:
       Library.entries() ++
         AppTabs.entries() ++
-        Integrations.entries() ++
         Google.entries() ++
         GoogleFiles.entries() ++
         GoogleContacts.entries() ++

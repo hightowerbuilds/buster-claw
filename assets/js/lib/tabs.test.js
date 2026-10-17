@@ -107,7 +107,6 @@ describe("canonicalGroupKey", () => {
       "/settings",
       "/appearance",
       "/notify-settings",
-      "/integrations",
       "/security"
     ]) {
       expect(canonicalGroupKey(p)).toBe("/settings")

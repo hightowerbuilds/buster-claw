@@ -149,7 +149,7 @@ defmodule BusterClaw.CommandsTest do
 
     test "command_gated?/1 marks the outbound/irreversible commands" do
       for name <-
-            ~w(gmail_send document_delete event_delete integration_delete
+            ~w(gmail_send document_delete event_delete
                gmail_delete gcal_event_delete drive_delete contacts_delete tasks_delete) do
         assert Commands.command_gated?(name), "expected #{name} to be gated"
       end
@@ -967,7 +967,6 @@ defmodule BusterClaw.CommandsTest do
       terminal_tab_open
       document_save
       event_create
-      integration_poll_all
       google_account_list
       gmail_search
       gmail_sync

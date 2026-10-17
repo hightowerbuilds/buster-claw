@@ -10,9 +10,8 @@ defmodule BusterClaw.Clinch.Rekey do
 
   Every at-rest key derives from `secret_key_base` (`BusterClaw.Vault`). Change
   it and every ciphertext in the database becomes unreadable at once. `Encrypted`
-  fails closed, which is right, so nothing crashes: integrations simply load with
-  `nil` tokens, Google accounts with `nil` refresh tokens, `$secret` values as
-  absent. **The app looks freshly installed rather than broken**, and the data is
+  fails closed, which is right, so nothing crashes: Google accounts simply load
+  with `nil` refresh tokens, `$secret` values as absent. **The app looks freshly installed rather than broken**, and the data is
   still there, still encrypted, still fine — with nothing in the product able to
   say so or undo it.
 
@@ -50,8 +49,10 @@ defmodule BusterClaw.Clinch.Rekey do
   retirement is one vault's worth:
 
     * `browser_secrets.value` — `$secret` sign-ins and `:app_key` service keys
-    * `integrations.token`, `integrations.webhook_secret`
     * `google_accounts.client_secret_enc` / `refresh_token_enc` / `access_token_enc`
+
+  (`integrations.token` / `webhook_secret` were on this list until the
+  Integrations feature was deleted on 10-17 and its tables dropped.)
 
   **This list is asserted against the schemas by `RekeyTest`**, so a new encrypted
   column that nobody adds here fails a test rather than being silently skipped by
@@ -77,7 +78,6 @@ defmodule BusterClaw.Clinch.Rekey do
   # against the schemas; do not add a column here without adding it there.
   @stores [
     {"browser_secrets", [:value]},
-    {"integrations", [:token, :webhook_secret]},
     {"google_accounts", [:client_secret_enc, :refresh_token_enc, :access_token_enc]}
   ]
 

@@ -27,7 +27,6 @@ defmodule BusterClawWeb.Layouts do
                   "/calendar" => "Calendar",
                   "/terminal" => "Terminal",
                   "/duty" => "On duty",
-                  "/integrations" => "Integrations",
                   "/security" => "Security",
                   "/settings" => "Settings",
                   "/appearance" => "Settings",

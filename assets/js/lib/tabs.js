@@ -20,7 +20,6 @@ const TAB_GROUPS = [
       "/settings",
       "/appearance",
       "/notify-settings",
-      "/integrations",
       "/security"
     ])
   }

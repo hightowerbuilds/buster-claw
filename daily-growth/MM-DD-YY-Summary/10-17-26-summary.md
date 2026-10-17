@@ -80,3 +80,11 @@ Work Area with a terminal slot over the background.
 | | |
 |---|---|
 | (seventh commit) | **No wasted space under the list.** The panel body is a flex column: the board keeps its own height and the Your sounds section takes everything left, its list box `flex-1` down to the panel's bottom edge instead of a fixed `max-h-40` that left the lower third of a tall window empty. |
+
+---
+
+## Late morning — Integrations deleted whole
+
+| | |
+|---|---|
+| (eighth commit) | **Settings → Integrations is gone, and the code with it.** It was GitHub activity polling into Library markdown snapshots, with a secret-verified webhook, and it had not been touched in months of daily use; with MCP the route is not the one to take. Deleted: `BusterClaw.Integrations` and its five modules (GitHub adapter, Service behaviour, Snapshot, the two schemas), `IntegrationsLive`, the webhook controller, `Commands.Integrations`, its catalog entries (eight verbs; the catalog is 172 → 164 and the Explained stats say so), and four test files. Edited: the router (the live route and the webhook route, and with the webhook the endpoint's raw-body reader is gone too, with its test), the settings tabs, pane routes, tab-strip titles, the runtime status views, the CRUD auto-loop in `Commands`, the Clinch — `:service_key` now has no store (it listed integration tokens read-only; the kind stays because the enum is the contract) and the rekey walks one table fewer, which the rekey test's schema sweep now asserts — plus three JS path lists, the size gate, the dialyzer ignore list, and the four docs. A forward-only migration drops `integration_runs` and `integrations`. |
