@@ -237,8 +237,10 @@ defmodule BusterClawWeb.NotifySettingsLive do
             </label>
           </div>
 
-          <div class="min-h-0 flex-1 overflow-y-auto p-4">
-            <p class="mb-2 text-[0.6875rem] leading-4 text-base-content/55">
+          <%!-- A flex column: the board takes its own height, the sound list
+                takes everything left down to the panel's bottom edge. --%>
+          <div class="flex min-h-0 flex-1 flex-col p-4">
+            <p class="mb-2 shrink-0 text-[0.6875rem] leading-4 text-base-content/55">
               A <strong>source</strong>
               match beats a <strong>kind</strong>
               match, which beats the default. ▶ plays the sound a row resolves to;
@@ -246,7 +248,7 @@ defmodule BusterClawWeb.NotifySettingsLive do
               fires the real thing, modal and all.
             </p>
 
-            <div class="grid gap-x-6 gap-y-3 lg:grid-cols-2">
+            <div class="grid shrink-0 gap-x-6 gap-y-3 lg:grid-cols-2">
               <div :for={column <- @columns} class="space-y-3">
                 <div :for={{group, title} <- column}>
                   <p class="ic-eyebrow mb-1.5">{title}</p>
@@ -269,8 +271,8 @@ defmodule BusterClawWeb.NotifySettingsLive do
                   is left is their own files, as a file-explorer list — name,
                   file, size, modified — in a box that scrolls on its own so
                   a long folder never pushes the board off the screen. --%>
-            <div class="mt-3 space-y-2 border-t-2 border-base-content/15 pt-3">
-              <div class="flex flex-wrap items-center gap-2">
+            <div class="mt-3 flex min-h-0 flex-1 flex-col gap-2 border-t-2 border-base-content/15 pt-3">
+              <div class="flex shrink-0 flex-wrap items-center gap-2">
                 <p class="ic-eyebrow">Your sounds</p>
                 <span class="font-mono text-[0.625rem] text-base-content/45">
                   {length(@own)} in <span class="normal-case">sounds/</span>
@@ -302,7 +304,7 @@ defmodule BusterClawWeb.NotifySettingsLive do
                     nothing else — the extension already says what it is. --%>
               <div
                 id="own-sounds"
-                class="max-h-40 overflow-y-auto rounded border-2 border-base-content/20 p-1"
+                class="min-h-24 flex-1 overflow-y-auto rounded border-2 border-base-content/20 p-1"
               >
                 <div :if={@own_columns != []} class="grid gap-x-1 lg:grid-cols-3">
                   <ul :for={column <- @own_columns} class="min-w-0">

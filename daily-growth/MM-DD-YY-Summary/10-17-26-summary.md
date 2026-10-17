@@ -72,3 +72,11 @@ Work Area with a terminal slot over the background.
 | | |
 |---|---|
 | (sixth commit) | **Three columns, filenames only.** The operator asked for the list in three columns, then for the extra information to go: no kind, no size, no modified — the extension already says what a file is. A row is the filename, ▶ and delete; the list fills top to bottom then across (`columns/2`), in a box that scrolls on its own. The `File.stat` machinery from the previous commit went with the columns it fed. |
+
+---
+
+## Morning — the sound list reaches the bottom
+
+| | |
+|---|---|
+| (seventh commit) | **No wasted space under the list.** The panel body is a flex column: the board keeps its own height and the Your sounds section takes everything left, its list box `flex-1` down to the panel's bottom edge instead of a fixed `max-h-40` that left the lower third of a tall window empty. |
